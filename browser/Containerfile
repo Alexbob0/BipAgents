@@ -29,10 +29,14 @@ RUN echo "packages of ${BROWSER_REFRESH}" && dnf -y upgrade --refresh && dnf -y 
        fi \
     && dnf clean all
 
-# Chrome keeps no passwords, cards or addresses of its own: the vault fills them, and they stay in it.
+# Chrome's managed policies (policies.json): it keeps no passwords, cards or addresses of its own (the vault fills
+# them, and they stay in it), and opens no file:// page, page source, chrome:// page (its new tab aside) nor DevTools
+# page: the container's own files are the browser's secrets (/run/bipagents: the screen's password, the DevTools
+# secret), its profile's session files hold what was typed in its tabs, and Chrome's own pages install extensions or
+# open DevTools (security audit 11/11). The bridge refuses those addresses too (browser_mcp.rs).
+COPY policies.json /opt/stealth/policies.json
 RUN for dir in /etc/opt/chrome/policies/managed /etc/chromium/policies/managed; do \
-        mkdir -p "$dir" && printf '%s\n' '{"PasswordManagerEnabled": false, "AutofillAddressEnabled": false, "AutofillCreditCardEnabled": false, "PasswordLeakDetectionEnabled": false}' \
-            > "$dir/bipagents.json"; \
+        mkdir -p "$dir" && cp /opt/stealth/policies.json "$dir/bipagents.json"; \
     done
 
 COPY requirements.txt stealth.patch /opt/stealth/
@@ -55,13 +59,15 @@ RUN chmod 755 /opt/stealth/entrypoint.sh /opt/stealth/mcp.sh /opt/stealth/open_b
 # redundant one Chrome shows a warning bar for; nodriver's --remote-allow-origins=*, so Chrome refuses a DevTools
 # WebSocket from a web page), a browser always shown on the screen (an agent's headless ignored), and
 # how long a starting Chrome may take to open its DevTools (nodriver's own ~3 s failed cold starts on a loaded server).
+# No back/forward cache: a page left keeps no live copy to come back to with « back » (a card payment's page, besides
+# the history the bridge forgets after it, bridge-rs/src/card_pay.rs `release`).
 # BROWSER_IDLE_TIMEOUT=0: the server's own reaper never lets go of the agent's browser; the bridge stops the whole
 # container once nobody uses it (bip-browser-mcp's `idle`). FastMCP (3) shows no banner and never asks PyPI for a newer
 # version at each start.
 ENV DISPLAY=:99 \
     STEALTH_CDP_PORT=9222 \
     STEALTH_USER_DATA_DIR=/home/bip/profile \
-    STEALTH_BROWSER_ARGS="--start-maximized;--no-first-run;--no-default-browser-check;--disable-dev-shm-usage;--ignore-gpu-blocklist;--test-type;--hide-crash-restore-bubble" \
+    STEALTH_BROWSER_ARGS="--start-maximized;--no-first-run;--no-default-browser-check;--disable-dev-shm-usage;--ignore-gpu-blocklist;--test-type;--hide-crash-restore-bubble;--disable-back-forward-cache" \
     STEALTH_DROP_ARGS="--single-process;--disable-gpu;--disable-setuid-sandbox;--remote-allow-origins=*" \
     STEALTH_HEADFUL=1 \
     STEALTH_CONNECT_SECONDS=45 \

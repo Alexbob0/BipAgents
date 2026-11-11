@@ -399,6 +399,80 @@ pub fn rewrite_too_large(tool: &str, response: &mut Dict) -> bool {
     true
 }
 
+/// The real server's tools that read the page's recorded traffic, its console or the server's own files, or reach
+/// Chrome raw (its network-debugging, cdp-functions, dynamic-hooks, debugging, element-extraction, file-extraction
+/// and progressive-cloning sections, off in browser/mcp.sh): refused here too, should a server ever list them.
+pub const NEVER_CALLED: &[&str] = &[
+    "list_network_requests", "get_request_details", "get_response_details", "get_response_content",
+    "search_network_requests", "export_network_data", "import_network_data", "set_network_capture_filters",
+    "get_network_capture_filters", "modify_headers",
+    "list_cdp_commands", "execute_cdp_command", "add_script_to_evaluate_on_new_document", "get_execution_contexts",
+    "discover_global_functions", "discover_object_methods", "call_javascript_function", "inspect_function_signature",
+    "inject_and_execute_script", "create_persistent_function", "execute_function_sequence", "create_python_binding",
+    "execute_python_in_browser", "get_function_executor_info",
+    "create_dynamic_hook", "create_simple_dynamic_hook", "list_dynamic_hooks", "get_dynamic_hook_details",
+    "remove_dynamic_hook", "get_hook_documentation", "get_hook_examples", "get_hook_requirements_documentation",
+    "get_hook_common_patterns", "validate_hook_function",
+    "get_debug_view", "clear_debug_view", "export_debug_logs", "get_debug_lock_status", "hot_reload", "reload_status",
+    "validate_browser_environment_tool",
+    "extract_element_styles", "extract_element_structure", "extract_element_events", "extract_element_animations",
+    "extract_element_assets", "extract_element_styles_cdp", "extract_related_files", "clone_element_complete",
+    "extract_complete_element_cdp",
+    "clone_element_to_file", "extract_complete_element_to_file", "extract_element_styles_to_file",
+    "extract_element_structure_to_file", "extract_element_events_to_file", "extract_element_animations_to_file",
+    "extract_element_assets_to_file", "list_clone_files", "cleanup_clone_files",
+    "clone_element_progressive", "expand_styles", "expand_events", "expand_children", "expand_css_rules",
+    "expand_pseudo_elements", "expand_animations", "list_stored_elements", "clear_stored_element", "clear_all_elements",
+];
+
+/// What the relay answers itself, never asking the real server (fix review 11/11, R5): its resources
+/// (`browser://<id>/network` holds every request the page sent, a card payment's own included; `/console`, `/state`,
+/// `/cookies`) are never listed nor read, its prompts never got, and the tools of `NEVER_CALLED` are refused.
+/// None: relayed as usual.
+pub fn never_relayed(method: &str, params: Option<&Value>) -> Option<Value> {
+    let error = |text: &str| json!({"jsonrpc": "2.0", "error": {"code": -32601, "message": text}});
+    match method {
+        "resources/list" | "resources/templates/list" => {
+            Some(json!({"jsonrpc": "2.0", "result": empty(method).unwrap_or_else(|| json!({}))}))
+        }
+        "resources/read" | "resources/subscribe" | "resources/unsubscribe" | "prompts/get" | "completion/complete" => {
+            Some(error("not offered by the agent's browser"))
+        }
+        "tools/call" => {
+            let tool = params.and_then(|p| p.get("name")).and_then(Value::as_str).unwrap_or("");
+            NEVER_CALLED.contains(&tool).then(|| {
+                json!({"jsonrpc": "2.0", "result": {"isError": true, "content": [{"type": "text",
+                       "text": format!("{tool} is not one of your browser's tools.")}]}})
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Addresses the agent's browser never opens for it (security audit 11/11): a file of the container
+/// (`file:///run/bipagents/…` holds the screen's password and the DevTools secret), a page's source, Chrome's own
+/// pages and DevTools, an extension's page. Chrome's managed policy blocks them too (browser/policies.json).
+pub const REFUSED_SCHEMES: [&str; 6] =
+    ["file:", "view-source:", "chrome:", "devtools:", "chrome-devtools:", "chrome-extension:"];
+
+/// A tool's call to an address of `REFUSED_SCHEMES` (its `url` argument: `navigate`, `new_tab`; Chrome drops tabs,
+/// newlines and spaces from an address, so they are dropped here too): the refusal for the agent, else None.
+pub fn refused_address(tool: &str, args: &Dict) -> Option<Dict> {
+    let url = args.get("url").and_then(Value::as_str)?;
+    let plain: String = url.chars().filter(|c| !c.is_ascii_whitespace() && !c.is_ascii_control()).collect();
+    let plain = plain.to_ascii_lowercase();
+    if !REFUSED_SCHEMES.iter().any(|s| plain.starts_with(s)) {
+        return None;
+    }
+    let text = format!(
+        "{tool} refused: your browser opens web pages only (https or http), never a file of its machine, a page's \
+         source, nor the browser's own pages."
+    );
+    json!({"jsonrpc": "2.0", "result": {"isError": true, "content": [{"type": "text", "text": text}]}})
+        .as_object()
+        .cloned()
+}
+
 /// What Hermes asks while connecting, answered without starting anything once the real server has said it (the
 /// others, never asked while it ran, as empty).
 fn empty(method: &str) -> Option<Value> {
@@ -657,6 +731,14 @@ impl Proxy {
             }
             return;
         }
+        if let Some(answer) = never_relayed(&method, message.get("params")) {
+            // the server's recorded traffic, console and state, and the tools that read them (`never_relayed`)
+            log(&format!("{method}: not relayed"));
+            let mut answer = answer;
+            answer["id"] = ident;
+            self.to_client(&answer);
+            return;
+        }
         if LISTS.contains(&method.as_str()) && !self.running() && (self.cache_has(&method) || empty(&method).is_some())
         {
             let cached = self.cache.lock().unwrap_or_else(|e| e.into_inner()).get(&method).cloned();
@@ -745,6 +827,11 @@ impl Proxy {
         let params = tamed.as_ref();
         let args = params.and_then(|p| p.get("arguments")).and_then(Value::as_object).cloned().unwrap_or_default();
         let instance = args.get("instance_id").and_then(Value::as_str).unwrap_or("").to_string();
+
+        if let Some(refused) = refused_address(tool, &args) {
+            log(&format!("{tool}: an address of the container itself refused"));
+            return Ok(refused);
+        }
         if tool == "get_page_content"
             && !instance.is_empty()
             && !crate::py::truthy(args.get("include_frames").unwrap_or(&Value::Null))
@@ -1551,5 +1638,93 @@ out of your reach";
         let other = dir.path().join("elsewhere");
         let set = json!({"busy": busy, "rescue": other.to_string_lossy()});
         assert_eq!(Proxy::new(set.as_object().unwrap().clone(), Box::new(Vec::new())).rescue_path, other);
+    }
+
+    /// What the relay writes to Hermes.
+    #[derive(Clone, Default)]
+    struct Written(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for Written {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn the_servers_traffic_console_and_raw_tools_never_reach_the_agent() {
+        // Fix review 11/11, R5: the real server records every request the page sends (a card payment's own among
+        // them) and serves it as the resource browser://<id>/network, outside any tool section. The relay never lists
+        // nor reads its resources, nor gets its prompts, nor calls the tools that read the traffic, the console or
+        // reach Chrome raw: answered here, the server never asked (nor started).
+        let dir = tempfile::tempdir().unwrap();
+        let busy = dir.path().join("busy").to_string_lossy().into_owned();
+        let out = Written::default();
+        let config = json!({"busy": busy, "idle": 600, "start": ["false"], "server": ["false"]});
+        let proxy = Proxy::new(config.as_object().unwrap().clone(), Box::new(out.clone()));
+        let asks = [
+            ("resources/list", json!({})),
+            ("resources/templates/list", json!({})),
+            ("resources/read", json!({"uri": "browser://abc/network"})),
+            ("resources/read", json!({"uri": "browser://abc/console"})),
+            ("prompts/get", json!({"name": "x"})),
+            ("tools/call", json!({"name": "list_network_requests", "arguments": {"instance_id": "abc"}})),
+            ("tools/call", json!({"name": "get_response_content", "arguments": {}})),
+            ("tools/call", json!({"name": "get_debug_view", "arguments": {}})),
+            ("tools/call", json!({"name": "execute_cdp_command", "arguments": {}})),
+            ("tools/call", json!({"name": "add_script_to_evaluate_on_new_document", "arguments": {}})),
+            ("tools/call", json!({"name": "list_clone_files", "arguments": {}})),
+        ];
+        for (n, (method, params)) in asks.iter().enumerate() {
+            proxy.handle(json!({"jsonrpc": "2.0", "id": n, "method": method, "params": params})).await;
+        }
+        let data = out.0.lock().unwrap().clone();
+        let answers: Vec<Value> =
+            String::from_utf8(data).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(answers.len(), asks.len());
+        assert_eq!(answers[0]["result"], json!({"resources": []}));
+        assert_eq!(answers[1]["result"], json!({"resourceTemplates": []}));
+        for answer in &answers[2..5] {
+            assert!(answer.get("result").is_none() && answer["error"]["code"] == json!(-32601), "{answer}");
+        }
+        for (n, answer) in answers.iter().enumerate().skip(5) {
+            assert_eq!(answer["id"], json!(n));
+            assert_eq!(answer["result"]["isError"], json!(true), "{answer}");
+        }
+        assert!(!proxy.running(), "the real server was never started");
+        // An ordinary tool is still the server's (refused here only because this test's server can't start).
+        assert!(never_relayed("tools/call", Some(&json!({"name": "take_screenshot"}))).is_none());
+        assert!(never_relayed("tools/call", Some(&json!({"name": "execute_script"}))).is_none());
+        assert!(never_relayed("tools/list", None).is_none() && never_relayed("prompts/list", None).is_none());
+    }
+
+    #[test]
+    fn the_browser_never_opens_a_file_of_its_container_nor_its_own_pages() {
+        // Security audit 11/11: navigate("file:///run/bipagents/vnc.pass") then get_page_content read the screen's
+        // password (and the DevTools secret beside it).
+        let args = |url: &str| json!({"instance_id": "abc", "url": url}).as_object().unwrap().clone();
+        for url in [
+            "file:///run/bipagents/vnc.pass",
+            "FILE:///run/bipagents/cdp.token",
+            "  fi\tle:///etc/passwd",
+            "view-source:https://shop.example/",
+            "chrome://extensions",
+            "chrome://inspect/#devices",
+            "devtools://devtools/bundled/inspector.html",
+            "chrome-devtools://devtools/x",
+            "chrome-extension://abcdef/page.html",
+        ] {
+            let refused = refused_address("navigate", &args(url)).unwrap_or_else(|| panic!("{url} not refused"));
+            assert_eq!(refused["result"]["isError"], json!(true));
+            assert!(refused["result"]["content"][0]["text"].as_str().unwrap().starts_with("navigate refused"));
+        }
+        assert!(refused_address("new_tab", &args("file:///run/bipagents/vnc.pass")).is_some());
+        for url in ["https://shop.example/file:///x", "http://localhost:8080/", "about:blank", "https://chrome.com/"] {
+            assert!(refused_address("navigate", &args(url)).is_none(), "{url}");
+        }
+        assert!(refused_address("click_element", json!({"selector": "a"}).as_object().unwrap()).is_none());
     }
 }

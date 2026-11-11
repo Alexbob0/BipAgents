@@ -460,12 +460,21 @@ index b5ad386..1deefa1 100644
  
      Args:
          headless (bool): Run in headless mode.
-@@ -230,10 +236,11 @@ async def spawn_browser(
+@@ -230,10 +236,20 @@ async def spawn_browser(
          )
          instance = await browser_manager.spawn_browser(options)
          tab = await browser_manager.get_tab(instance.instance_id)
 -        if tab:
 +        if tab and instance.instance_id not in browser_manager._bip_intercepted:   # BipAgents: a reused one has it
++            if os.environ.get("STEALTH_CDP_PORT"):
++                # BipAgents (fix review 11/11, R5): in the agent's container nothing of its traffic is kept. Upstream
++                # keeps every request's body and every response's in this server's memory, served as the resource
++                # browser://<id>/network: a card payment's own request among them. Only block_resources stays.
++                async def _bip_nothing_kept(*_args, **_kwargs):
++                    return None
++
++                network_interceptor._on_request = _bip_nothing_kept
++                network_interceptor._on_response = _bip_nothing_kept
              await network_interceptor.setup_interception(
                  tab, instance.instance_id, block_resources
              )
@@ -473,7 +482,7 @@ index b5ad386..1deefa1 100644
          spawn_diagnostics = await browser_manager.get_spawn_diagnostics(instance.instance_id)
          return {
              "instance_id": instance.instance_id,
-@@ -277,17 +284,19 @@ async def list_instances() -> List[Dict[str, Any]]:
+@@ -277,17 +293,19 @@ async def list_instances() -> List[Dict[str, Any]]:
      return result
  
  @section_tool("browser-management")
