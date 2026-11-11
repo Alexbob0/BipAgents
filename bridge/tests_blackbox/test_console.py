@@ -121,9 +121,9 @@ def test_logging_out_ends_the_session(bridge):
 
 
 def test_the_console_never_reaches_hermes(bridge, fakes):
-    """The console goes through the bridge's routes (threads, runs, approvals): `/hermes/…` refuses it."""
+    """The console goes through the bridge's routes (threads, runs, approvals): no relay to an agent's Hermes."""
     _, session, _ = login(bridge)
-    assert bridge.get("/hermes/wellness/api/sessions", headers=session).status_code == 403
+    assert bridge.get("/hermes/wellness/api/sessions", headers=session).status_code == 404
     assert not fakes.hermes.seen("/api/sessions")
 
 

@@ -6,9 +6,10 @@ import json
 import threading
 import time
 
-from bbkit.common import AUTH, HERMES_KEY, read_sse, sse, in_session
+from bbkit.common import AUTH, app_turn, follow_run, read_sse, sse, in_session
 from bbkit.mcp import call, give_token, media_of, text_of
 from bbkit.servers import wait_until
+from conftest import managed_install, profile
 
 
 def follow(bridge, run_id):
@@ -91,23 +92,12 @@ def test_writes_in_a_turn_are_capped(bridges, fakes):
 
 # -- 2026-10-27 evening: the token lab's bench (internal/research/token-diet-step3-2026-10-27.md) showed the brake
 # never stopping a turn, and refusing a reminder at the first write: the lab started and followed its runs through the
-# door's Hermes relay (/hermes/<agent>/v1/runs…), invisible to the run hub. Each test drives a turn as the app or the
-# lab does: `POST /v1/runs` through the relay, then the run's events.
-
-HERMES_AUTH = {"Authorization": f"Bearer {HERMES_KEY}"}
+# door's Hermes relay (gone since), invisible to the run hub. Each test drives a turn as the app does: its message
+# (`POST /v1/threads/{id}/messages`), then the run's events.
 
 
-def start(bridge, session="api_c"):
-    posted = bridge.post("/hermes/wellness/v1/runs", json={"input": "C'est quand l'anniversaire de Julie ?",
-                                                           "session_id": session}, headers=HERMES_AUTH)
-    assert posted.status_code == 202, posted.text
-    return posted.json()["run_id"]
-
-
-def follow_relay(bridge, run_id):
-    with bridge.stream("GET", f"/hermes/wellness/v1/runs/{run_id}/events", headers=HERMES_AUTH) as resp:
-        assert resp.status_code == 200
-        return read_sse(resp)
+def start(bridge, fakes, session="api_c"):
+    return app_turn(bridge, fakes, "C'est quand l'anniversaire de Julie ?", session)
 
 
 def bench_turn(run_id, tools):
@@ -124,27 +114,27 @@ def test_the_benchs_birthday_loop_started_through_the_door_is_stopped(bridges, f
               "terminal", note, "tool_call", "tool_search", note, "terminal"] + [note] * 4 + ["terminal"] + [note] * 3
              + ["terminal"] + [note] * 8 + ["terminal"])
     fakes.hermes.runs["r1"] = bench_turn("r1", tools)
-    run_id = start(bridge)
+    run_id = start(bridge, fakes)
     assert run_id == "r1"
-    for events in (follow(bridge, run_id), follow_relay(bridge, run_id)):   # the app's way, the lab's way
-        names = [name for name, _ in events]
-        assert [d.get("code") for n, d in events if n == "bridge.notice"].count("loop_stopped") == 1
-        at = names.index("bridge.notice")
-        assert [data.get("tool") for name, data in events[:at]].count(note) == 11, "right after the 11th note"
-        notice = events[at][1]
-        assert notice["code"] == "loop_stopped" and notice["reason"] == "same tool too many times (notebook_write)"
+    events = follow(bridge, run_id)
+    names = [name for name, _ in events]
+    assert [d.get("code") for n, d in events if n == "bridge.notice"].count("loop_stopped") == 1
+    at = names.index("bridge.notice")
+    assert [data.get("tool") for name, data in events[:at]].count(note) == 11, "right after the 11th note"
+    notice = events[at][1]
+    assert notice["code"] == "loop_stopped" and notice["reason"] == "same tool too many times (notebook_write)"
     assert wait_until(lambda: fakes.hermes.seen("/v1/runs/r1/stop", "POST"))
     turn = [s for s in fakes.hermes.event_requests if s.path == "/v1/runs/r1/events"]
-    assert len(turn) == 1, "one Hermes subscription for the hub, the app and the lab (the rescue turn's apart)"
+    assert len(turn) == 1, "one Hermes subscription for the hub and the app (the rescue turn's apart)"
 
 
-def test_the_benchs_draft_loop_followed_only_through_the_relay_is_stopped(bridges, fakes):
+def test_the_benchs_draft_loop_is_stopped(bridges, fakes):
     # glm-concise-2, draft_reply: 25 notebook_search
     bridge = bridges.new().start()
     search = "mcp__bipagents__notebook_search"
     fakes.hermes.runs["r1"] = bench_turn("r1", ["mcp__bipagents__calendar_list", search, search, "tool_describe"]
                                          + [search] * 23)
-    events = follow_relay(bridge, start(bridge))
+    events = follow_run(bridge, start(bridge, fakes))
     notices = [data for name, data in events if name == "bridge.notice" and data.get("code") == "loop_stopped"]
     assert [n["reason"] for n in notices] == ["same tool too many times (notebook_search)"]
     assert wait_until(lambda: fakes.hermes.seen("/v1/runs/r1/stop", "POST"))
@@ -158,7 +148,7 @@ def test_a_page_the_browser_cant_read_ends_on_a_plain_line_before_hermes_cap(bri
     read = "mcp__stealth__get_page_content"
     fakes.hermes.runs["r1"] = bench_turn("r1", ["skill_view", "mcp__stealth__spawn_browser", "mcp__stealth__navigate",
                                                 read, "terminal", "tool_describe"] + [read] * 144)
-    events = follow_relay(bridge, start(bridge))
+    events = follow_run(bridge, start(bridge, fakes))
     names = [name for name, _ in events]
     at = names.index("bridge.notice")
     assert [data.get("tool") for name, data in events[:at]].count(read) == 16, "right after the 16th page read"
@@ -169,15 +159,14 @@ def test_a_page_the_browser_cant_read_ends_on_a_plain_line_before_hermes_cap(bri
 
 
 def test_a_turn_nobody_follows_is_stopped_too(bridges, fakes):
-    # a run started through the relay that nobody follows (the app polls its status, a peer's message): stopped, and
-    # the plain line pushed to the phone
+    # a turn nobody follows (the app closed): stopped, and the plain line pushed to the phone
     bridge = bridges.new()
     now = "2026-10-28T08:00:00.000Z"
     bridge.seed_db([("INSERT INTO devices (token, environment, agent_ids, created_at, updated_at) VALUES (?,?,?,?,?)",
                      ("1" * 64, "production", "[]", now, now))])
     bridge.start()
     fakes.hermes.runs["r1"] = looping("r1", 20)
-    start(bridge)
+    start(bridge, fakes)
     assert wait_until(lambda: fakes.hermes.seen("/v1/runs/r1/stop", "POST"))
     assert bridge.logged("going round in circles: run stopped")
     assert wait_until(lambda: [p for p in fakes.apns.payloads() if p.get("r") == "r1"])
@@ -197,11 +186,11 @@ def test_two_reminders_in_a_fresh_conversation_are_accepted(bridges, fakes):
     for i in range(40):   # a routine before (no run): its 40 pages (scheduled work, a task's writes), its cap reached
         assert not call(bridge, "create_page", {"title": f"Brief {i}", "html": f"<h1>{i}</h1>"})["isError"]
     assert call(bridge, "create_page", {"title": "Brief 41", "html": "<h1>41</h1>"})["isError"]
-    # the person's new conversation: its turn started through the door, still going on
+    # the person's new conversation: its turn still going on
     gate = threading.Event()
     fakes.hermes.runs["r1"] = [sse("tool.started", run_id="r1", tool="mcp__bipagents__reminders_add", preview="{}"),
                                gate, sse("run.completed", run_id="r1", output="C'est noté.")]
-    start(bridge, session="api_new")
+    start(bridge, fakes, session="api_new")
     assert wait_until(lambda: fakes.hermes.event_requests)
     for title in ("Pharmacie", "Banque"):
         added = call(bridge, "reminders_add", {"title": title, "due": "2026-10-28T09:00", "list": "Maison"})
@@ -403,11 +392,23 @@ def test_a_rescue_turn_leaves_the_browser_to_another_run_of_the_agent(bridges, f
 
 
 def test_a_turn_nobody_follows_gets_no_rescue_turn(bridges, fakes):
-    # a run nobody follows (a peer's message, the lab's runs polled): stopped as before, no rescue turn
-    bridge = bridges.new().start()
+    # a run nobody follows (another agent's message, relayed by peers.rs): stopped as before, no rescue turn
+    bridge = bridges.new()
+    hub = managed_install(bridge, fakes, agents=("budget", "maison"))
+    for name in ("budget", "maison"):
+        profile(hub, name)
+    bridge.start()
+    links = [{"from": "budget", "to": "maison"}]
+    assert bridge.put("/v1/agent-links", headers=AUTH, json={"links": links}).status_code == 200
+    peer = {"Authorization": f"Bearer {(hub / '.env').read_text().split('HERMES_PEER_BIP_KEY=')[1].strip()}"}
+    opened = bridge.post("/peer/p/maison/api/sessions", headers=peer, json={"title": "Bot Chat", "source": "bot_peer_dm"})
+    assert opened.status_code == 201, opened.text
     fakes.hermes.runs["r1"] = diagnosis("r1", 5)
-    start(bridge)
-    assert wait_until(lambda: fakes.hermes.seen("/v1/runs/r1/stop", "POST"))
+    message = {"input": "Message from Budget (@budget): tu as vu l'erreur de cette nuit ?",
+               "session_id": opened.json()["session"]["id"]}
+    sent = bridge.post("/peer/p/maison/v1/runs", headers=peer, json=message)
+    assert sent.status_code == 202, sent.text
+    assert wait_until(lambda: fakes.hermes.seen("/p/maison/v1/runs/r1/stop", "POST"))
     assert wait_until(lambda: bridge.logged("going round in circles: run stopped"))
     assert list(fakes.hermes.started) == ["r1"], "no rescue turn started"
 
@@ -446,14 +447,14 @@ def test_the_audio_made_in_a_turn_is_handed_over_by_its_reply(bridges, fakes):
     fakes.hermes.runs["r1"] = [sse("tool.started", run_id="r1", tool="mcp_bipagents_create_audio", preview="{}"),
                                gate, sse("message.delta", run_id="r1", delta=reply),
                                sse("run.completed", run_id="r1", output=reply)]
-    start(bridge)
+    start(bridge, fakes)
     assert wait_until(lambda: fakes.hermes.event_requests)
     made = call(bridge, "create_audio", {"text": "Bonjour, voici le podcast du jour.", "title": "Podcast du jour"})
     assert not made["isError"], text_of(made)
     path = media_of(made)
     assert text_of(made).startswith(f"MEDIA:{path}\n"), "the MEDIA line first"
     gate.set()
-    events = follow_relay(bridge, "r1")
+    events = follow_run(bridge, "r1")
     end = events[-1][1]
     assert events[-1][0] == "run.completed"
     # today's file the end's attachment, the stale line marked, the model's words untouched (2026-11-03) but its MEDIA
@@ -491,7 +492,7 @@ def test_the_files_handed_over_are_on_the_timeline_when_the_end_arrives(bridges,
                                sse("run.completed", run_id="r1", output=reply)]
     fakes.hermes.add_session("api_c", [{"role": "user", "content": "C'est quand l'anniversaire de Julie ?"},
                                        {"role": "assistant", "content": reply}], title="Julie")
-    start(bridge)
+    start(bridge, fakes)
     assert wait_until(lambda: fakes.hermes.event_requests)
     made = call(bridge, "create_page", {"title": "Julie", "html": "<h1>Julie</h1>"})
     assert not made["isError"], text_of(made)
@@ -506,7 +507,7 @@ def test_the_files_handed_over_are_on_the_timeline_when_the_end_arrives(bridges,
 
     gate.set()
     seen = None
-    with bridge.stream("GET", "/hermes/wellness/v1/runs/r1/events", headers=HERMES_AUTH) as resp:
+    with bridge.stream("GET", "/v1/runs/r1/events", params={"agent": "wellness"}, headers=AUTH) as resp:
         for line in resp.iter_lines():
             if line == "event: run.completed":
                 seen = files()   # read at once, as the apps do
@@ -519,14 +520,14 @@ def test_a_reply_that_already_hands_the_file_over_is_left_alone(bridges, fakes):
     give_token(bridge)
     gate, said = threading.Event(), {}
     fakes.hermes.runs["r1"] = [sse("tool.started", run_id="r1", tool="mcp_bipagents_create_audio", preview="{}"), gate]
-    start(bridge)
+    start(bridge, fakes)
     assert wait_until(lambda: fakes.hermes.event_requests)
     path = media_of(call(bridge, "create_audio", {"text": "Bonjour.", "title": "Bonjour"}))
     said["reply"] = f"Voilà.\nMEDIA:{path}"
     fakes.hermes.runs["r1"] += [sse("message.delta", run_id="r1", delta=said["reply"]),
                                 sse("run.completed", run_id="r1", output=said["reply"])]
     gate.set()
-    events = follow_relay(bridge, "r1")
+    events = follow_run(bridge, "r1")
     # its MEDIA line as the end's attachment (4/11: never as words), the file once
     assert events[-1][1]["output"] == "Voilà." and [a["path"] for a in events[-1][1]["attachments"]] == [path]
     assert all("MEDIA:" not in json.dumps(data) for _, data in events)
@@ -534,7 +535,7 @@ def test_a_reply_that_already_hands_the_file_over_is_left_alone(bridges, fakes):
     old = "/bipagents/audio/wellness/20261020-080000-ancien.m4a"
     fakes.hermes.runs["r2"] = [sse("message.delta", run_id="r2", delta=f"Le revoici.\nMEDIA:{old}"),
                                sse("run.completed", run_id="r2", output=f"Le revoici.\nMEDIA:{old}")]
-    assert start(bridge) == "r2"
-    events = follow_relay(bridge, "r2")
+    assert start(bridge, fakes) == "r2"
+    events = follow_run(bridge, "r2")
     assert events[-1][1]["output"] == "Le revoici." and [a["path"] for a in events[-1][1]["attachments"]] == [old]
     assert "stale" not in events[-1][1]

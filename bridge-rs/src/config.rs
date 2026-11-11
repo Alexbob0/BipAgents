@@ -388,8 +388,8 @@ impl Default for BrowserConfig {
     }
 }
 
-/// The local-network door (no Tailscale): the same bridge over HTTPS with a self-signed certificate the app pins,
-/// Hermes relayed under /hermes/<agent>/. Off by default: everything else only listens on 127.0.0.1.
+/// The local-network door (no Tailscale): the same bridge over HTTPS with a self-signed certificate the app pins.
+/// Off by default: everything else only listens on 127.0.0.1.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct LanConfig {
     pub enabled: bool,
@@ -789,7 +789,7 @@ pub struct Config {
     /// http://127.0.0.1:<port>/peer; e.g. http://host.containers.internal:8643/peer for agents in containers.
     pub peer_url: Option<String>,
     /// A server the app created in the person's own account (« no computer »): the door is on the Internet, the
-    /// agents are reached through it (/hermes/<agent>/), the web console is off and wrong keys are limited (guard.py).
+    /// web console is off and wrong keys are limited (guard.py).
     pub cloud: bool,
     /// Until the app claims that server (cloud_setup.py): the one-time pairing secret, and the installer's progress.
     pub setup_file: Option<String>,

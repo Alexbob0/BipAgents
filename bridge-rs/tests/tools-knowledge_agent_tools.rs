@@ -289,7 +289,8 @@ async fn a_long_call_is_streamed_and_errors_are_the_tools_not_the_protocols() {
     // No server stream; the session's end is acknowledged.
     let bearer = format!("Bearer {TOKEN}");
     let get = app.get("/v1/agent-tools/mcp", &[("authorization", &bearer)]).await;
-    assert_eq!((get.status.as_u16(), get.header("allow")), (405, Some("POST".to_string())));
+    assert_eq!(get.status.as_u16(), 405);
+    assert!(get.header("allow").is_some_and(|allow| allow.contains("POST")));
     assert_eq!(app.request("DELETE", "/v1/agent-tools/mcp", &[("authorization", &bearer)], None).await.status, 200);
     let bad = app.request("POST", "/v1/agent-tools/mcp", &[("authorization", &bearer)], Some("{".into())).await;
     assert_eq!(bad.status, 400);

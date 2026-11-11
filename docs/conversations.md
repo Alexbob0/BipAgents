@@ -47,7 +47,8 @@ The common cause: **the conversation was never a bridge object**. The fix is tha
    the message is stored and has its id (§9).
 6. **No compatibility layer** (Alex, 2026-11-02: no customers yet, one wave for the bridge, the apps right after):
    what this replaces is deleted (the legacy push fields and builders, `/v1/replies/{id}`, the reply texts kept in
-   memory). Routes other features still use stay (`/v1/outbox`; `/hermes/<agent>/…`: Live's own turns, the web console, the lab).
+   memory). Routes other features still use stay (`/v1/outbox`). The door's relay to an agent's Hermes
+   (`/hermes/<agent>/…`) is gone too (11/11): no app, console or lab used it any more.
 
 ## 3. Identities
 
@@ -451,8 +452,8 @@ event: lagged         data: {}                    (the app missed events: refetc
 row), Hermes continued it in a new session (`segment`), and words steered into a turn that stopped without taking
 them become « Pas envoyé » (`lost`: 11 s after the send, nothing running, the message not stored; a turn that ends
 later says it with its own `run`). A deleted thread forgets its messages not stored (`thread_sends`): the main thread
-starts again under the same id without them. The agent's queue keeps its own stream
-(`/v1/agents/{id}/queue/events`, msg_queue.rs); the timeline's `pending.queue` gives its state at each read.
+starts again under the same id without them. The agent's queue is told in the run's stream
+(`bridge.queue`, msg_queue.rs); the timeline's `pending.queue` gives its state at each read.
 
 **Presence**: `GET /v1/threads/events?agent=<a>&thread=<id|main>` means « this conversation is on screen » for as
 long as the stream is open: a notification for that thread is journaled, marked read, and not pushed
@@ -585,7 +586,7 @@ words come as early as from Hermes itself. The call's recap joins the next writt
 
 **The web console** (`/console/`) uses the same routes: the thread list, the timeline and its events stream (on screen
 while open), the send and stop routes, `POST /v1/approve` for approvals and questions, a run's events at
-`/v1/runs/{id}/events`. `/hermes/<agent>/…` refuses a console session.
+`/v1/runs/{id}/events`.
 
 ## 7. How the apps use it (target)
 
@@ -595,8 +596,7 @@ while open), the send and stop routes, `POST /v1/approve` for approvals and ques
 - **Opening a conversation**: `timeline?limit=50` (or `around=<m>` from a notification, a Boîte row, a search hit).
   Scroll up: `before=<first>`. Live: the `thread` event → `after=<last>`. Version mismatch after sleep → `after=`.
 - **No Hermes calls** for conversations: list, history, sending, run state, approvals, clarify and Live turns go
-  through the bridge. `/hermes/<agent>/…` stays for the apps' other Hermes calls (routines, settings), never the
-  console's.
+  through the bridge, as everything else (routines, settings): the bridge has no relay to Hermes any more.
 - **No marker parsing**: `text` is already visible text; attachments are structured.
 - **Badges and read state** come from the journal (§9.4).
 

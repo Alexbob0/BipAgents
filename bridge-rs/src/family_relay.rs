@@ -258,7 +258,7 @@ async fn relay_in(State(state): State<AppState>, request: Request) -> Response {
     };
     let method = request.method().as_str().to_string();
     let headers = header_pairs(request.headers());
-    let Ok(body) = axum::body::to_bytes(request.into_body(), crate::body_limit::HERMES_BYTES as usize).await else {
+    let Ok(body) = axum::body::to_bytes(request.into_body(), crate::body_limit::RELAY_ANSWER_BYTES as usize).await else {
         return axum::response::IntoResponse::into_response(HttpError::new(413, "request body too large"));
     };
     let id = crate::py::token_urlsafe(16);

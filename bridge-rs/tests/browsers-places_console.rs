@@ -3,7 +3,6 @@
 
 mod common;
 
-use common::fakes::FakeBackend;
 use common::{auth, config, TestApp, TestResponse, Urls};
 use serde_json::json;
 
@@ -85,17 +84,6 @@ async fn a_code_approved_in_the_app_opens_a_session() {
     let long = app.send_json("POST", "/console/api/pairing/wait", &[], &json!({"code": "1234567", "wait": "x"})).await;
     assert_eq!(long.status, 422);
     assert_eq!(long.json()["detail"][0]["type"], "string_too_long");
-}
-
-#[tokio::test]
-async fn the_console_never_reaches_hermes() {
-    let backend = FakeBackend::start().await;
-    let dir = tempfile::tempdir().unwrap();
-    let app = TestApp::new(config(dir.path(), &backend.urls()));
-    let (_, cookie) = login(&app).await;
-    let refused =
-        app.get("/hermes/wellness/api/sessions", &[("x-bip-console", "1"), ("cookie", cookie.as_str())]).await;
-    assert_eq!(refused.status, 403);
 }
 
 #[tokio::test]

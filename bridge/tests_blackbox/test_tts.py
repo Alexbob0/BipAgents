@@ -124,7 +124,7 @@ def test_drama_streams_its_44k_audio_resampled_to_24k(bridges, fakes):
     again = stream(bridge, text="Bonjour, il est sept heures cinquante.", voice="drama:fr-mascotte-s17")
     assert again == out and len(fakes.voices.inputs) == 1           # a complete take is cached
     health = bridge.get("/health").json()
-    assert health["voice_server"] is True and health["drama"] is True
+    assert health["voice_server"] is True and "drama" not in health
 
 
 def test_drama_down_speaks_with_a_pocket_bip_of_the_same_language(bridges, fakes):
@@ -135,7 +135,7 @@ def test_drama_down_speaks_with_a_pocket_bip_of_the_same_language(bridges, fakes
     audio = sentence(bridge, text="Hello there.", voice="drama:en-naturelle-s47")
     assert fakes.pocket.inputs[-1]["voice"] == "en/galet" and audio.content
     health = bridge.get("/health").json()
-    assert health["voice_server"] is False and health["drama"] is False
+    assert health["voice_server"] is False
 
 
 def test_a_drama_take_reading_on_and_on_is_cut(bridges, fakes):
@@ -170,7 +170,6 @@ def test_a_server_that_does_not_stream_gives_whole_wav_files_in_its_language(bri
     assert seen["model"] == "kokoro" and seen["voice"] == "af_bella" and seen["response_format"] == "wav"
     assert "seven" in seen["input"]                   # English numbers: the voice's language
     assert abs(len(out) // 2 - 12000) <= 50
-    assert bridge.get("/health").json()["drama"] is None
 
 
 def test_mp3_from_a_server_that_makes_it(bridges, fakes):

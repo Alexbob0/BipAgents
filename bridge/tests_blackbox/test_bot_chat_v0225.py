@@ -7,9 +7,8 @@ API-made one is moved aside as « Bot Chat (API <id>) ». Hermes patch 0021 keep
 peer's source mints the local chat, whose runs go to `fifo`). Here: the bridge makes the main conversation that way,
 a peer opening it too, and a thread an unpatched Hermes moved aside is put back at the bridge's start."""
 import time
-import tomllib
 
-from bbkit.common import AUTH, read_sse, sse
+from bbkit.common import AUTH, app_turn, follow_run, sse
 from bbkit.fakes import CLOSE
 from bbkit.servers import wait_until
 from conftest import managed_install, profile, wait_registered
@@ -25,19 +24,14 @@ def test_a_new_agents_main_conversation_is_an_api_one_and_streams(bridges, fakes
     [bot_chat] = [sid for sid, s in fakes.hermes.sessions["lea"].items() if s["title"] == "Bot Chat"]
     assert [body for agent, body in fakes.hermes.created if agent == "lea"] == [{"title": "Bot Chat"}]
     assert not fakes.hermes.local_bot_chat("lea", bot_chat)
-    # the app's turn in it, through the door: a run whose text streams, not a peer's message
-    key = tomllib.loads(bridge.toml_text())["agents"]["lea"]["hermes_key"]
-    auth = {"Authorization": f"Bearer {key}"}
-    # the run's events ready before it starts, as Hermes has them once it answers 202: the bridge follows a relayed
-    # run at once (runs.rs keep_started), and a script set after the start raced it (run_not_found 404)
+    # the app's turn in it: a run whose text streams, not a peer's message
+    # the run's events ready before it starts, as Hermes has them once it answers 202: the bridge follows the run at
+    # once, and a script set after the start raced it (run_not_found 404)
     run_id = f"r{len(fakes.hermes.started) + 1}"
     fakes.hermes.runs[run_id] = [sse("message.delta", run_id=run_id, delta="Bonjour"),
                                  sse("run.completed", run_id=run_id, output="Bonjour"), CLOSE]
-    started = bridge.post("/hermes/lea/v1/runs", headers=auth, json={"input": "Salut", "session_id": bot_chat})
-    assert started.status_code == 202, started.text
-    assert started.json()["run_id"] == run_id, started.text
-    with bridge.stream("GET", f"/hermes/lea/v1/runs/{run_id}/events", headers=auth) as resp:
-        events = read_sse(resp)
+    assert app_turn(bridge, fakes, "Salut", bot_chat, agent="lea", hermes_agent="lea") == run_id
+    events = follow_run(bridge, run_id, agent="lea")
     assert [name for name, _ in events][:2] == ["message.delta", "run.completed"], events
     assert fakes.hermes.fifo == []
 

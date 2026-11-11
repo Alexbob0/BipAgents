@@ -70,7 +70,7 @@ async fn agents_listing() {
         resp.json(),
         json!({"bridge": {"url": null, "lan": null},
                "agents": [{"id": "wellness", "name": "Wellness", "voice": "pocket:colibri", "server_voice": null, "category": null,
-                           "color": null, "outfit": "", "costumes": true, "language": null, "uploads": true, "url": null, "family": false, "project": null,
+                           "color": null, "outfit": "", "costumes": true, "language": null, "url": null, "family": false, "project": null,
                            "requested": null, "group": ""}],
                "unclaimed": []})
     );
@@ -169,9 +169,8 @@ async fn fastapi_like_errors() {
     let resp = app.request("PATCH", "/v1/devices", &h, None).await;
     assert_eq!((resp.status, resp.json()), (StatusCode::METHOD_NOT_ALLOWED, json!({"detail": "Method Not Allowed"})));
     assert_eq!(resp.header("allow").as_deref(), Some("POST"));
-    // FastAPI's routes answer no HEAD
-    let resp = app.request("HEAD", "/v1/agents", &h, None).await;
-    assert_eq!((resp.status, resp.header("allow").as_deref()), (StatusCode::METHOD_NOT_ALLOWED, Some("GET")));
+    // HEAD is answered as GET (axum)
+    assert_eq!(app.request("HEAD", "/v1/agents", &h, None).await.status, StatusCode::OK);
     // a missing body, invalid JSON, a missing field, a wrong type, a too long string: 422 with pydantic's list
     let resp = app.request("POST", "/v1/devices", &h, None).await;
     assert_eq!(resp.status, StatusCode::UNPROCESSABLE_ENTITY);
@@ -254,15 +253,6 @@ async fn fake_hermes() -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>
                 (StatusCode::CONFLICT, Json(json!({"error": "nothing pending", "got": body})))
             }),
         )
-        .route(
-            "/v1/runs/run_1/events",
-            get(|| async {
-                // a run's end: the door's relay serves a run's events from the run hub, until its end (lan.rs)
-                let body = "data: {\"event\": \"message.delta\", \"delta\": \"Hi\"}\n\n\
-                            data: {\"event\": \"run.completed\", \"output\": \"Hi\"}\n\n";
-                ([("content-type", "text/event-stream")], body)
-            }),
-        )
         .fallback(any(move |request: Request| {
             let log = log.clone();
             async move {
@@ -324,8 +314,8 @@ fn lan_config(dir: &std::path::Path, hermes: &str) -> bipbridge::config::Config 
 }
 
 #[tokio::test]
-async fn pairing_route_and_hermes_relay() {
-    let (url, seen) = fake_hermes().await;
+async fn pairing_route() {
+    let (url, _) = fake_hermes().await;
     let dir = tempfile::tempdir().unwrap();
     let config = lan_config(dir.path(), &url);
     bipbridge::lan::ensure_certificate(&config).unwrap();
@@ -340,36 +330,8 @@ async fn pairing_route_and_hermes_relay() {
     // the agents listing never gives an agent's Hermes key
     assert!(app.get("/v1/agents", &[(k, &v)]).await.json()["agents"][0].get("key").is_none());
 
-    let hermes_auth = format!("Bearer {HERMES_KEY}");
-    let posted = app
-        .send_json(
-            "POST",
-            "/hermes/wellness/v1/runs?x=1",
-            &[("authorization", &hermes_auth)],
-            &json!({"input": "Salut"}),
-        )
-        .await;
-    assert_eq!(posted.status, StatusCode::CREATED);
-    assert_eq!(posted.json(), json!({"echo": {"input": "Salut"}}));
-    assert_eq!(seen.lock().unwrap().last().unwrap(), &format!("/v1/runs?x=1 {hermes_auth}")); // Hermes checks its own key
-
-    let events = app.get("/hermes/wellness/v1/runs/run_1/events", &[("authorization", &hermes_auth)]).await;
-    assert!(events.header("content-type").unwrap().starts_with("text/event-stream"));
-    assert!(events.text().contains("message.delta") && events.text().contains("run.completed"));
-
-    assert_eq!(app.get("/hermes/nobody/v1/runs", &[]).await.status, StatusCode::NOT_FOUND);
-    assert_eq!(app.get("/hermes/wellness/admin", &[]).await.json(), json!({"detail": "not found"}));
-    // only Hermes' API paths
-}
-
-#[tokio::test]
-async fn relay_only_reaches_known_agents_and_hermes_routes() {
-    let (_dir, app) = app();
-    assert_eq!(app.get("/hermes/nobody/v1/capabilities", &[]).await.status, StatusCode::NOT_FOUND);
-    assert_eq!(app.get("/hermes/wellness/etc/passwd", &[]).await.status, StatusCode::NOT_FOUND);
-    // Hermes down behind the door: 502
-    let resp = app.get("/hermes/wellness/v1/capabilities", &[]).await;
-    assert_eq!((resp.status, resp.json()), (StatusCode::BAD_GATEWAY, json!({"detail": "your agent isn't answering right now: try again in a moment"})));
+    // no relay to an agent's Hermes any more: the apps talk to the bridge only
+    assert_eq!(app.get("/hermes/wellness/v1/capabilities", &[]).await.status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -422,20 +384,4 @@ async fn a_route_not_ported_yet_is_a_plain_500() {
         assert_eq!(resp.text(), "Internal Server Error");
         assert_eq!(resp.header("content-type").as_deref(), Some("text/plain; charset=utf-8"));
     }
-}
-
-#[tokio::test]
-async fn big_bodies_reach_the_routes() {
-    let (url, _) = {
-        let router = Router::new()
-            .route("/v1/runs", post(|body: axum::body::Bytes| async move { Json(json!({"len": body.len()})) }))
-            .layer(axum::extract::DefaultBodyLimit::disable());
-        (spawn_fake(router).await, ())
-    };
-    let dir = tempfile::tempdir().unwrap();
-    let app = TestApp::new(config(dir.path(), &Urls { hermes: url, ..Default::default() }));
-    let big = json!({"input": "x".repeat(5 * 1024 * 1024)});
-    let resp = app.send_json("POST", "/hermes/wellness/v1/runs", &[], &big).await;
-    assert_eq!(resp.status, StatusCode::OK);
-    assert!(resp.json()["len"].as_u64().unwrap() > 5 * 1024 * 1024);
 }

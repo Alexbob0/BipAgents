@@ -22,7 +22,7 @@
 //! - **Connectors**: the sites on a connector's approval card are validated for sending, for the connector and for its
 //!   agent (connectors.rs).
 //! - **Migration** (2026-10-28): the lists kept from the « reading » cards are the agents' validated sites; the « Tous
-//!   les sites » switch and the visited sites are gone (the PATCH an older app sends is accepted and does nothing).
+//!   les sites » switch and the visited sites are gone.
 //! - Isolation off, or no podman: the list is kept and shown, with no effect (`effective: false`).
 //!
 //! `<data>/sandbox-sites.json` (0600) keeps each agent's token, sites, refusals and the cards waiting;
@@ -520,7 +520,7 @@ pub fn effect(config: &Config, agent: &AgentConfig) -> (bool, Option<&'static st
     (false, Some("agent"))
 }
 
-/// What the app shows. `all_sites: true` for older apps (their « Tous les sites » switch shows on: reading is open).
+/// What the app shows.
 pub fn view(config: &Config, agent: &AgentConfig) -> Value {
     let store = load(config);
     let entry = store.agents.get(&agent.name).cloned().unwrap_or_default();
@@ -543,8 +543,6 @@ pub fn view(config: &Config, agent: &AgentConfig) -> Value {
         "effective": effective,
         "why": why,
         "reading_open": true,
-        "all_sites": true,
-        "all_sites_default": true,
         "sensitive": null,
         "today": crate::send_guard::usage(config, &agent.name),
     })
@@ -1047,17 +1045,10 @@ async fn answer_route(
     }
 }
 
-/// An older app's « Tous les sites » switch: reading is open to every agent now, nothing to change.
-async fn switch_route(State(state): State<AppState>, UrlPath(name): UrlPath<String>) -> ApiResult<Response> {
-    let config = state.config();
-    let agent = agent_of(&config, &name)?;
-    Ok(web::ok(view(&config, &agent)))
-}
-
 /// Mounted under /v1 with the bridge key.
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/agents/{agent}/sandbox/sites", get(get_sites).post(add_site).patch(switch_route))
+        .route("/agents/{agent}/sandbox/sites", get(get_sites).post(add_site))
         .route("/agents/{agent}/sandbox/sites/{host}", axum::routing::delete(delete_site))
         .route("/agents/{agent}/sandbox/sites/requests/{id}", post(answer_route))
 }
@@ -1410,7 +1401,7 @@ mod tests {
         // an old reading card still answers
         assert_eq!(pending_items(&config, Some("vie"))[0]["bip_site_send_bytes"], json!(0));
         let shown = view(&config, config.agent(Some("vie")).unwrap());
-        assert_eq!((shown["reading_open"].clone(), shown["all_sites"].clone()), (json!(true), json!(true)));
+        assert_eq!(shown["reading_open"], json!(true));
     }
 
     #[test]
