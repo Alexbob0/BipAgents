@@ -995,6 +995,8 @@ async fn follow_turn(
     if let Err(err) = kept {
         tracing::warn!(error = %format!("{err:#}"), "shared agent: the turn's tokens were not kept");
     }
+    // her turn's reply stored: her conversation read again (its cached rows forgotten), her screen told to read it
+    crate::threads::threads_of(&state).touch(&agent.name, Some(&session), "ended").await;
     tracing::info!(agent = %agent.name, household = %household, tokens = used.0 + used.1, "shared agent: turn ended");
 }
 
