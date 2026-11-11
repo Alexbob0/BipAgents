@@ -728,3 +728,108 @@ characters of this page. To read on, run execute_script with: "
     assert!(answer["result"]["content"][0]["text"].as_str().unwrap().contains("too large"));
     proxy.stop_child().await;
 }
+
+/// The real server's two launch tools as stealth-browser-mcp (patched) lists them; every call written to `calls.jsonl`.
+const LAUNCH_SERVER: &str = r#"
+import json, os, sys
+here = os.path.dirname(os.path.abspath(__file__))
+spawn = {"name": "spawn_browser",
+         "description": "Spawn a new browser instance.\n\nArgs:\n    headless (bool): Run in headless mode.\n    proxy (str): Proxy server URL.\n    browser_args (list): Extra Chrome flags.\n    viewport_width (int): Width.\n    user_data_dir (str): Profile folder.",
+         "inputSchema": {"type": "object", "required": ["browser_args"], "properties": {
+             "headless": {"type": "boolean"}, "user_agent": {"type": "string"}, "viewport_width": {"type": "integer"},
+             "viewport_height": {"type": "integer"}, "proxy": {"type": "string"}, "browser_args": {"type": "array"},
+             "timezone_id": {"type": "string"}, "idle_timeout_seconds": {"type": "integer"},
+             "block_resources": {"type": "array"}, "extra_headers": {"type": "object"},
+             "user_data_dir": {"type": "string"}, "sandbox": {"type": "boolean"}}}}
+close = {"name": "close_instance",
+         "description": "Close a browser instance. Only when the person asks to quit the browser, pass quit_browser=True.\n\nArgs:\n    instance_id (str): Browser instance ID.\n    quit_browser (bool): Quit the browser itself.",
+         "inputSchema": {"type": "object", "required": ["instance_id"], "properties": {
+             "instance_id": {"type": "string"}, "quit_browser": {"type": "boolean"}}}}
+for line in sys.stdin:
+    m = json.loads(line)
+    if "id" not in m:
+        continue
+    if m["method"] == "initialize":
+        r = {"protocolVersion": m["params"]["protocolVersion"], "capabilities": {"tools": {}},
+             "serverInfo": {"name": "stealth", "version": "1"}}
+    elif m["method"] == "tools/list":
+        r = {"tools": [spawn, close, {"name": "navigate", "inputSchema": {"type": "object", "properties": {"url": {}}}}]}
+    else:
+        with open(os.path.join(here, "calls.jsonl"), "a") as f:
+            f.write(json.dumps({"name": m["params"]["name"], "arguments": m["params"].get("arguments")}) + "\n")
+        r = {"content": [{"type": "text", "text": "did " + m["params"]["name"]}]}
+    print(json.dumps({"jsonrpc": "2.0", "id": m["id"], "result": r}), flush=True)
+"#;
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_agent_never_chooses_how_its_browser_is_launched() {
+    // Audit 11/11, BV-3: `spawn_browser(browser_args=["--no-proxy-server"])` after `close_instance(quit_browser=True)`
+    // started Chrome without the egress proxy's flag (no send guard), steered by a page the agent read.
+    let dir = tempfile::tempdir().unwrap();
+    let tmp = dir.path();
+    let config = config(tmp);
+    std::fs::write(tmp.join("server.py"), LAUNCH_SERVER).unwrap();
+    let out = Out::default();
+    let proxy = Proxy::new(config.clone(), Box::new(out.clone()));
+    proxy.handle(init()).await;
+
+    // the tool list: none of what the bridge takes off is offered
+    proxy.handle(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})).await;
+    let check_list = |listed: &Value| {
+        let tools = listed["result"]["tools"].as_array().unwrap();
+        let spawn = &tools[0];
+        let mut offered: Vec<&str> =
+            spawn["inputSchema"]["properties"].as_object().unwrap().keys().map(String::as_str).collect();
+        offered.sort();
+        assert_eq!(offered, ["block_resources", "viewport_height", "viewport_width"]);
+        assert_eq!(spawn["inputSchema"]["required"], json!([]));
+        let text = spawn["description"].as_str().unwrap();
+        assert!(text.contains("viewport_width (int)") && !text.contains("proxy") && !text.contains("browser_args"));
+        assert!(!text.contains("headless") && !text.contains("user_data_dir"), "{text}");
+        let close = &tools[1];
+        assert_eq!(close["inputSchema"]["properties"], json!({"instance_id": {"type": "string"}}));
+        assert!(!close["description"].as_str().unwrap().contains("quit_browser"));
+        assert_eq!(tools[2]["inputSchema"]["properties"], json!({"url": {}})); // the other tools as they are
+    };
+    check_list(&out.messages().last().unwrap().clone());
+
+    // the call: the launch arguments never reach the browser's container, the harmless ones do
+    let asked = json!({"browser_args": ["--no-proxy-server"], "proxy": "http://203.0.113.9:1",
+        "user_data_dir": "/tmp/elsewhere", "headless": true, "sandbox": true, "user_agent": "x",
+        "extra_headers": {"Host": "x"}, "timezone_id": "UTC", "idle_timeout_seconds": 1,
+        "viewport_width": 1280, "block_resources": ["image"]});
+    proxy.handle(tool(2, "spawn_browser", asked)).await;
+    assert_eq!(out.messages().last().unwrap()["result"]["content"][0]["text"], "did spawn_browser");
+    proxy.handle(tool(3, "spawn_browser", json!(["--no-proxy-server"]))).await; // not even an object
+    proxy.handle(tool(4, "close_instance", json!({"instance_id": "319ceedb", "quit_browser": true}))).await;
+    let page = json!({"instance_id": "319ceedb", "url": "https://example.test/", "proxy": "p"});
+    proxy.handle(tool(5, "navigate", page)).await;
+    let seen = calls(tmp);
+    assert_eq!(seen[0]["arguments"], json!({"viewport_width": 1280, "block_resources": ["image"]}));
+    assert_eq!(seen[1]["arguments"], json!({}));
+    assert_eq!(seen[2]["arguments"], json!({"instance_id": "319ceedb"}), "the person quits it from the app");
+    assert_eq!(seen[3]["arguments"]["proxy"], json!("p"), "other tools' arguments untouched");
+    proxy.stop_child().await;
+
+    // its gateway restarted: the cached list is the same tamed one, the browser not started for it
+    let out = Out::default();
+    let proxy = Proxy::new(config, Box::new(out.clone()));
+    proxy.handle(init()).await;
+    proxy.handle(json!({"jsonrpc": "2.0", "id": 6, "method": "tools/list"})).await;
+    assert!(!proxy.running());
+    check_list(&out.messages().last().unwrap().clone());
+}
+
+#[test]
+fn a_list_cached_before_the_rule_is_tamed_too() {
+    let mut listed = json!({"tools": [{"name": "spawn_browser", "description": "Args:\n    proxy (str): x\n    headless (bool): y",
+        "inputSchema": {"type": "object", "properties": {"proxy": {}, "headless": {}, "viewport_width": {}}}}]});
+    browser_mcp::tame_tool_list(&mut listed);
+    assert_eq!(listed["tools"][0]["inputSchema"]["properties"], json!({"viewport_width": {}}));
+    assert_eq!(listed["tools"][0]["description"], json!("Args:"));
+    let mut call = json!({"name": "spawn_browser", "arguments": {"proxy": "x", "viewport_height": 900}});
+    assert_eq!(browser_mcp::tame_call("spawn_browser", &mut call), ["proxy"]);
+    assert_eq!(call["arguments"], json!({"viewport_height": 900}));
+    let mut other = json!({"name": "navigate", "arguments": {"proxy": "x"}});
+    assert!(browser_mcp::tame_call("navigate", &mut other).is_empty());
+}

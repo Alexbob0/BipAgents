@@ -287,6 +287,66 @@ pub fn loads_a_page(tool: &str) -> bool {
     matches!(tool, "navigate" | "click_element" | "go_back" | "go_forward" | "reload_page")
 }
 
+/// The only `spawn_browser` arguments the agent's call keeps (audit 11/11, BV-3): the window's size and what pages
+/// not to load. Everything else changes how Chrome is launched, and the agent is the model a page or an e-mail may
+/// steer: `browser_args` (`--no-proxy-server` displaced the egress proxy's flag, so no send guard), `proxy`,
+/// `user_data_dir`, `sandbox`, `headless`, `user_agent` (a launch flag too); `timezone_id`, `idle_timeout_seconds`
+/// and `extra_headers` are the container's business. The container's own flags, profile and time zone apply.
+pub const SPAWN_ARGS_KEPT: [&str; 3] = ["viewport_width", "viewport_height", "block_resources"];
+
+/// An agent's call as the real server gets it: `spawn_browser` with `SPAWN_ARGS_KEPT` only, `close_instance` without
+/// `quit_browser` (quitting Chrome let the next `spawn_browser` start it again with the caller's flags; the person
+/// quits the browser from the app). The names of the arguments taken off, for the log.
+pub fn tame_call(tool: &str, params: &mut Value) -> Vec<String> {
+    let kept: fn(&str) -> bool = match tool {
+        "spawn_browser" => |k| SPAWN_ARGS_KEPT.contains(&k),
+        "close_instance" => |k| k != "quit_browser",
+        _ => return Vec::new(),
+    };
+    let Some(params) = params.as_object_mut() else { return Vec::new() };
+    let arguments = params.entry("arguments").or_insert_with(|| json!({}));
+    if !arguments.is_object() {
+        *arguments = json!({}); // not arguments at all: none
+    }
+    let Some(arguments) = arguments.as_object_mut() else { return Vec::new() };
+    let gone: Vec<String> = arguments.keys().filter(|k| !kept(k)).cloned().collect();
+    arguments.retain(|k, _| kept(k));
+    gone
+}
+
+/// The tool list as the agent reads it: the arguments `tame_call` takes off are not offered (their schema
+/// properties, `required` entries and their lines in the description).
+pub fn tame_tool_list(result: &mut Value) {
+    let Some(tools) = result.get_mut("tools").and_then(Value::as_array_mut) else { return };
+    for tool in tools {
+        let kept: fn(&str) -> bool = match tool.get("name").and_then(Value::as_str) {
+            Some("spawn_browser") => |k| SPAWN_ARGS_KEPT.contains(&k),
+            Some("close_instance") => |k| k != "quit_browser",
+            _ => continue,
+        };
+        let mut gone: Vec<String> = Vec::new();
+        if let Some(schema) = tool.get_mut("inputSchema").and_then(Value::as_object_mut) {
+            if let Some(properties) = schema.get_mut("properties").and_then(Value::as_object_mut) {
+                gone = properties.keys().filter(|k| !kept(k)).cloned().collect();
+                properties.retain(|k, _| kept(k));
+            }
+            if let Some(required) = schema.get_mut("required").and_then(Value::as_array_mut) {
+                required.retain(|r| r.as_str().map(kept).unwrap_or(true));
+            }
+        }
+        if let Some(Value::String(text)) = tool.get_mut("description") {
+            let lines: Vec<&str> = text
+                .lines()
+                .filter(|line| {
+                    let line = line.trim_start();
+                    !gone.iter().any(|g| line.starts_with(&format!("{g} (")) || line.contains(&format!("{g}=")))
+                })
+                .collect();
+            *text = lines.join("\n");
+        }
+    }
+}
+
 /// How long `click_element` looks for its element when the agent gives no time (the real server's default: 10 s).
 pub const CLICK_TIMEOUT_MS: u64 = 3000;
 
@@ -600,7 +660,10 @@ impl Proxy {
         if LISTS.contains(&method.as_str()) && !self.running() && (self.cache_has(&method) || empty(&method).is_some())
         {
             let cached = self.cache.lock().unwrap_or_else(|e| e.into_inner()).get(&method).cloned();
-            let result = cached.or_else(|| empty(&method)).unwrap_or(Value::Null);
+            let mut result = cached.or_else(|| empty(&method)).unwrap_or(Value::Null);
+            if method == "tools/list" {
+                tame_tool_list(&mut result); // a list cached before the rule too
+            }
             self.to_client(&json!({"jsonrpc": "2.0", "id": ident, "result": result}));
             return;
         }
@@ -631,6 +694,11 @@ impl Proxy {
             } else {
                 self.request(&method, message.get("params")).await?
             };
+            if method == "tools/list" {
+                if let Some(result) = response.get_mut("result") {
+                    tame_tool_list(result);
+                }
+            }
             if LISTS.contains(&method.as_str()) {
                 if let Some(result) = response.get("result").cloned() {
                     self.remember(&method, result);
@@ -668,6 +736,13 @@ impl Proxy {
     ///   reads it at once instead of pausing; `networkidle` (the real server's blind 2 s) waits for that too;
     ///   `click_element` looks for its element 3 s, not 10, unless the agent gives a time (`CLICK_TIMEOUT_MS`).
     async fn call_tool(&self, tool: &str, params: Option<&Value>) -> Result<Dict, String> {
+        // never the agent's launch flags, proxy or profile (`tame_call`)
+        let mut tamed = params.cloned();
+        let gone = tamed.as_mut().map(|p| tame_call(tool, p)).unwrap_or_default();
+        if !gone.is_empty() {
+            log(&format!("{tool}: not passed on: {}", gone.join(", ")));
+        }
+        let params = tamed.as_ref();
         let args = params.and_then(|p| p.get("arguments")).and_then(Value::as_object).cloned().unwrap_or_default();
         let instance = args.get("instance_id").and_then(Value::as_str).unwrap_or("").to_string();
         if tool == "get_page_content"
