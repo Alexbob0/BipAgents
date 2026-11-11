@@ -2353,11 +2353,12 @@ touche « Démarrer » pour reprendre."
         SSEEvent::new(event.r#type, data, raw)
     }
 
-    /// A run that ended on Hermes' own « ⚠️ No reply: … /model » explanation ends on our plain line instead
-    /// (no_reply.rs), marked `bip_no_reply` for the apps.
+    /// A run that ended on Hermes' own « ⚠️ No reply: … /model » explanation, alone or after a fragment of an answer,
+    /// ends on our plain line instead (no_reply.rs), marked `bip_no_reply` for the apps.
     fn no_reply_in_plain_words(&self, sub: &RunSubscription, event: SSEEvent) -> SSEEvent {
         let output = as_str(event.data.get("output")).unwrap_or_default();
-        let no_reply = crate::no_reply::is_hermes_no_reply(&output);
+        let no_reply =
+            crate::no_reply::is_hermes_no_reply(&output) || crate::no_reply::words_before(&output).is_some();
         // a thinking turn without an answer: the agent's next turns answer without thinking (turn_thinking.rs)
         crate::turn_thinking::run_ended(&sub.agent.name, &sub.run_id, !no_reply && !output.trim().is_empty());
         if !no_reply {
@@ -2373,8 +2374,9 @@ touche « Démarrer » pour reprendre."
         };
         let name = if sub.agent.display_name.trim().is_empty() { &sub.agent.name } else { &sub.agent.display_name };
         tracing::warn!(agent = %sub.agent.name, run_id = %sub.run_id, "turn ended without an answer: plain line shown");
+        let told = crate::no_reply::in_plain_words(&output, name, &lang).unwrap_or_else(|| crate::no_reply::plain(name, &lang));
         let mut data = event.data;
-        data.insert("output".into(), json!(crate::no_reply::plain(name, &lang)));
+        data.insert("output".into(), json!(told));
         data.insert("bip_no_reply".into(), json!(true));
         let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
         SSEEvent::new(event.r#type, data, raw)
@@ -2886,6 +2888,21 @@ mod tests {
         assert_eq!(ended.data["output"], json!("Wellness couldn't answer this time. Try again, or write “continue”."));
         assert_eq!(ended.data["bip_no_reply"], json!(true));
         assert!(!ended.raw.contains("/model"));
+        // Hermes' explanation after a fragment (a stream that stopped early): the fragment, then the plain line
+        let sub = Arc::new(RunSubscription::new(
+            AgentConfig { name: "wellness".into(), display_name: "Wellness".into(), ..Default::default() },
+            "run_3",
+        ));
+        hub.dispatch(
+            &sub,
+            event(json!({"output": "Je regarde ta nuit et\n\n⚠️ No reply: streaming stopped early and only a partial \
+                                    response was recovered. Send `continue` to resume from where it stopped."})),
+        );
+        let ended = lock(&sub.state).backlog.back().cloned().unwrap();
+        assert_eq!(
+            ended.data["output"],
+            json!("Je regarde ta nuit et\n\nWellness couldn't answer this time. Try again, or write “continue”.")
+        );
         // a real answer is left alone
         let sub = Arc::new(RunSubscription::new(AgentConfig { name: "vie".into(), ..Default::default() }, "run_2"));
         hub.dispatch(&sub, event(json!({"output": "⚠️ Il va pleuvoir."})));

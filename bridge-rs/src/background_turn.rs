@@ -237,6 +237,19 @@ pub struct Pipeline {
     pub poll: f64,
 }
 
+/// A run's status and reply as a starter reads them. Hermes' explanation of a turn without an answer (« ⚠️ No reply:
+/// … /model », alone or after a fragment, no_reply.rs) is no report: the turn did not finish (`failed`, no words), and
+/// the starter says so in its own plain words (a routine: « couldn't finish », with when it tries again). Its English
+/// was delivered as a routine's report before (11/11).
+fn ended_with(status: String, output: &str) -> (String, String) {
+    let text = tk::strip(output);
+    if crate::no_reply::is_hermes_no_reply(text) || crate::no_reply::words_before(text).is_some() {
+        tracing::warn!(target: "bipbridge::background_turn", status = %status, "the turn ended without an answer: no report");
+        return ("failed".into(), String::new());
+    }
+    (status, text.to_string())
+}
+
 fn tokens_of(session: &Dict) -> i64 {
     let c = crate::jobs::counters(session);
     let n = |k: &str| c.get(k).and_then(Value::as_i64).unwrap_or(0);
@@ -419,7 +432,7 @@ impl Pipeline {
                 break End { status: "timeout".into(), ..End::default() };
             }
         };
-        let (status, text) = (end.status, tk::strip(&end.output).to_string());
+        let (status, text) = ended_with(end.status, &end.output);
         let tokens = self.tokens(agent, run_id, session, end.usage.as_ref(), before).await;
         tracing::info!(target: "bipbridge::background_turn", agent = %agent.name, run_id = %run_id, status = %status,
             tokens = tokens, "background turn ended");
@@ -521,5 +534,17 @@ mod tests {
         assert!(ran("completed", "ok").answered() && ran("gone", "ok").answered());
         assert!(!ran("completed", "").answered() && !ran("timeout", "").answered() && !ran("failed", "x").answered());
         assert_eq!(NotRun::Gone.to_string(), "the conversation is gone");
+    }
+
+    #[test]
+    fn hermes_explanation_of_no_answer_is_no_report() {
+        let end = |output: &str| ended_with("completed".into(), output);
+        let failed = ("failed".to_string(), String::new());
+        assert_eq!(end("⚠️ No reply: GLM didn't produce a reply this time, even after retries. Send `continue` to try \
+                        again, or switch models with /model."), failed);
+        assert_eq!(end("Je regarde\n\n⚠️ Pas de réponse : le flux s'est arrêté trop tôt."), failed);
+        assert_eq!(end("  Soleil toute la journée.\n"), ("completed".into(), "Soleil toute la journée.".into()));
+        assert_eq!(end("⚠️ Alerte orages ce soir."), ("completed".into(), "⚠️ Alerte orages ce soir.".into()));
+        assert_eq!(ended_with("timeout".into(), ""), ("timeout".into(), String::new()));
     }
 }

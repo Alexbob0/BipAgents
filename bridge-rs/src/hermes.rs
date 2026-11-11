@@ -586,10 +586,15 @@ impl HermesClient {
     /// settled (`resolve_unknown`).
     pub async fn run(&self, agent: &AgentConfig, run_id: &str) -> Result<Map<String, Value>, HermesError> {
         let data = self.get_json(agent, &format!("/v1/runs/{run_id}"), &[]).await?;
-        let run = match data {
+        let mut run = match data {
             Value::Object(m) => m,
             _ => Map::new(),
         };
+        // its reply without Hermes' file-mutation verifier (hermes_footer.rs)
+        let kept = run.get("output").and_then(Value::as_str).and_then(|o| crate::hermes_footer::without(o, &agent.name, run_id));
+        if let Some(kept) = kept {
+            run.insert("output".into(), Value::String(kept));
+        }
         if run.get("status").and_then(Value::as_str) == Some("unknown") {
             if let Some(settled) = self.resolve_unknown(agent, run_id, &run).await {
                 return Ok(settled);
@@ -879,7 +884,9 @@ impl HermesClient {
                 timeout,
             )
             .await?;
-        Ok(data.get("message").and_then(|m| m.get("content")).and_then(Value::as_str).unwrap_or("").to_string())
+        let reply = data.get("message").and_then(|m| m.get("content")).and_then(Value::as_str).unwrap_or("");
+        // without Hermes' file-mutation verifier (hermes_footer.rs)
+        Ok(crate::hermes_footer::without(reply, &agent.name, session_id).unwrap_or_else(|| reply.to_string()))
     }
 
     /// `POST /api/sessions/{id}/chat/stream`: one turn, Hermes' SSE answer as it comes (a Live call's, live_turns.rs).
@@ -1052,8 +1059,12 @@ impl HermesClient {
             return Err(HermesError::http(status, head(&body, 500)));
         }
         let chunks = read_with_timeout(resp.bytes_stream(), Duration::from_secs(60));
-        // a prompt's events with the `request_id` the bridge and the apps read (hermes_prompts.rs)
-        Ok(Box::pin(iter_sse(lines_of(chunks)).map(|event| event.map(crate::hermes_prompts::named))))
+        // a prompt's events with the `request_id` the bridge and the apps read (hermes_prompts.rs); the end's text
+        // without Hermes' file-mutation verifier (hermes_footer.rs)
+        let name = agent.name.clone();
+        Ok(Box::pin(iter_sse(lines_of(chunks)).map(move |event| {
+            event.map(|e| crate::hermes_footer::scrub_event(crate::hermes_prompts::named(e), &name))
+        })))
     }
 
     /// `POST /v1/runs/{id}/approval`: Hermes' status and its JSON answer (or `{"detail": <text>}`). Hermes takes the
