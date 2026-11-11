@@ -259,8 +259,11 @@ def test_the_agents_own_browser_is_woken_and_held(bridges, fakes):
     # The hold with a token of the bridge's own (its view of the page on a phone gets through the relay).
     token = (folder / "hold.token").read_text()
     assert len(token) == 32 and (folder / "hold.token").stat().st_mode & 0o777 == 0o600
-    assert ["exec", "bipagents-browser-vie", "sh", "-c", f"umask 077; printf 'human %s' {token} > /tmp/bipagents-hold"
-            ] in bridge.commands.of("podman")
+    # Never over a card payment's hold, nor removing one (security check 11/11, N1).
+    guard = '[ "$(head -c 4 /tmp/bipagents-hold 2>/dev/null)" = card ]'
+    assert ["exec", "bipagents-browser-vie", "sh", "-c",
+            f"{guard} && exit 3; umask 077; printf 'human %s' {token} > /tmp/bipagents-hold"] in bridge.commands.of("podman")
     bridge.post("/v1/agents/vie/desktop/control", headers=AUTH, json={"take": False})
-    assert bridge.commands.of("podman")[-1] == ["exec", "bipagents-browser-vie", "sh", "-c", "rm -f /tmp/bipagents-hold"]
+    assert bridge.commands.of("podman")[-1] == ["exec", "bipagents-browser-vie", "sh", "-c",
+                                                f"{guard} || rm -f /tmp/bipagents-hold"]
     desktop.close()

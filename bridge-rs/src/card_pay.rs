@@ -35,7 +35,9 @@
 //!    before): the bridge clicks it and watches. When the page moves on, the card's fields left are emptied and the
 //!    browser given back. If the bank asks for a confirmation (3-D Secure, « confirm in your banking app »), the agent
 //!    tells the person to confirm in their bank's app and waits; after 5 minutes without the page moving on, the
-//!    fields are emptied and the browser given back anyway. `cancel_payment` does the same at once, and so does
+//!    fields are emptied and the browser given back anyway. A bank that asks in the page (a code sent by SMS): the
+//!    person takes the browser over in the app's live view and types it; the payment's hold stays for the agent
+//!    meanwhile (`person_holds`), and the time limit is then their own hold's (15 minutes). `cancel_payment` does the same at once, and so does
 //!    « Suspendre tous les paiements » in the app. Given back, the tab shows an empty page (the document the card was
 //!    typed into is gone), except when the page moved on to a new document by itself (the shop's confirmation);
 //! 6. each step goes to the journal (cards.rs, without any number) and the payment is kept on the card: « dépensé
@@ -89,6 +91,9 @@ const ASK_TIMEOUT: Duration = Duration::from_secs(330);
 const CODE_WAIT: Duration = Duration::from_secs(20);
 /// A held browser is given back after this, its card fields emptied, whatever the page does.
 const HOLD_LIMIT: Duration = Duration::from_secs(300);
+/// The same while the person holds the browser in the app (a 3-D Secure code typed by them): their own hold's limit
+/// (browser/hold_gate.py `LIMIT`).
+const PERSON_HOLD_LIMIT: Duration = Duration::from_secs(900);
 /// After the click, how long the bridge watches the page before answering the agent.
 const AFTER_CLICK: Duration = Duration::from_secs(15);
 const KEEPALIVE: Duration = Duration::from_secs(10);
@@ -323,6 +328,46 @@ fn held() -> std::sync::MutexGuard<'static, HashMap<String, Held>> {
     HELD.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// A card payment holds `agent`'s browser (its card typed, or about to be).
+pub fn holding(agent: &str) -> bool {
+    held().contains_key(agent)
+}
+
+/// The agents whose browser the person holds in the app (desktop.rs `control`, kept here for `release`).
+static PERSON: LazyLock<Mutex<std::collections::HashSet<String>>> = LazyLock::new(Default::default);
+
+fn person_in(agent: &str) -> bool {
+    PERSON.lock().unwrap_or_else(|e| e.into_inner()).contains(agent)
+}
+
+/// The person takes over `agent`'s browser in the app, or hands it back (desktop.rs `control`, before the hold's
+/// flag is touched). Returns whether a card payment holds that browser now.
+///
+/// Taking over during a payment (security check 11/11, N1) is how the person answers a bank that asks them in the
+/// page (a 3-D Secure code, a confirmation page): their input goes through the live view, which reaches the page with
+/// the payment's token (`person_view_token`), while the payment's hold stays as it is: the agent's tools are refused
+/// and its DevTools connections closed. The payment ends as always (the page moved on, cancel, suspend, the time
+/// limit: `release`, the card's fields emptied, the page left, the history forgotten), and only then does the hold
+/// become the person's, until they hand it back. Handing back during the payment leaves the payment's hold.
+pub fn person_holds(agent: &str, on: bool) -> bool {
+    let mut people = PERSON.lock().unwrap_or_else(|e| e.into_inner());
+    if on {
+        people.insert(agent.to_string());
+    } else {
+        people.remove(agent);
+    }
+    holding(agent)
+}
+
+/// The token the person's live view shows to reach the page while a payment holds the browser and they took it
+/// over (desktop_page.rs); None otherwise. The bridge's own view, never the agent's.
+pub fn person_view_token(agent: &str) -> Option<String> {
+    if !person_in(agent) {
+        return None;
+    }
+    held().get(agent).map(|e| e.token.clone())
+}
+
 /// The payment `token` still holds `agent`'s browser and nobody asked it to stop: it may go on typing.
 fn still_ours(agent: &str, token: &str) -> bool {
     held().get(agent).is_some_and(|e| e.token == token && e.stop.is_none())
@@ -420,7 +465,13 @@ async fn release(config: &Config, agent: &str, outcome: &str) -> bool {
         Err(FillError::NoPage) => {} // the tab is closed: nothing of it is given back
         Err(exc) => tracing::warn!(agent = %agent, exc = %exc, "card payment: payment page not reached to leave it"),
     }
-    crate::browsers::hold_for_payment(config, agent, None).await;
+    // The person took the browser over during the payment: the hold becomes theirs (the page is clean now). Handed back
+    // meanwhile: their hold goes too (it never touches a payment's).
+    let person = person_in(agent);
+    crate::browsers::end_payment_hold(config, agent, person).await;
+    if person && !person_in(agent) {
+        crate::browsers::hold(config, agent, false).await;
+    }
     if let Some(folder) = &entry.lease {
         let _ = crate::desktop::set_lease(folder, false, "");
     }
@@ -437,7 +488,9 @@ fn watch(state: AppState, agent: String, payment: String) {
             tokio::time::sleep(Duration::from_secs(2)).await;
             let Some(entry) = held().get(&agent).filter(|e| e.payment == payment).cloned() else { return };
             let config = state.config();
-            let outcome = if entry.since.elapsed() > HOLD_LIMIT {
+            // The person answering the bank in the page (they took the browser over) gets longer, as their own hold.
+            let limit = if person_in(&agent) { PERSON_HOLD_LIMIT } else { HOLD_LIMIT };
+            let outcome = if entry.since.elapsed() > limit {
                 "timed_out"
             } else {
                 let moved = match Page::open(entry.port, Some(&entry.token)).await {
@@ -761,6 +814,8 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
             "Your browser could not be paused for the payment (the person may hold it): nothing was typed.",
         ));
     }
+    // The hold's time limit counts from the hold, not from the question (the person may take minutes to answer).
+    entry.since = Instant::now();
     held().insert(agent.name.clone(), entry.clone());
     let (agent_name, token) = (agent.name.as_str(), entry.token.as_str());
     let still = || still_ours(agent_name, token);
@@ -1081,8 +1136,9 @@ async fn confirm(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> any
                 } else if page.bank_asks().await {
                     return Ok(text(&format!(
                         "Clicked « {clicked} ». The bank asks the person to confirm the payment: tell them « Confirme le \
-                         paiement dans ton app bancaire » (in their language) and wait. Don't type any code yourself. \
-                         Your browser stays paused until the page moves on (5 minutes at most); then check that the \
+                         paiement dans ton app bancaire » (in their language) and wait. Don't type any code yourself: \
+                         if the page asks for a code (sent by SMS), tell them to open your browser in the BipAgents \
+                         app, take it over (« Prendre la main ») and type it there. Your browser stays paused until the page moves on (5 minutes at most); then check that the \
                          payment went through."
                     )));
                 } else {

@@ -366,16 +366,41 @@ async fn install_unit(host: &Host, config: &Config, agent: &str) {
     }
 }
 
+/// What became of the person's take-over (or hand-back) of the agent's browser.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Hold {
+    /// The agent has no browser of its own here.
+    NoBrowser,
+    Done,
+    /// Not taken: the bridge holds the browser for a card payment or a vault fill (the flag reads « card »).
+    Payment,
+}
+
+/// The command that sets the person's hold: never over a payment's (exit 3 then, nothing written).
+pub fn human_hold_command(token: &str) -> String {
+    format!(
+        "[ \"$(head -c 4 {HOLD_FLAG} 2>/dev/null)\" = card ] && exit 3; umask 077; printf 'human %s' {token} > \
+         {HOLD_FLAG}"
+    )
+}
+
+/// The command that lifts the person's hold: a payment's flag is left alone (only the payment's own release, its
+/// fields emptied and its page left, removes it).
+pub fn human_release_command() -> String {
+    format!("[ \"$(head -c 4 {HOLD_FLAG} 2>/dev/null)\" = card ] || rm -f {HOLD_FLAG}")
+}
+
 /// The person takes over the agent's browser (or hands it back): its MCP tools and its DevTools wait meanwhile.
-/// Returns whether this agent has such a browser (its container, set up here).
-pub async fn hold(config: &Config, agent: &str, on: bool) -> bool {
+/// A card payment's hold is never overwritten nor removed here (security check 11/11, N1): taking over then answers
+/// `Hold::Payment`, handing back leaves it.
+pub async fn hold(config: &Config, agent: &str, on: bool) -> Hold {
     hold_with(&Host::real(config), config, agent, on).await
 }
 
-pub async fn hold_with(host: &Host, config: &Config, agent: &str, on: bool) -> bool {
-    let Some(engine) = host.runtime.clone() else { return false };
+pub async fn hold_with(host: &Host, config: &Config, agent: &str, on: bool) -> Hold {
+    let Some(engine) = host.runtime.clone() else { return Hold::NoBrowser };
     if !has_ports(config, agent) {
-        return false;
+        return Hold::NoBrowser;
     }
     if on {
         wake_with(host, config, agent, 60.0).await;
@@ -388,16 +413,47 @@ pub async fn hold_with(host: &Host, config: &Config, agent: &str, on: bool) -> b
         if crate::py::write_with_mode(&token_file.to_string_lossy(), token.as_bytes(), 0o600).is_err() {
             tracing::warn!(agent = %agent, "browser hold token not kept");
         }
-        format!("umask 077; printf 'human %s' {token} > {HOLD_FLAG}")
+        human_hold_command(&token)
     } else {
         let _ = std::fs::remove_file(&token_file);
-        format!("rm -f {HOLD_FLAG}")
+        human_release_command()
     };
     let code = (host.exec)(vec![engine, "exec".into(), container(agent), "sh".into(), "-c".into(), command]).await;
+    if on && code == 3 {
+        let _ = std::fs::remove_file(&token_file);
+        tracing::info!(agent = %agent, "browser not taken over: a payment holds it");
+        return Hold::Payment;
+    }
     if code != 0 {
         tracing::warn!(agent = %agent, on = on, "browser hold not set");
     }
-    true
+    Hold::Done
+}
+
+/// A payment's hold ended (card_pay.rs `release`, after the card's fields were emptied and the page left): the flag
+/// removed, or, while the person holds the browser in the app (`person`, they took it over during the payment),
+/// turned into the person's hold with a new token, so the agent's tools wait until they hand it back. Only a payment's
+/// flag (« card ») is touched.
+pub async fn end_payment_hold(config: &Config, agent: &str, person: bool) -> bool {
+    if !person {
+        return hold_for_payment(config, agent, None).await;
+    }
+    let host = Host::real(config);
+    let Some(engine) = host.runtime.clone() else { return false };
+    if !has_ports(config, agent) {
+        return false;
+    }
+    let token = crate::py::token_hex(16);
+    let token_file = folder(config, agent).join(HOLD_TOKEN);
+    if crate::py::write_with_mode(&token_file.to_string_lossy(), token.as_bytes(), 0o600).is_err() {
+        tracing::warn!(agent = %agent, "browser hold token not kept");
+    }
+    let command = payment_to_person_command(&token);
+    let code = (host.exec)(vec![engine, "exec".into(), container(agent), "sh".into(), "-c".into(), command]).await;
+    if code != 0 {
+        tracing::warn!(agent = %agent, code = code, "payment hold not handed to the person");
+    }
+    code == 0
 }
 
 /// Where the person's hold keeps its token (`<browser root>/<agent>/hold.token`, the bridge's alone).
@@ -439,17 +495,33 @@ pub async fn hold_for_payment(config: &Config, agent: &str, token: Option<&str>)
         return false;
     }
     let command = match token {
-        Some(token) if token.bytes().all(|b| b.is_ascii_alphanumeric()) => {
-            format!("[ -e {HOLD_FLAG} ] && exit 3; umask 077; printf 'card %s' {token} > {HOLD_FLAG}")
-        }
+        Some(token) if token.bytes().all(|b| b.is_ascii_alphanumeric()) => payment_hold_command(token),
         Some(_) => return false,
-        None => format!("[ \"$(head -c 4 {HOLD_FLAG} 2>/dev/null)\" = card ] && rm -f {HOLD_FLAG}; exit 0"),
+        None => payment_release_command(),
     };
     let code = (host.exec)(vec![engine, "exec".into(), container(agent), "sh".into(), "-c".into(), command]).await;
     if code != 0 {
         tracing::warn!(agent = %agent, on = token.is_some(), code = code, "payment hold not set");
     }
     code == 0
+}
+
+/// The command that sets a payment's (or a vault fill's) hold: never over another hold (exit 3, nothing written).
+pub fn payment_hold_command(token: &str) -> String {
+    format!("[ -e {HOLD_FLAG} ] && exit 3; umask 077; printf 'card %s' {token} > {HOLD_FLAG}")
+}
+
+/// The command that lifts a payment's hold: only a « card » flag goes.
+pub fn payment_release_command() -> String {
+    format!("[ \"$(head -c 4 {HOLD_FLAG} 2>/dev/null)\" = card ] && rm -f {HOLD_FLAG}; exit 0")
+}
+
+/// The command that turns a payment's hold into the person's (`end_payment_hold`): only a « card » flag changes.
+pub fn payment_to_person_command(token: &str) -> String {
+    format!(
+        "[ \"$(head -c 4 {HOLD_FLAG} 2>/dev/null)\" = card ] && {{ umask 077; printf 'human %s' {token} > {HOLD_FLAG}; \
+         }}; exit 0"
+    )
 }
 
 /// Its DevTools and VNC ports (`{"cdp": …, "vnc": …}`), when it has a browser. Its DevTools secret, if any, is then
@@ -1208,4 +1280,51 @@ pub async fn remove_with(host: &Host, config: &Config, agent: &str, run: &Run) -
     let _ = std::fs::remove_dir_all(folder(config, agent));
     tracing::info!(agent = %agent, "browser removed");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `command` run by a real shell against a flag file of its own (in place of the container's): its exit code and
+    /// what the flag reads after it (None: no flag).
+    fn run_on(flag: &Path, before: Option<&str>, command: &str) -> (i32, Option<String>) {
+        match before {
+            Some(text) => std::fs::write(flag, text).unwrap(),
+            None => {
+                let _ = std::fs::remove_file(flag);
+            }
+        }
+        let command = command.replace(HOLD_FLAG, &flag.to_string_lossy());
+        let status = std::process::Command::new("sh").args(["-c", &command]).status().unwrap();
+        (status.code().unwrap_or(-1), std::fs::read_to_string(flag).ok())
+    }
+
+    #[test]
+    fn neither_hold_overwrites_nor_lifts_the_other() {
+        // Security check 11/11, N1: the person's take-over wrote « human » over a payment's « card » flag, and their
+        // hand-back removed whatever flag was there, with the card still typed in the page.
+        let dir = tempfile::tempdir().unwrap();
+        let flag = dir.path().join("hold");
+        let card = || Some("card 0123abcd".to_string());
+        let human = || Some("human 77aa".to_string());
+        // The person's take-over: refused (3) over a payment's hold, which stays; set when nothing holds the browser.
+        assert_eq!(run_on(&flag, Some("card 0123abcd"), &human_hold_command("77aa")), (3, card()));
+        assert_eq!(run_on(&flag, None, &human_hold_command("77aa")), (0, human()));
+        // Their hand-back: a payment's hold stays; theirs (or an older bridge's flag without a token) goes.
+        assert_eq!(run_on(&flag, Some("card 0123abcd"), &human_release_command()), (0, card()));
+        assert_eq!(run_on(&flag, Some("human 77aa"), &human_release_command()), (0, None));
+        assert_eq!(run_on(&flag, Some(""), &human_release_command()), (0, None));
+        assert_eq!(run_on(&flag, None, &human_release_command()).0, 0);
+        // A payment's hold: never over the person's; its release lifts only a « card » flag.
+        assert_eq!(run_on(&flag, Some("human 77aa"), &payment_hold_command("0123abcd")), (3, human()));
+        assert_eq!(run_on(&flag, None, &payment_hold_command("0123abcd")), (0, card()));
+        assert_eq!(run_on(&flag, Some("human 77aa"), &payment_release_command()), (0, human()));
+        assert_eq!(run_on(&flag, Some("card 0123abcd"), &payment_release_command()), (0, None));
+        // Ended while the person holds the browser: theirs from then on, only in place of a payment's.
+        let to_person = payment_to_person_command("99ff");
+        assert_eq!(run_on(&flag, Some("card 0123abcd"), &to_person), (0, Some("human 99ff".into())));
+        assert_eq!(run_on(&flag, None, &to_person), (0, None));
+        assert_eq!(run_on(&flag, Some("human 77aa"), &to_person), (0, human()));
+    }
 }
