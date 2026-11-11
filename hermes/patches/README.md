@@ -572,17 +572,23 @@ move to BipAgents' Hermes parks them in `git stash` instead of refusing them as 
 - the patches' own tests (23 files): all pass (588 passed, 4 skipped once `anthropic` is installed);
 - `tests/tools` + the patches' files: 11 924 passed, 11 failed, 7 errors. Unpatched v0.23.1 fails the same
   `test_search_*` (4 + 1), `test_plugin_guard.py` (6 errors, « requires real uv ») and `test_fal_sdk.py` (no SDK).
-  **Open:** 6 failures come from 0022 itself: upstream's new `test_refresh_agent_mcp_tools.py` (3) and
-  `test_tool_defs_memo_availability.py` (3) assert that a late tool is appended at the tail, which 0022 replaces by
-  its canonical place. To do: decide (keep 0022's rule and adapt those tests in the patch) before the bench;
+  6 more came from 0022 itself: upstream's new `test_refresh_agent_mcp_tools.py` (3) and
+  `test_tool_defs_memo_availability.py` (3) asserted that a late tool is appended at the tail. Decided 11/11: 0022's
+  rule stays (the late tool at its canonical place, every tool already sent with its bytes and order), and the patch
+  adapts those tests (renamed where they said « tail »): with `test_tool_order.py`, 43 passed;
 - `tests/agent`, `tests/cron`, the gateway's Runs API / session / TurnRunner / agent cache / Bot Chat / peer suites
   and the first part of `tests/hermes_state` (run stopped at 57 % for the day's end): 17 781 passed; 10 files
   failing: 6 the same on unpatched v0.23.1 (`test_conversation_compression_manual`, `test_vault_key_storage` without
   `keyring`, `test_session_client_env`, `test_session_edit_policy`, `test_session_mutation_model`,
-  `test_session_policy_refusal_fields`), `test_shell_hooks_tree_kill` (a 5 s signal deadline under load; passes
-  alone unpatched, to rerun alone patched), and `test_provider_wire_snapshot_variants` (`aux:zai` « off »: 0011's
-  floor, by design; the snapshot fixture is updated in 0011 since);
-- not run yet: the rest of `tests/hermes_state`, and the two order test files again after the decision;
+  `test_session_policy_refusal_fields`), `test_shell_hooks_tree_kill` and `test_provider_wire_snapshot_variants`
+  (`aux:zai` « off »: 0011's floor, by design; the fixture is updated in 0011: 37 passed on 11/11);
+- `test_shell_hooks_tree_kill.py` + `test_git_probe_tree_kill.py` (11/11): 12 passed, patched. The build server's
+  runner starts its jobs with SIGINT ignored, so `test_interrupt_kills_hook_and_propagates` never gets its
+  KeyboardInterrupt there (unpatched v0.23.1 fails it the same, after 300 s); run with Python's SIGINT handler put
+  back (`signal.signal(SIGINT, default_int_handler)` before `pytest.main`), every test passes;
+- the whole `tests/hermes_state` (11/11, `-j 6`): 222 files, 1 888 passed, 16 skipped, 1 failed:
+  `test_write_lock_owner_attribution.py::test_live_writer_in_another_process_is_named_by_pid` (a 5 s deadline for
+  another process's WAL lock under 6 workers): alone, 3 runs of 3 passed patched, and it passes unpatched;
 - `installer/tests`: 339 passed, 2 skipped; `scripts/hermes-patches.sh check` passes; `branch` then `export` gives the
   same bytes.
 
@@ -681,7 +687,9 @@ its list is again the one every new session builds. Without the setting: plain n
 **Files.** `tools/tool_order.py` (new), `model_tools.py` (`_compute_tool_definitions`), `tools/mcp_tool_agent.py`.
 
 **Tests.** `tests/tools/test_tool_order.py`: common tools first then by name, two agents' common prefix byte-identical,
-the same list from any input order (two starts), a later tool at its place.
+the same list from any input order (two starts), a later tool at its place. Since v0.23.1 the patch also adapts
+upstream's late-tool tests (`test_refresh_agent_mcp_tools.py`, `test_tool_defs_memo_availability.py`), which expected
+the tail: the late tool at its canonical place, every tool already sent with its bytes and order.
 
 ## 0023 — a system prompt stable across an agent's conversations (prefix cache)
 
