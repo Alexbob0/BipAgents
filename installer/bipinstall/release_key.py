@@ -21,7 +21,8 @@ from typing import Callable, Optional
 SIGNATURE = "SHA256SUMS.minisig"
 PLACEHOLDER = "PLACEHOLDER"
 # The second line of bipagents-release.pub (minisign -G), « RW… ». Until then: the placeholder, checks skipped.
-PUBLIC_KEY = "RWTwVOsPVRjVLnyPHgi1uKcZplZ+oKICd9UPPVNxo/hfr88w80Bhxwas"   # key id F054EB0F5518D52E, made by Alex 2026-11-11
+# Made by Alex 2026-11-11: key id f054eb0f5518d52e as stored, which minisign prints as 2ED518550FEB54F0.
+PUBLIC_KEY = "RWTwVOsPVRjVLnyPHgi1uKcZplZ+oKICd9UPPVNxo/hfr88w80Bhxwas"
 
 
 class ReleaseSignatureError(ValueError):
