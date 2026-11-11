@@ -48,6 +48,15 @@ class Podman:
         return [a for a in self.ran if (a[7:] if "--root" in a else a[1:])[:len(words)] == list(words)]
 
 
+REGISTRY_DIGEST = shared_images.registry_digest
+
+
+@pytest.fixture(autouse=True)
+def offline(monkeypatch):
+    """No registry asked in the tests: unknown digests, so every image is pulled as before (unless a test says)."""
+    monkeypatch.setattr(shared_images, "registry_digest", lambda source, timeout=20: None)
+
+
 @pytest.fixture
 def setting(tmp_path, monkeypatch):
     path = tmp_path / "etc" / "shared-images.json"
@@ -79,6 +88,79 @@ def test_root_pulls_both_images_once_under_the_places_names_and_keeps_the_one_be
     assert data["store"] == str(store) and data["browser"] == {"key": "k1", "id": "b2"} and data["sandbox"]["id"] == "s1"
     assert data["views"] == str(shared_images.VIEWS)
     assert oct(setting.stat().st_mode & 0o777) == "0o644"
+
+
+def test_an_image_the_registry_still_gives_is_not_pulled_again_and_the_store_not_even_read(tmp_path, setting):
+    # Any podman command on the store (a pull of an unchanged image, even an inspect) disturbs the places reading it
+    # through their views: their containers then fail to start (lab 2026-11-11, 3 places on a CAX11). The registry's
+    # digest is asked first; the one of the last pull (the setting): nothing run on the store.
+    index, other = "sha256:" + "c" * 64, "sha256:" + "e" * 64
+    store = tmp_path / "store"
+    podman = Podman()
+    assert shared_images.pull(store=store, run=podman, digest=lambda source: index) == 0
+    data = json.loads(setting.read_text())
+    assert data["browser"] == {"key": "k1", "id": "b2", "digest": index, "source": shared_images.browser_ref("k1")}
+    assert data["sandbox"] == {"id": "s1", "digest": index, "source": shared_images.SANDBOX_SOURCES[0]}
+    asked = []
+
+    def digest(source):
+        asked.append(source)
+        return index
+    again = Podman(images=dict(podman.images))
+    assert shared_images.pull(store=store, run=again, digest=digest) == 0
+    assert not [a for a in again.ran if "--root" in a]                 # the store untouched: no pull, no inspect
+    assert asked == [shared_images.browser_ref("k1"), shared_images.SANDBOX_SOURCES[0]]
+    assert json.loads(setting.read_text())["browser"] == data["browser"]
+    # a new digest pulls (and prunes) as before; the sandbox, unchanged, still isn't pulled
+    newer = Podman(images=dict(podman.images))
+    newer.registry[shared_images.browser_ref("k1")] = "b3"
+    assert shared_images.pull(store=store, run=newer,
+                              digest=lambda s: other if s == shared_images.browser_ref("k1") else index) == 0
+    assert newer.images[shared_images.BROWSER] == "b3" and not newer.did("pull", "--quiet", shared_images.SANDBOX_SOURCES[0])
+    assert newer.did("image", "prune", "--force")
+    assert json.loads(setting.read_text())["browser"]["digest"] == other
+    # the registry can't tell, or another browser key: pulled as before
+    unknown = Podman(images=dict(newer.images))
+    assert shared_images.pull(store=store, run=unknown, digest=lambda source: None) == 0
+    assert unknown.did("pull", "--quiet", shared_images.browser_ref("k1"))
+    assert "digest" not in json.loads(setting.read_text())["browser"]
+
+
+def test_the_registry_digest_is_read_with_the_anonymous_token_its_challenge_names(monkeypatch):
+    import io
+    import urllib.error
+    import urllib.request
+    good = "sha256:" + "a" * 64
+    seen = []
+
+    class Answer(io.BytesIO):
+        def __init__(self, body=b"", headers=None):
+            super().__init__(body)
+            self.headers = headers or {}
+
+    challenge = ('Bearer realm="https://auth.docker.io/token",service="registry.docker.io",'
+                 'scope="repository:nousresearch/hermes-sandbox:pull"')
+
+    def urlopen(request, timeout=0):
+        url = request if isinstance(request, str) else request.full_url
+        auth = "" if isinstance(request, str) else request.get_header("Authorization", "")
+        seen.append((url, auth))
+        if url.startswith("https://auth.docker.io/token?"):
+            assert "service=registry.docker.io" in url and "scope=repository%3Anousresearch" in url
+            return Answer(json.dumps({"token": "t0"}).encode())
+        if auth != "Bearer t0":
+            raise urllib.error.HTTPError(url, 401, "no", {"WWW-Authenticate": challenge}, None)
+        return Answer(headers={"Docker-Content-Digest": good})
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    assert REGISTRY_DIGEST(shared_images.SANDBOX) == good
+    manifest = "https://registry-1.docker.io/v2/nousresearch/hermes-sandbox/manifests/desktop"
+    assert seen[0] == (manifest, "") and seen[-1] == (manifest, "Bearer t0")
+    assert REGISTRY_DIGEST("no-tag-here") is None
+
+    def unreachable(request, timeout=0):
+        raise urllib.error.URLError("no network")
+    monkeypatch.setattr(urllib.request, "urlopen", unreachable)
+    assert REGISTRY_DIGEST(shared_images.SANDBOX_SOURCES[0]) is None
 
 
 def test_the_sandbox_comes_from_docker_hub_when_the_mirror_fails_and_a_failed_pull_keeps_the_store(tmp_path, setting):

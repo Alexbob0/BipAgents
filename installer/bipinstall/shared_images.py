@@ -129,11 +129,70 @@ def image_id(podman: List[str], name: str, run: Run) -> str:
     return out.strip().removeprefix("sha256:") if code == 0 else ""
 
 
-def pull_one(podman: List[str], sources: Sequence[str], name: str, run: Run) -> Tuple[str, str]:
+MANIFESTS = ", ".join(("application/vnd.oci.image.index.v1+json",
+                       "application/vnd.docker.distribution.manifest.list.v2+json",
+                       "application/vnd.oci.image.manifest.v1+json",
+                       "application/vnd.docker.distribution.manifest.v2+json"))
+Digest = Callable[[str], Optional[str]]
+NOT_PULLED = "(unchanged, not pulled)"
+
+
+def registry_digest(source: str, timeout: float = 20) -> Optional[str]:
+    """The digest the registry gives `source`'s tag now (a HEAD of its manifest, the anonymous token its
+    WWW-Authenticate names: GHCR, Docker Hub), None when it can't tell (then the image is pulled as before)."""
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+    name, _, tag = source.rpartition(":")
+    host, _, repo = name.partition("/")
+    if not tag or "/" in tag or not repo:
+        return None
+    if host == "docker.io":
+        host = "registry-1.docker.io"
+    url = f"https://{host}/v2/{repo}/manifests/{tag}"
+
+    def head(headers: Dict[str, str]):
+        request = urllib.request.Request(url, method="HEAD", headers={"Accept": MANIFESTS, **headers})
+        return urllib.request.urlopen(request, timeout=timeout)
+    try:
+        try:
+            resp = head({})
+        except urllib.error.HTTPError as exc:
+            challenge = exc.headers.get("WWW-Authenticate", "")
+            if exc.code != 401 or not challenge.lower().startswith("bearer "):
+                return None
+            fields = dict(re.findall(r'(\w+)="([^"]*)"', challenge))
+            if not fields.get("realm", "").startswith("https://"):
+                return None
+            query = urllib.parse.urlencode({k: v for k, v in fields.items() if k in ("service", "scope")})
+            with urllib.request.urlopen(f"{fields['realm']}?{query}", timeout=timeout) as answer:
+                token = json.loads(answer.read()).get("token") or ""
+            resp = head({"Authorization": f"Bearer {token}"})
+        with resp:
+            digest = resp.headers.get("Docker-Content-Digest", "")
+    except (OSError, ValueError):
+        return None
+    return digest if re.fullmatch(r"sha256:[0-9a-f]{64}", digest) else None
+
+
+def pull_one(podman: List[str], sources: Sequence[str], name: str, run: Run, digest: Optional[Digest] = None,
+             known: Optional[dict] = None) -> Tuple[str, str, Optional[str], str]:
     """The first of `sources` that pulls, named `name` in the store; the image `name` had before kept as :previous.
-    Returns (its id, what was said), id '' when none pulled (the store keeps what it had)."""
+    Returns (its id, what was said, the registry's digest of it when it gave one, its source), id '' when none
+    pulled (the store keeps what it had).
+    Not pulled again, nor the store even read, when the registry still gives the digest of the last pull (`known`,
+    the setting's entry: its id and digest): any podman command on the store, a `pull` of an unchanged image and even an
+    `image inspect`, disturbs the places reading it through their views, whose containers then fail to start
+    (« faccessat .../overlay/<layer>: no such file or directory »: 19 of 22 starts during a pull of three unchanged
+    images, 5 of 6 during 20 inspects, none at rest; 3 places on a CAX11, 2026-11-11). Each place's --prepare at first
+    boot, each update and each night pulled while the other places ran: their sandboxes and browsers then failed."""
     said = ""
+    digest = digest or registry_digest
+    known = known or {}
     for source in sources:
+        now = digest(source)
+        if now and known.get("id") and now == known.get("digest") and source == known.get("source", source):
+            return str(known["id"]), f"{name} from {source} {NOT_PULLED}", now, source
         code, out = run(podman + ["pull", "--quiet", source], 3600)
         if code != 0:
             said = f"{source}: {out.strip()[-200:]}"
@@ -147,8 +206,8 @@ def pull_one(podman: List[str], sources: Sequence[str], name: str, run: Run) -> 
         run(podman + ["tag", new, name], 60)
         if source != name:
             run(podman + ["untag", new, source], 60)     # only the place's name holds it
-        return new, f"{name} from {source}" + (" (new)" if old != new else " (unchanged)")
-    return "", said
+        return new, f"{name} from {source}" + (" (new)" if old != new else " (unchanged)"), now, source
+    return "", said, None, ""
 
 
 def subids(files: Sequence[Path] = SUBIDS) -> Dict[str, Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]]:
@@ -278,28 +337,38 @@ def views(store: Path = STORE, folder: Path = VIEWS, run: Run = browser_refresh.
     return mounted
 
 
-def pull(repo: Path = REPO, store: Path = STORE, run: Run = browser_refresh.run, folder: Path = VIEWS) -> int:
+def pull(repo: Path = REPO, store: Path = STORE, run: Run = browser_refresh.run, folder: Path = VIEWS,
+         digest: Optional[Digest] = None) -> int:
     """(root) The browser of this checkout's key and Hermes' sandbox into the server's store, each account's view of it
-    mounted, the setting written for the accounts. 0 when both are there (new or kept), 1 when one is missing."""
+    mounted, the setting written for the accounts. 0 when both are there (new or kept), 1 when one is missing.
+    The store is touched only when an image changed (`pull_one`)."""
     podman = store_podman(store)
     found: Dict[str, dict] = {}
+    last = setting() or {}
+    wrote = False
+
+    def one(label: str, sources: Sequence[str], name: str, **extra: str) -> str:
+        nonlocal wrote
+        known = last.get(label) if isinstance(last.get(label), dict) else {}
+        if any(known.get(k) != v for k, v in extra.items()):
+            known = {}   # another key: another image
+        got, said, now, source = pull_one(podman, sources, name, run, digest, known)
+        wrote = wrote or not said.endswith(NOT_PULLED)
+        if got:
+            found[label] = {**extra, "id": got}
+            if now:
+                found[label].update(digest=now, source=source)
+        return said
     key = browser_key(repo)
     if key:
-        browser, said = pull_one(podman, [browser_ref(key)], BROWSER, run)
-        say(said or "no browser image for this checkout")
-        if browser:
-            found["browser"] = {"key": key, "id": browser}
-    sandbox, said = pull_one(podman, SANDBOX_SOURCES, SANDBOX, run)
-    say(said or "no sandbox image")
-    if sandbox:
-        found["sandbox"] = {"id": sandbox}
+        say(one("browser", [browser_ref(key)], BROWSER, key=key) or "no browser image for this checkout")
+    say(one("sandbox", SANDBOX_SOURCES, SANDBOX) or "no sandbox image")
     agent_key = tree_key("sandbox", repo)
     if agent_key:
-        ours, said = pull_one(podman, [agent_sandbox_ref(agent_key)], AGENT_SANDBOX, run)
+        said = one("agent_sandbox", [agent_sandbox_ref(agent_key)], AGENT_SANDBOX, key=agent_key)
         say(said or "no agents' sandbox image for this checkout (the agents keep Hermes' own)")
-        if ours:
-            found["agent_sandbox"] = {"key": agent_key, "id": ours}
-    run(podman + ["image", "prune", "--force"], 600)   # the untagged ones (two nights old)
+    if wrote:
+        run(podman + ["image", "prune", "--force"], 600)   # the untagged ones (two nights old)
     views(store, folder, run)
     before = setting() or {}
     for name in ("browser", "sandbox", "agent_sandbox"):   # a failed pull keeps what the store has
