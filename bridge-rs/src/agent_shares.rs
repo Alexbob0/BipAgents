@@ -1659,6 +1659,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_guest_turn_check_looks_for_what_patch_0018_really_writes() {
+        // the repository's patch for the pinned Hermes (hermes/patches/BASE): if a rebase onto a newer Hermes moves the
+        // file or its wiring, every updated self-install would refuse sharing (or a check left behind would pass)
+        let patches = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../hermes/patches");
+        let patch = std::fs::read_dir(&patches)
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .find(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("0018-") && n.ends_with(".patch")))
+            .expect("patch 0018 in hermes/patches");
+        let text = std::fs::read_to_string(patch).unwrap();
+        let section = |path: &str| {
+            let head = format!("diff --git a/{path} b/{path}\n");
+            let start = text.find(&head).unwrap_or_else(|| panic!("patch 0018 changes no {path}")) + head.len();
+            let end = text[start..].find("\ndiff --git ").map_or(text.len(), |e| start + e);
+            text[start..end].to_string()
+        };
+        assert!(section(GUEST_TURN_FILE).starts_with("new file mode"), "patch 0018 creates {GUEST_TURN_FILE}");
+        let (wired, mark) = GUEST_TURN_WIRING;
+        assert!(
+            section(wired).lines().any(|l| l.starts_with('+') && !l.starts_with("+++") && l.contains(mark)),
+            "patch 0018 adds « {mark} » to {wired}"
+        );
+    }
+
+    #[test]
     fn a_relatives_words_are_framed_for_the_agent_and_shown_plain() {
         let text = framed("Marie", "Marie", "Une recette avec des poireaux ?");
         assert!(text.starts_with("[Marie, a relative of your person (household « Marie »), writes to you:]\n"));
