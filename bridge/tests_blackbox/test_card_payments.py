@@ -494,7 +494,11 @@ def test_suspending_gives_the_browser_back_with_the_card_erased(bridges, fakes):
         chrome.stop()
 
 
-HOLD_LIFTED = "rm -f /tmp/bipagents-hold; exit 0"
+HOLD_LIFTED = "rm -f /tmp/bipagents-hold; exit 0"   # how the command lifting the hold ends
+
+
+def lifted(command):
+    return command.endswith(HOLD_LIFTED)
 
 
 def test_cancel_empties_exactly_the_fields_typed_into(bridges, fakes):
@@ -512,7 +516,7 @@ def test_cancel_empties_exactly_the_fields_typed_into(bridges, fakes):
         assert chrome.values[("F-psp", 0)] == "" and chrome.values[("F-psp", 2)] == ""
         assert sorted(chrome.emptied) == [("F-main", 0), ("F-psp", 0), ("F-psp", 1), ("F-psp", 2)]
         assert ("F-other", 0) not in chrome.values
-        assert chrome.navigated == ["about:blank"] and podman_last(bridge) == HOLD_LIFTED
+        assert chrome.navigated == ["about:blank"] and lifted(podman_last(bridge))
     finally:
         chrome.stop()
 
@@ -535,7 +539,7 @@ def test_nothing_is_typed_where_the_keyboard_s_focus_is_not_the_field(bridges, f
         assert "would not take the keyboard" in result["content"][0]["text"]
         assert "hand_over_payment" in result["content"][0]["text"]
         assert chrome.typed == [] and all(v == "" for v in chrome.values.values())
-        assert chrome.navigated == ["about:blank"] and podman_last(bridge) == HOLD_LIFTED
+        assert chrome.navigated == ["about:blank"] and lifted(podman_last(bridge))
         outcomes = [e["outcome"] for e in bridge.get("/v1/vault/payments", headers=AUTH).json()["journal"]]
         assert outcomes[0] == "failed" and "typed" not in outcomes
     finally:
@@ -575,7 +579,7 @@ def test_a_browser_image_that_counts_no_calls_is_never_typed_into(bridges, fakes
         text = result["content"][0]["text"]
         assert "must be updated" in text and "hand_over_payment" in text and "nothing was typed" in text
         assert chrome.typed == [] and chrome.reloads == 0 and chrome.navigated == []
-        assert bridge.commands.of("podman")[-1][-1] == HOLD_LIFTED
+        assert lifted(podman_last(bridge))
         again, _ = pay(bridge, ARGS)
         assert again["isError"] is True and chrome.typed == []
         assert bridge.log_path.read_text().count("the browser image must be updated") == 1   # said once
@@ -613,7 +617,7 @@ def test_a_payment_stopped_while_the_page_reloads_types_nothing(bridges, fakes, 
         assert chrome.typed == [] and chrome.values == {}
         assert chrome.navigated == ["about:blank"] and chrome.resets == ["about:blank"]
         podman = [c[-1] for c in bridge.commands.of("podman")]
-        assert podman.count(HOLD_LIFTED) == 1 and podman[-1] == HOLD_LIFTED   # once, after the empty page
+        assert sum(map(lifted, podman)) == 1 and lifted(podman[-1])   # once, after the empty page
         outcome = "cancelled" if how == "cancel_payment" else "suspended"
         outcomes = [e["outcome"] for e in bridge.get("/v1/vault/payments", headers=AUTH).json()["journal"]]
         assert outcomes.count(outcome) == 1 and "typed" not in outcomes and "failed" not in outcomes
