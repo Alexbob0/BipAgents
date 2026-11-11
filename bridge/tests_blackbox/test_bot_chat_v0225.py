@@ -42,25 +42,6 @@ def test_a_new_agents_main_conversation_is_an_api_one_and_streams(bridges, fakes
     assert fakes.hermes.fifo == []
 
 
-def test_a_peer_opening_an_agents_bot_chat_gets_an_api_conversation(bridges, fakes):
-    """`hermes peer dm`'s create-if-missing names `source: bot_peer_dm`, for which v0.22.5 mints its local chat: the
-    bridge forwards it as its own create, so the target's Bot Chat stays the conversation the apps stream in."""
-    bridge = bridges.new()
-    hub = managed_install(bridge, fakes, agents=("budget", "maison"))
-    for name in ("budget", "maison"):
-        profile(hub, name)
-    bridge.start()
-    links = [{"from": "budget", "to": "maison"}]
-    assert bridge.put("/v1/agent-links", headers=AUTH, json={"links": links}).status_code == 200
-    token = (hub / ".env").read_text().split("HERMES_PEER_BIP_KEY=")[1].strip()
-    opened = bridge.post("/peer/p/maison/api/sessions", headers={"Authorization": f"Bearer {token}"},
-                         json={"title": "Bot Chat", "source": "bot_peer_dm"})
-    assert opened.status_code == 201, opened.text
-    assert fakes.hermes.created[-1] == ("maison", {"title": "Bot Chat"})
-    session_id = opened.json()["session"]["id"]
-    assert not fakes.hermes.local_bot_chat("maison", session_id)
-
-
 def test_a_thread_hermes_moved_aside_is_the_agents_bot_chat_again_at_start(bridges, fakes):
     """What an unpatched v0.22.5 left (the bench's lab place): the thread renamed « Bot Chat (API <id>) » with its
     history, a new local « Bot Chat » (hidden) holding the few turns sent since. At start the bridge archives and hides

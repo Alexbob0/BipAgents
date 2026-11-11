@@ -105,6 +105,15 @@ def profile(home: Path, name: str) -> Path:
     return folder
 
 
+def marked(folder: Path) -> bool:
+    """Whether a profile has Hermes' Bot Mode mark (`ui_meta.hermes-bots` in its profile.yaml): its Bot Chat then
+    gets Hermes' own message_agent. The bridge marks only an agent that writes to another household (peers.rs)."""
+    import yaml
+    path = folder / "profile.yaml"
+    data = yaml.safe_load(path.read_text()) if path.exists() else None
+    return "hermes-bots" in ((data or {}).get("ui_meta") or {})
+
+
 def servers(folder: Path) -> dict:
     """The `mcp_servers` of a profile's config.yaml (the bridge writes its entries there itself)."""
     import yaml

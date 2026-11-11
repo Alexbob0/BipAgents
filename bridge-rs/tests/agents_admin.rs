@@ -134,9 +134,9 @@ async fn create_custom_agent() {
     );
     let soul = std::fs::read_to_string(profiles(dir.path()).join("fougere/SOUL.md")).unwrap();
     assert!(soul.starts_with("Tu es Fougère") && soul.contains("suit mes plantes") && soul.contains("drôle"));
-    assert!(std::fs::read_to_string(profiles(dir.path()).join("fougere/profile.yaml"))
-        .unwrap()
-        .contains("hermes-bots"));
+    assert!(!std::fs::read_to_string(profiles(dir.path()).join("fougere/profile.yaml"))
+        .unwrap_or_default()
+        .contains("hermes-bots")); // no Hermes Bot Mode in this household (peers.rs)
     assert_eq!(*sessions.lock().unwrap(), vec![("/p/fougere/api/sessions".to_string(), json!({"title": "Bot Chat"}))]);
     assert_eq!(config.get().agent(Some("fougere")), Some(&agent));
     // survives a restart
@@ -357,7 +357,7 @@ async fn profiles_created_on_the_server_can_be_claimed() {
     assert!(ran[1..].iter().all(|a| a[5].starts_with("mcp_servers.bipagents.")));
     let urls: Vec<String> = sessions.lock().unwrap().iter().map(|(u, _)| u.clone()).collect();
     assert_eq!(urls, ["/p/jardin/api/sessions", "/p/cuisine/api/sessions"]); // their « Discussion »
-    assert!(std::fs::read_to_string(root.join("cuisine/profile.yaml")).unwrap().contains("hermes-bots")); // Bot Mode
+    assert!(!std::fs::read_to_string(root.join("cuisine/profile.yaml")).unwrap_or_default().contains("hermes-bots"));
     assert!(
         unclaimed_profiles(&config.get()).is_empty()
             && std::fs::read_to_string(&path).unwrap().contains("[agents.cuisine]")

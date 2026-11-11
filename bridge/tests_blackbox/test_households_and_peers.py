@@ -13,7 +13,7 @@ from starlette.responses import JSONResponse
 
 from bbkit.common import AUTH
 from bbkit.fakes import split_now
-from conftest import managed_install, profile
+from conftest import managed_install, marked, profile
 
 RECEIVED = []
 
@@ -226,18 +226,34 @@ def test_the_bridge_refuses_what_the_person_did_not_allow(bridge, fakes):
     assert oct(os.stat(bridge.state_dir / "peers.json").st_mode & 0o777) == "0o600"
     assert bridge.get("/peer/p/wellness/api/sessions", headers={"Authorization": "Bearer nope"}).status_code == 401
     refused = bridge.get("/peer/p/wellness/api/sessions", headers={"Authorization": f"Bearer {token}"})
-    assert refused.status_code == 403 and refused.json() == {"detail": "not allowed to write to wellness (ask the person)"}
+    assert refused.status_code == 403 and refused.json() == {"detail": "write to wellness with the bridge's message_agent"}
     assert bridge.get("/peer/p/nobody/api/sessions", headers={"Authorization": f"Bearer {token}"}).status_code == 404
     assert bridge.get("/v1/agent-links", headers=AUTH).json() == {
         "agents": [{"id": "wellness", "name": "Wellness", "managed": False}], "links": []}
     assert bridge.cli("peer-token").returncode == 2
 
 
-def test_each_sending_gateway_gets_a_token_and_each_sender_learns_whom_it_may_write_to(bridges, fakes):
-    """peers.apply through `PUT /v1/agent-links`: the hub's and a space's gateways get their token in their own .env
-    and the bridge as their peer; a skill lists each sender's targets."""
+def bot_peer(gateway):
+    """The `bot_peers.bip` of a gateway's config.yaml (None: Hermes' Bot Mode has no peer there)."""
+    path = gateway / "config.yaml"
+    data = yaml.safe_load(path.read_text()) if path.exists() else None
+    return ((data or {}).get("bot_peers") or {}).get("bip")
+
+
+def peer_key(gateway):
+    """The gateway's own token for the bridge as its peer (None: none)."""
+    env = gateway / ".env"
+    text = env.read_text() if env.exists() else ""
+    return text.split("HERMES_PEER_BIP_KEY=")[1].split("\n")[0].strip() if "HERMES_PEER_BIP_KEY=" in text else None
+
+
+def test_bot_mode_only_towards_another_household_and_each_sender_learns_whom_it_may_write_to(bridges, fakes):
+    """peers.apply through `PUT /v1/agent-links`: Hermes' Bot Mode (the bridge as `bot_peers.bip`, a token in the
+    gateway's .env) only for a gateway whose agent writes to another household's agent. Between agents of the same
+    household it is off (Alex, 2026-11-10): the bridge's message_agent is the one way, and the relay refuses a local
+    target. A skill lists each sender's targets either way."""
     RECEIVED.clear()
-    bridge = bridges.new()
+    bridge = bridges.new("alex")
     hub = managed_install(bridge, fakes, agents=("budget", "maison"))
     for name in ("budget", "maison"):
         profile(hub, name)
@@ -245,48 +261,95 @@ def test_each_sending_gateway_gets_a_token_and_each_sender_learns_whom_it_may_wr
     profile(space, "jardin")
     bridge.config["agents"]["jardin"] = {"hermes_url": f"{fakes.hermes.url}/p/jardin", "hermes_key": "j" * 32,
                                          "isolated": True, "sandboxed": True, "space": str(space)}
+    bridge.config["public_url"] = bridge.url
     bridge.start()
+    lea = household(bridges, fakes, "lea", ["cuisine"])
+    assert bridge.put("/v1/family/name", headers=AUTH, json={"name": "Alex"}).status_code == 200
+    assert lea.put("/v1/family/name", headers=AUTH, json={"name": "Léa"}).status_code == 200
+    invitation = bridge.post("/v1/family/invite", headers=AUTH).json()
+    joined = lea.post("/v1/family/join", headers=AUTH, json={"url": invitation["url"], "code": invitation["code"]})
+    assert joined.status_code == 200
     unknown = bridge.put("/v1/agent-links", headers=AUTH, json={"links": [{"from": "budget", "to": "ghost"}]})
     assert unknown.status_code == 400 and unknown.json() == {"detail": "unknown link budget → ghost"}
     assert bridge.put("/v1/agent-links", headers=AUTH, json={"links": [{"from": "budget", "to": "budget"}]}).status_code == 400
-    links = [{"from": "Budget", "to": "jardin"}, {"from": "jardin", "to": "wellness"}, {"from": "budget", "to": "maison"}]
-    result = bridge.put("/v1/agent-links", headers=AUTH, json={"links": links}).json()
+
+    # Only within the household: no Bot Mode anywhere, the contacts skill still lists the targets.
+    local = [{"from": "Budget", "to": "jardin"}, {"from": "jardin", "to": "budget"}, {"from": "budget", "to": "maison"}]
+    result = bridge.put("/v1/agent-links", headers=AUTH, json={"links": local}).json()
     assert result == {"links": [{"from": "budget", "to": "jardin"}, {"from": "budget", "to": "maison"},
-                                {"from": "jardin", "to": "wellness"}], "needs_setup": []}
-    hub_token = (hub / ".env").read_text().split("HERMES_PEER_BIP_KEY=")[1].strip()
-    space_token = (space / ".env").read_text().split("HERMES_PEER_BIP_KEY=")[1].strip()
-    assert oct(os.stat(hub / ".env").st_mode & 0o777) == "0o600"
-    stored = json.loads((bridge.state_dir / "peers.json").read_text())
-    assert stored["tokens"] == {str(hub): hashlib.sha256(hub_token.encode()).hexdigest(),
-                                str(space): hashlib.sha256(space_token.encode()).hexdigest()}
-    assert hub_token not in (bridge.state_dir / "peers.json").read_text()
-    # the peer in each gateway's own config.yaml, written by the bridge itself (no `hermes config set`)
+                                {"from": "jardin", "to": "budget"}], "needs_setup": []}
     for gateway in (hub, space):
-        peer = yaml.safe_load((gateway / "config.yaml").read_text())["bot_peers"]["bip"]
-        assert peer == {"url": f"http://127.0.0.1:{bridge.port}/peer",
-                        "note": "Tes autres agents, par BipAgents (cible : bip/<agent>)"}
-    assert not any(e["argv"][:2] == ["config", "set"] for e in bridge.commands.entries("hermes"))
+        assert bot_peer(gateway) is None and peer_key(gateway) is None
+    assert not any(marked(f) for f in (hub / "profiles" / "budget", hub / "profiles" / "maison", space / "profiles" / "jardin"))
+    assert json.loads((bridge.state_dir / "peers.json").read_text())["tokens"] == {}
     contacts = (hub / "profiles" / "budget" / "skills" / "agent-contacts" / "SKILL.md").read_text()
     assert "`bip/jardin`: Jardin" in contacts and "`bip/maison`: Maison" in contacts
     assert not (hub / "profiles" / "maison" / "skills" / "agent-contacts").exists()   # writes to nobody
     managed = {a["id"]: a["managed"] for a in bridge.get("/v1/agent-links", headers=AUTH).json()["agents"]}
-    assert managed == {"wellness": False, "budget": True, "maison": True, "jardin": True}
-    # The hub's agents write to the space's Jardin with the hub's token, signed by Budget.
+    assert {k: managed[k] for k in ("wellness", "budget", "maison", "jardin")} == {
+        "wellness": False, "budget": True, "maison": True, "jardin": True}
+
+    # Jardin may also write to Léa's Cuisine: its space's gateway (only) gets the bridge as its peer and a token.
+    both = local + [{"from": "jardin", "to": "cuisine__lea"}]
+    assert bridge.put("/v1/agent-links", headers=AUTH, json={"links": both}).json()["needs_setup"] == []
+    space_token = peer_key(space)
+    assert space_token and bot_peer(space) == {
+        "url": f"http://127.0.0.1:{bridge.port}/peer",
+        "note": "Les agents des autres foyers, par BipAgents (cible : bip/<agent>__<foyer>)"}
+    assert oct(os.stat(space / ".env").st_mode & 0o777) == "0o600"
+    assert bot_peer(hub) is None and peer_key(hub) is None
+    assert marked(space / "profiles" / "jardin")
+    assert not marked(hub / "profiles" / "budget") and not marked(hub / "profiles" / "maison")
+    stored = json.loads((bridge.state_dir / "peers.json").read_text())
+    assert stored["tokens"] == {str(space): hashlib.sha256(space_token.encode()).hexdigest()}
+    assert space_token not in (bridge.state_dir / "peers.json").read_text()
+    assert not any(e["argv"][:2] == ["config", "set"] for e in bridge.commands.entries("hermes"))
+    # With that token, Bot Mode reaches no agent of this household: the bridge's message_agent is the way there.
     fakes.hermes.override = echo
-    sent = bridge.post("/peer/p/jardin/v1/runs", headers={"Authorization": f"Bearer {hub_token}"},
-                       json={"session_id": "bot-1", "message": "Message from 🤖 Budget (@budget): bonjour"})
-    assert sent.status_code == 200 and RECEIVED[-1][2] == "Bearer " + "j" * 32
-    now, words = split_now(RECEIVED[-1][3]["message"])
-    assert now and words == "Message from 🤖 Budget (@budget): bonjour"     # same household: as it is, the time on top
-    as_maison = bridge.post("/peer/p/jardin/v1/runs", headers={"Authorization": f"Bearer {hub_token}"},
-                            json={"session_id": "bot-1", "message": "Message from Maison (@maison): salut"})
-    assert as_maison.status_code == 403                                              # maison → jardin: not allowed
-    run = bridge.get("/peer/p/jardin/v1/runs/run-bot-1", headers={"Authorization": f"Bearer {hub_token}"})
-    assert run.status_code == 200
-    assert bridge.get("/peer/p/jardin/v1/runs/run-other", headers={"Authorization": f"Bearer {hub_token}"}).status_code == 403
-    # Wellness (set up by hand) sends: the administrator gives it a token; the hub sends nothing any more.
+    for target in ("budget", "maison"):
+        local_dm = bridge.post(f"/peer/p/{target}/v1/runs", headers={"Authorization": f"Bearer {space_token}"},
+                               json={"session_id": "bot-1", "message": "Message from Jardin (@jardin): bonjour"})
+        assert local_dm.status_code == 403
+        assert local_dm.json() == {"detail": f"write to {target} with the bridge's message_agent"}
+    listing = bridge.get("/peer/p/budget/api/sessions?title=Bot%20Chat", headers={"Authorization": f"Bearer {space_token}"})
+    assert listing.status_code == 403 and RECEIVED == []
+    assert bridge.get("/peer/p/nobody/api/sessions", headers={"Authorization": f"Bearer {space_token}"}).status_code == 404
+    # …and still Léa's Cuisine (refused there until Léa allows it, as any household message)
+    to_lea = bridge.post("/peer/p/cuisine__lea/v1/runs", headers={"Authorization": f"Bearer {space_token}"},
+                         json={"session_id": "bot-1", "message": "Message from Jardin (@jardin): bonjour"})
+    assert to_lea.status_code == 403 and to_lea.json() == {"detail": "Cuisine does not take messages from jardin__alex"}
+
+    # No household link any more: the space loses its peer and its token.
+    assert bridge.put("/v1/agent-links", headers=AUTH, json={"links": local}).status_code == 200
+    assert bot_peer(space) is None and peer_key(space) is None and not marked(space / "profiles" / "jardin")
+    assert json.loads((bridge.state_dir / "peers.json").read_text())["tokens"] == {}
+    # Wellness (set up by hand) writes only to this household: no token to ask its administrator for.
     again = bridge.put("/v1/agent-links", headers=AUTH, json={"links": [{"from": "wellness", "to": "budget"}]}).json()
-    assert again["needs_setup"] == ["wellness"]
-    assert "HERMES_PEER_BIP_KEY" not in (hub / ".env").read_text()
-    assert str(hub) not in json.loads((bridge.state_dir / "peers.json").read_text())["tokens"]
+    assert again["needs_setup"] == []
     assert not (hub / "profiles" / "budget" / "skills" / "agent-contacts" / "SKILL.md").exists()
+
+
+def test_a_place_set_up_with_bot_mode_between_its_own_agents_loses_it_at_start(bridges, fakes):
+    """A place whose links were set while every sender got Bot Mode: at start the hub's peer and token go (its links
+    are within the household), the links, the gateway's other settings and the contacts stay."""
+    bridge = bridges.new()
+    hub = managed_install(bridge, fakes, agents=("budget", "maison"))
+    for name in ("budget", "maison"):
+        (profile(hub, name) / "profile.yaml").write_text("description: x\nui_meta:\n  hermes-bots: {}\n")
+    (hub / "config.yaml").write_text(yaml.safe_dump({"model": {"default": "glm"}, "bot_peers": {
+        "bip": {"url": "http://127.0.0.1:1/peer", "note": "old"}, "other": {"url": "http://example.test"}}}))
+    (hub / ".env").write_text("HERMES_PEER_BIP_KEY=old-token\nOTHER=1\n")
+    bridge.state_dir.mkdir(parents=True, exist_ok=True)
+    (bridge.state_dir / "peers.json").write_text(json.dumps(
+        {"links": [["budget", "maison"]], "tokens": {str(hub): hashlib.sha256(b"old-token").hexdigest()}}))
+    bridge.start()
+    assert bot_peer(hub) is None and peer_key(hub) is None
+    assert not marked(hub / "profiles" / "budget") and not marked(hub / "profiles" / "maison")
+    kept = yaml.safe_load((hub / "config.yaml").read_text())
+    assert kept["model"]["default"] == "glm" and kept["bot_peers"] == {"other": {"url": "http://example.test"}}
+    assert "OTHER=1" in (hub / ".env").read_text()
+    stored = json.loads((bridge.state_dir / "peers.json").read_text())
+    assert stored["tokens"] == {} and stored["links"] == [["budget", "maison"]]
+    assert bridge.post("/peer/p/maison/v1/runs", headers={"Authorization": "Bearer old-token"},
+                       json={"message": "Message from Budget (@budget): coucou"}).status_code == 401
+    assert "`bip/maison`" in (hub / "profiles" / "budget" / "skills" / "agent-contacts" / "SKILL.md").read_text()

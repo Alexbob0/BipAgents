@@ -13,9 +13,9 @@
 //! the same turn. Another household's agents are never reached here (family_news.rs stays the way there). During a
 //! relative's turn or in a shared conversation the tool is closed like the person's other data (agent_shares.rs
 //! `RELATIVE_TOOLS`).
-//! In the Bot Chat, where Hermes injects its own (which writes into the target's Bot Chat), Hermes patch 0016 leaves
-//! Hermes' own out when this one is listed: one way to write to an agent everywhere, and every exchange in its pair's
-//! conversation (the bridge can't hide its tool per session: Hermes lists an MCP server's tools once).
+//! Hermes' own Bot Mode is off between agents of this household (peers.rs, since 2026-11-10): no peer for them, and
+//! the relay refuses a local target. Where an agent also writes to another household (Bot Mode kept for that), Hermes
+//! patch 0016 still leaves Hermes' own out of the Bot Chat when this one is listed: one `message_agent` everywhere.
 //! Since 6/11 (Hermes 0.23 study §4.4-3): at most `agent_hops::MAX_HOPS` messages between agents since the person
 //! last spoke, counted by the bridge, not the model (agent_hops.rs); past them the call is refused at once (`CAPPED`)
 //! and the person gets a « Continuer » card. A message to an agent waiting for this very exchange is answered at once
