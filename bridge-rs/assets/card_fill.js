@@ -60,7 +60,7 @@
     parseInt(((o.value || "") + " " + (o.text || "")).replace(/^\D+/, ""), 10)).filter((n) => !isNaN(n));
 
   const api = {
-    els: [], kinds: [],
+    els: [], kinds: [], button: null,
     detect() {
       this.els = []; this.kinds = [];
       const found = [];
@@ -141,21 +141,47 @@
       return false;
     },
     blur(i) { this.els[i].dispatchEvent(new Event("blur")); this.els[i].blur(); return true; },
-    // The page's pay button: the one whose text holds `wanted` (as the agent read it), else a « pay » word, the
-    // amount's digits making a better match. Its text, or null.
+    // The elements of this document around which the card's form is: the iframes holding its fields (marked by the
+    // bridge), besides the card fields `detect` found here.
+    anchors: [],
+    anchor(el) { if (!this.anchors.includes(el)) this.anchors.push(el); return true; },
+    // The card form's pay button: a button (never a link) of the form holding the card's fields (`detect`'s, and the
+    // iframes `anchor` marked), else of the nearest part of the page around them that holds one; the one whose text
+    // holds `wanted` (as the agent read it), else a « pay » word, the amount's digits making a better match. Its
+    // text, or null (no card field here, or no such button).
     findButton(wanted, amountDigits) {
       const PAY = /\b(pay|payer|paiement|bezahlen|zahlen|kaufen|pagar|comprar|confirm|confirmer|valider|commander|order|acheter|buy|checkout)\b/i;
       const norm = (t) => (t || "").toLowerCase().replace(/\s+/g, " ").trim();
       const all = [];
+      const control = (el) => el.matches("button, input[type=submit], input[type=button], input[type=image], [role=button]")
+        && !el.matches("a, button[type=reset]") && !el.closest("a[href], [role=link]");
       const walk = (root) => {
         for (const el of root.querySelectorAll("*")) {
-          if (el.matches("button, input[type=submit], input[type=button], [role=button], a")) all.push(el);
+          if (control(el)) all.push(el);
           if (el.shadowRoot) walk(el.shadowRoot);
         }
       };
       walk(document);
+      const anchors = this.anchors.concat(this.els);
+      const parent = (el) => el.parentElement || (el.getRootNode && el.getRootNode().host) || null;
+      const inside = (outer, el) => {
+        for (let up = el; up; up = parent(up)) if (up === outer) return true;
+        return false;
+      };
+      let pool = [];
+      for (const a of anchors) {
+        const form = a.form || a.closest("form");
+        if (form) {
+          pool = pool.concat(all.filter((el) => el.form === form || inside(form, el)));
+          continue;
+        }
+        for (let up = parent(a); up; up = parent(up)) {   // no form: the nearest element around it with a button
+          const near = all.filter((el) => inside(up, el));
+          if (near.length) { pool = pool.concat(near); break; }
+        }
+      }
       let best = null, bestScore = 0;
-      for (const el of all) {
+      for (const el of pool) {
         if (el.disabled || el.getClientRects().length === 0) continue;
         const text = norm(el.innerText || el.value || el.getAttribute("aria-label") || "");
         if (!text || text.length > 120) continue;

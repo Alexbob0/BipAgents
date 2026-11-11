@@ -61,6 +61,8 @@ class FakeChrome:
         self.closed = []
         self.cleared = []       # Storage.clearDataForOrigin's parameters
         self.navigated = []
+        self.resets = []        # the address shown when the tab's history was forgotten
+        self.anchored = []      # frames whose owner element was marked as the card form's (confirm_payment)
         self.fields = {"F-main": [{"i": 0, "kind": "name", "tag": "input", "fmt": "", "empty": True}],
                        "F-psp": [{"i": 0, "kind": "number", "tag": "input", "fmt": "", "empty": True},
                                  {"i": 1, "kind": "exp", "tag": "input", "fmt": "MM/YY", "empty": True},
@@ -143,6 +145,16 @@ class FakeChrome:
             self.url = params["url"]
             self.loader += 1
             return {"frameId": "F-main", "loaderId": f"L{self.loader}"}
+        if method == "Page.resetNavigationHistory":
+            self.resets.append(self.url)
+            return {}
+        if method == "DOM.getFrameOwner":
+            return {"backendNodeId": 500 + list(self.SESSIONS.values()).index(params["frameId"])}
+        if method == "DOM.resolveNode" and "backendNodeId" in params and params["backendNodeId"] >= 500:
+            return {"object": {"objectId": f"owner-{params['backendNodeId']}"}}
+        if method == "Runtime.callFunctionOn" and params["objectId"].startswith("owner-"):
+            self.anchored.append(list(self.SESSIONS.values())[int(params["objectId"][6:]) - 500])
+            return {"result": {"type": "boolean", "value": True}}
         if method == "Page.getFrameTree":
             if session == "S-psp":
                 return {"frameTree": {"frame": {"id": "F-psp", "url": self.psp}}}
@@ -363,6 +375,8 @@ def test_a_payment_approved_is_typed_on_the_real_site_then_the_bridge_clicks(bri
         assert chrome.clicks == ["https://shop.example/checkout"]
         # The shop's confirmation is a new document: the agent keeps it (and can look at it).
         assert chrome.navigated == [] and chrome.url == "https://shop.example/done"
+        # Its history forgotten (« back » can't bring the typed-into document again); the button was the card form's.
+        assert chrome.resets == ["https://shop.example/done"] and chrome.anchored == ["F-psp"]
         assert "empty page" not in confirmed["content"][0]["text"]
         assert bridge.commands.of("podman")[-1][-1].endswith("rm -f /tmp/bipagents-hold; exit 0")
         card = bridge.get("/v1/vault", headers=AUTH).json()["items"][0]["card"]
@@ -413,6 +427,7 @@ def test_a_single_use_card_waits_for_its_new_numbers(bridges, fakes):
         assert result["isError"] is False and "single-use" in result["content"][0]["text"]
         assert tool(bridge, "cancel_payment")["content"][0]["text"].startswith("The payment is given up")
         assert chrome.navigated == ["about:blank"]   # given up: the page the card was typed into is gone
+        assert chrome.resets == ["about:blank"]      # and out of the tab's history before the hold is lifted
         assert bridge.get("/v1/vault", headers=AUTH).json()["items"][0]["card"]["used"] is True
         again = tool(bridge, "pay_with_card", ARGS)
         assert again["isError"] is True and "already used" in again["content"][0]["text"]
@@ -435,6 +450,7 @@ def test_suspending_gives_the_browser_back_with_the_card_erased(bridges, fakes):
         assert suspended["active"] == [] and suspended["enabled"] is False
         assert chrome.values[("F-psp", 0)] == "" and chrome.values[("F-psp", 2)] == ""
         assert chrome.navigated == ["about:blank"]   # then the tab left on an empty page, before the hold is lifted
+        assert chrome.resets == ["about:blank"]
         assert bridge.commands.of("podman")[-1][-1].endswith("rm -f /tmp/bipagents-hold; exit 0")
         assert "No payment is waiting" in tool(bridge, "confirm_payment", {"button": "Payer"})["content"][0]["text"]
     finally:
@@ -472,7 +488,7 @@ def test_a_payment_stopped_while_the_page_reloads_types_nothing(bridges, fakes, 
         result = paid["result"]
         assert result["isError"] is True and "stopped" in result["content"][0]["text"], result
         assert chrome.typed == [] and chrome.values == {}
-        assert chrome.navigated == ["about:blank"]
+        assert chrome.navigated == ["about:blank"] and chrome.resets == ["about:blank"]
         podman = [c[-1] for c in bridge.commands.of("podman")]
         assert podman.count(HOLD_LIFTED) == 1 and podman[-1] == HOLD_LIFTED   # once, after the empty page
         outcome = "cancelled" if how == "cancel_payment" else "suspended"
@@ -497,7 +513,7 @@ def test_a_page_that_comes_back_without_its_form_or_elsewhere_is_handed_over(bri
         text = lost["content"][0]["text"]
         assert "without its card form" in text and "hand_over_payment" in text and "nothing was typed" in text
         assert chrome.typed == [] and chrome.reloads == 1
-        assert chrome.navigated == []   # nothing typed: the page stays as it came back
+        assert chrome.navigated == [] and chrome.resets == []   # nothing typed: the page stays as it came back
         assert bridge.commands.of("podman")[-1][-1].endswith("rm -f /tmp/bipagents-hold; exit 0")
         # A reload that ends on another site (a redirect): not the payment the person approved.
         chrome.lose_form, chrome.fields = False, form

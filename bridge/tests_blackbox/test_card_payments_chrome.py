@@ -191,6 +191,8 @@ def test_a_providers_frame_on_another_site(bridges, fakes):
         # The agent looks at what its script kept: only what it typed itself, before the payment.
         assert json.loads(browser.run(STASH, "done.html")) == ['["marker"]', '["marker"]']
         assert NUMBER[-4:] not in json.dumps(browser.values()) and CODE not in json.dumps(browser.values())
+        # « Back » never brings the page the card was typed into again (fix review 11/11, B2).
+        assert back_finds_nothing(browser, "done.html")
     finally:
         browser.stop()
         shop.shutdown()
@@ -212,11 +214,46 @@ def test_a_french_form_with_selects(bridges, fakes):
         # Given up: the card erased, the tab left on an empty page, the browser given back.
         assert tool(bridge, "cancel_payment")["content"][0]["text"].startswith("The payment is given up")
         assert browser.pages() == ["about:blank"]
+        assert back_finds_nothing(browser, "about:blank")
         # The agent goes back to the page and looks at what its script kept: only what it typed itself.
         browser.open(f"http://127.0.0.1:{shop.server_port}/selects.html")
         assert json.loads(browser.run(STASH, "selects.html")) == ['["marker"]', '["marker"]']
         values = browser.values()["selects.html"]
         assert values["numero"] == "" and values["crypto"] == "" and values["titulaire"] == ""
+    finally:
+        browser.stop()
+        shop.shutdown()
+
+
+def back_finds_nothing(browser, shown):
+    """The tab on `shown` has no history before it: « back » (the agent's go_back) stays there, and no document the
+    browser shows holds the card."""
+    if len(browser.call("Page.getNavigationHistory", {}, url=shown)["entries"]) != 1:
+        return False
+    browser.run("history.back()", shown)
+    time.sleep(1.5)
+    values = json.dumps(browser.values())
+    return (len(browser.pages()) == 1 and shown in browser.pages()[0]
+            and NUMBER[-4:] not in values and "4242 4242" not in values and CODE not in values)
+
+
+def test_confirm_presses_the_card_form_s_button_never_a_link_and_back_brings_nothing(bridges, fakes):
+    # Fix review 11/11, B2: confirm_payment(button="Aide") used to click the page's « Aide » link: the tab went to a
+    # new document, kept as the shop's answer (not blanked), and the agent's go_back brought the filled form again.
+    shop = site()
+    browser = Browser(f"http://127.0.0.1:{shop.server_port}/selects.html")
+    try:
+        bridge = pay_bridge(bridges, fakes, browser)
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json={**CARD, "sites": ["127.0.0.1"]})
+        result, _ = pay(bridge, ARGS)
+        assert result["isError"] is False, result
+        assert browser.values()["selects.html"]["numero"] == NUMBER
+        confirmed = tool(bridge, "confirm_payment", {"button": "Aide"})["content"][0]["text"]
+        # Not the link: the form's own submit button (the only button of the card's form).
+        assert "« valider le paiement »" in confirmed and "moved on" in confirmed, confirmed
+        assert [u.split("/")[-1] for u in browser.pages()] == ["done.html"]
+        assert back_finds_nothing(browser, "done.html")
     finally:
         browser.stop()
         shop.shutdown()

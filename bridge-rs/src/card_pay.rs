@@ -377,7 +377,8 @@ fn page_of(url: &str) -> &str {
 /// document, and no script of the agent's ran in the one it was typed into (`fresh_page`), so nothing of the agent's
 /// copied it into the site's storage either (what the shop's own scripts keep is the shop's, as with any card typed
 /// in). A one-page checkout that only changed its address is still the document typed into: left on an empty page
-/// too. Returns whether it was.
+/// too. Either way the tab's history is forgotten once typing began, so « back » never brings the typed-into document
+/// again. Returns whether it was left on an empty page.
 async fn release(config: &Config, agent: &str, outcome: &str) -> bool {
     let Some(entry) = held().remove(agent) else { return false };
     let mut blanked = false;
@@ -397,10 +398,20 @@ async fn release(config: &Config, agent: &str, outcome: &str) -> bool {
                 && page.loader().await.is_ok_and(|now| !entry.loader.is_empty() && now != entry.loader);
             // Nothing typed yet (the fresh page did not come): the agent's page stays as it was. Stopped (cancel,
             // suspend) while reloading or typing: left on an empty page all the same.
-            if (entry.typed || entry.stop.is_some()) && !moved_on {
-                match page.blank().await {
-                    Ok(()) => blanked = true,
-                    Err(exc) => tracing::warn!(agent = %agent, exc = %exc, "card payment: payment page not left"),
+            if entry.typed || entry.stop.is_some() {
+                if !moved_on {
+                    match page.blank().await {
+                        Ok(()) => blanked = true,
+                        Err(exc) => tracing::warn!(agent = %agent, exc = %exc, "card payment: payment page not left"),
+                    }
+                }
+                // Left through an empty page or moved on by itself, the document typed into is still the entry before
+                // in the tab's history: « back » (go_back) would bring it again, from the back/forward cache with its
+                // values or fetched again with its form restored (fix review 11/11, B2). Forgotten before the hold is
+                // lifted; a tab whose history can't be forgotten is closed.
+                if let Err(exc) = page.forget_history().await {
+                    tracing::warn!(agent = %agent, exc = %exc, "card payment: history not forgotten, tab closed");
+                    let _ = page.close().await;
                 }
             }
         }
@@ -987,7 +998,8 @@ async fn confirm(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> any
     }
     let wanted = cards::quoted(&arg(arguments, "button"), 80);
     let digits: String = cards::format_cents(entry.cents).chars().filter(char::is_ascii_digit).collect();
-    let clicked = match page.click_pay(&wanted, &digits).await {
+    let rule = card_fill::Frames::new(&entry.url, &entry.sites);
+    let clicked = match page.click_pay(&wanted, &digits, &rule).await {
         Ok(Some(button)) => button,
         Ok(None) => {
             return Ok(refusal(

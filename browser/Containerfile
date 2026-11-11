@@ -55,13 +55,15 @@ RUN chmod 755 /opt/stealth/entrypoint.sh /opt/stealth/mcp.sh /opt/stealth/open_b
 # redundant one Chrome shows a warning bar for; nodriver's --remote-allow-origins=*, so Chrome refuses a DevTools
 # WebSocket from a web page), a browser always shown on the screen (an agent's headless ignored), and
 # how long a starting Chrome may take to open its DevTools (nodriver's own ~3 s failed cold starts on a loaded server).
+# No back/forward cache: a page left keeps no live copy to come back to with « back » (a card payment's page, besides
+# the history the bridge forgets after it, bridge-rs/src/card_pay.rs `release`).
 # BROWSER_IDLE_TIMEOUT=0: the server's own reaper never lets go of the agent's browser; the bridge stops the whole
 # container once nobody uses it (bip-browser-mcp's `idle`). FastMCP (3) shows no banner and never asks PyPI for a newer
 # version at each start.
 ENV DISPLAY=:99 \
     STEALTH_CDP_PORT=9222 \
     STEALTH_USER_DATA_DIR=/home/bip/profile \
-    STEALTH_BROWSER_ARGS="--start-maximized;--no-first-run;--no-default-browser-check;--disable-dev-shm-usage;--ignore-gpu-blocklist;--test-type;--hide-crash-restore-bubble" \
+    STEALTH_BROWSER_ARGS="--start-maximized;--no-first-run;--no-default-browser-check;--disable-dev-shm-usage;--ignore-gpu-blocklist;--test-type;--hide-crash-restore-bubble;--disable-back-forward-cache" \
     STEALTH_DROP_ARGS="--single-process;--disable-gpu;--disable-setuid-sandbox;--remote-allow-origins=*" \
     STEALTH_HEADFUL=1 \
     STEALTH_CONNECT_SECONDS=45 \

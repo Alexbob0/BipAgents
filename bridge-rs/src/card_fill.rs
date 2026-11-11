@@ -34,6 +34,9 @@ const MAX_SESSIONS: usize = 30;
 pub const HOLD_HEADER: &str = "x-bip-card";
 /// How often a page being reloaded or left is looked at.
 const POLL: Duration = Duration::from_millis(200);
+/// Marks the element it is called on (in the card script's world: the iframe holding the card's fields) as part of
+/// the card's form, for `findButton`.
+const ANCHOR: &str = "function () { globalThis.__bipPay.anchor(this); return true; }";
 
 /// The payment providers whose frames hold a card form inside a shop's page (hosted fields: Stripe Elements, Adyen,
 /// Checkout.com Frames, Mollie, PayPlug, Braintree, PayPal, Square, Shopify, Lyra/PayZen/SystemPay, Stancer,
@@ -136,6 +139,8 @@ fn protocol(text: impl Into<String>) -> FillError {
 pub struct Field {
     pub session: String,
     pub context: i64,
+    /// Its frame's id (the same for every DevTools connection).
+    pub frame: String,
     pub frame_url: String,
     pub index: u64,
     pub kind: String,
@@ -542,6 +547,32 @@ impl Page {
         self.cdp.call("Target.closeTarget", json!({"targetId": target}), None).await.map(|_| ())
     }
 
+    /// The tab's history forgotten (`Page.resetNavigationHistory`: only the page shown is left in it), so that
+    /// « back » can't bring the document the card was typed into again, from the back/forward cache with its values or
+    /// fetched again with its form's values restored (fix review 11/11, B2). Done before the hold is lifted.
+    pub async fn forget_history(&mut self) -> Result<(), FillError> {
+        let session = self.session.clone();
+        self.cdp.call("Page.resetNavigationHistory", json!({}), Some(&session)).await.map(|_| ())
+    }
+
+    /// The tab closed (when its history can't be forgotten).
+    pub async fn close(&mut self) -> Result<(), FillError> {
+        let target = self.target.clone();
+        self.cdp.call("Target.closeTarget", json!({"targetId": target}), None).await.map(|_| ())
+    }
+
+    /// The main frame's id.
+    async fn main_frame(&mut self) -> Result<String, FillError> {
+        let session = self.session.clone();
+        let tree = self.cdp.call("Page.getFrameTree", json!({}), Some(&session)).await?;
+        tree.get("frameTree")
+            .and_then(|t| t.get("frame"))
+            .and_then(|f| f.get("id"))
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .ok_or_else(|| protocol("no main frame"))
+    }
+
     /// The page's address as Chrome knows it (its main frame), not as the page or the agent says.
     pub async fn url(&mut self) -> Result<String, FillError> {
         let session = self.session.clone();
@@ -619,6 +650,7 @@ impl Page {
                     Some(Field {
                         session: session.clone(),
                         context,
+                        frame: frame_id.clone(),
                         frame_url: frame_url.clone(),
                         index: item.get("i")?.as_u64()?,
                         kind: item.get("kind")?.as_str()?.to_string(),
@@ -719,19 +751,55 @@ impl Page {
         Ok(context)
     }
 
-    /// The page's pay button clicked (the one showing `wanted`, else a « pay » button, the amount helping): its
-    /// text, or None when there is no such button.
-    pub async fn click_pay(&mut self, wanted: &str, amount_digits: &str) -> Result<Option<String>, FillError> {
+    /// The card form's pay button clicked (the one showing `wanted`, else a « pay » button, the amount helping): its
+    /// text, or None when there is no such button. Only a button of the form that holds the card's fields (`rule`:
+    /// those it was typed into), or around the frame holding them, else the provider frame's own pay button; never a
+    /// link, nor a button elsewhere on the page (fix review 11/11, B2: any button or link could be pressed by its text,
+    /// « Aide », and a link took the tab to a new document with the card still typed in the one before).
+    pub async fn click_pay(
+        &mut self,
+        wanted: &str,
+        amount_digits: &str,
+        rule: &Frames,
+    ) -> Result<Option<String>, FillError> {
+        let card = pick(&self.found().await?, Some(rule));
+        let main = self.main_frame().await?;
         let context = self.main_world().await?;
         let session = self.session.clone();
+        self.cdp.evaluate(&session, context, "globalThis.__bipPay.detect()").await?; // the page's own card fields
+        // The frames holding the card's fields, by their owner element in the page (an iframe, around which the form is).
+        let mut frames: Vec<&str> = card.iter().filter(|f| f.frame != main).map(|f| f.frame.as_str()).collect();
+        frames.dedup();
+        for frame in frames {
+            let Ok(owner) = self.cdp.call("DOM.getFrameOwner", json!({"frameId": frame}), Some(&session)).await else {
+                continue;
+            };
+            let Some(node) = owner.get("backendNodeId").and_then(Value::as_i64) else { continue };
+            let resolve = json!({"backendNodeId": node, "executionContextId": context});
+            let Ok(resolved) = self.cdp.call("DOM.resolveNode", resolve, Some(&session)).await else { continue };
+            let Some(object) = resolved.get("object").and_then(|o| o.get("objectId")).and_then(Value::as_str) else {
+                continue;
+            };
+            let mark = json!({"objectId": object, "functionDeclaration": ANCHOR, "returnByValue": true});
+            let _ = self.cdp.call("Runtime.callFunctionOn", mark, Some(&session)).await;
+        }
         let find = format!(
             "globalThis.__bipPay.findButton({}, {})",
             serde_json::to_string(wanted).unwrap_or_default(),
             serde_json::to_string(amount_digits).unwrap_or_default()
         );
-        let Value::String(text) = self.cdp.evaluate(&session, context, &find).await? else { return Ok(None) };
-        self.cdp.evaluate(&session, context, "globalThis.__bipPay.clickButton()").await?;
-        Ok(Some(text))
+        if let Value::String(text) = self.cdp.evaluate(&session, context, &find).await? {
+            self.cdp.evaluate(&session, context, "globalThis.__bipPay.clickButton()").await?;
+            return Ok(Some(text));
+        }
+        // A provider whose pay button is in its own frame, with the card's number (its world found the fields).
+        for field in card.iter().filter(|f| f.kind == "number" && f.frame != main) {
+            if let Ok(Value::String(text)) = self.cdp.evaluate(&field.session, field.context, &find).await {
+                self.cdp.evaluate(&field.session, field.context, "globalThis.__bipPay.clickButton()").await?;
+                return Ok(Some(text));
+            }
+        }
+        Ok(None)
     }
 
     /// The bank asks the person to confirm (3-D Secure): a frame of an authentication server, or the page says so.
@@ -805,6 +873,7 @@ mod tests {
         Field {
             session: "s".into(),
             context: 1,
+            frame: String::new(),
             frame_url: String::new(),
             index: 0,
             kind: kind.into(),
