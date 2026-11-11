@@ -339,6 +339,47 @@ def test_a_held_day_shares_one_allowance(tmp_path, monkeypatch):
     assert validated[0].startswith("HTTP/1.1 200") and validated[1] == 100 * 1024
 
 
+def test_many_distinct_names_reach_the_days_total(tmp_path, monkeypatch):
+    """PI-5 (11/11): data spelt in host names, one name per CONNECT, nothing sent inside: each name's length counts
+    before it is looked up; the day's total is reached (one report), then the held day's allowance, then every new
+    name is refused without being looked up. The same name again costs nothing."""
+    proxy, _, reports = load(tmp_path, monkeypatch, AGENTS, dict(LIMITS, send_day=20 * 1024, held_day=4 * 1024))
+    looked_up = []
+
+    async def steps(port):
+        real = proxy.resolve
+
+        async def resolve(host, port):
+            looked_up.append(host)
+            return await real(host, port)
+
+        proxy.resolve = resolve
+        for _ in range(3):
+            (await tunnel(port, "same.example.net", VIE))[2].close()
+        same = proxy.day_of("vie")["unvalidated"]
+        looked_up.clear()
+        statuses = []
+        for i in range(200):
+            name = f"{i:04d}{'a' * 55}.{'b' * 60}.leak.example"     # 133 characters
+            status, _, writer = await tunnel(port, name, VIE)
+            writer.close()
+            statuses.append(status.split(" ")[1])
+        again = (await tunnel(port, "www.lemonde.fr", VIE))[0]
+        return same, statuses, again
+
+    same, statuses, again = asyncio.run(through(proxy, monkeypatch, Site(), steps))
+    assert same == len("same.example.net")
+    first_refused = statuses.index("403")
+    # 20 KB of names, then 4 KB more while held: about 154 + 30 names, then none
+    assert 150 <= first_refused <= 190, first_refused
+    assert set(statuses[first_refused:]) == {"403"} and len(looked_up) == first_refused
+    [line] = reports_of(reports)
+    assert line["day"] is True and line["host"].endswith(".leak.example")
+    # the held day spent: any new host not validated is refused
+    assert again.startswith("HTTP/1.1 403 Sending paused")
+    assert proxy.day_of("vie")["unvalidated"] <= 20 * 1024
+
+
 def test_refuser_holds_autoriser_frees(tmp_path, monkeypatch):
     """BV-7 (11/11): the person's « Refuser » reaches the proxy (`refused`, until its week ends): a new connection to
     that host is refused and nothing reaches it; past the date, or on another host, as before. « Autoriser » (the host

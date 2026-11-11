@@ -17,7 +17,8 @@ abuse complaint can be traced to an agent.
   `Proxy-Authorization` header is never passed on.
 - **Sending is guarded**: the tunnel is opaque (never any TLS interception), so the proxy counts what the client sends
   the site: a program's every byte (its TLS handshake too: a program frames data in any record type it likes), the
-  browser's TLS records past their first `browser_record_free` bytes each, whatever their type. To a host its person did not validate (the registries count as validated), past `send_site_hour` bytes per
+  browser's TLS records past their first `browser_record_free` bytes each, whatever their type; and the name of each
+  host not validated it connects to, once a day per name (data can be spelt in names). To a host its person did not validate (the registries count as validated), past `send_site_hour` bytes per
   host per hour, or `send_day` bytes per agent per day across such hosts (a slow leak), the tunnel is cut: nothing more
   reaches the site, the proxy keeps reading what the client still sends for a few seconds to know its size, then
   appends one line `{"kind": "send", "agent", "host", "bytes"}` to `BIP_REPORTS` (the bridge reads it and asks the
@@ -83,6 +84,8 @@ SINK_IDLE = 3.0
 SINK_SECONDS = 30.0
 SINK_MAX = 1 << 30
 USAGE_EVERY = 60
+# names of hosts not validated an agent connected to today, each charged once (`charge_name`); past so many, each time
+NAMES_SEEN = 4096
 EXIT_SOCK = os.environ.get("BIP_EXIT_SOCK", "")
 # the first label under a routed site that marks static files (bridge-rs phone_exit/checks.rs STATIC_LABELS)
 STATIC_LABELS = frozenset(("assets", "static", "statics", "cdn", "img", "images", "image", "media", "medias", "fonts",
@@ -342,7 +345,7 @@ def day_of(agent):
     if entry is None or entry["day"] != day:
         kept = entry or {}
         entry = {"day": day, "since": max(now, kept.get("since", 0)), "sent": 0, "received": 0, "unvalidated": 0,
-                 "connections": 0, "held": False, "held_sent": 0, "download_logged": False}
+                 "connections": 0, "held": False, "held_sent": 0, "download_logged": False, "names": set()}
         _days[agent] = entry
         if len(_days) > 4096:
             _days.clear()
@@ -416,6 +419,34 @@ def held_spent(agent, host):
     used = _held_used.get((agent, host))
     host_spent = used is not None and used[0] > time.time() and used[1] >= limit("held_site")
     return host_spent or day["held_sent"] >= limit("held_day")
+
+
+def charge_name(agent, host):
+    """A new connection (a CONNECT, a plain-HTTP request) to a host not validated: its name's length counts as sent,
+    before it is looked up — data can be spelt in names (11/11 audit PI-5), many distinct ones reach the day's total
+    like any slow leak (one report, then the held day). A name counts once a day (connecting again to it carries
+    nothing new), up to NAMES_SEEN names, then every time. False: refused (the held day's allowance went)."""
+    day = day_of(agent)
+    seen = day["names"]
+    if host in seen:
+        return True
+    if len(seen) < NAMES_SEEN:
+        seen.add(host)
+    size = len(host)
+    if not hold_of(agent, host, day) and day["unvalidated"] + size > limit("send_day"):
+        day["held"] = True
+        append_report({"kind": "send", "agent": agent, "host": host[:253], "bytes": int(day["unvalidated"] + size),
+                       "day": True, "at": int(time.time())})
+        log(f"cut (send: the day's total reached, {day['unvalidated'] + size} bytes, names included)", "NAME", host,
+            agent)
+    if hold_of(agent, host, day):
+        if day["held_sent"] + size > limit("held_day"):
+            day["held_sent"] = max(day["held_sent"], limit("held_day"))
+            return False
+        day["held_sent"] += size
+        return True
+    day["unvalidated"] += size
+    return True
 
 
 class Tls:
@@ -831,7 +862,7 @@ async def handle(reader, writer):
         if refused(agent, host):
             log("blocked (refused by the person)", method, target, agent)
             return await answer(writer, 403, REFUSED)
-        if held_spent(agent, host):
+        if held_spent(agent, host) or not charge_name(agent, host):
             log("blocked (sending paused: a card waits)", method, target, agent)
             return await answer(writer, 403, PAUSED)
     if agent is not None and too_many_connections(agent):
