@@ -137,9 +137,25 @@ fn server_name(server: &str) -> String {
 
 static SPACES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[ \t\x0B\x0C\r]+").expect("valid regex"));
 
-/// One line with its runs of spaces and tabs folded to one space.
+/// A character that changes how the text around it reads without being seen: zero-width marks and joiners, bidi
+/// embeddings, overrides and isolates (U+202E turns « exe.txt » into « txt.exe »), the byte-order mark. The list of
+/// `cards::quoted`, plus U+061C, U+2060–2064 and U+FEFF (audit 11/11 BV-13).
+fn invisible(c: char) -> bool {
+    matches!(c, '\u{061c}' | '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{2069}' | '\u{feff}')
+}
+
+/// `text` without its invisible characters, its other control characters (but line breaks and tabs) as spaces: what an
+/// agent, a tool or an MCP server wrote, before it reaches a card.
+fn visible(text: &str) -> String {
+    text.chars()
+        .filter(|c| !invisible(*c))
+        .map(|c| if c.is_control() && c != '\n' && c != '\t' { ' ' } else { c })
+        .collect()
+}
+
+/// One line, its invisible characters dropped and its runs of spaces and tabs folded to one space.
 fn folded(line: &str) -> String {
-    SPACES.replace_all(line.trim(), " ").to_string()
+    SPACES.replace_all(visible(line).trim(), " ").to_string()
 }
 
 /// At most `max` characters (« … » when cut).
@@ -226,8 +242,16 @@ fn deletes(description: &str) -> bool {
 
 /// The sentence and detail for an `approval.request` of agent `name`, in `lang` (« fr », « en », « de », « es »);
 /// `last`: the tool Hermes started just before; `place`: where its programs run (a script stays « dans son espace »
-/// only in its own sandbox, audit #14). None: nothing recognised, the apps keep their own reading.
+/// only in its own sandbox, audit #14). None: nothing recognised, the apps keep their own reading. Every word the agent,
+/// a tool or a server chose (name, command, preview, message, file names) reaches the card without its invisible
+/// characters (`visible`).
 pub fn describe(name: &str, lang: &str, data: &Map<String, Value>, last: Option<&LastTool>, place: Place)
+    -> Option<Described> {
+    described(name, lang, data, last, place)
+        .map(|d| Described { summary: visible(&d.summary), detail: d.detail.map(|d| visible(&d)) })
+}
+
+fn described(name: &str, lang: &str, data: &Map<String, Value>, last: Option<&LastTool>, place: Place)
     -> Option<Described> {
     let command = text(data, "command");
     let description = text(data, "description");
@@ -504,5 +528,42 @@ mod tests {
         assert_eq!(summary("fr", pay, None), None);
         assert_eq!(summary("fr", json!({"command": "<click>", "pattern_key": "cua:click", "description": "x"}), None), None);
         assert_eq!(summary("fr", json!({}), None), None);
+    }
+
+    #[test]
+    fn invisible_characters_never_reach_a_card() {
+        let hidden = ['\u{202e}', '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}', '\u{200b}', '\u{200c}', '\u{200d}',
+                      '\u{200e}', '\u{200f}', '\u{feff}'];
+        let seen = |d: &Described| {
+            let all = format!("{}{}", d.summary, d.detail.clone().unwrap_or_default());
+            hidden.iter().filter(|c| all.contains(**c)).count()
+        };
+        let sneaky = hidden.iter().collect::<String>();
+        // a command not read, on a computer: its first lines in the sentence, the whole of it in the detail
+        let cmd = json!({"command": format!("dd if=/dev/zero of=/dev/s{sneaky}db"), "description": format!("disk{sneaky}")});
+        let d = describe(&format!("Well{sneaky}ness"), "en", &data(cmd), None, Place::Machine).unwrap();
+        assert_eq!(seen(&d), 0, "{d:?}");
+        assert_eq!(d.summary, "Wellness wants to run a command on your machine, with access to your files:\ndd if=/dev/zero of=/dev/sdb");
+        // an MCP server's message and a tool's preview and name
+        let asked = json!({"command": format!("Allow\u{202e}txt.exe{sneaky}?"), "pattern_key": "mcp_elicitation"});
+        let d = describe("Vie", "fr", &data(asked), None, Place::Own).unwrap();
+        assert_eq!(seen(&d), 0, "{d:?}");
+        assert_eq!(d.summary, "Vie demande ta confirmation : « Allowtxt.exe? »");
+        let gate = json!({"command": format!("MCP tool 'look{sneaky}up' on UNTRUSTED server 'finary' wants to run."),
+                          "pattern_key": "mcp_elicitation"});
+        let last = LastTool { name: "look_up".into(), preview: format!("note\u{2066}.pdf\u{2069}") };
+        let d = describe("Vie", "fr", &data(gate), Some(&last), Place::Own).unwrap();
+        assert_eq!(seen(&d), 0, "{d:?}");
+        assert_eq!(d.summary, "Vie veut utiliser lookup de Finary : « note.pdf »");
+        // a file name a recognised command acts on
+        let rm = json!({"command": format!("rm -rf /workspace/o{sneaky}ld"), "description": "recursive delete"});
+        let d = describe("Vie", "fr", &data(rm), None, Place::Own).unwrap();
+        assert_eq!(seen(&d), 0, "{d:?}");
+        // ordinary French, accents, guillemets and its narrow no-break spaces: unchanged
+        let french = "Créer l’événement « Réunion à 14 h » — déjà prévu ?\u{202f}Oui";
+        let asked = json!({"command": french, "pattern_key": "mcp_elicitation"});
+        let d = describe("Hélène", "fr", &data(asked), None, Place::Own).unwrap();
+        assert_eq!(d.summary, format!("Hélène demande ta confirmation : « {french} »"));
+        assert_eq!(d.detail.as_deref(), Some(french));
     }
 }
