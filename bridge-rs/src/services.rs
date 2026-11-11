@@ -1,8 +1,14 @@
 //! Services connected to an agent (MCP servers), from the app's catalog (tool_catalog.yaml).
 //!
-//! Written into the agent's profile by the one writer of profile files (profile_files.rs), which its gateway
-//! re-reads within about a minute: no restart. A token goes to the profile's .env (0600) and the config only
-//! refers to it (`Bearer ${MCP_<NAME>_API_KEY}`), so it never appears on a command line or in config.yaml.
+//! Written into the agent's profile by the one writer of profile files (profile_files.rs). Its running Hermes is not
+//! relied on to connect it: each change asks for its gateway to be restarted once the agent is idle
+//! ([`changed`]; 11/11, a service added to a running gateway stayed without its tools until a restart). A token goes
+//! to the profile's .env (0600) and the config only refers to it (`Bearer ${MCP_<NAME>_API_KEY}`), so it never
+//! appears on a command line or in config.yaml.
+//!
+//! « Tester » runs `hermes mcp test` from the bridge, as the same account and on the same machine as the agent's
+//! gateway (its MCP client runs there, never in the sandbox nor through its proxy): « Joint » says the agent's Hermes
+//! reaches the service, not that its running gateway has its tools yet.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -271,6 +277,7 @@ pub async fn add(config: &Config, agent: &AgentConfig, body: &Dict, _run: &Run) 
     let path = home.join("profiles").join(&agent.name).join("config.yaml");
     crate::profile_files::edit(&path, |data| crate::profile_files::set_server(data, &name, Some(&entry)))?;
     tracing::info!(agent = %agent.name, service = %name, catalog = %catalog_id, "service connected");
+    changed(agent);
     let mut out = Dict::new();
     out.insert("name".into(), json!(name));
     out.insert("url".into(), json!(url));
@@ -293,7 +300,14 @@ pub async fn remove(config: &Config, agent: &AgentConfig, name: &str, _run: &Run
     crate::profile_files::edit(&path, |data| crate::profile_files::set_server(data, name, None))?;
     set_env(&home.join("profiles").join(&agent.name).join(".env"), &env_name(name), None)?;
     tracing::info!(agent = %agent.name, service = %name, "service removed");
+    changed(agent);
     Ok(())
+}
+
+/// One of the agent's services added, changed or removed: its gateway restarted once it is idle (agent_restart.rs
+/// [`SERVICES`](crate::agent_restart::SERVICES); several changes in a row make one restart).
+pub fn changed(agent: &AgentConfig) {
+    crate::agent_restart::request_restart(&agent.name, crate::agent_restart::SERVICES);
 }
 
 static TOOLS_FOUND: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"Tools discovered: (\d+)").expect("valid regex"));
