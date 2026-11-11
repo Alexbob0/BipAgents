@@ -310,12 +310,51 @@ struct Held {
     target: String,
     typed: bool,
     loader: String,
+    /// Asked to stop (`cancelled` by cancel_payment, `suspended` by « Suspendre tous les paiements »): a payment still
+    /// reloading the page or typing sees it before its next step, types nothing more and ends with that outcome.
+    stop: Option<&'static str>,
 }
 
 static HELD: LazyLock<Mutex<HashMap<String, Held>>> = LazyLock::new(Default::default);
 
 fn held() -> std::sync::MutexGuard<'static, HashMap<String, Held>> {
     HELD.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// The payment `token` still holds `agent`'s browser and nobody asked it to stop: it may go on typing.
+fn still_ours(agent: &str, token: &str) -> bool {
+    held().get(agent).is_some_and(|e| e.token == token && e.stop.is_none())
+}
+
+/// Why the payment `token` of `agent` was asked to stop, if it was.
+fn stopped(agent: &str, token: &str) -> Option<&'static str> {
+    held().get(agent).filter(|e| e.token == token).and_then(|e| e.stop)
+}
+
+/// The payment holding `agent`'s browser asked to stop (`why`: its outcome): whether there is one. Asked before the
+/// agent's lock is waited for, so a payment that holds it (reloading the page, typing) stops at its next step instead
+/// of typing the card into a page whose hold is about to be lifted (fix review 11/11, B1).
+fn ask_stop(agent: &str, why: &'static str) -> bool {
+    match held().get_mut(agent) {
+        Some(entry) => {
+            if entry.stop.is_none() {
+                entry.stop = Some(why);
+            }
+            true
+        }
+        None => false,
+    }
+}
+
+const STOPPED: &str = "The payment was stopped (cancel_payment, or the person suspended the payments) before it was \
+done: nothing of the card stays in the page, and your browser shows an empty page. Don't pay; tell the person.";
+
+/// The payment `token` ends with nothing more typed: given back as `outcome`, or as the stop asked meanwhile (then
+/// the agent is told so, not `say`).
+async fn give_up(config: &Config, agent: &str, token: &str, outcome: &'static str, say: &str) -> Dict {
+    let why = stopped(agent, token);
+    release(config, agent, why.unwrap_or(outcome)).await;
+    refusal(if why.is_some() { STOPPED } else { say })
 }
 
 fn journal(config: &Config, held: &Held, agent: &str, outcome: &str) {
@@ -356,8 +395,9 @@ async fn release(config: &Config, agent: &str, outcome: &str) -> bool {
             }
             let moved_on = outcome == "page_moved_on"
                 && page.loader().await.is_ok_and(|now| !entry.loader.is_empty() && now != entry.loader);
-            // Nothing typed yet (the fresh page did not come): the agent's page stays as it was.
-            if entry.typed && !moved_on {
+            // Nothing typed yet (the fresh page did not come): the agent's page stays as it was. Stopped (cancel,
+            // suspend) while reloading or typing: left on an empty page all the same.
+            if (entry.typed || entry.stop.is_some()) && !moved_on {
                 match page.blank().await {
                     Ok(()) => blanked = true,
                     Err(exc) => tracing::warn!(agent = %agent, exc = %exc, "card payment: payment page not left"),
@@ -376,31 +416,38 @@ async fn release(config: &Config, agent: &str, outcome: &str) -> bool {
     blanked
 }
 
-/// Watches a held browser: given back when its page moves on, or after `HOLD_LIMIT`.
-fn watch(state: AppState, agent: String) {
+/// Watches the held browser of payment `payment`: given back when its page moves on, or after `HOLD_LIMIT`; stops
+/// watching once another payment (or none) holds it. Gives it back under the agent's lock, like every other way out.
+fn watch(state: AppState, agent: String, payment: String) {
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(2)).await;
-            let Some(entry) = held().get(&agent).cloned() else { return };
+            let Some(entry) = held().get(&agent).filter(|e| e.payment == payment).cloned() else { return };
             let config = state.config();
-            if entry.since.elapsed() > HOLD_LIMIT {
-                release(&config, &agent, "timed_out").await;
-                return;
-            }
-            let moved = match Page::open(entry.port, Some(&entry.token)).await {
-                Ok(mut page) => page.url().await.map(|u| page_of(&u) != page_of(&entry.url)).unwrap_or(false),
-                Err(FillError::NoPage) => true,
-                Err(_) => false,
+            let outcome = if entry.since.elapsed() > HOLD_LIMIT {
+                "timed_out"
+            } else {
+                let moved = match Page::open(entry.port, Some(&entry.token)).await {
+                    Ok(mut page) => page.url().await.map(|u| page_of(&u) != page_of(&entry.url)).unwrap_or(false),
+                    Err(FillError::NoPage) => true,
+                    Err(_) => false,
+                };
+                if !moved {
+                    continue;
+                }
+                "page_moved_on"
             };
-            if moved {
-                release(&config, &agent, "page_moved_on").await;
-                return;
+            let _one_at_a_time = lock_of(&agent).lock_owned().await;
+            if held().get(&agent).is_some_and(|e| e.payment == payment) {
+                release(&config, &agent, outcome).await;
             }
+            return;
         }
     });
 }
 
 /// Every payment stopped: those asked are refused, the held browsers given back (« Suspendre tous les paiements »).
+/// A payment still reloading its page or typing is asked to stop first, then given back once it has (its lock).
 pub async fn stop_all(config: &Config) {
     for entry in pending().values_mut() {
         entry.denied = true;
@@ -409,7 +456,11 @@ pub async fn stop_all(config: &Config) {
         entry.notify.notify_waiters();
     }
     let agents: Vec<String> = held().keys().cloned().collect();
+    for agent in &agents {
+        ask_stop(agent, "suspended");
+    }
     for agent in agents {
+        let _one_at_a_time = lock_of(&agent).lock_owned().await;
         release(config, &agent, "suspended").await;
     }
 }
@@ -631,6 +682,7 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
         target: page.target.clone(),
         typed: false,
         loader: String::new(),
+        stop: None,
     };
     if let Some(why) = cards::over_cap(&meta, &card.label, cents, &currency) {
         journal(&config, &entry, &agent.name, "refused_cap");
@@ -696,23 +748,24 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
         ));
     }
     held().insert(agent.name.clone(), entry.clone());
-    let (mut page, fields) = match fresh_page(&config, &agent.name, &entry).await {
+    let (agent_name, token) = (agent.name.as_str(), entry.token.as_str());
+    let still = || still_ours(agent_name, token);
+    let (mut page, fields) = match fresh_page(&config, &agent.name, &entry, &still).await {
         Ok(found) => found,
         Err(say) => {
             drop(code);
-            release(&config, &agent.name, "failed").await;
-            return Ok(refusal(&say));
+            return Ok(give_up(&config, &agent.name, token, "failed", &say).await);
         }
     };
-    typing_into(&agent.name, &mut page).await;
-    let typed = type_card(&card, code, &mut page, &fields).await;
+    if !typing_into(&agent.name, token, &mut page).await {
+        drop(code);
+        return Ok(give_up(&config, &agent.name, token, "failed", STOPPED).await);
+    }
+    let typed = type_card(&card, code, &mut page, &fields, &still).await;
     drop(page);
     let filled = match typed {
         Ok(filled) => filled,
-        Err(say) => {
-            release(&config, &agent.name, "failed").await;
-            return Ok(refusal(&say));
-        }
+        Err(say) => return Ok(give_up(&config, &agent.name, token, "failed", &say).await),
     };
     let payment = json!({"at": entry.since_text, "site": host, "cents": cents, "amount": cards::format_cents(cents),
                          "currency": currency, "agent": agent.name, "for": merchant});
@@ -720,7 +773,7 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
     crate::vault_contacts::note_mark(state, &agent.name, PAY, &crate::vault_contacts::mark(&card.id, &card.label));
     journal(&config, &entry, &agent.name, "typed");
     tracing::info!(agent = %agent.name, site = %host, fields = %filled.join(","), "card payment: card typed");
-    watch(state.clone(), agent.name.clone());
+    watch(state.clone(), agent.name.clone(), entry.payment.clone());
     let mut answer = format!(
         "The person approved {} {currency} on {host}. The card « {} » is typed into the page ({}). Your browser is \
          paused until the payment ends (nobody may read the card). If the total you read before was {} {currency}, \
@@ -781,11 +834,20 @@ async fn calls_done(config: &Config, agent: &str) -> bool {
 
 /// Under the hold, before anything is typed: the payment page as a document the agent never touched (card_fill.rs
 /// `fresh`), checked again (the page and site the person approved, https, a card number field in a frame the card
-/// may go to), with its card fields. Else what to tell the agent, nothing typed.
-async fn fresh_page(config: &Config, agent: &str, entry: &Held) -> Result<(Page, Vec<card_fill::Field>), String> {
+/// may go to), with its card fields. Else what to tell the agent, nothing typed; `STOPPED` as soon as `still` says the
+/// payment was stopped.
+async fn fresh_page(
+    config: &Config,
+    agent: &str,
+    entry: &Held,
+    still: card_fill::Still<'_>,
+) -> Result<(Page, Vec<card_fill::Field>), String> {
     tokio::time::sleep(RELAY_CLOSES).await;
     let deadline = Instant::now() + CALLS_WAIT;
     while !calls_done(config, agent).await {
+        if !still() {
+            return Err(STOPPED.into());
+        }
         if Instant::now() >= deadline {
             return Err("Your browser was still busy with another of your tools when the person approved: nothing \
                         was typed. Call pay_with_card again once your browser tools have finished (the person is \
@@ -812,8 +874,12 @@ async fn fresh_page(config: &Config, agent: &str, entry: &Held) -> Result<(Page,
         "The payment page was refreshed for the payment and came back without its card form (some sites lose the \
          order when the page is refreshed): nothing was typed. {HAND_IT_OVER}"
     );
-    let url = match page.fresh(RELOAD_WAIT).await {
+    if !still() {
+        return Err(STOPPED.into());
+    }
+    let url = match page.fresh(RELOAD_WAIT, still).await {
         Ok(url) => url,
+        Err(FillError::Stopped) => return Err(STOPPED.into()),
         Err(FillError::Protocol(why)) => {
             tracing::info!(agent = %agent, why = %why, "card payment: payment page not reloaded");
             return Err(lost);
@@ -833,6 +899,9 @@ async fn fresh_page(config: &Config, agent: &str, entry: &Held) -> Result<(Page,
     let rule = card_fill::Frames::new(&url, &entry.sites);
     let deadline = Instant::now() + FORM_WAIT;
     loop {
+        if !still() {
+            return Err(STOPPED.into());
+        }
         let fields = page.fields_in(&rule).await.map_err(|e| unreachable_text(&e))?;
         if fields.iter().any(|f| f.kind == "number") {
             return Ok((page, fields));
@@ -844,12 +913,17 @@ async fn fresh_page(config: &Config, agent: &str, entry: &Held) -> Result<(Page,
     }
 }
 
-/// Typing begins in this page: kept with the hold, with its document (`release` tells it from a new one).
-async fn typing_into(agent: &str, page: &mut Page) {
+/// Typing begins in this page: kept with the hold, with its document (`release` tells it from a new one). False, and
+/// nothing may be typed, when the hold is no longer this payment's (`token`) or it was asked to stop.
+async fn typing_into(agent: &str, token: &str, page: &mut Page) -> bool {
     let loader = page.loader().await.unwrap_or_default();
-    if let Some(entry) = held().get_mut(agent) {
-        entry.typed = true;
-        entry.loader = loader;
+    match held().get_mut(agent) {
+        Some(entry) if entry.token == token && entry.stop.is_none() => {
+            entry.typed = true;
+            entry.loader = loader;
+            true
+        }
+        _ => false,
     }
 }
 
@@ -859,9 +933,10 @@ async fn type_card(
     approved: Approved,
     page: &mut Page,
     fields: &[card_fill::Field],
+    still: card_fill::Still<'_>,
 ) -> Result<Vec<String>, String> {
     let code = match approved {
-        Approved::Card(values) => return type_values(values, page, fields).await,
+        Approved::Card(values) => return type_values(values, page, fields, still).await,
         Approved::Code(code) => code,
     };
     let num = |key: &str| card.secret.get(key).and_then(Value::as_u64).unwrap_or(0) as u32;
@@ -875,9 +950,18 @@ async fn type_card(
         postal_code: string("postal_code"),
     };
     drop(code);
-    let filled = page.fill(fields, &values).await;
+    let filled = page.fill(fields, &values, still).await;
     drop(values);
-    let filled = filled.map_err(|e| format!("The card could not be typed ({e}). Don't pay; tell the person."))?;
+    filled_or_why(filled)
+}
+
+/// What `fill` typed, or what to tell the agent (a payment stopped meanwhile: `give_up` says it).
+fn filled_or_why(filled: Result<Vec<String>, FillError>) -> Result<Vec<String>, String> {
+    let filled = match filled {
+        Ok(filled) => filled,
+        Err(FillError::Stopped) => return Err(STOPPED.into()),
+        Err(e) => return Err(format!("The card could not be typed ({e}). Don't pay; tell the person.")),
+    };
     if !filled.iter().any(|k| k == "number") {
         return Err("The card number could not be typed into the page. Don't pay; tell the person.".into());
     }
@@ -890,6 +974,10 @@ async fn confirm(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> any
     let Some(entry) = held().get(&agent.name).cloned() else {
         return Ok(refusal("No payment is waiting: call pay_with_card first."));
     };
+    if entry.stop.is_some() {
+        return Ok(refusal("This payment is being given up (cancel_payment, or the person suspended the payments): \
+                           nothing is clicked. Don't pay."));
+    }
     let mut page = match Page::open(entry.port, Some(&entry.token)).await {
         Ok(page) => page,
         Err(exc) => return Ok(refusal(&unreachable_text(&exc))),
@@ -956,10 +1044,13 @@ async fn confirm(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> any
     )))
 }
 
+/// The payment given up: asked to stop first (a payment still reloading or typing types nothing more), then given back
+/// under the agent's lock, once (by the payment itself when it saw the stop).
 async fn cancel(state: &AppState, agent: &AgentConfig) -> Dict {
-    if !held().contains_key(&agent.name) {
+    if !ask_stop(&agent.name, "cancelled") {
         return text("No payment in progress.");
     }
+    let _one_at_a_time = lock_of(&agent.name).lock_owned().await;
     release(&state.config(), &agent.name, "cancelled").await;
     text(
         "The payment is given up: the card was erased and the payment page closed (your browser shows an empty page); \
@@ -1003,6 +1094,7 @@ pub(crate) async fn pay_with_values(
         target: String::new(), // the agent's page, found under the hold (`fresh_page`)
         typed: false,
         loader: String::new(),
+        stop: None,
     };
     if let Some(folder) = crate::desktop::desktop_dir(&config, agent).filter(|f| f.is_dir()) {
         if crate::desktop::app_holds(&folder) {
@@ -1022,27 +1114,28 @@ pub(crate) async fn pay_with_values(
     }
     held().insert(agent.name.clone(), entry.clone());
     journal(&config, &entry, &agent.name, "approved");
-    let (mut page, fields) = match fresh_page(&config, &agent.name, &entry).await {
+    let (agent_name, token) = (agent.name.as_str(), entry.token.as_str());
+    let still = || still_ours(agent_name, token);
+    let (mut page, fields) = match fresh_page(&config, &agent.name, &entry, &still).await {
         Ok(found) => found,
         Err(say) => {
             drop(values);
-            release(&config, &agent.name, "failed").await;
-            return refusal(&say);
+            return give_up(&config, &agent.name, token, "failed", &say).await;
         }
     };
-    typing_into(&agent.name, &mut page).await;
-    let typed = type_values(values, &mut page, &fields).await;
+    if !typing_into(&agent.name, token, &mut page).await {
+        drop(values);
+        return give_up(&config, &agent.name, token, "failed", STOPPED).await;
+    }
+    let typed = type_values(values, &mut page, &fields, &still).await;
     drop(page);
     let filled = match typed {
         Ok(filled) => filled,
-        Err(say) => {
-            release(&config, &agent.name, "failed").await;
-            return refusal(&say);
-        }
+        Err(say) => return give_up(&config, &agent.name, token, "failed", &say).await,
     };
     journal(&config, &entry, &agent.name, "typed");
     tracing::info!(agent = %agent.name, site = %host, fields = %filled.join(","), "one-time card typed");
-    watch(state.clone(), agent.name.clone());
+    watch(state.clone(), agent.name.clone(), entry.payment.clone());
     text(&format!(
         "The one-time card « {label} » is typed into the page ({}). Your browser is paused until the payment ends \
          (nobody may read the card). If the total on the page is still {} {currency}, call confirm_payment with the \
@@ -1053,14 +1146,15 @@ pub(crate) async fn pay_with_values(
 }
 
 /// `values` typed into the fresh page's fields, wiped when done.
-async fn type_values(values: CardValues, page: &mut Page, fields: &[card_fill::Field]) -> Result<Vec<String>, String> {
-    let filled = page.fill(fields, &values).await;
+async fn type_values(
+    values: CardValues,
+    page: &mut Page,
+    fields: &[card_fill::Field],
+    still: card_fill::Still<'_>,
+) -> Result<Vec<String>, String> {
+    let filled = page.fill(fields, &values, still).await;
     drop(values);
-    let filled = filled.map_err(|e| format!("The card could not be typed ({e}). Don't pay; tell the person."))?;
-    if !filled.iter().any(|k| k == "number") {
-        return Err("The card number could not be typed into the page. Don't pay; tell the person.".into());
-    }
-    Ok(filled)
+    filled_or_why(filled)
 }
 
 /// `confirm_payment` and `cancel_payment` for a card typed by another entry (link_wallet.rs).

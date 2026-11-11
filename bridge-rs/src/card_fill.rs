@@ -118,7 +118,13 @@ pub enum FillError {
     NoPage,
     #[error("browser protocol: {0}")]
     Protocol(String),
+    /// The payment was stopped meanwhile (cancel_payment, payments suspended): nothing more was typed.
+    #[error("the payment was stopped")]
+    Stopped,
 }
+
+/// Whether the payment typing the card still holds the browser (card_pay.rs): looked at before each step.
+pub type Still<'a> = &'a (dyn Fn() -> bool + Sync);
 
 fn protocol(text: impl Into<String>) -> FillError {
     FillError::Protocol(text.into())
@@ -445,8 +451,8 @@ impl Page {
     /// agent's tools can't register a script for every new document (the browser's MCP server runs without its
     /// cdp-functions and dynamic-hooks sections, browser/mcp.sh), and what a DevTools connection registered dies with
     /// it (the relay closed them all when the hold started); its tool calls wait (hold_gate.py), and card_pay.rs waits
-    /// for those already running before calling this.
-    pub async fn fresh(&mut self, wait: Duration) -> Result<String, FillError> {
+    /// for those already running before calling this. `Stopped` as soon as `still` says the payment was stopped.
+    pub async fn fresh(&mut self, wait: Duration, still: Still<'_>) -> Result<String, FillError> {
         for other in self.other_tabs().await? {
             let _ = self.cdp.call("Target.closeTarget", json!({"targetId": other}), None).await;
         }
@@ -469,6 +475,10 @@ impl Page {
         self.cdp.call("Page.reload", json!({"ignoreCache": true}), Some(&session)).await?;
         let deadline = tokio::time::Instant::now() + wait;
         loop {
+            if !still() {
+                self.cdp.leave = false;
+                return Err(FillError::Stopped);
+            }
             if self.loader().await.is_ok_and(|now| now != before) {
                 let state = self
                     .cdp
@@ -652,12 +662,17 @@ impl Page {
     }
 
     /// The card typed into its fields: the kinds filled, in order. A postcode the page already holds is left alone.
-    pub async fn fill(&mut self, fields: &[Field], card: &CardValues) -> Result<Vec<String>, FillError> {
+    /// Before each field, `still` says whether the payment still holds the browser: else `Stopped`, nothing more typed
+    /// (cancel_payment or « Suspendre tous les paiements » came while the page was reloaded or typed into).
+    pub async fn fill(&mut self, fields: &[Field], card: &CardValues, still: Still<'_>) -> Result<Vec<String>, FillError> {
         let mut filled = Vec::new();
         for field in fields {
             let Some(text) = card.text_for(field) else { continue };
             if field.kind == "postal" && !field.empty {
                 continue;
+            }
+            if !still() {
+                return Err(FillError::Stopped);
             }
             let ok = if field.tag == "select" {
                 let expression =

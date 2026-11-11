@@ -15,6 +15,7 @@ import threading
 import time
 
 import httpx
+import pytest
 import websockets
 from cryptography.fernet import Fernet
 from websockets.asyncio.server import serve
@@ -54,6 +55,8 @@ class FakeChrome:
         self.reloads = 0
         self.reload_to = None   # the address a reload ends on (a redirect), else the same
         self.lose_form = False  # a reload brings the page back without its card form
+        self.reload_delay = 0   # seconds Page.reload takes to answer
+        self.reloading = False  # a Page.reload was asked (before its answer)
         self.others = []        # other tabs (their target ids)
         self.closed = []
         self.cleared = []       # Storage.clearDataForOrigin's parameters
@@ -96,6 +99,9 @@ class FakeChrome:
             method, params, session = message["method"], message.get("params", {}), message.get("sessionId")
             for event in self._events(method, session):
                 await ws.send(json.dumps(event))
+            if method == "Page.reload":
+                self.reloading = True
+                await asyncio.sleep(self.reload_delay)
             try:
                 result = self._answer(method, params, session)
                 await ws.send(json.dumps({"id": message["id"], "result": result, **({"sessionId": session} if session else {})}))
@@ -431,6 +437,48 @@ def test_suspending_gives_the_browser_back_with_the_card_erased(bridges, fakes):
         assert chrome.navigated == ["about:blank"]   # then the tab left on an empty page, before the hold is lifted
         assert bridge.commands.of("podman")[-1][-1].endswith("rm -f /tmp/bipagents-hold; exit 0")
         assert "No payment is waiting" in tool(bridge, "confirm_payment", {"button": "Payer"})["content"][0]["text"]
+    finally:
+        chrome.stop()
+
+
+HOLD_LIFTED = "rm -f /tmp/bipagents-hold; exit 0"
+
+
+@pytest.mark.parametrize("how", ["cancel_payment", "suspend"])
+def test_a_payment_stopped_while_the_page_reloads_types_nothing(bridges, fakes, how):
+    # Fix review 11/11, B1: cancel_payment (another run of the agent) or « Suspendre tous les paiements » arriving while
+    # the bridge reloads the payment page used to lift the hold while the bridge went on and typed the card into a page
+    # nobody held any more. Now the payment is asked to stop first, types nothing, leaves the tab on an empty page,
+    # and the hold is lifted once, after that.
+    chrome = FakeChrome()
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome)
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json=CARD)
+        chrome.reload_delay = 2
+        paid = {}
+        paying = threading.Thread(target=lambda: paid.update(result=pay(bridge, ARGS)[0]))
+        paying.start()
+        deadline = time.monotonic() + 60
+        while not chrome.reloading and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert chrome.reloading, "the payment page was never reloaded"
+        if how == "cancel_payment":
+            answer = tool(bridge, "cancel_payment")["content"][0]["text"]
+            assert answer.startswith("The payment is given up")
+        else:
+            assert bridge.post("/v1/vault/payments", headers=AUTH, json={"enabled": False}).json()["active"] == []
+        paying.join(60)
+        result = paid["result"]
+        assert result["isError"] is True and "stopped" in result["content"][0]["text"], result
+        assert chrome.typed == [] and chrome.values == {}
+        assert chrome.navigated == ["about:blank"]
+        podman = [c[-1] for c in bridge.commands.of("podman")]
+        assert podman.count(HOLD_LIFTED) == 1 and podman[-1] == HOLD_LIFTED   # once, after the empty page
+        outcome = "cancelled" if how == "cancel_payment" else "suspended"
+        outcomes = [e["outcome"] for e in bridge.get("/v1/vault/payments", headers=AUTH).json()["journal"]]
+        assert outcomes.count(outcome) == 1 and "typed" not in outcomes and "failed" not in outcomes
+        assert bridge.get("/v1/vault/payments", headers=AUTH).json()["active"] == []
     finally:
         chrome.stop()
 
