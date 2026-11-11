@@ -200,7 +200,7 @@ async def through(proxy, monkeypatch, site, steps):
 
     monkeypatch.setattr(proxy, "resolve", resolve)
     monkeypatch.setattr(proxy, "connect", connect)
-    server = await asyncio.start_server(proxy.handle, "127.0.0.1", 0)
+    server = await proxy.start("127.0.0.1", 0)
     port = server.sockets[0].getsockname()[1]
     try:
         return await steps(port)
@@ -245,7 +245,7 @@ async def send_tls(port, host, auth, app_bytes, chunk=16000, kind=23):
 
 
 VIE = basic("vie", "t-vie")
-LIMITS = {"send_site_hour": 64 * 1024, "send_day": 256 * 1024, "held_site": 16 * 1024, "held_day": 64 * 1024}
+LIMITS = {"send_site_hour": 64 * 1024, "send_day": 256 * 1024, "held_site": 16 * 1024, "held_hour": 64 * 1024}
 
 
 def test_a_big_upload_is_cut_with_one_report_a_validated_site_passes(tmp_path, monkeypatch):
@@ -320,13 +320,38 @@ def test_a_held_host_shares_one_allowance_then_refuses(tmp_path, monkeypatch):
     assert 4 * (522 + 3005) <= out["held"] <= 16 * 1024, out["held"]
     statuses = [t[0].split(" ")[1] for t in out["tunnels"]]
     assert statuses == ["200"] * 5 + ["403"] * 15, statuses
-    assert out["tunnels"][-1][0] == "HTTP/1.1 403 Sending paused - your person has a card to answer about this site"
+    assert out["tunnels"][-1][0] == ("HTTP/1.1 403 Sending paused - your person has a card to answer about this site, "
+                                     "retry within the hour")
     assert out["other"][0].startswith("HTTP/1.1 200")
 
 
-def test_a_held_day_shares_one_allowance(tmp_path, monkeypatch):
-    """Past the day's total every host not validated is held: all of them together get held_day (64 KB) more, then
-    new connections to them are refused; a validated host still passes."""
+def test_a_big_retry_spends_only_its_hosts_allowance(tmp_path, monkeypatch):
+    """C-2 (11/11 review): a retried upload to a held host spends that host's allowance, not the agent's: another
+    held host still opens and takes a request."""
+    import time
+    proxy, _, _ = load(tmp_path, monkeypatch, AGENTS, LIMITS)
+    for host in ("a.example.net", "b.example.net"):
+        proxy._held[("vie", host)] = time.time() + 3600
+    site = Site()
+
+    async def steps(port):
+        retry = await send_tls(port, "a.example.net", VIE, 200 * 1024, chunk=16000)
+        await asyncio.sleep(0.3)
+        again = (await tunnel(port, "a.example.net", VIE))[0]
+        before = site.received
+        other = await send_tls(port, "b.example.net", VIE, 3000)
+        await asyncio.sleep(0.3)
+        return retry, again, other, site.received - before
+
+    retry, again, other, passed = asyncio.run(through(proxy, monkeypatch, site, steps))
+    assert retry[0].startswith("HTTP/1.1 200") and again.startswith("HTTP/1.1 403 Sending paused")
+    assert other[0].startswith("HTTP/1.1 200") and passed == 522 + 3005
+
+
+def test_a_held_day_reads_on_each_hour(tmp_path, monkeypatch):
+    """D-1 (11/11, owner): past the day's total every host not validated is held: together they get held_hour (64 KB)
+    an hour, then a program's new connections to them are refused until the hour turns, when reading resumes; a
+    validated host passes all along."""
     proxy, _, _ = load(tmp_path, monkeypatch, AGENTS, LIMITS)
     proxy.day_of("vie")["held"] = True
     site = Site()
@@ -336,19 +361,22 @@ def test_a_held_day_shares_one_allowance(tmp_path, monkeypatch):
         await asyncio.sleep(0.5)
         held = site.received
         validated = await send_tls(port, "data.gouv.fr", VIE, 100 * 1024)
-        return results, held, validated
+        proxy.day_of("vie")["held_start"] -= 3600          # an hour later
+        later = await send_tls(port, "h0.example.net", VIE, 3000)
+        return results, held, validated, later
 
-    results, held, validated = asyncio.run(through(proxy, monkeypatch, site, steps))
+    results, held, validated, later = asyncio.run(through(proxy, monkeypatch, site, steps))
     assert held <= 64 * 1024, held
     assert results[-1][0].startswith("HTTP/1.1 403 Sending paused")
     assert validated[0].startswith("HTTP/1.1 200") and validated[1] == 100 * 1024
-
+    assert later[0].startswith("HTTP/1.1 200")
 
 def test_many_distinct_names_reach_the_days_total(tmp_path, monkeypatch):
     """PI-5 (11/11): data spelt in host names, one name per CONNECT, nothing sent inside: each name's length counts
     before it is looked up; the day's total is reached (one report), then the held day's allowance, then every new
-    name is refused without being looked up. The same name again costs nothing."""
-    proxy, _, reports = load(tmp_path, monkeypatch, AGENTS, dict(LIMITS, send_day=20 * 1024, held_day=4 * 1024))
+    name is refused without being looked up. The same name again costs 2 bytes (C-3: which name is chosen carries
+    bits)."""
+    proxy, _, reports = load(tmp_path, monkeypatch, AGENTS, dict(LIMITS, send_day=20 * 1024, held_hour=4 * 1024))
     looked_up = []
 
     async def steps(port):
@@ -369,54 +397,52 @@ def test_many_distinct_names_reach_the_days_total(tmp_path, monkeypatch):
             status, _, writer = await tunnel(port, name, VIE)
             writer.close()
             statuses.append(status.split(" ")[1])
-        again = (await tunnel(port, "www.lemonde.fr", VIE))[0]
+        again = (await tunnel(port, f"z{'a' * 60}.{'c' * 60}.example.net", VIE))[0]   # a name that does not fit
         return same, statuses, again
 
     same, statuses, again = asyncio.run(through(proxy, monkeypatch, Site(), steps))
-    assert same == len("same.example.net")
+    assert same == len("same.example.net") + 2 + 2
     first_refused = statuses.index("403")
-    # 20 KB of names, then 4 KB more while held: about 154 + 30 names, then none
+    # 20 KB of names, then 4 KB more while held (the hour's): about 154 + 30 names, then none
     assert 150 <= first_refused <= 190, first_refused
     assert set(statuses[first_refused:]) == {"403"} and len(looked_up) == first_refused
     [line] = reports_of(reports)
     assert line["day"] is True and line["host"].endswith(".leak.example")
-    # the held day spent: any new host not validated is refused
+    # the held hour spent: any new host not validated is refused, until the hour turns
     assert again.startswith("HTTP/1.1 403 Sending paused")
     assert proxy.day_of("vie")["unvalidated"] <= 20 * 1024
 
 
 def test_registries_take_installs_not_uploads(tmp_path, monkeypatch):
-    """PI-3 (11/11): what is SENT to a package registry is bounded per agent (or per client address without
-    credentials) per hour and per day, with no card: past it the tunnel is cut and new connections to the registries
-    get a plain 403 until the window passes; another agent is not concerned. Downloads are not counted."""
+    """PI-3 (11/11): what is SENT to a package registry is bounded per sandbox per hour and per day, with no card:
+    past it the tunnel is cut and new connections to the registries get a plain 403 saying when it clears. One
+    budget per sandbox: dropping the credentials, or showing another agent's, from the same address gives none more
+    (11/11 review). Downloads are not counted."""
     proxy, _, reports = load(tmp_path, monkeypatch, AGENTS, dict(LIMITS, registry_hour=256 * 1024))
     site = Site()
 
     async def steps(port):
         out = {}
-        out["upload"] = await send_tls(port, "pypi.org", VIE, 1024 * 1024)
+        out["anonymous"] = await send_tls(port, "pypi.org", None, 1024 * 1024)
         await asyncio.sleep(0.3)
         out["after"] = await send_tls(port, "pypi.org", VIE, 1000)
         out["plain"] = (await tunnel(port, "deb.debian.org", VIE))[0]
-        out["budget"] = await send_tls(port, "pypi.org", basic("budget", "t-budget"), 100 * 1024)
-        out["anonymous"] = await send_tls(port, "pypi.org", None, 1024 * 1024)
-        await asyncio.sleep(0.3)
-        out["anonymous_after"] = (await tunnel(port, "pypi.org"))[0]
+        out["budget"] = (await tunnel(port, "pypi.org", basic("budget", "t-budget")))[0]
         out["site"] = await send_tls(port, "www.lemonde.fr", VIE, 3000)   # other sites: as before
         return out
 
     out = asyncio.run(through(proxy, monkeypatch, site, steps))
-    assert out["upload"][0].startswith("HTTP/1.1 200") and out["upload"][2]          # cut
-    assert out["after"][0] == "HTTP/1.1 403 Sending to package registries is limited - wait an hour"
-    assert out["plain"].startswith("HTTP/1.1 403 Sending to package registries is limited")
-    assert out["budget"][0].startswith("HTTP/1.1 200") and out["budget"][1] == 100 * 1024
-    assert out["anonymous"][0].startswith("HTTP/1.1 200") and out["anonymous"][2]
-    assert out["anonymous_after"].startswith("HTTP/1.1 403 Sending to package registries is limited")
+    assert out["anonymous"][0].startswith("HTTP/1.1 200")
+    hour = "HTTP/1.1 403 Package registries paused - too much was sent to them, retry within the hour"
+    assert out["after"][0] == hour and out["plain"] == hour and out["budget"] == hour
     assert out["site"][0].startswith("HTTP/1.1 200")
-    # vie's and the anonymous client's uploads stopped at the hour's ceiling each, budget's 100 KB whole
-    assert site.received <= 2 * 256 * 1024 + 100 * 1024 + 2 * 1024 + 4 * 1024, site.received
+    assert site.received <= 256 * 1024 + 4 * 1024, site.received                       # one ceiling, not two
     assert reports_of(reports) == []                                                   # never a card
-
+    # another sandbox (another address) has its own; the day's ceiling says « tomorrow »
+    assert proxy.registry_over(("budget", "@10.233.80.9")) is None
+    assert proxy.registry_over(("vie", "@127.0.0.1")) == "hour"
+    proxy._registries["@127.0.0.1"][3] = proxy.LIMITS["registry_day"]
+    assert proxy.registry_over(("@127.0.0.1",)) == "day"
 
 def test_an_install_stays_far_below_the_registries_ceiling(tmp_path, monkeypatch):
     """With the shipped ceilings: a large cold install (40 connections, 2 000 requests of 700 bytes each, a 1.8 KB
@@ -503,7 +529,7 @@ def test_the_browsers_free_bytes_have_a_pool(tmp_path, monkeypatch):
 
     pages = asyncio.run(through(proxy2, monkeypatch, site2, browse))
     assert all(p[0].startswith("HTTP/1.1 200") and p[1] == 300000 for p in pages)
-    assert reports_of(reports2) == [] and proxy2.day_of("vie")["unvalidated"] == len("www.leboncoin.example")
+    assert reports_of(reports2) == [] and proxy2.day_of("vie")["unvalidated"] == len("www.leboncoin.example") + 9 * 2
 
 
 def test_the_browsers_day_pool(tmp_path, monkeypatch):
@@ -526,9 +552,10 @@ def test_the_browsers_day_pool(tmp_path, monkeypatch):
 
 
 def test_refuser_holds_autoriser_frees(tmp_path, monkeypatch):
-    """BV-7 (11/11): the person's « Refuser » reaches the proxy (`refused`, until its week ends): a new connection to
-    that host is refused and nothing reaches it; past the date, or on another host, as before. « Autoriser » (the host
-    validated, `reset`): the same upload goes whole."""
+    """C-1 (11/11 review, owner): the person's « Refuser » (`refused`, 24 hours) and « Refuser toujours »
+    (`refused_always`) reach the proxy as a hold: the site stays readable (requests pass), its sends are cut past
+    16 KB an hour, nothing is reported (no card); past the refusal's end, or on another host, as before. « Autoriser »
+    (the host validated, `reset`): the same upload goes whole."""
     import time
     proxy, policy, reports = load(tmp_path, monkeypatch, AGENTS, LIMITS)
     site = Site()
@@ -541,17 +568,15 @@ def test_refuser_holds_autoriser_frees(tmp_path, monkeypatch):
 
     async def steps(port):
         out = {}
-        out["big"] = await send_tls(port, "upload.example.net", VIE, 300 * 1024)
-        await asyncio.sleep(0.5)
-        rewrite(lambda e: e.update(refused={"upload.example.net": time.time() + 7 * 86400,
-                                            "gone.example.net": time.time() - 1}), 10)
-        before = site.received
-        out["refused"] = await send_tls(port, "upload.example.net", VIE, 1000)
-        out["refused_sub"] = await send_tls(port, "www.upload.example.net", VIE, 1000)   # the host only
-        out["expired"] = await send_tls(port, "gone.example.net", VIE, 1000)
-        await asyncio.sleep(0.3)
-        out["passed"] = site.received - before
-        rewrite(lambda e: (e.pop("refused"), e["hosts"].append("upload.example.net"),
+        rewrite(lambda e: e.update(refused={"upload.example.net": time.time() + 86400, "gone.example.net": time.time() - 1},
+                                   refused_always=["forever.example.net"]), 10)
+        for host in ("upload.example.net", "forever.example.net", "gone.example.net"):
+            before = site.received
+            read = await send_tls(port, host, VIE, 1000)                   # a page's request
+            upload = await send_tls(port, host, VIE, 300 * 1024)           # an upload
+            await asyncio.sleep(0.5)
+            out[host] = (read[0], upload[0], site.received - before)
+        rewrite(lambda e: (e.pop("refused"), e.pop("refused_always"), e["hosts"].append("upload.example.net"),
                            e.update(reset=time.time() + 1)), 20)
         before = site.received
         out["allowed"] = await send_tls(port, "upload.example.net", VIE, 300 * 1024)
@@ -560,11 +585,90 @@ def test_refuser_holds_autoriser_frees(tmp_path, monkeypatch):
         return out
 
     out = asyncio.run(through(proxy, monkeypatch, site, steps))
-    assert out["refused"][0] == "HTTP/1.1 403 Sending to this site refused by your person - do without it"
-    assert out["refused_sub"][0].startswith("HTTP/1.1 200") and out["expired"][0].startswith("HTTP/1.1 200")
-    assert out["passed"] == 2 * (522 + 1005)                    # the two others only, nothing to the refused host
+    for host in ("upload.example.net", "forever.example.net"):
+        read, upload, passed = out[host]
+        assert read.startswith("HTTP/1.1 200") and upload.startswith("HTTP/1.1 200"), out[host]
+        assert 522 + 1005 <= passed <= 16 * 1024, out[host]                    # the read, then at most 16 KB
+    assert out["gone.example.net"][0].startswith("HTTP/1.1 200")            # an ended refusal: as any host
+    # 30 days on, the « Refuser toujours » still holds, the « Refuser » is over
+    rewrite(lambda e: e.update(refused={"upload.example.net": time.time() + 86400},
+                               refused_always=["forever.example.net"]), 30)
+    with pytest.MonkeyPatch.context() as later:
+        later.setattr(proxy.time, "time", lambda real=time.time: real() + 30 * 86400)
+        assert proxy.refused("vie", "forever.example.net") and not proxy.refused("vie", "upload.example.net")
     assert out["allowed"][0].startswith("HTTP/1.1 200") and out["allowed_bytes"] >= 300 * 1024
-    assert len(reports_of(reports)) == 1
+    assert [line["host"] for line in reports_of(reports)] == ["gone.example.net"]   # refused hosts: never a card
+
+def test_one_client_cannot_hold_the_proxys_memory(tmp_path, monkeypatch):
+    """R-1 (11/11 review): a client address holds at most MAX_OPEN_PER_CLIENT connections at once (the next ones are
+    answered 429 at once), and a request head past HEADER_LIMIT closes its connection: what one sandbox can make the
+    proxy keep is bounded (about 128 x 32 KB), whatever it does."""
+    proxy, _, _ = load(tmp_path, monkeypatch, AGENTS, LIMITS)
+    monkeypatch.setattr(proxy, "MAX_OPEN_PER_CLIENT", 8)
+
+    async def steps(port):
+        held = []
+        for _ in range(8):
+            reader, writer = await asyncio.open_connection("127.0.0.1", port)
+            writer.write(b"CONNECT a.example.net:443 HTTP/1.1\r\nX-Pad: " + b"p" * 1000)   # never finished
+            await writer.drain()
+            held.append((reader, writer))
+        await asyncio.sleep(0.2)
+        open_now = dict(proxy._open_by_client)
+        status, _, writer = await tunnel(port, "www.lemonde.fr", VIE)
+        writer.close()
+        for _, w in held:
+            w.close()
+        await asyncio.sleep(0.3)
+        # one connection whose head never ends: closed past the limit, no answer
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        writer.write(b"CONNECT a.example.net:443 HTTP/1.1\r\nX-Pad: " + b"p" * (proxy.HEADER_LIMIT + 4096))
+        await writer.drain()
+        closed = await asyncio.wait_for(reader.read(100), 5) == b""
+        writer.close()
+        await asyncio.sleep(0.2)
+        return open_now, status, closed, dict(proxy._open_by_client)
+
+    open_now, status, closed, after = asyncio.run(through(proxy, monkeypatch, Site(), steps))
+    assert open_now == {"127.0.0.1": 8}
+    assert status == "HTTP/1.1 429 Too many connections open at once - close some, then retry"
+    assert closed and after == {}
+
+
+def test_a_restart_keeps_the_counts(tmp_path, monkeypatch):
+    """R-1 (11/11 review): the counts are written (`counts.json` next to usage.json) and read back at start the same
+    day: a restarted proxy hands out no new allowance — the day's total, the holds, the registries' and the browser's
+    windows are where they were."""
+    proxy, _, _ = load(tmp_path, monkeypatch, AGENTS, LIMITS)
+    site = Site()
+
+    async def steps(port):
+        await send_tls(port, "upload.example.net", VIE, 300 * 1024)     # cut: held, one report
+        await send_tls(port, "s1.example.net", VIE, 30 * 1024)
+        await send_tls(port, "pypi.org", VIE, 50 * 1024)
+        await asyncio.sleep(0.5)
+
+    asyncio.run(through(proxy, monkeypatch, site, steps))
+    before = dict(proxy.day_of("vie"))
+    proxy.save_counts()
+    assert (tmp_path / "counts.json").exists()
+    again, _, _ = load(tmp_path, monkeypatch, AGENTS, LIMITS)          # a new process: nothing in memory
+    assert again.day_of("vie")["unvalidated"] == 0
+    again._days.clear()
+    again.load_counts()
+    after = again.day_of("vie")
+    for name in ("unvalidated", "sent", "connections", "held", "names"):
+        assert after[name] == before[name], name
+    assert again.hold_of("vie", "upload.example.net", after)
+    assert again._sent[("vie", "s1.example.net")][1] == proxy._sent[("vie", "s1.example.net")][1]
+    assert again._registries["vie"][1] == proxy._registries["vie"][1] >= 50 * 1024
+    # another day's file: nothing restored
+    data = json.loads((tmp_path / "counts.json").read_text())
+    data["day"] = "2000-01-01"
+    (tmp_path / "counts.json").write_text(json.dumps(data))
+    third, _, _ = load(tmp_path, monkeypatch, AGENTS, LIMITS)
+    third.load_counts()
+    assert third._days == {} and third._registries == {}
 
 
 def test_downloads_of_any_size_pass(tmp_path, monkeypatch):
@@ -799,7 +903,7 @@ def test_phone_exit_hosts_go_to_the_hub_never_direct(tmp_path, monkeypatch):
     async def steps():
         hub_server = await asyncio.start_unix_server(hub, str(sock))
         monkeypatch.setattr(proxy, "connect", no_direct)
-        server = await asyncio.start_server(proxy.handle, "127.0.0.1", 0)
+        server = await proxy.start("127.0.0.1", 0)
         port = server.sockets[0].getsockname()[1]
         out = {}
         status, reader, writer = await tunnel(port, "www.doctolib.fr", VIE)
