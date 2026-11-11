@@ -10,16 +10,17 @@ Bip-Patch: 0009-tool-search-keep-direct-compact-skills
 ---
  agent/prompt_builder.py                       | 14 ++++
  ..._tool_search_keep_direct_compact_skills.py | 68 +++++++++++++++++++
+ .../tools/test_tool_search_listing_layout.py  |  2 +-
  tools/tool_search.py                          |  9 ++-
- tools/tool_search_catalog.py                  |  2 +-
- 4 files changed, 90 insertions(+), 3 deletions(-)
+ tools/tool_search_catalog.py                  |  3 +-
+ 5 files changed, 92 insertions(+), 4 deletions(-)
  create mode 100644 tests/agent/test_tool_search_keep_direct_compact_skills.py
 
 diff --git a/agent/prompt_builder.py b/agent/prompt_builder.py
-index 68375dea3d4367653c787fc810e89e0a83e356c1..4ba0650b51531b6a5825dc00eb961e07b6f892f2 100644
+index eb8de4439c20cd1a0016a3bc778bfdf096c0317b..e25b5281d4135534635835db48c02f8ca91c0ce1 100644
 --- a/agent/prompt_builder.py
 +++ b/agent/prompt_builder.py
-@@ -1387,10 +1387,24 @@ def _oneshot_prompt_variant() -> bool:
+@@ -1364,10 +1364,24 @@ def _oneshot_prompt_variant() -> bool:
      return is_single_query_session()
  
  
@@ -118,8 +119,21 @@ index 0000000000000000000000000000000000000000..485b79d10533cf0a02baffbd5f672985
 +    assert " tools:\n- mcp__bipagents__t0" in few and "(3)" not in few
 +    # One tool more only adds its own line, at the end: everything before it is byte-identical.
 +    assert more.startswith(few)
+diff --git a/tests/tools/test_tool_search_listing_layout.py b/tests/tools/test_tool_search_listing_layout.py
+index ef679edbb38b644575dc1f310efb7f8c8556196c..b7c74552e36f9ddb7f5f4f2491acf3a866c0da71 100644
+--- a/tests/tools/test_tool_search_listing_layout.py
++++ b/tests/tools/test_tool_search_listing_layout.py
+@@ -54,7 +54,7 @@ def test_single_tool_groups_render_without_a_count_heading():
+     assert text is not None and form == "full"
+     assert text.splitlines()[1:] == [
+         "- layoutsolo_only: The only solo tool.",
+-        "layoutpair tools (2):",
++        "layoutpair tools:",  # BipAgents 0009: no count
+         "- layoutpair_a: First paired tool.",
+         "- layoutpair_b: Second paired tool.",
+     ]
 diff --git a/tools/tool_search.py b/tools/tool_search.py
-index 90631843bcf5edebf9bd5ab322f9ee6eba900c2f..c0c8c375d36cb4b5f5e1f0c1445adea4f788a4fc 100644
+index 4657a8e44a9c3530597d3de803374fbde0163418..9ae8abf3d160a3540c7debcbe1f555c6bc61a70c 100644
 --- a/tools/tool_search.py
 +++ b/tools/tool_search.py
 @@ -150,9 +150,12 @@ _DEFAULT_DEFERRED_TOOLS = frozenset(DEFAULT_CONFIG["tools"]["tool_search"]["defe
@@ -136,7 +150,7 @@ index 90631843bcf5edebf9bd5ab322f9ee6eba900c2f..c0c8c375d36cb4b5f5e1f0c1445adea4
      if defer_tools is not None and name in defer_tools:
          return True
      if name in _core_tool_names():
-@@ -241,7 +244,9 @@ def _search_description(deferred_count: int, listing: Optional[str], listing_for
+@@ -242,7 +245,9 @@ def _search_description(deferred_count: int, listing: Optional[str], listing_for
      ``manage_connections``; without that tool in the session the sentence would name a tool
      the model cannot call."""
      desc = (
@@ -148,15 +162,16 @@ index 90631843bcf5edebf9bd5ab322f9ee6eba900c2f..c0c8c375d36cb4b5f5e1f0c1445adea4
          + "Send one keyword query per capability you need; returns matching tool names "
          f"and descriptions. Then `{TOOL_DESCRIBE_NAME}` loads schemas and `{TOOL_CALL_NAME}` "
 diff --git a/tools/tool_search_catalog.py b/tools/tool_search_catalog.py
-index d46ab1579290967016fe5c4b4ee5deaac5c5af4e..99b2ea721aa0aa3ae8518f7087ed1507c3addcf8 100644
+index 15d3b39301252a64fa7a5f13adb08d099050c989..a46a82f80529081da0a7018ca8845ff0175eb438 100644
 --- a/tools/tool_search_catalog.py
 +++ b/tools/tool_search_catalog.py
-@@ -283,7 +283,7 @@ def build_catalog_listing_with_form(
-         if mode == "summary":
-             return (f"{label} ({len(tools)} tools — names not listed; "
-                     f"discover via `{TOOL_SEARCH_NAME}`)")
--        lines = [f"{label} tools ({len(tools)}):"]
-+        lines = [f"{label} tools:"]  # BipAgents 0009: no count (prompt-cache stable, the names follow)
-         if mode == "full":
-             lines.extend(f"- {name}: {desc}" if desc else f"- {name}" for name, desc in tools)
+@@ -293,7 +293,8 @@ def build_catalog_listing_with_form(
          else:
+             lines = [", ".join(name for name, _ in tools)] if len(tools) > 1 else [f"- {tools[0][0]}"]
+         # A one-tool group's "<label> tools (1):" heading says nothing its single line does not.
+-        return "\n".join(lines if len(tools) == 1 else [f"{label} tools ({len(tools)}):", *lines])
++        # BipAgents 0009: no count (prompt-cache stable, the names follow).
++        return "\n".join(lines if len(tools) == 1 else [f"{label} tools:", *lines])
+ 
+     header = ("Deferred tool catalog (call schemas via "
+               f"`{TOOL_DESCRIBE_NAME}`, invoke via `{TOOL_CALL_NAME}`):")

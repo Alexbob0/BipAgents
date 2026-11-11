@@ -1,29 +1,28 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Alexbob0 <190955252+Alexbob0@users.noreply.github.com>
-Date: Sun, 1 Nov 2026 10:07:39 +0100
+Date: Thu, 29 Oct 2026 11:32:41 +0100
 Subject: Vault fills after the browser restarted
 
 BipAgents patch, documented in hermes/patches/README.md of the BipAgents repository.
 
 Bip-Patch: 0005-vault-fill-reattach-supervisor
 ---
- tests/tools/test_browser_vault.py | 55 +++++++++++++++++++++++++++++++
- tools/browser_vault_tool.py       | 18 +++++++++-
- 2 files changed, 72 insertions(+), 1 deletion(-)
+ tests/tools/test_browser_vault.py | 51 +++++++++++++++++++++++++++++++
+ tools/browser_vault_tool.py       | 19 +++++++-----
+ 2 files changed, 63 insertions(+), 7 deletions(-)
 
 diff --git a/tests/tools/test_browser_vault.py b/tests/tools/test_browser_vault.py
-index 136637669a5220cd49100ce91ecc2ea4b93a3521..8098e6fd53b1ee27ee482d45c600e0ff93fb7cfc 100644
+index 99e942988890d480a65d0222f91de10efccb7b53..514345d6704d3781e67795810187e53623c21630 100644
 --- a/tests/tools/test_browser_vault.py
 +++ b/tests/tools/test_browser_vault.py
-@@ -496,6 +496,61 @@ class TestBrowserVaultTools:
-         assert all(call.args[1] == "get" for call in run_cmd.call_args_list), run_cmd.call_args_list
-         assert "s3cret-pw" not in json.dumps([str(c) for c in run_cmd.call_args_list]) and "s3cret-pw" not in raw
+@@ -500,6 +500,57 @@ class TestBrowserVaultTools:
+         reg.get_or_start.assert_not_called()
+         assert "s3cret-pw" not in json.dumps([str(c) for c in reg.mock_calls]) and "s3cret-pw" not in raw
  
-+    def test_origin_read_attaches_to_the_configured_browser_without_a_supervisor(self):
-+        """A configured browser (browser.cdp_url) whose supervisor is gone, e.g. one an MCP server drives
-+        or one that restarted: the origin read attaches to it again instead of asking the local
-+        agent-browser daemon (which knows no such browser) and failing with "Could not determine the
-+        current page origin"."""
++    def test_origin_read_attaches_to_the_configured_browser_without_a_session(self):
++        """A configured browser (browser.cdp_url) the task never opened with browser_exec, e.g. one an MCP
++        server drives: with no supervisor running, the origin read attaches to it instead of failing
++        with "Could not determine the current page origin"."""
 +        from tools import browser_vault_tool
 +
 +        class Supervisor:
@@ -31,46 +30,43 @@ index 136637669a5220cd49100ce91ecc2ea4b93a3521..8098e6fd53b1ee27ee482d45c600e0ff
 +                return {"ok": True, "result": "https://example.com/login"}
 +
 +        with patch("tools.browser_supervisor.SUPERVISOR_REGISTRY") as reg, \
-+             patch("tools.browser_tool_cdp._get_cdp_override_raw", return_value="http://127.0.0.1:9222"), \
-+             patch("tools.browser_tool_cdp._get_cdp_override",
-+                   return_value="ws://127.0.0.1:9222/devtools/browser/current"), \
-+             patch("tools.browser_tool_session._run_browser_command") as run_cmd:
++             patch("tools.browser_session.session_for_task", return_value={}), \
++             patch("tools.browser_session_cdp.get_cdp_override",
++                   return_value="ws://127.0.0.1:9222/devtools/browser/current"):
 +            reg.get.return_value = None
 +            reg.get_or_start.return_value = Supervisor()
 +            assert browser_vault_tool._current_page_origin("task-1") == "https://example.com"
 +        assert reg.get_or_start.call_args.kwargs["cdp_url"] == "ws://127.0.0.1:9222/devtools/browser/current"
-+        run_cmd.assert_not_called()
 +
 +    def test_supervisor_reattaches_to_the_configured_browser_after_it_restarted(self):
-+        """The supervisor gave up and left the registry when the configured browser went away: the
-+        re-attach resolves the configured endpoint afresh (a restarted Chromium has a new browser id)."""
++        """The supervisor gave up and left the registry when the configured browser went away. The task's
++        session still holds the endpoint resolved before, with the old browser id: the re-attach resolves
++        the configured endpoint afresh instead of aiming at the dead browser."""
 +        from tools import browser_vault_tool
 +
 +        fresh = object()
 +        with patch("tools.browser_supervisor.SUPERVISOR_REGISTRY") as reg, \
-+             patch("tools.browser_tool_cdp._get_cdp_override_raw", return_value="http://127.0.0.1:9222"), \
-+             patch("tools.browser_tool_cdp._get_cdp_override",
-+                   return_value="ws://127.0.0.1:9222/devtools/browser/after-restart"), \
-+             patch("tools.browser_tool_session._run_browser_command") as run_cmd:
++             patch("tools.browser_session.session_for_task",
++                   return_value={"cdp_url": "ws://127.0.0.1:9222/devtools/browser/before-restart"}), \
++             patch("tools.browser_session_cdp.get_cdp_override",
++                   return_value="ws://127.0.0.1:9222/devtools/browser/after-restart"):
 +            reg.get.return_value = None
 +            reg.get_or_start.return_value = fresh
 +            assert browser_vault_tool._ensure_supervisor("task-1") is fresh
 +        assert reg.get_or_start.call_args.kwargs["cdp_url"] == "ws://127.0.0.1:9222/devtools/browser/after-restart"
-+        run_cmd.assert_not_called()
 +
-+    def test_without_a_configured_browser_the_local_session_endpoint_is_used_as_before(self):
++    def test_without_a_configured_browser_the_session_endpoint_is_used_as_before(self):
 +        from tools import browser_vault_tool
 +
 +        with patch("tools.browser_supervisor.SUPERVISOR_REGISTRY") as reg, \
-+             patch("tools.browser_tool_cdp._get_cdp_override_raw", return_value=""), \
-+             patch("tools.browser_tool_cdp._resolve_cdp_override", side_effect=lambda url: url + "/resolved"), \
-+             patch("tools.browser_tool_session._run_browser_command",
-+                   return_value={"success": True, "data": {"cdpUrl": "http://127.0.0.1:9333"}}):
++             patch("tools.browser_session_cdp.get_cdp_override", return_value=""), \
++             patch("tools.browser_session_cdp.resolve_cdp_override", side_effect=lambda url: url + "/resolved"), \
++             patch("tools.browser_session.session_for_task", return_value={"cdp_url": "http://127.0.0.1:9333"}):
 +            reg.get.return_value = None
 +            browser_vault_tool._ensure_supervisor("task-1")
 +            assert reg.get_or_start.call_args.kwargs["cdp_url"] == "http://127.0.0.1:9333/resolved"
 +            reg.get_or_start.reset_mock()
-+            with patch("tools.browser_tool_session._run_browser_command", return_value={"success": False}):
++            with patch("tools.browser_session.session_for_task", return_value={}):
 +                assert browser_vault_tool._ensure_supervisor("task-1") is None
 +            reg.get_or_start.assert_not_called()
 +
@@ -78,42 +74,45 @@ index 136637669a5220cd49100ce91ecc2ea4b93a3521..8098e6fd53b1ee27ee482d45c600e0ff
      def test_vault_canary_redacted_from_browser_cdp_results(self, store):
          """P1-1 regression: a filled, non-token-shaped canary password must be
 diff --git a/tools/browser_vault_tool.py b/tools/browser_vault_tool.py
-index 9474435dc680c28bb991b58533f4f8fd9ad1b50f..943fd112ae608c8f0ab1a989be5e75db1ec1e4c3 100644
+index 5739a9089d356d516f736f64f47e8fc19edd21aa..65988172ef1fd31ff9eb6ec1cfd78c78fa0d7a83 100644
 --- a/tools/browser_vault_tool.py
 +++ b/tools/browser_vault_tool.py
-@@ -62,8 +62,11 @@ def _eval_js(task_id: str, expression: str) -> dict[str, Any]:
-     """
-     try:
-         from tools.browser_supervisor import SUPERVISOR_REGISTRY
-+        from tools.browser_tool_cdp import _get_cdp_override_raw
+@@ -105,26 +105,31 @@ def _eval_js(task_id: str, expression: str) -> dict[str, Any]:
  
-         supervisor = SUPERVISOR_REGISTRY.get(task_id)
-+        if supervisor is None and _get_cdp_override_raw():
-+            supervisor = _ensure_supervisor(task_id)   # the configured browser, attached again
-         if supervisor is not None:
-             sup = supervisor.evaluate_runtime(expression)
-             if sup.get("ok"):
-@@ -99,9 +102,22 @@ def _ensure_supervisor(task_id: str):
+ 
+ def _ensure_supervisor(task_id: str):
+-    """The supervisor for ``task_id`` (browser_exec attaches one on every call), attaching one on demand to
+-    the task's session CDP endpoint when none is running. None when no endpoint is known; a fill then
+-    refuses rather than touching argv."""
++    """The supervisor for ``task_id`` (browser_exec attaches one on every call), attaching one on demand when
++    none is running: to the configured CDP browser, then the task's session endpoint, the precedence
++    ``ensure_cdp_supervisor`` uses. The configured endpoint is resolved afresh, because a browser restarted
++    since the last attach has a new browser id and a task may never have opened a browser_exec session on it.
++    None when no endpoint is known; a fill then refuses rather than touching argv."""
+     from tools.browser_supervisor import SUPERVISOR_REGISTRY
+ 
+     supervisor = SUPERVISOR_REGISTRY.get(task_id)
      if supervisor is not None:
          return supervisor
-     from tools.browser_tool import _last_session_key
--    from tools.browser_tool_cdp import _get_dialog_policy_config, _resolve_cdp_override
-+    from tools.browser_tool_cdp import (_get_cdp_override, _get_cdp_override_raw, _get_dialog_policy_config,
-+                                        _resolve_cdp_override)
-     from tools.browser_tool_session import _run_browser_command
+     from tools.browser_session import session_for_task
+-    from tools.browser_session_cdp import get_dialog_policy_config, resolve_cdp_override
++    from tools.browser_session_cdp import get_cdp_override, get_dialog_policy_config, resolve_cdp_override
  
-+    if _get_cdp_override_raw():
-+        # A configured browser (browser.cdp_url) whose supervisor gave up when it went away (closed for being idle,
-+        # restarted): attach to it again, resolved afresh (a restarted Chromium has a new browser id). Asking the
-+        # local agent-browser daemon instead would find no browser, or one in a sandbox, not this one.
-+        policy, timeout_s = _get_dialog_policy_config()
-+        try:
-+            return SUPERVISOR_REGISTRY.get_or_start(task_id=task_id, cdp_url=_get_cdp_override(),
-+                                                    dialog_policy=policy, dialog_timeout_s=timeout_s)
-+        except Exception:   # any failure to attach means no supervisor: the fill then refuses, never via argv
-+            logger.debug("vault fill: supervisor attach to the configured browser failed", exc_info=True)
-+            return None
-+
-     res = _run_browser_command(_last_session_key(task_id), "get", ["cdp-url"])
-     cdp_url = str(((res or {}).get("data") or {}).get("cdpUrl") or "") if (res or {}).get("success") else ""
+-    cdp_url = str(session_for_task(task_id).get("cdp_url") or "")
++    cdp_url = get_cdp_override()
++    if not cdp_url:
++        session_cdp = str(session_for_task(task_id).get("cdp_url") or "")
++        cdp_url = resolve_cdp_override(session_cdp) if session_cdp else ""
      if not cdp_url:
+         return None
+     policy, timeout_s = get_dialog_policy_config()
+     try:
+-        return SUPERVISOR_REGISTRY.get_or_start(task_id=task_id, cdp_url=resolve_cdp_override(cdp_url),
++        return SUPERVISOR_REGISTRY.get_or_start(task_id=task_id, cdp_url=cdp_url,
+                                                 dialog_policy=policy, dialog_timeout_s=timeout_s)
+     except Exception as exc:  # health: allow BLE001 -- a failed attach is reported as supervisor_required
+-        logger.debug("vault fill: supervisor attach to the task's session failed (%s)", exc)
++        logger.debug("vault fill: supervisor attach failed (%s)", exc)
+         return None
+ 
+ 

@@ -170,7 +170,8 @@ pub struct Row {
     pub timestamp: f64,
     pub display_kind: Option<String>,
     pub reasoning: Option<String>,
-    /// Shown: active, or compacted (Hermes still displays a compacted row).
+    /// Shown: active, or compacted (Hermes still displays a compacted row), but never a compaction's shortened copy of
+    /// a tool result whose archived original is shown (`later_tool_copy_sql`; Hermes 0.23's API leaves it out itself).
     pub shown: bool,
     /// A compression's summary (never shown).
     pub summary: bool,
@@ -500,9 +501,14 @@ fn db_rows(path: &PathBuf, session: &str) -> anyhow::Result<Vec<Row>> {
     let cols = columns(&conn, "messages")?;
     let has = |c: &str| cols.iter().any(|x| x == c);
     let order = if has("display_order") { "COALESCE(display_order, id), id" } else { "id" };
+    let later = if ["message_uid", "active", "compacted", "display_order"].iter().all(|c| has(c)) {
+        later_tool_copy_sql(has("display_metadata"))
+    } else {
+        "0".to_string()
+    };
     let sql = format!(
-        "SELECT id, role, content, timestamp, {}, {}, {}, {}, {}, {}, {}, {}, {}, {} FROM messages WHERE session_id = ?1 \
-         ORDER BY {order}",
+        "SELECT id, role, content, timestamp, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {later} FROM messages AS m \
+         WHERE session_id = ?1 ORDER BY {order}",
         pick(&cols, "message_uid", "NULL"),
         pick(&cols, "tool_calls", "NULL"),
         pick(&cols, "tool_call_id", "NULL"),
@@ -532,6 +538,7 @@ fn db_rows(path: &PathBuf, session: &str) -> anyhow::Result<Vec<Row>> {
             };
             let active = r.get::<_, Option<i64>>(10)?.unwrap_or(1) != 0;
             let compacted = r.get::<_, Option<i64>>(11)?.unwrap_or(0) != 0;
+            let later_copy = r.get::<_, Option<i64>>(14)?.unwrap_or(0) != 0;
             Ok(Row {
                 row: r.get(0)?,
                 order: r.get(13)?,
@@ -544,12 +551,38 @@ fn db_rows(path: &PathBuf, session: &str) -> anyhow::Result<Vec<Row>> {
                 timestamp,
                 display_kind: r.get(8)?,
                 reasoning: r.get::<_, Option<String>>(9)?.filter(|t| !t.is_empty()),
-                shown: active || compacted,
+                shown: (active || compacted) && !later_copy,
                 summary: r.get::<_, Option<i64>>(12)?.unwrap_or(0) != 0,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
+}
+
+/// Whether row `m` is a later copy of an archived tool result: 1 or 0. Hermes v0.23 (#144938, commit 109a8f7c03,
+/// hermes_state_compaction_display.py `not_a_later_tool_copy_sql`, the same SQL): a compaction carries a tool result
+/// forward as a shortened stub with the same `message_uid` and timestamp, and its display reads skip that stub when
+/// an archived (`compacted`), display-visible (not `model_only`) tool row of the same session, uid and timestamp
+/// holds an EARLIER slot (`display_order`): the full original is what a reader sees. Identity only, never bodies; a
+/// row without a slot is never skipped (NULL compares false); an in-place prune keeps its row's slot, so its stub
+/// still shows. Read here for both Hermes versions: on 0.22.5 the stub's shortened words would otherwise be the ones
+/// the timeline shows for that message (timeline.rs `in_place_compaction`, the newest shown copy). The API source
+/// needs nothing: from 0.23 Hermes' own display list already leaves the stub out. What a compaction's summary row
+/// tells a reader (agent/compaction_display.py `compaction_summary`) is model-facing; the timeline shows the
+/// messages themselves, as before.
+fn later_tool_copy_sql(has_metadata: bool) -> String {
+    let visible = if has_metadata {
+        " AND COALESCE(json_extract(CASE WHEN json_valid(original.display_metadata) THEN original.display_metadata \
+         ELSE json_object() END, '$.model_only'), 0) = 0"
+    } else {
+        ""
+    };
+    format!(
+        "CASE WHEN m.role = 'tool' AND m.message_uid IS NOT NULL AND m.message_uid <> '' AND EXISTS (SELECT 1 FROM \
+         messages AS original WHERE original.session_id = m.session_id AND original.timestamp = m.timestamp \
+         AND original.message_uid = m.message_uid AND original.role = 'tool' AND original.active = 0 \
+         AND original.compacted = 1 AND +original.display_order < m.display_order{visible}) THEN 1 ELSE 0 END"
+    )
 }
 
 #[cfg(test)]
@@ -614,5 +647,81 @@ mod tests {
         exact.execute_batch("ALTER TABLE sessions DROP COLUMN hidden; ALTER TABLE messages DROP COLUMN message_uid;").unwrap();
         assert_eq!(missing_columns(&exact).unwrap(), ["sessions.hidden", "messages.message_uid"]);
         assert_eq!(db_rows(&path, "a").unwrap()[0].uid, None, "still read, with a neutral value");
+    }
+
+    /// Hermes #144938 (v0.23): a compaction's shortened copy of a tool result (same uid and timestamp, a later slot)
+    /// is not shown while its archived original is; the call's card reads the original's full output. A store of the
+    /// pinned Hermes' schema (tests/golden), rows as v0.23.1 writes them.
+    #[test]
+    fn a_compacted_tool_result_shows_once_as_its_archived_original() {
+        let golden = include_str!("../../tests/golden/hermes_state_schema.sql")
+            .replace("REFERENCES system_prompts(hash)", "REFERENCES sessions(id)");
+        let dir = std::env::temp_dir().join(format!("state-tool-copy-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("state.db");
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(&golden).unwrap();
+        let call = |id: &str| format!(r#"[{{"id": "{id}", "function": {{"name": "terminal", "arguments": "{{}}"}}}}]"#);
+        let mut insert = conn
+            .prepare(
+                "INSERT INTO messages (id, session_id, role, content, tool_calls, tool_call_id, timestamp, active, \
+                 compacted, _compressed_summary, display_order, message_uid, display_metadata) \
+                 VALUES (?1, 'a', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            )
+            .unwrap();
+        conn.execute("INSERT INTO sessions (id, source, started_at) VALUES ('a', 'api_server', 1)", []).unwrap();
+        type R<'a> = (i64, &'a str, &'a str, Option<String>, Option<&'a str>, f64, i64, i64, i64, Option<i64>, &'a str, Option<&'a str>);
+        let rows: Vec<R> = vec![
+            (1, "user", "liste les fichiers", None, None, 1.0, 0, 1, 0, Some(1), "u1", None),
+            // 1. archived original, then the compaction's stub: the stub is left out
+            (2, "assistant", "", Some(call("c1")), None, 2.0, 0, 1, 0, Some(2), "a1", None),
+            (3, "tool", "FULL OUTPUT: a.txt b.txt c.txt", None, Some("c1"), 3.0, 0, 1, 0, Some(3), "t1", None),
+            // 2. an original only the model sees: its stub stays shown
+            (4, "assistant", "", Some(call("c2")), None, 4.0, 0, 1, 0, Some(4), "a2", None),
+            (5, "tool", "model only", None, Some("c2"), 5.0, 0, 1, 0, Some(5), "t2", Some(r#"{"model_only": true}"#)),
+            // 3. an in-place prune: same slot, the live stub shows
+            (6, "assistant", "", Some(call("c3")), None, 6.0, 0, 1, 0, Some(6), "a3", None),
+            (7, "tool", "pruned original", None, Some("c3"), 7.0, 0, 1, 0, Some(7), "t3", None),
+            // 4. another timestamp: not a copy
+            (8, "assistant", "", Some(call("c4")), None, 8.0, 0, 1, 0, Some(8), "a4", None),
+            (9, "tool", "first run", None, Some("c4"), 9.0, 0, 1, 0, Some(9), "t4", None),
+            // 5. an original without a slot (legacy, never backfilled): never decides
+            (10, "assistant", "", Some(call("c5")), None, 10.0, 0, 1, 0, Some(10), "a5", None),
+            (11, "tool", "legacy", None, Some("c5"), 11.0, 0, 1, 0, None, "t5", None),
+            (12, "user", "[CONTEXT COMPACTION] …", None, None, 12.0, 1, 0, 1, Some(12), "s1", None),
+            (13, "tool", "[output cut: 3 files]", None, Some("c1"), 3.0, 1, 0, 0, Some(13), "t1", None),
+            (14, "tool", "[cut]", None, Some("c2"), 5.0, 1, 0, 0, Some(14), "t2", None),
+            (15, "tool", "[pruned]", None, Some("c3"), 7.0, 1, 0, 0, Some(7), "t3", None),
+            (16, "tool", "second run", None, Some("c4"), 9.5, 1, 0, 0, Some(16), "t4", None),
+            (17, "tool", "[legacy cut]", None, Some("c5"), 11.0, 1, 0, 0, Some(17), "t5", None),
+        ];
+        for r in &rows {
+            insert
+                .execute(rusqlite::params![r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7, r.8, r.9, r.10, r.11])
+                .unwrap();
+        }
+        let read = db_rows(&path, "a").unwrap();
+        let shown = |row: i64| read.iter().find(|r| r.row == row).unwrap().shown;
+        assert!(shown(3) && !shown(13), "the stub of an archived original is left out");
+        assert!(shown(14), "an original only the model sees decides nothing");
+        assert!(shown(15), "an in-place prune keeps its slot: its stub shows");
+        assert!(shown(16) && shown(17), "another timestamp, an original without a slot: not a copy");
+        // the timeline: each call's card reads its result once, the full original for c1
+        let items = crate::threads::timeline::segment_items("coach", 0, "a", &read, &Default::default(), &mut String::new());
+        let result = |call: &str| {
+            let tool = |i: &crate::threads::timeline::Item| i.body.get("tool").cloned().unwrap_or(Value::Null);
+            items
+                .iter()
+                .find(|i| i.body.get("kind") == Some(&Value::from("tool")) && tool(i)["call_id"] == call)
+                .and_then(|i| tool(i)["result"].as_str().map(str::to_string))
+        };
+        assert_eq!(result("c1").as_deref(), Some("FULL OUTPUT: a.txt b.txt c.txt"));
+        assert_eq!(result("c2").as_deref(), Some("[cut]"));
+        assert_eq!(result("c4").as_deref(), Some("second run"));
+        // a store without the slot column: nothing is left out (the rule needs it)
+        drop(insert);
+        conn.execute_batch("ALTER TABLE messages DROP COLUMN display_order;").unwrap();
+        assert!(db_rows(&path, "a").unwrap().iter().all(|r| r.shown || r.summary));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

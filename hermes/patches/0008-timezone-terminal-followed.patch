@@ -1,0 +1,130 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Alexbob0 <190955252+Alexbob0@users.noreply.github.com>
+Date: Sun, 1 Nov 2026 10:07:39 +0100
+Subject: The person's time zone: in the terminal, and followed without a
+ restart
+
+BipAgents patch, documented in hermes/patches/README.md of the BipAgents repository.
+
+Bip-Patch: 0008-timezone-terminal-followed
+---
+ hermes_time.py                                | 18 ++++++++-
+ tests/tools/test_profile_timezone_followed.py | 39 +++++++++++++++++++
+ tools/environments/base.py                    | 20 +++++++++-
+ 3 files changed, 75 insertions(+), 2 deletions(-)
+ create mode 100644 tests/tools/test_profile_timezone_followed.py
+
+diff --git a/hermes_time.py b/hermes_time.py
+index 00f1362cc3918ca3103b41f1c448cffc76c53a47..808ea2b4b54e462860864c1f499f69e1eec9524e 100644
+--- a/hermes_time.py
++++ b/hermes_time.py
+@@ -75,9 +75,25 @@ def _env_timezone() -> str:
+     return os.getenv("HERMES_TIMEZONE", "").strip()
+ 
+ 
++def _config_identity() -> str:
++    """The config's path and version (the file backend's leads with its modification time): an app or
++    a bridge that rewrites ``timezone`` (the person flew to another zone) is followed at the next
++    call, without a gateway restart."""
++    path = get_config_path()
++    try:
++        from hermes_cli.config_backend import config_version_or_none
++        version = config_version_or_none(path)
++    except Exception:
++        try:
++            version = path.stat().st_mtime_ns
++        except OSError:
++            version = None
++    return f"{path}\0{version!r}"
++
++
+ def _timezone_cache_identity() -> tuple[str, str]:
+     tz_env = _env_timezone()
+-    return ("environment", tz_env) if tz_env else ("config", str(get_config_path()))
++    return ("environment", tz_env) if tz_env else ("config", _config_identity())
+ 
+ 
+ def _resolve_timezone_name() -> str:
+diff --git a/tests/tools/test_profile_timezone_followed.py b/tests/tools/test_profile_timezone_followed.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b48b52661d704935760409f64235b26a04866c87
+--- /dev/null
++++ b/tests/tools/test_profile_timezone_followed.py
+@@ -0,0 +1,39 @@
++"""The profile's ``timezone`` (BipAgents patch 0008): followed without a restart when the config is rewritten (the
++person's phone moved to another zone), and handed to terminal commands as ``TZ`` so ``date`` and scripts tell the
++person's time, not the server's."""
++
++import os
++
++import hermes_time
++
++
++def test_a_rewritten_timezone_is_read_without_a_restart(monkeypatch, tmp_path):
++    config = tmp_path / "config.yaml"
++    config.write_text("timezone: Europe/Paris\n")
++    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
++    monkeypatch.delenv("HERMES_TIMEZONE", raising=False)
++    hermes_time.reset_cache()
++    try:
++        assert hermes_time.get_timezone_name() == "Europe/Paris"
++        config.write_text("timezone: Asia/Tokyo\n")
++        stat = config.stat()
++        os.utime(config, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
++        assert hermes_time.get_timezone_name() == "Asia/Tokyo"
++        assert str(hermes_time.get_timezone()) == "Asia/Tokyo"
++    finally:
++        hermes_time.reset_cache()
++
++
++def test_terminal_commands_get_the_profile_zone(monkeypatch):
++    from tools.environments import base
++
++    monkeypatch.setenv("HERMES_TIMEZONE", "America/New_York")
++    hermes_time.reset_cache()
++    try:
++        assert base._with_profile_tz("date") == "export TZ=America/New_York\ndate"
++        monkeypatch.setenv("HERMES_TIMEZONE", "")
++        hermes_time.reset_cache()
++        monkeypatch.setattr(hermes_time, "get_timezone_name", lambda: "")
++        assert base._with_profile_tz("date") == "date"
++    finally:
++        hermes_time.reset_cache()
+diff --git a/tools/environments/base.py b/tools/environments/base.py
+index bcb2ba0ae8deb2ad3151ca3892015aacd807c828..cf242703017a594da1839d2f4d2ca51078b2fabf 100644
+--- a/tools/environments/base.py
++++ b/tools/environments/base.py
+@@ -260,6 +260,24 @@ def env_uses_host_filesystem(env: object) -> bool:
+ # ---------------------------------------------------------------------------
+ 
+ 
++def _with_profile_tz(command: str) -> str:
++    """``command`` after an ``export TZ=`` of the active profile's configured zone, so ``date`` and
++    every program the agent runs (local, docker, ssh…) tell the person's time, as execute_code
++    already does. After the snapshot is sourced, so a zone changed mid-session is followed at the
++    next command; an inline ``TZ=… cmd`` still wins. Unconfigured, or on Windows: unchanged."""
++    if os.name == "nt":
++        return command
++    try:
++        from hermes_time import get_timezone_name
++
++        name = get_timezone_name()
++    except Exception:
++        return command
++    if not name:
++        return command
++    return f"export TZ={shlex.quote(name)}\n{command}"
++
++
+ class BaseEnvironment(ABC):
+     """Common interface and unified execution flow for all Hermes backends. Subclasses
+     implement ``_run_bash()`` and ``cleanup()``; the base provides ``execute()`` with
+@@ -473,7 +491,7 @@ class BaseEnvironment(ABC):
+     def _wrap_command(self, command: str, cwd: str) -> str:
+         """Full bash script: source snapshot, cd, run, re-dump env, emit CWD markers."""
+         return _wrap_command_script(
+-            command,
++            _with_profile_tz(command),
+             passthrough_names=self._snapshot_excluded_passthrough_names(),
+             snapshot_ready=self._snapshot_ready,
+             persist_env=self._persist_env,

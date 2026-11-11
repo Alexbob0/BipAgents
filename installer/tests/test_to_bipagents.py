@@ -46,6 +46,22 @@ def test_hermes_own_migration_is_no_change_of_settings():
     assert tb.settings_problems(snap(), snap(config=after)) == []
 
 
+def test_settings_hermes_own_migrations_retire_are_no_problem():
+    """Hermes v0.23.1's config v52 drops browser.backend / browser.extension_control, v53 lowers an
+    agent.clarify_timeout of 3600 to 90 (release bench 11/11: the move rolled back on « extension_control.enabled
+    is gone »). Any other change of those is still a problem."""
+    before = CONFIG + "browser:\n  backend: agent-browser\n  extension_control:\n    enabled: true\n  cdp_url: http://x:9222\n"
+    before = before.replace("  max_turns: 60\n", "  max_turns: 60\n  clarify_timeout: 3600\n")
+    after = before.replace("  backend: agent-browser\n  extension_control:\n    enabled: true\n", "")
+    after = after.replace("  clarify_timeout: 3600\n", "  clarify_timeout: 90\n")
+    assert tb.settings_problems(snap(config=before), snap(config=after)) == []
+    lost = after.replace("  cdp_url: http://x:9222\n", "")
+    assert tb.settings_problems(snap(config=before), snap(config=lost)) == [".hermes: setting browser.cdp_url is gone"]
+    other = before.replace("  clarify_timeout: 3600\n", "  clarify_timeout: 1200\n")
+    assert tb.settings_problems(snap(config=other), snap(config=after)) == [
+        ".hermes: setting agent.clarify_timeout changed"]
+
+
 def test_a_changed_model_or_key_or_memory_is_a_problem():
     moved = CONFIG.replace("192.168.50.10:8080", "localhost:9999")
     assert any("model" in p for p in tb.settings_problems(snap(), snap(config=moved)))
