@@ -160,6 +160,7 @@ class Site:
     def __init__(self, serve=0):
         self.serve = serve
         self.received = 0
+        self.heads = []      # the first bytes of each connection
 
     async def handle(self, reader, writer):
         try:
@@ -172,10 +173,14 @@ class Site:
                     await writer.drain()
                     left -= 65536
             else:
+                first = True
                 while True:
                     data = await reader.read(65536)
                     if not data:
                         break
+                    if first:
+                        self.heads.append(data[:512])
+                        first = False
                     self.received += len(data)
         except Exception:
             pass
@@ -378,6 +383,86 @@ def test_many_distinct_names_reach_the_days_total(tmp_path, monkeypatch):
     # the held day spent: any new host not validated is refused
     assert again.startswith("HTTP/1.1 403 Sending paused")
     assert proxy.day_of("vie")["unvalidated"] <= 20 * 1024
+
+
+def test_registries_take_installs_not_uploads(tmp_path, monkeypatch):
+    """PI-3 (11/11): what is SENT to a package registry is bounded per agent (or per client address without
+    credentials) per hour and per day, with no card: past it the tunnel is cut and new connections to the registries
+    get a plain 403 until the window passes; another agent is not concerned. Downloads are not counted."""
+    proxy, _, reports = load(tmp_path, monkeypatch, AGENTS, dict(LIMITS, registry_hour=256 * 1024))
+    site = Site()
+
+    async def steps(port):
+        out = {}
+        out["upload"] = await send_tls(port, "pypi.org", VIE, 1024 * 1024)
+        await asyncio.sleep(0.3)
+        out["after"] = await send_tls(port, "pypi.org", VIE, 1000)
+        out["plain"] = (await tunnel(port, "deb.debian.org", VIE))[0]
+        out["budget"] = await send_tls(port, "pypi.org", basic("budget", "t-budget"), 100 * 1024)
+        out["anonymous"] = await send_tls(port, "pypi.org", None, 1024 * 1024)
+        await asyncio.sleep(0.3)
+        out["anonymous_after"] = (await tunnel(port, "pypi.org"))[0]
+        out["site"] = await send_tls(port, "www.lemonde.fr", VIE, 3000)   # other sites: as before
+        return out
+
+    out = asyncio.run(through(proxy, monkeypatch, site, steps))
+    assert out["upload"][0].startswith("HTTP/1.1 200") and out["upload"][2]          # cut
+    assert out["after"][0] == "HTTP/1.1 403 Sending to package registries is limited - wait an hour"
+    assert out["plain"].startswith("HTTP/1.1 403 Sending to package registries is limited")
+    assert out["budget"][0].startswith("HTTP/1.1 200") and out["budget"][1] == 100 * 1024
+    assert out["anonymous"][0].startswith("HTTP/1.1 200") and out["anonymous"][2]
+    assert out["anonymous_after"].startswith("HTTP/1.1 403 Sending to package registries is limited")
+    assert out["site"][0].startswith("HTTP/1.1 200")
+    # vie's and the anonymous client's uploads stopped at the hour's ceiling each, budget's 100 KB whole
+    assert site.received <= 2 * 256 * 1024 + 100 * 1024 + 2 * 1024 + 4 * 1024, site.received
+    assert reports_of(reports) == []                                                   # never a card
+
+
+def test_an_install_stays_far_below_the_registries_ceiling(tmp_path, monkeypatch):
+    """With the shipped ceilings: a large cold install (40 connections, 2 000 requests of 700 bytes each, a 1.8 KB
+    ClientHello per connection — about what npm sends for ~2 000 packages) passes whole, using a quarter of the
+    hour's ceiling, and its downloads count for nothing."""
+    proxy, _, reports = load(tmp_path, monkeypatch, AGENTS, LIMITS)
+    site = Site()
+
+    async def steps(port):
+        results = []
+        for _ in range(40):
+            status, reader, writer = await tunnel(port, "pypi.org", VIE)
+            writer.write(record(22, 1800))
+            for _ in range(50):
+                writer.write(record(23, 700))
+            await writer.drain()
+            writer.close()
+            results.append(status)
+        await asyncio.sleep(0.3)
+        return results
+
+    results = asyncio.run(through(proxy, monkeypatch, site, steps))
+    sent = 40 * (1805 + 50 * 705)
+    assert all(r.startswith("HTTP/1.1 200") for r in results) and site.received == sent
+    assert proxy._registries["vie"][1] == sent < proxy.LIMITS["registry_hour"] / 4
+    assert reports_of(reports) == []
+
+
+def test_plain_http_carries_the_requested_host(tmp_path, monkeypatch):
+    """A plain-HTTP request for a registry with another site in its Host line (a shared front would serve that
+    site): the Host line sent is the registry's (27/10 audit, low point)."""
+    proxy, _, _ = load(tmp_path, monkeypatch, AGENTS, LIMITS)
+    site = Site()
+
+    async def steps(port):
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        writer.write(b"GET http://deb.debian.org/debian/dists HTTP/1.1\r\nHost: attacker.example\r\n"
+                     b"HOST: other.example\r\nAccept: */*\r\n\r\n")
+        await writer.drain()
+        await asyncio.sleep(0.3)
+        writer.close()
+
+    asyncio.run(through(proxy, monkeypatch, site, steps))
+    [head] = site.heads
+    assert head.startswith(b"GET /debian/dists HTTP/1.1\r\nHost: deb.debian.org\r\nAccept: */*\r\n\r\n"), head
+    assert b"attacker" not in head and b"other.example" not in head
 
 
 def test_refuser_holds_autoriser_frees(tmp_path, monkeypatch):

@@ -78,7 +78,11 @@ LIMITS = {"send_site_hour": 64 * 1024, "send_day": 256 * 1024, "browser_record_f
           "download_day": 0, "connections_minute": 0,
           # while a card waits (a host held, or the day's total reached): what may still go, in all, per held host and
           # per agent per day (11/11 audit PI-2: it was 16 KB per tunnel, again for every new tunnel)
-          "held_site": 16 * 1024, "held_day": 64 * 1024}
+          "held_site": 16 * 1024, "held_day": 64 * 1024,
+          # what may be SENT to the package registries, per agent (or client address without credentials), per hour
+          # and per day: installing never raises a card, but npm's registry also takes publishes (11/11 audit PI-3).
+          # A cold `npm install` of ~2 500 packages sends about 3 MB of requests (estimate, see the commit)
+          "registry_hour": 6 * 1024 * 1024, "registry_day": 24 * 1024 * 1024}
 # A tunnel cut: what the client still sends is read (never passed on) for so long, to say how much it wanted to send.
 SINK_IDLE = 3.0
 SINK_SECONDS = 30.0
@@ -103,6 +107,8 @@ _held_used = {}
 _days = {}
 # agent -> [minute start, new connections]
 _minutes = {}
+# agent (or "@" + the client's address without credentials) -> [hour start, bytes, day, bytes] sent to registries
+_registries = {}
 
 
 def normal(host):
@@ -374,6 +380,44 @@ def download_over(agent):
     return bool(most) and day_of(agent)["received"] >= most
 
 
+def registry_window(sender):
+    """[hour start, bytes this hour, day, bytes today] sent to the registries by `sender`."""
+    now, day = time.time(), today()
+    window = _registries.get(sender)
+    if window is None:
+        window = [now, 0, day, 0]
+        if len(_registries) > 4096:
+            _registries.clear()
+        _registries[sender] = window
+    if now - window[0] >= HOUR:
+        window[0], window[1] = now, 0
+    if window[2] != day:
+        window[2], window[3] = day, 0
+    return window
+
+
+def registry_over(sender):
+    """`sender` sent the registries all it may this hour or today (new connections to them refused)."""
+    window = registry_window(sender)
+    return window[1] >= limit("registry_hour") or window[3] >= limit("registry_day")
+
+
+def registry_take(sender, size):
+    """`size` more bytes to a registry: True within the ceilings (counted), else False (and the ceiling marked
+    reached, so new connections are refused until the window passes)."""
+    window = registry_window(sender)
+    hour, day = limit("registry_hour"), limit("registry_day")
+    if window[1] + size > hour or window[3] + size > day:
+        if window[1] + size > hour:
+            window[1] = max(window[1], hour)
+        if window[3] + size > day:
+            window[3] = max(window[3], day)
+        return False
+    window[1] += size
+    window[3] += size
+    return True
+
+
 def refused(agent, host):
     """A host the agent's person refused on its card (the policy's `refused`, host → until when): nothing goes there
     until then, not even a read (the bridge keeps a « Refuser » a week, sandbox_sites.rs QUIET_AFTER_NO)."""
@@ -496,10 +540,13 @@ class Tls:
 
 class Guard:
     """One tunnel of a known agent: its bytes counted for the day; its sends counted against the budgets when the host
-    is not validated for it (`counted`), the tunnel cut past them."""
+    is not validated for it (`counted`), the tunnel cut past them. To a registry (`registry`: who sends, an agent or a
+    client address without credentials, then `agent` is None): what it sends counted against the registries' ceiling,
+    with no card."""
 
-    def __init__(self, agent, host, counted, browser=False):
+    def __init__(self, agent, host, counted, browser=False, registry=None):
         self.agent, self.host, self.counted = agent, host, counted
+        self.registry = registry
         # a program: every byte (TLS record headers and handshakes included: a program frames what it likes in them,
         # 2026-11-11 audit BV-4); the browser: its records past their free first bytes
         self.tls = Tls(limit("browser_record_free")) if browser else None
@@ -508,11 +555,18 @@ class Guard:
         self.app = 0         # what counted against the budgets in this tunnel
         self.pending = 0     # the chunk that went over (never passed on)
         self.sunk = 0        # what the client still sent once cut (never passed on)
-        self.cut = None      # why the tunnel was cut: "send", "held", "download"
+        self.cut = None      # why the tunnel was cut: "send", "held", "download", "registry"
 
     def sending(self, data):
         """`data` the client sends: True to pass it on, False to cut the tunnel (`self.cut` says why)."""
         self.up += len(data)
+        if self.registry is not None and not registry_take(self.registry, len(data)):
+            self.cut = "registry"
+            log(f"cut (registry: sending limit reached, {self.up} bytes in this tunnel)", "SEND", self.host,
+                self.agent or self.registry)
+            return False
+        if self.agent is None:
+            return True   # no credentials: a registry, nothing else to count
         day = day_of(self.agent)
         if not self.counted:
             day["sent"] += len(data)
@@ -569,6 +623,8 @@ class Guard:
 
     def receiving(self, data):
         self.down += len(data)
+        if self.agent is None:
+            return True
         day = day_of(self.agent)
         day["received"] += len(data)
         if download_over(self.agent):
@@ -618,6 +674,8 @@ async def pipe_up(reader, up_writer, writer, guard):
         close(up_writer)
         if guard is not None and guard.cut in ("send", "held"):
             await sink(reader, guard)
+            close(writer)
+        elif guard is not None and guard.cut == "registry":
             close(writer)
 
 
@@ -671,8 +729,11 @@ PHONE_FAILED = "Bad Gateway (the phone could not reach the site)"
 CONNECTIONS = "Too many new connections - wait a minute"
 UNKNOWN_BROWSER = "Unknown browser"
 REFUSED = "Sending to this site refused by your person - do without it"
+REGISTRY_LIMIT = "Sending to package registries is limited - wait an hour"
 PAUSED = "Sending paused - your person has a card to answer about this site"
 BODIES = {
+    REGISTRY_LIMIT: "Downloading packages goes on; what is sent to the package registries is limited per hour and per "
+                    "day, and that limit was reached. Wait an hour.",
     REFUSED: "Your person refused sending to this site: nothing reaches it for now. Do without it, or ask them.",
     PAUSED: "You sent this site more than a small amount: your person has a card to answer. Wait for their answer.",
     NOT_CONNECTOR: "This connector may only reach the sites your person approved with it.",
@@ -837,9 +898,12 @@ async def handle(reader, writer):
         authority, _, path = target[7:].partition("/")
         host, port = split_authority(authority, 80)
         wanted = 80
+        # the Host line is the requested host's, never the client's own (RFC 9112 §3.2.2; 27/10 audit: a registry
+        # name in the request line, another site in Host, on a shared front)
         kept = b"".join(line + b"\r\n" for name, line in headers if name not in ("proxy-authorization",
-                                                                                   "proxy-connection"))
-        request = f"{method} /{path} {version}\r\n".encode("latin-1") + kept + b"\r\n"
+                                                                                   "proxy-connection", "host"))
+        named = normal(host) + (f":{port}" if port != 80 else "")
+        request = f"{method} /{path} {version}\r\nHost: {named}\r\n".encode("latin-1") + kept + b"\r\n"
     else:
         return await answer(writer, 400, "Bad Request")
     host = normal(host)
@@ -852,6 +916,10 @@ async def handle(reader, writer):
         log("blocked", method, target, agent)
         return await answer(writer, 403, refusal(agent, strict, wanted, port))
     counted = agent is not None and not connector(agent)
+    sender = agent if agent is not None else "@" + peer
+    if host in REGISTRIES and registry_over(sender):
+        log("blocked (registry sending limit)", method, target, agent or sender)
+        return await answer(writer, 403, REGISTRY_LIMIT)
     if counted and host not in REGISTRIES and blocked_name(host):
         log("blocked (blocklist)", method, target, agent)
         return await answer(writer, 403, BLOCKED)
@@ -879,7 +947,8 @@ async def handle(reader, writer):
             log(f"blocked (phone exit: {exc})", method, target, agent)
             return await answer(writer, status, reason)
         log("allowed (phone exit)", method, target, agent)
-        return await tunnel(reader, writer, up_reader, up_writer, method, target, agent, host, b"", counted, browser)
+        return await tunnel(reader, writer, up_reader, up_writer, method, target, agent, host, b"", counted, browser,
+                            sender)
     addresses = await resolve(host, port)
     if addresses == []:
         log("blocked-address", method, target, agent)
@@ -894,12 +963,16 @@ async def handle(reader, writer):
         log(f"failed ({type(exc).__name__}: {str(exc)[:120]})", method, target, agent)
         return await answer(writer, 502, "Bad Gateway (site unreachable)")
     log("allowed", method, target, agent)
-    return await tunnel(reader, writer, up_reader, up_writer, method, target, agent, host, request, counted, browser)
+    return await tunnel(reader, writer, up_reader, up_writer, method, target, agent, host, request, counted, browser,
+                        sender)
 
 
-async def tunnel(reader, writer, up_reader, up_writer, method, target, agent, host, request, counted, browser):
+async def tunnel(reader, writer, up_reader, up_writer, method, target, agent, host, request, counted, browser,
+                 sender=None):
     """The client's stream to the site (or the phone exit's), counted and guarded."""
-    guard = Guard(agent, host, not validated(agent, host), browser) if counted else None
+    registry = sender if normal(host) in REGISTRIES and not connector(agent) else None
+    guard = Guard(agent if counted else None, host, counted and not validated(agent, host), browser, registry) \
+        if counted or registry else None
     entry = [agent, normal(host), phone_exit(host, agent), writer, up_writer]
     _open_tunnels.append(entry)
     try:
@@ -932,7 +1005,10 @@ async def keep_switching():
 
 async def carry(reader, writer, up_reader, up_writer, method, target, agent, request, guard):
     if request:
-        if guard is not None and not guard.sending(request):
+        if guard is not None and not guard.sending(request) and guard.cut == "registry":
+            close(up_writer)
+            return await answer(writer, 403, REGISTRY_LIMIT)
+        if guard is not None and guard.cut:
             guard.pending = len(request)
             close(up_writer)
             await sink(reader, guard)

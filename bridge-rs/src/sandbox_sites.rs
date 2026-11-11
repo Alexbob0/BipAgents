@@ -1106,7 +1106,10 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
         let entry = load(config).agents.get(&agent.name).cloned().unwrap_or_default();
         let mut lines = vec![
             "Reading: every public HTTPS site is open to your programs and your browser.".to_string(),
-            format!("Sending, always allowed (package registries): {}", registries(config).join(", ")),
+            format!(
+                "Sending, allowed without a card up to a few MB an hour (package registries): {}",
+                registries(config).join(", ")
+            ),
         ];
         let mut sites: Vec<String> = entry.sites.iter().map(|s| s.host.clone()).collect();
         for site in connector_sites(config, &agent.name) {
