@@ -896,10 +896,11 @@ fn starts(choice: &str) -> bool {
     matches!(choice, NOTIFY | SILENT_CHOICE | "once" | "session" | "always")
 }
 
-/// The explicit refusals (`card_place::allowed`'s: deny, denied, refuse, refused, no): the only answers that delete a
-/// routine its agent made or drop its proposal (review PI-6-3, C3).
-fn refuses(choice: &str) -> bool {
-    !crate::card_place::allowed(choice)
+/// The explicit refusals (deny, denied, refuse, refused, no): the only answers that delete a routine its agent made or
+/// drop its proposal (review PI-6-3, C3). A list of its own, not « not `card_place::allowed` »: that one is an allow
+/// list (11/11 review B-1), so an empty, unknown or misspelt word is « not allowed » too, and would delete.
+pub fn refuses(choice: &str) -> bool {
+    matches!(choice.trim().to_lowercase().as_str(), "deny" | "denied" | "refuse" | "refused" | "no")
 }
 
 /// An answer a routine's card knows: a start or « Oui », or a refusal. Any other (empty, unknown, a word of a later
@@ -2036,8 +2037,9 @@ Pour la relancer tout de suite : « Lancer maintenant » sur sa page."
             let on = answered(name, yes).unwrap();
             assert!(on.enabled && !on.muted, "{yes}");
         }
-        // an empty or unknown answer: nothing changes, it keeps waiting with its card (C3), never started (S2)
-        for (name, odd) in [("U", ""), ("U2", "start"), ("U3", "peut-être")] {
+        // an empty or unknown answer: nothing changes, it keeps waiting with its card (C3), never started (S2); « not
+        // allowed » for `card_place::allowed` (a misspelt yes, a word of another card) is not a refusal here either
+        for (name, odd) in [("U", ""), ("U2", "start"), ("U3", "peut-être"), ("U4", "alwyas"), ("U5", "deny_always")] {
             let (_, card) = propose(&config, name);
             assert!(!known_choice(odd) && answer(&config, "vie", &card_id(&card), odd).is_none(), "{odd:?}");
             let kept = list(&config, Some("vie")).into_iter().find(|r| r.name == name).unwrap();
@@ -2274,6 +2276,7 @@ ailleurs.\nEn attendant ta réponse, elle continue comme avant."
         assert!(text_of(&listed).contains("waits for your person's OK (it runs as before"), "{}", text_of(&listed));
         // an unknown answer leaves it waiting (C3); only a refusal drops it
         assert!(answer(&config, "vie", &pushed, "notify").is_none() && answer(&config, "vie", &pushed, "").is_none());
+        assert!(answer(&config, "vie", &pushed, "alwyas").is_none() && answer(&config, "vie", &pushed, "deny_always").is_none());
         assert!(get(&config, &mine.id).unwrap().change.is_some());
         let no = answer(&config, "vie", &pushed, "deny").unwrap();
         assert!(no.change.is_none() && no.prompt == "Résume mes e-mails." && no.enabled);

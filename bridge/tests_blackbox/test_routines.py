@@ -124,7 +124,7 @@ def test_an_agents_routine_shows_all_it_runs_and_a_non_deletes_it(bridges, fakes
     assert call(bridge, "routine_schedule", {"action": "run", "name": "Sans avis"})["isError"]
     # an empty or unknown answer changes nothing (C3): 422, the routine still waiting with its card
     _, empty = propose(bridge, "Vide")
-    for odd in ("", "start"):
+    for odd in ("", "start", "alwyas", "deny_always"):   # not a yes for card_place, not a refusal here either
         assert bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": empty["run_id"],
                                                               "choice": odd}).status_code == 422
     assert jobs(bridge)["Vide"]["state"] == "paused" and jobs(bridge)["Vide"]["waits_for_answer"] is True
