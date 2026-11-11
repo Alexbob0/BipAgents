@@ -46,15 +46,19 @@ def test_create_custom_agent(bridges, fakes):
     assert created.pop("group", "") == ""   # agent groups: Rust only
     assert created == {"id": "fougere", "name": "Fougère", "url": "https://mini.ts.net:8642/p/fougere"}   # no Hermes key
     commands = hermes_args(bridge)
-    key = commands[1][-1]   # its new API_SERVER_KEY, kept by the bridge alone
+    key = tomllib.loads(bridge.toml_text())["agents"]["fougere"]["hermes_key"]   # its new API_SERVER_KEY
     assert commands[0] == ["profile", "create", "fougere", "--clone-from", "default", "--no-alias", "--description",
                            "suit mes plantes"]
-    assert commands[1] == ["-p", "fougere", "config", "set", "API_SERVER_KEY", "--", key]
+    # Its key in the profile's .env (0600), never on a command line: every account of a shared server reads the
+    # others' command lines in /proc (audit 11/11, BV-6).
+    assert not any(key in arg for c in commands for arg in c)
+    env = home / "profiles" / "fougere" / ".env"
+    assert f"API_SERVER_KEY={key}" in env.read_text().splitlines() and env.stat().st_mode & 0o777 == 0o600
     # Nothing says this install's agents are isolated from the bridge: no terminal, files or code until turned on.
-    assert commands[2] == ["-p", "fougere", "tools", "disable", "terminal", "file", "code_execution", "browser",
+    assert commands[1] == ["-p", "fougere", "tools", "disable", "terminal", "file", "code_execution", "browser",
                            "--platform", "api_server"]
     # the bridge's tools: written into its profile by the bridge itself, no `hermes config set`
-    assert not any(c[2:4] == ["config", "set"] for c in commands[3:])
+    assert not any(c[2:4] == ["config", "set"] for c in commands[2:])
     registered = servers(home / "profiles" / "fougere")["bipagents"]
     token = registered["headers"]["Authorization"].removeprefix("Bearer ")
     assert registered["url"] == f"http://127.0.0.1:{bridge.port}/v1/agent-tools/mcp?v={tools_version(bridge, token)}"
@@ -281,8 +285,11 @@ def test_profiles_created_on_the_server_can_be_claimed(bridges, fakes):
     bridge.commands.clear()
     cuisine = bridge.post("/v1/agents/claim", headers=AUTH, json={"id": "cuisine"}).json()
     assert cuisine["name"] == "Cuisine"
-    assert hermes_args(bridge)[0][:6] == ["-p", "cuisine", "config", "set", "API_SERVER_KEY", "--"] and "key" not in cuisine
-    assert hermes_args(bridge)[1:] == []
+    # A new key, in its .env (0600) and never on a command line (audit 11/11, BV-6).
+    assert hermes_args(bridge) == [] and "key" not in cuisine
+    env = profiles / "cuisine" / ".env"
+    key = tomllib.loads(bridge.toml_text())["agents"]["cuisine"]["hermes_key"]
+    assert f"API_SERVER_KEY={key}" in env.read_text().splitlines() and env.stat().st_mode & 0o777 == 0o600
     assert set(servers(profiles / "cuisine")) == {"bipagents", "bipagents_checkout"}
     assert [agent for agent, _ in fakes.hermes.created] == ["jardin", "cuisine"]   # their « Discussion »
     assert not marked(profiles / "cuisine")      # no Hermes Bot Mode

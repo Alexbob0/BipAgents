@@ -2,7 +2,7 @@ diff --git a/src/browser_manager.py b/src/browser_manager.py
 index a614108..b1b7ae5 100644
 --- a/src/browser_manager.py
 +++ b/src/browser_manager.py
-@@ -56,6 +56,207 @@ def _parse_nonnegative_int_env(
+@@ -56,6 +56,217 @@ def _parse_nonnegative_int_env(
      return parsed
  
  
@@ -168,15 +168,25 @@ index a614108..b1b7ae5 100644
 +
 +
 +def _apply_container_defaults(options) -> None:
-+    """What the agent leaves out, from the container: its persistent profile (STEALTH_USER_DATA_DIR), launch flags
-+    (STEALTH_BROWSER_ARGS, separated by « ; », added after the caller's) and time zone (STEALTH_TIMEZONE). An agent then
++    """The container's launch: its persistent profile (STEALTH_USER_DATA_DIR), launch flags (STEALTH_BROWSER_ARGS,
++    separated by « ; »; only these in the agent's container) and time zone (STEALTH_TIMEZONE). An agent then
 +    starts the right browser with spawn_browser() and no arguments. STEALTH_HEADFUL=1: the browser always shows on the
 +    container's screen, where the person watches it, even when the agent asks for headless."""
 +    if os.environ.get("STEALTH_HEADFUL") == "1":
 +        options.headless = False
++    extra = [a.strip() for a in os.environ.get("STEALTH_BROWSER_ARGS", "").split(";") if a.strip()]
++    if _fixed_port() is not None:
++        # In the agent's container, only the container's launch (audit 11/11, BV-3): the caller is a model a page may
++        # steer, and its flags reached Chrome's command line (`--no-proxy-server` displaced the egress proxy's flag,
++        # so no send guard). Never its flags, proxy, profile or user agent.
++        options.browser_args = extra
++        options.proxy = None
++        options.user_agent = None
++        options.user_data_dir = os.environ.get("STEALTH_USER_DATA_DIR") or None
++        options.timezone_id = os.environ.get("STEALTH_TIMEZONE") or options.timezone_id
++        return
 +    if not options.user_data_dir and os.environ.get("STEALTH_USER_DATA_DIR"):
 +        options.user_data_dir = os.environ["STEALTH_USER_DATA_DIR"]
-+    extra = [a.strip() for a in os.environ.get("STEALTH_BROWSER_ARGS", "").split(";") if a.strip()]
 +    given = {a.split("=", 1)[0] for a in options.browser_args}
 +    options.browser_args = list(options.browser_args) + [a for a in extra if a.split("=", 1)[0] not in given]
 +    if not options.timezone_id and os.environ.get("STEALTH_TIMEZONE"):
@@ -210,7 +220,7 @@ index a614108..b1b7ae5 100644
  class BrowserManager:
      """Manages multiple browser instances."""
  
-@@ -78,6 +279,72 @@ class BrowserManager:
+@@ -78,6 +289,72 @@ class BrowserManager:
              minimum=1,
          )
          self._idle_reaper_task: Optional[asyncio.Task] = None
@@ -283,7 +293,7 @@ index a614108..b1b7ae5 100644
  
      @staticmethod
      def _append_user_agent_arg(args: List[str], user_agent: Optional[str]) -> List[str]:
-@@ -255,7 +522,7 @@ class BrowserManager:
+@@ -255,7 +532,7 @@ class BrowserManager:
              pass
          self._idle_reaper_task = None
  
@@ -292,7 +302,7 @@ index a614108..b1b7ae5 100644
          """
          Spawn a new browser instance with given options.
  
-@@ -265,7 +532,21 @@ class BrowserManager:
+@@ -265,7 +542,21 @@ class BrowserManager:
          Returns:
              BrowserInstance: The spawned browser instance.
          """
@@ -315,7 +325,7 @@ index a614108..b1b7ae5 100644
  
          instance = BrowserInstance(
              instance_id=instance_id,
-@@ -321,7 +602,7 @@ class BrowserManager:
+@@ -321,7 +612,7 @@ class BrowserManager:
                  caller_args,
                  launch_proxy_server,
              )
@@ -324,7 +334,7 @@ index a614108..b1b7ae5 100644
              
              config = uc.Config(
                  headless=options.headless,
-@@ -331,8 +612,8 @@ class BrowserManager:
+@@ -331,8 +622,8 @@ class BrowserManager:
                  browser_args=launch_args
              )
  
@@ -335,7 +345,7 @@ index a614108..b1b7ae5 100644
              config_obj = getattr(browser, "config", None)
              actual_user_data_dir = getattr(config_obj, "user_data_dir", options.user_data_dir)
              uses_custom_data_dir = getattr(
-@@ -404,6 +685,8 @@ class BrowserManager:
+@@ -404,6 +695,8 @@ class BrowserManager:
  
              instance.state = BrowserState.READY
              instance.update_activity()
@@ -344,7 +354,7 @@ index a614108..b1b7ae5 100644
  
              persistent_storage.store_instance(instance_id, {
                  'state': instance.state.value,
-@@ -470,7 +753,17 @@ class BrowserManager:
+@@ -470,7 +763,17 @@ class BrowserManager:
              Optional[dict]: The browser instance data if found, else None.
          """
          async with self._lock:
@@ -363,7 +373,7 @@ index a614108..b1b7ae5 100644
  
      async def list_instances(self) -> List[BrowserInstance]:
          """
-@@ -479,10 +772,11 @@ class BrowserManager:
+@@ -479,10 +782,11 @@ class BrowserManager:
          Returns:
              List[BrowserInstance]: List of all browser instances.
          """
@@ -376,7 +386,7 @@ index a614108..b1b7ae5 100644
          """
          Close and remove a browser instance.
  
-@@ -493,7 +787,13 @@ class BrowserManager:
+@@ -493,7 +797,13 @@ class BrowserManager:
              bool: True if closed successfully, False otherwise.
          """
          import asyncio
@@ -391,7 +401,7 @@ index a614108..b1b7ae5 100644
          async def _do_close():
              async with self._lock:
                  if instance_id not in self._instances:
-@@ -924,6 +1224,8 @@ class BrowserManager:
+@@ -924,6 +1234,8 @@ class BrowserManager:
          if data:
              if touch_activity:
                  await self.touch_instance(instance_id)
@@ -400,7 +410,7 @@ index a614108..b1b7ae5 100644
              return data['tab']
          return None
  
-@@ -1214,7 +1516,7 @@ class BrowserManager:
+@@ -1214,7 +1526,7 @@ class BrowserManager:
                      to_close.append(instance_id)
  
          for instance_id in to_close:
@@ -409,7 +419,7 @@ index a614108..b1b7ae5 100644
  
          return len(to_close)
  
-@@ -1226,4 +1528,4 @@ class BrowserManager:
+@@ -1226,4 +1538,4 @@ class BrowserManager:
          """
          instance_ids = list(self._instances.keys())
          for instance_id in instance_ids:

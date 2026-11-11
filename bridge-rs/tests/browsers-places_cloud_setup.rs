@@ -788,16 +788,15 @@ async fn a_prepared_place_is_claimed_with_file_writes_and_its_other_agents_made_
     assert!(ran.iter().any(|c| is_create(c, "maison")), "{ran:?}");
     assert!(!ran.iter().any(|c| c.len() > 4 && c[1..3] == ["config", "set"]));
     let maison = shared.get().agents["maison"].clone();
-    assert!(ran.contains(&vec![
-        "/opt/hermes".into(),
-        "-p".into(),
-        "maison".into(),
-        "config".into(),
-        "set".into(),
-        "API_SERVER_KEY".into(),
-        "--".into(),
-        maison.hermes_key.clone()
-    ]));
+    // The agents' keys never on a command line (a neighbour on the server reads /proc/<pid>/cmdline): in their .env,
+    // only their owner reads it (audit 11/11, BV-6).
+    for (name, secret) in [("agent", &key), ("maison", &maison.hermes_key)] {
+        assert!(!ran.iter().any(|c| c.iter().any(|a| a.contains(secret.as_str()))), "{name}'s key in {ran:?}");
+        let env = home.join("profiles").join(name).join(".env");
+        assert!(std::fs::read_to_string(&env).unwrap().contains(&format!("API_SERVER_KEY={secret}\n")));
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(std::fs::metadata(&env).unwrap().permissions().mode() & 0o777, 0o600, "{name}");
+    }
     let started = std::time::Instant::now();
     cloud_setup::READINESS.wait("maison", std::time::Duration::from_secs(5)).await;
     assert!(started.elapsed() < std::time::Duration::from_secs(1));

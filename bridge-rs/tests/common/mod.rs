@@ -69,9 +69,28 @@ pub fn write_p8(dir: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
+/// A Hermes code folder with patch 0018 on (its file and its wiring, agent_shares::guest_turns_closed): relatives'
+/// turns are closed there. Returns the folder.
+pub fn patched_hermes(dir: &Path) -> String {
+    let root = dir.join("hermes-agent");
+    let (wired, mark) = bipbridge::agent_shares::GUEST_TURN_WIRING;
+    for (file, text) in [
+        (bipbridge::agent_shares::GUEST_TURN_FILE, "# patch 0018\n".to_string()),
+        (wired, format!("from {mark} import parse\n")),
+    ] {
+        let path = root.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).expect("hermes folder");
+        std::fs::write(path, text).expect("hermes file");
+    }
+    root.to_string_lossy().into_owned()
+}
+
 pub fn config_dict(dir: &Path, urls: &Urls) -> Value {
     let p8 = write_p8(dir);
+    let hermes_root = patched_hermes(dir);
     json!({
+        // its Hermes has patch 0018 (relatives' turns closed): without a known code folder, none would run
+        "hermes": {"root": hermes_root},
         "bridge_key": BRIDGE_KEY,
         "data_dir": dir.join("data").to_string_lossy(),
         "pocket": {"url": urls.pocket},

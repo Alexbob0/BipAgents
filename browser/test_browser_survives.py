@@ -130,6 +130,27 @@ def test_the_page_and_its_instance_outlive_the_server(container):
     third.end()
 
 
+def test_the_caller_never_chooses_chromes_launch(container):
+    """Audit 11/11, BV-3: an agent steered by a page quit Chrome, then started it with `--no-proxy-server` (the egress
+    proxy's flag displaced: no send guard). The container's flags, profile and no proxy, whatever the call says."""
+    server = Server(container)
+    instance = server.call("spawn_browser")["instance_id"]
+    assert server.call("close_instance", instance_id=instance, quit_browser=True) is True
+    for _ in range(50):
+        if chromes(container) == 0:
+            break
+        time.sleep(0.2)
+    server.call("spawn_browser", browser_args=["--no-proxy-server", "--user-data-dir=/tmp/elsewhere"],
+                proxy="http://203.0.113.9:1", user_data_dir="/tmp/elsewhere", user_agent="Evil/1")
+    out = subprocess.run([ENGINE, "exec", container, "pgrep", "-a", "-f", "--", "--remote-debugging-port="],
+                         capture_output=True, text=True).stdout
+    main = [line for line in out.splitlines() if "--type=" not in line]
+    assert main and all("--user-data-dir=/home/bip/profile" in line for line in main), out
+    for caller in ("--no-proxy-server", "203.0.113.9", "/tmp/elsewhere", "Evil/1"):
+        assert caller not in out, out
+    server.end()
+
+
 def test_a_chrome_that_went_away_comes_back_under_the_same_id(container):
     server = Server(container)
     instance = server.call("spawn_browser")["instance_id"]

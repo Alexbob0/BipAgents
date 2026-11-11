@@ -316,7 +316,13 @@ pub async fn members(http: &reqwest::Client, config: &Config) -> Vec<Member> {
                 .get("agents")
                 .and_then(Value::as_array)
                 .map(|items| {
-                    items.iter().map(|a| (str_of(a, "id"), str_of(a, "name"))).filter(|(i, _)| !i.is_empty()).collect()
+                    items
+                        .iter()
+                        // only those its bridge takes news for (`tell`; an older bridge says nothing: kept)
+                        .filter(|a| a.get("tell").and_then(Value::as_bool) != Some(false))
+                        .map(|a| (str_of(a, "id"), str_of(a, "name")))
+                        .filter(|(i, _)| !i.is_empty())
+                        .collect()
                 })
                 .unwrap_or_default();
             Member { id, name, agents }
@@ -853,6 +859,24 @@ pub fn router() -> Router<AppState> {
         .route("/family/received/{id}/seen", post(seen_route))
 }
 
+/// The agents a linked household's message may name (audit 11/11, PI-11: its key put up to 1,000 characters into the
+/// next full-tool turn of any agent it named): the person's first agent (where a message to the household goes
+/// anyway), the family's agent, an agent shared with that household (agent_shares.rs) and one an agent of that
+/// household is linked with (the agent pairs, peers.rs `links_of`). Any other one is refused like an unknown name.
+pub fn reachable_by(
+    config: &Config,
+    links: &[(String, String)],
+    household: &str,
+    agent: &AgentConfig,
+    first: Option<&AgentConfig>,
+) -> bool {
+    let theirs = format!("{SEPARATOR}{household}");
+    first.is_some_and(|f| f.name == agent.name)
+        || crate::family_agent::is_family(config, &agent.name)
+        || crate::agent_shares::shared_with(config, &agent.name).iter().any(|h| h == household)
+        || links.iter().any(|(from, to)| from.ends_with(&theirs) && *to == agent.name)
+}
+
 /// `POST /family/tell`: a linked household's bridge hands a message over, with the key we gave it.
 async fn tell_route(State(state): State<AppState>, headers: HeaderMap, request: Request) -> ApiResult<Response> {
     let token = headers
@@ -874,7 +898,14 @@ async fn tell_route(State(state): State<AppState>, headers: HeaderMap, request: 
     }
     let config = state.config();
     let wanted = str_of(&body, "agent");
-    let agent = config.agent(Some(&wanted)).or_else(|| config.agents.values().next()).cloned();
+    let first = config.agents.values().next().cloned();
+    let agent = if wanted.is_empty() {
+        first // to the household: its person's first agent, as always
+    } else {
+        let links = crate::peers::links_of(&state.links.load());
+        config.agent(Some(&wanted)).cloned().filter(|a| reachable_by(&config, &links, &household, a, first.as_ref()))
+    };
+    // an agent it may not address answers as one that is not here: nothing queued, nothing told apart
     let Some(agent) = agent else { return Err(HttpError::new(404, "no agent here")) };
     let from = state
         .households
