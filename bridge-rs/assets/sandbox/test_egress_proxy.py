@@ -465,6 +465,66 @@ def test_plain_http_carries_the_requested_host(tmp_path, monkeypatch):
     assert b"attacker" not in head and b"other.example" not in head
 
 
+def test_the_browsers_free_bytes_have_a_pool(tmp_path, monkeypatch):
+    """PI-4 / BV-8 (11/11): the browser's records of at most 4 KB counted nothing, with no total. Now their free bytes
+    come from a pool per host per hour (and per agent per day); past it they count like a program's: the same cut, one
+    report. Ordinary browsing (the 200 requests of 1.5 KB of the Tls test, 300 KB) stays far below the shipped pool."""
+    proxy, _, reports = load(tmp_path, monkeypatch, AGENTS, dict(LIMITS, browser_free_site_hour=1024 * 1024),
+                             browsers={"127.0.0.1": "vie"}, env={"BIP_BROWSERS": "127.0.0.1"})
+    site = Site()
+
+    async def steps(port):
+        out = {}
+        # 8 MB in 3 KB records, as `fetch` in a loop would: the pool (1 MB here), then the hour's 64 KB, then cut
+        out["leak"] = await send_tls(port, "drop.example.net", None, 8 * 1024 * 1024, chunk=3000)
+        await asyncio.sleep(0.5)
+        out["leak_received"] = site.received
+        return out
+
+    out = asyncio.run(through(proxy, monkeypatch, site, steps))
+    assert out["leak"][0].startswith("HTTP/1.1 200")
+    [line] = reports_of(reports)                                            # cut, reported once
+    assert line["agent"] == "vie" and line["host"] == "drop.example.net" and line["bytes"] >= 64 * 1024
+    assert out["leak_received"] <= 1024 * 1024 + 64 * 1024 + 2 * 3005 + 600, out["leak_received"]
+    proxy.write_usage()
+    assert json.loads((tmp_path / "usage.json").read_text())["agents"]["vie"]["browser_free"] == 1024 * 1024
+
+    # the shipped pool: ten times the Tls test's 200 requests of 1.5 KB to one host (3 MB) pass, nothing reported
+    other = tmp_path / "other"
+    other.mkdir()
+    proxy2, _, reports2 = load(other, monkeypatch, AGENTS, LIMITS, browsers={"127.0.0.1": "vie"},
+                               env={"BIP_BROWSERS": "127.0.0.1"})
+    assert proxy2.limit("browser_free_site_hour") == 4 * 1024 * 1024
+    assert proxy2.limit("browser_free_day") == 32 * 1024 * 1024
+    site2 = Site()
+
+    async def browse(port):
+        return [await send_tls(port, "www.leboncoin.example", None, 200 * 1500, chunk=1500) for _ in range(10)]
+
+    pages = asyncio.run(through(proxy2, monkeypatch, site2, browse))
+    assert all(p[0].startswith("HTTP/1.1 200") and p[1] == 300000 for p in pages)
+    assert reports_of(reports2) == [] and proxy2.day_of("vie")["unvalidated"] == len("www.leboncoin.example")
+
+
+def test_the_browsers_day_pool(tmp_path, monkeypatch):
+    """Spread over hosts, the browser's free bytes meet the agent's day pool (512 KB here); past it they count like a
+    program's: the third host's 200 KB goes over, is cut past the hour's 64 KB and reported."""
+    proxy, _, reports = load(tmp_path, monkeypatch, AGENTS, dict(LIMITS, browser_free_day=512 * 1024),
+                             browsers={"127.0.0.1": "vie"}, env={"BIP_BROWSERS": "127.0.0.1"})
+    site = Site()
+
+    async def steps(port):
+        results = [await send_tls(port, f"h{i}.example.net", None, 200 * 1024, chunk=3000) for i in range(3)]
+        await asyncio.sleep(0.5)
+        return results
+
+    results = asyncio.run(through(proxy, monkeypatch, site, steps))
+    assert all(r[0].startswith("HTTP/1.1 200") for r in results)
+    assert [line["host"] for line in reports_of(reports)] == ["h2.example.net"]   # the third one cut
+    assert proxy.day_of("vie")["free"] == 512 * 1024
+    assert site.received <= 512 * 1024 + 64 * 1024 + 16 * 1024, site.received
+
+
 def test_refuser_holds_autoriser_frees(tmp_path, monkeypatch):
     """BV-7 (11/11): the person's « Refuser » reaches the proxy (`refused`, until its week ends): a new connection to
     that host is refused and nothing reaches it; past the date, or on another host, as before. « Autoriser » (the host

@@ -17,9 +17,12 @@ abuse complaint can be traced to an agent.
   `Proxy-Authorization` header is never passed on.
 - **Sending is guarded**: the tunnel is opaque (never any TLS interception), so the proxy counts what the client sends
   the site: a program's every byte (its TLS handshake too: a program frames data in any record type it likes), the
-  browser's TLS records past their first `browser_record_free` bytes each, whatever their type; and the name of each
-  host not validated it connects to, once a day per name (data can be spelt in names). To a host its person did not validate (the registries count as validated), past `send_site_hour` bytes per
-  host per hour, or `send_day` bytes per agent per day across such hosts (a slow leak), the tunnel is cut: nothing more
+  browser's TLS records past their first `browser_record_free` bytes each, whatever their type (those free bytes
+  within a pool, `browser_free_site_hour` per host and `browser_free_day` per agent: past it they count); and the
+  name of each host not validated it connects to, once a day per name (data can be spelt in names). To a host its
+  person did not validate (the registries count as validated: they have their own ceiling, `registry_hour` and
+  `registry_day` per agent, never a card), past `send_site_hour` bytes per host per hour, or `send_day` bytes per
+  agent per day across such hosts (a slow leak), the tunnel is cut: nothing more
   reaches the site, the proxy keeps reading what the client still sends for a few seconds to know its size, then
   appends one line `{"kind": "send", "agent", "host", "bytes"}` to `BIP_REPORTS` (the bridge reads it and asks the
   person on ONE card per agent). Until the person answers, that host (or, past the day's total, every host not
@@ -82,7 +85,10 @@ LIMITS = {"send_site_hour": 64 * 1024, "send_day": 256 * 1024, "browser_record_f
           # what may be SENT to the package registries, per agent (or client address without credentials), per hour
           # and per day: installing never raises a card, but npm's registry also takes publishes (11/11 audit PI-3).
           # A cold `npm install` of ~2 500 packages sends about 3 MB of requests (estimate, see the commit)
-          "registry_hour": 6 * 1024 * 1024, "registry_day": 24 * 1024 * 1024}
+          "registry_hour": 6 * 1024 * 1024, "registry_day": 24 * 1024 * 1024,
+          # the browser's free first bytes of each record (its requests), in all: per host per hour, per agent per day;
+          # past them they count like a program's (11/11 audit PI-4: no total, any volume in small records)
+          "browser_free_site_hour": 4 * 1024 * 1024, "browser_free_day": 32 * 1024 * 1024}
 # A tunnel cut: what the client still sends is read (never passed on) for so long, to say how much it wanted to send.
 SINK_IDLE = 3.0
 SINK_SECONDS = 30.0
@@ -103,6 +109,8 @@ _sent = {}
 _held = {}
 # (agent, host) -> [until, bytes]: what passed to a held host during its hold (at most held_site)
 _held_used = {}
+# (agent, host) -> [window start, bytes]: the browser's free bytes to hosts not validated this hour
+_free = {}
 # agent -> today's counts
 _days = {}
 # agent -> [minute start, new connections]
@@ -347,11 +355,14 @@ def day_of(agent):
             del _held[key]
         for key in [k for k in _held_used if k[0] == agent]:
             del _held_used[key]
-        entry.update(since=now, unvalidated=0, held=False, held_sent=0)
+        for key in [k for k in _free if k[0] == agent]:
+            del _free[key]
+        entry.update(since=now, unvalidated=0, held=False, held_sent=0, free=0)
     if entry is None or entry["day"] != day:
         kept = entry or {}
         entry = {"day": day, "since": max(now, kept.get("since", 0)), "sent": 0, "received": 0, "unvalidated": 0,
-                 "connections": 0, "held": False, "held_sent": 0, "download_logged": False, "names": set()}
+                 "connections": 0, "held": False, "held_sent": 0, "download_logged": False, "names": set(), "free": 0,
+                 "free_logged": False}
         _days[agent] = entry
         if len(_days) > 4096:
             _days.clear()
@@ -465,6 +476,27 @@ def held_spent(agent, host):
     return host_spent or day["held_sent"] >= limit("held_day")
 
 
+def free_over(agent, host, spared, day):
+    """The browser's free bytes (`spared`) taken from its pools (per host per hour, per agent per day); what does not
+    fit, returned, counts like a program's bytes. The first time a pool is full in a day, one log line."""
+    key, now = (agent, host), time.time()
+    window = _free.get(key)
+    if window is None or now - window[0] >= HOUR:
+        window = [now, 0]
+        if len(_free) > 16384:
+            _free.clear()
+        _free[key] = window
+    room = max(0, min(limit("browser_free_site_hour") - window[1], limit("browser_free_day") - day["free"]))
+    taken = min(spared, room)
+    window[1] += taken
+    day["free"] += taken
+    if taken < spared and not day["free_logged"]:
+        day["free_logged"] = True
+        log(f"browser's free bytes pool reached ({window[1]} bytes this hour to this host, {day['free']} today): "
+            "counted from now", "SEND", host, agent)
+    return spared - taken
+
+
 def charge_name(agent, host):
     """A new connection (a CONNECT, a plain-HTTP request) to a host not validated: its name's length counts as sent,
     before it is looked up — data can be spelt in names (11/11 audit PI-5), many distinct ones reach the day's total
@@ -507,18 +539,22 @@ class Tls:
         self.kind = 0
         self.free = free
         self.free_left = 0
+        self.spared = 0    # the free bytes of the last `count`
 
     def count(self, data):
         if self.mode is None and data:
             self.mode = "tls" if data[0] == 0x16 else "raw"
         if self.mode == "raw":
-            return max(0, len(data) - self.free)
+            self.spared = min(len(data), self.free)
+            return len(data) - self.spared
         counted, at = 0, 0
+        self.spared = 0
         while at < len(data):
             if self.left:
                 take = min(self.left, len(data) - at)
                 spared = min(self.free_left, take)
                 self.free_left -= spared
+                self.spared += spared
                 counted += take - spared
                 self.left -= take
                 at += take
@@ -576,6 +612,8 @@ class Guard:
             self.cut = "held"
             return False
         size = self.tls.count(data) if self.tls is not None else len(data)
+        if self.tls is not None and self.tls.spared:
+            size += free_over(self.agent, self.host, self.tls.spared, day)
         if not size:
             day["sent"] += len(data)
             return True
@@ -1030,7 +1068,7 @@ def usage():
     """Today's counts per agent, for the bridge."""
     day = today()
     agents = {name: {"sent": e["sent"], "received": e["received"], "unvalidated": e["unvalidated"],
-                     "connections": e["connections"], "held": e["held"]}
+                     "connections": e["connections"], "held": e["held"], "browser_free": e.get("free", 0)}
               for name, e in _days.items() if e["day"] == day}
     return {"day": day, "at": int(time.time()), "agents": agents}
 
