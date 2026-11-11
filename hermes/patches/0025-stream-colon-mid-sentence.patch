@@ -22,10 +22,10 @@ Bip-Patch: 0025-stream-colon-mid-sentence
  2 files changed, 53 insertions(+), 1 deletion(-)
 
 diff --git a/agent/chat_completion_helpers.py b/agent/chat_completion_helpers.py
-index c355355cc23b2874351d5f6b98767b9adb56d903..255e03561693f25c7d9a5073f50b1bcddd8e6c53 100644
+index c39d10c7dad5bd63bbbb1c083844ebb39adb16b9..ce139d684e4c4418656776c07d712fe86aae6ba9 100644
 --- a/agent/chat_completion_helpers.py
 +++ b/agent/chat_completion_helpers.py
-@@ -3054,6 +3054,10 @@ class _StreamingCall(StreamingWaitMonitor):
+@@ -3033,6 +3033,10 @@ class _StreamingCall(StreamingWaitMonitor):
          refusal_parts: list[str] = []
          reasoning_details: list = []  # OpenRouter replay data (signatures, encrypted blocks)
          pending_text_parts: list[str] = []
@@ -36,7 +36,7 @@ index c355355cc23b2874351d5f6b98767b9adb56d903..255e03561693f25c7d9a5073f50b1bcd
          from agent.chat_completion_helpers_tool_calls import _ToolCallAccumulator
          tool_calls = _ToolCallAccumulator()
          tool_calls_acc = tool_calls.acc
-@@ -3196,12 +3200,13 @@ class _StreamingCall(StreamingWaitMonitor):
+@@ -3175,12 +3179,13 @@ class _StreamingCall(StreamingWaitMonitor):
              delta_content = flatten_message_text(getattr(delta, "content", None), sep="")
              if delta_content:
                  content_parts.append(delta_content)

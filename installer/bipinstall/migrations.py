@@ -98,10 +98,29 @@ def push_relay_service(runner: hermes.Runner, home: Path) -> str:
             else "this bridge no longer relays other installs' notifications") + " (bridge restarted)"
 
 
+def clarify_hour(runner: hermes.Runner, home: Path) -> str:
+    """A question waits an hour for its answer (2026-11-10, before Hermes 0.23: it waits 90 s, and its config migration
+    v53 lowers an hour to that): the hub of each Hermes of this account (~/.hermes, each space's), the profile every
+    agent is cloned from, gets both keys (hermes.CLARIFY_WAIT). The agents' own profiles are the bridge's, at each of
+    its starts (tool_diet.rs `with_clarify`). A second run writes the same values."""
+    roots = [home / ".hermes"] + sorted((home / ".local" / "share" / "bipagents" / "spaces").glob("*"))
+    count, env = 0, runner.env
+    for root in roots:
+        if not (root / "config.yaml").is_file():
+            continue
+        runner.env = {**env, "HERMES_HOME": str(root)}
+        for key, value in hermes.CLARIFY_WAIT:
+            runner.run([hermes.hermes_bin(), "config", "set", key, value], check=False)
+        count += 1
+    runner.env = env
+    return f"a question waits an hour for your answer ({count} Hermes)"
+
+
 # In order; an id never changes once released. The ones from 2026-10-15 to 2026-11-02 left on 2026-11-04 (every
 # install had them from that day's release): their code is in git history.
 MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
     ("2026-11-04-push-relay-service", push_relay_service),
+    ("2026-11-10-clarify-hour", clarify_hour),
 ]
 
 

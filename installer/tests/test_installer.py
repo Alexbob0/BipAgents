@@ -121,6 +121,8 @@ def test_hermes_setup_commands(monkeypatch, tmp_path):
     assert "config set API_SERVER_PORT 8642" in log and "config set gateway.multiplex_profiles true" in log
     assert "config set approvals.mode manual" in log   # a risky command always asks the person
     assert "-p default tools enable clarify --platform api_server" in log   # the app's question card (cloned)
+    # its question waits an hour, in the two keys Hermes reads (0.23's migration v53 lowers only the first)
+    assert "config set agent.clarify_timeout 3600" in log and "config set clarify.timeout 3600" in log
     assert "profile create finance --clone-from default --no-alias" in log   # the hub's sandbox, as the app's agents
     assert f"-p finance config set API_SERVER_KEY {key}" in log
     assert "-p finance config set API_SERVER_ENABLED" not in log   # only the hub listens
@@ -179,21 +181,21 @@ def test_hermes_is_pinned_and_patched(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))   # no Hermes installed there
     runner = hermes.Runner(dry=True)
     hermes.install(runner, browser=False)
-    assert "--commit bf0203a794" in runner.log[0] and "--skip-browser" in runner.log[0]   # v0.22.5
+    assert "--commit 3b42157858" in runner.log[0] and "--skip-browser" in runner.log[0]   # v0.23.1
     hermes.apply_patches(runner, ROOT / "hermes" / "patches")
     applied = [line for line in runner.log if " apply " in line and "--check" not in line]
     assert [line.rsplit("/", 1)[-1].strip("'") for line in applied] == [
-        "0005-vault-fill-reattach-supervisor.patch", "0006-bot-mode-sync-peer-reply.patch",
-        "0007-browser-vault-only.patch", "0008-timezone-routines-wall-clock.patch",
+        "0005-vault-fill-reattach-supervisor.patch",
+        "0007-browser-vault-only.patch", "0008-timezone-terminal-followed.patch",
         "0009-tool-search-keep-direct-compact-skills.patch", "0010-empty-replies-changed-retries-leaked-tool-calls.patch",
         "0011-titles-reasoning-floor-glm.patch", "0013-mcp-results-vault-scrub.patch",
         "0015-time-anchor.patch", "0016-message-agent-the-bridges-everywhere.patch",
         "0017-vault-address-contact-fields.patch", "0018-guest-turns-closed-tools-no-user-profile.patch",
-        "0019-routines-report-to-their-conversation.patch", "0020-runs-model-usage-per-call.patch",
+        "0020-runs-model-usage-per-call.patch",
         "0021-api-bot-chat-stays-api.patch", "0022-tool-order-common-first.patch",
         "0023-prompt-cache-stable-across-conversations.patch", "0024-closed-tools-per-turn.patch",
         "0025-stream-colon-mid-sentence.patch",
-        "0026-runs-todo-updated.patch"]
+        "0026-runs-todo-updated.patch", "0027-refused-api-turn-unlocks.patch"]
 
 
 def bridge_check(tmp_path: Path, text: str) -> str:
@@ -976,3 +978,32 @@ def test_the_migrations_run_once_and_one_not_ready_waits(tmp_path, monkeypatch):
     assert migrations.pending() == ["b"]
     migrations.run(runner, tmp_path)
     assert calls == [tmp_path]   # done once
+
+
+def test_an_update_gives_every_hub_an_hour_for_a_question(tmp_path):
+    """2026-11-10, before Hermes 0.23 (90 s, and its config migration v53 lowers an hour to that): the hub of each
+    Hermes of the account (its own, a space's), which every agent is cloned from, gets both keys; the agents' profiles
+    are the bridge's. A second run writes the same; a failing command stops nothing; the runner's env stays as it was."""
+    from bipinstall import migrations
+    for folder in [tmp_path / ".hermes", tmp_path / ".hermes" / "profiles" / "vie",
+                   tmp_path / ".local" / "share" / "bipagents" / "spaces" / "lea"]:
+        folder.mkdir(parents=True)
+        (folder / "config.yaml").write_text("model:\n  default: x\n")
+    (tmp_path / ".local" / "share" / "bipagents" / "spaces" / "empty").mkdir()
+    runner = hermes.Runner()
+    runner.env = {"KEEP": "1"}
+    ran = []
+
+    def run(args, check=True, **kw):
+        ran.append((list(args[1:]), runner.env["HERMES_HOME"], check))
+        return ""
+    runner.run = run
+    said = migrations.clarify_hour(runner, tmp_path)
+    space = str(tmp_path / ".local" / "share" / "bipagents" / "spaces" / "lea")
+    keys = [["config", "set", "agent.clarify_timeout", "3600"], ["config", "set", "clarify.timeout", "3600"]]
+    assert [(a, h) for a, h, _ in ran] == [(k, str(tmp_path / ".hermes")) for k in keys] + [(k, space) for k in keys]
+    assert all(check is False for *_, check in ran) and runner.env == {"KEEP": "1"}
+    assert said.endswith("(2 Hermes)")
+    migrations.clarify_hour(runner, tmp_path)
+    assert ran[4:] == ran[:4]   # the same again
+    assert "2026-11-10-clarify-hour" in [mid for mid, _ in migrations.MIGRATIONS]

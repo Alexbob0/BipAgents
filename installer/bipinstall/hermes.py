@@ -18,9 +18,9 @@ from typing import Dict, Iterable, List, Optional, Sequence
 from . import routing
 
 INSTALL_URL = "https://hermes-agent.nousresearch.com/install.sh"
-# The Hermes version BipAgents is tested with, v0.22.5: its patches (hermes/patches/, base in hermes/patches/BASE) apply
+# The Hermes version BipAgents is tested with, v0.23.1: its patches (hermes/patches/, base in hermes/patches/BASE) apply
 # cleanly there. Override with BIPAGENTS_HERMES_COMMIT (empty = Hermes' own default, without guarantee for the patches).
-HERMES_COMMIT = os.environ.get("BIPAGENTS_HERMES_COMMIT", "bf0203a794")
+HERMES_COMMIT = os.environ.get("BIPAGENTS_HERMES_COMMIT", "3b42157858")
 HUB_PROFILE = "default"
 
 
@@ -250,6 +250,10 @@ def sandbox_runtime() -> Optional[str]:
 
 
 CLARIFY_ON = ("tools", "enable", "clarify", "--platform", "api_server")   # the agent can ask the person a question
+# ... and its question waits an hour for the answer (Alex, 10/11). Hermes 0.23 waits 90 s and its config migration v53
+# lowers an `agent.clarify_timeout` of 3600 to 90: the legacy `clarify.timeout`, read first by 0.22.5 and 0.23.1 and
+# touched by no migration, keeps the hour (bridge-rs/src/tool_diet.rs `with_clarify` writes both, at each start).
+CLARIFY_WAIT = (("agent.clarify_timeout", "3600"), ("clarify.timeout", "3600"))
 DISK_TOOLS = ("terminal", "file", "code_execution", "browser")   # the local browser opens file:// pages
 
 DESKTOP_BINARIES = ("Xvnc", "xfwm4", "xfce4-panel", "xfdesktop", "xfsettingsd", "dbus-run-session", "xauth", "xdpyinfo")
@@ -309,6 +313,8 @@ def setup_hub(runner: Runner, port: int, model: Model, sandbox: Optional[str] = 
     # The app's question card: Hermes' `clarify` tool, which its API toolset leaves out (« no interactive UI tools »);
     # every agent is cloned from this profile, and the bridge adds it at each start too (tool_diet.rs `with_clarify`).
     runner.run([hermes_bin(), "-p", HUB_PROFILE, *CLARIFY_ON])
+    for key, value in CLARIFY_WAIT:
+        _config(runner, HUB_PROFILE, key, value)
     _config(runner, HUB_PROFILE, "API_SERVER_ENABLED", "true")
     _config(runner, HUB_PROFILE, "API_SERVER_HOST", "127.0.0.1")
     _config(runner, HUB_PROFILE, "API_SERVER_PORT", str(port))

@@ -55,10 +55,10 @@ index 6fd993664bed79232cd57a9102cb17f9562e6a67..6bf5687664c7696d8019e32b0693c032
      with suppress(Exception):
          hist = getattr(agent, "_api_latency_history", None)
 diff --git a/gateway/platforms/api_server_runs.py b/gateway/platforms/api_server_runs.py
-index 075bd30a439b78d44f64bf3955d836457a2ff532..d3de00fced04f99f83c01602e7c21a7e5f1e061e 100644
+index 27a898b5e521ce11f11a5267ac00006e84edde90..9bba11bf43c7a8efc289575dba9d580cd9779b89 100644
 --- a/gateway/platforms/api_server_runs.py
 +++ b/gateway/platforms/api_server_runs.py
-@@ -343,6 +343,8 @@ def _make_run_event_callback(self, run_id: str, loop: asyncio.AbstractEventLoop,
+@@ -387,6 +387,8 @@ def _make_run_event_callback(self, run_id: str, loop: asyncio.AbstractEventLoop,
                  event_fields["preview"] = _tool_completed_preview(
                      kwargs.get("result"), redact_sensitive_text)
              _push(_run_event(run_id, event_type, **event_fields))
@@ -67,7 +67,7 @@ index 075bd30a439b78d44f64bf3955d836457a2ff532..d3de00fced04f99f83c01602e7c21a7e
          elif event_type in {"subagent.start", "subagent.complete"}:
              event = _run_event(run_id, event_type)
              if preview is not None:
-@@ -882,6 +884,34 @@ def _run_usage(agent) -> dict[str, int]:
+@@ -928,6 +930,34 @@ def _run_usage(agent) -> dict[str, int]:
      return usage
  
  
@@ -102,7 +102,7 @@ index 075bd30a439b78d44f64bf3955d836457a2ff532..d3de00fced04f99f83c01602e7c21a7e
  def _served_runtime(agent) -> dict[str, str]:
      """The ``{provider, model}`` pair that actually served the turn. After a ``fallback_providers``
      switch the agent keeps the fallback runtime until the NEXT turn restores the primary, so when
-@@ -1095,17 +1125,24 @@ async def _execute_run(self, run: _RunLaunch, *, _api_server) -> None:
+@@ -1139,17 +1169,24 @@ async def _execute_run(self, run: _RunLaunch, *, _api_server) -> None:
              with observe_api_controls(run.admission, _control_cb):
                  result, usage = await observe_api_turn(
                      run.admission, stream_delta_callback=_text_cb,
@@ -130,10 +130,10 @@ index 075bd30a439b78d44f64bf3955d836457a2ff532..d3de00fced04f99f83c01602e7c21a7e
              result, usage, served_runtime = await _submit_api_worker(
                  loop, lambda: _run_agent_sync(self, run, agent, approval_notify, _api_server=_api_server))
 diff --git a/gateway/run_turn_runner.py b/gateway/run_turn_runner.py
-index 4de4a5ae33f72d16e90d30bb2abcb3ecf9bcd301..ddf2476adb58f5bc96c400a7164f64042756062c 100644
+index 28453d2eca835ceef1cd07f5d4fc9c8b538b6c34..4fdbb17725534fcd3e6dc7630549f5ce18a7b86d 100644
 --- a/gateway/run_turn_runner.py
 +++ b/gateway/run_turn_runner.py
-@@ -74,6 +74,8 @@ _LEDGER_PASSTHROUGH_KEYS = (
+@@ -75,6 +75,8 @@ _LEDGER_PASSTHROUGH_KEYS = (
  # Beside ``failure_reason`` and ``error``: what ``agent.error_surface.build_error_surface_from_result`` reads,
  # so the authority's ``message.complete`` carries the same error card the TUI path builds;
  # ``usage_window_message`` also marks a window-plan refusal for the chat rewording.
@@ -142,7 +142,7 @@ index 4de4a5ae33f72d16e90d30bb2abcb3ecf9bcd301..ddf2476adb58f5bc96c400a7164f6404
  _FAILURE_DESCRIPTOR_KEYS = ("free_tier", "failure_retryable", "failure_resets_at", "usage_window_message")
  
  
-@@ -455,6 +457,7 @@ class TurnRunner(GatewayTurnProgressMixin, GatewaySessionAgentMixin):
+@@ -495,6 +497,7 @@ class TurnRunner(GatewayTurnProgressMixin, GatewaySessionAgentMixin):
          agent.status_callback, agent.notice_callback = ctx._status_callback_sync, (
              self._local_notice_callback_sync if local_viewer_turn(self) else self._notice_callback_sync)
          agent.reasoning_callback = None  # per turn: a reused agent never keeps an earlier API turn's sink
@@ -150,14 +150,15 @@ index 4de4a5ae33f72d16e90d30bb2abcb3ecf9bcd301..ddf2476adb58f5bc96c400a7164f6404
          if self._approval_owner is not None:
              from gateway.session_api_turn import api_execution, wire_api_observers
              if api_execution.get() is not None:
-@@ -994,13 +997,17 @@ class TurnRunner(GatewayTurnProgressMixin, GatewaySessionAgentMixin):
+@@ -1054,6 +1057,7 @@ class TurnRunner(GatewayTurnProgressMixin, GatewaySessionAgentMixin):
              captured = execution_result.get()
              before = (getattr(agent, 'session_prompt_tokens', 0) or 0,
                        getattr(agent, 'session_completion_tokens', 0) or 0)
 +            cache_before = {key: getattr(agent, f'session_{key}', 0) or 0 for key in _TURN_CACHE_USAGE}
              with notification_turn(agent, muted=ctx.mute_notification_reply, session_id=ctx.session_id or ""):
-                 result = agent.run_conversation(api_message, **kwargs)
-             if captured is not None:
+                 from gateway.response_filters import silence_allowed
+                 # Where a bare marker would become the "needed a reply" warning, the agent ends a
+@@ -1068,7 +1072,10 @@ class TurnRunner(GatewayTurnProgressMixin, GatewaySessionAgentMixin):
                  incoming = max(0, (getattr(agent, 'session_prompt_tokens', 0) or 0) - before[0])
                  outgoing = max(0, (getattr(agent, 'session_completion_tokens', 0) or 0) - before[1])
                  captured['usage'] = {'input_tokens': incoming, 'output_tokens': outgoing,
@@ -170,7 +171,7 @@ index 4de4a5ae33f72d16e90d30bb2abcb3ecf9bcd301..ddf2476adb58f5bc96c400a7164f6404
              return result
          finally:
 diff --git a/gateway/session_api_turn.py b/gateway/session_api_turn.py
-index f36146351b4b71e30b37563cf97b7881c3afeed1..27b8a3d9a8f1814dcb739b1b13d97ddfe74565e2 100644
+index 52a14b0c678151ede1b8b58ea0563763e9781750..2948a8c6c8195a2ac3bf47b4be3a490a725fcc53 100644
 --- a/gateway/session_api_turn.py
 +++ b/gateway/session_api_turn.py
 @@ -17,7 +17,8 @@ api_execution: ContextVar[dict | None] = ContextVar('api_execution', default=Non
@@ -183,7 +184,7 @@ index f36146351b4b71e30b37563cf97b7881c3afeed1..27b8a3d9a8f1814dcb739b1b13d97ddf
  _TOOL_SINKS = {'tool_start_callback', 'tool_complete_callback'}
  _SETTING_KEYS = ('ephemeral_system_prompt', 'requested_model', 'requested_provider',
                   'model_options', 'route', 'session_model', 'confirmed_runtime_lock',
-@@ -559,6 +560,10 @@ def wire_api_observers(agent, owner, want_interim):
+@@ -523,6 +524,10 @@ def wire_api_observers(agent, owner, want_interim):
          if progress is not None:
              return progress(event_type, *args, **kwargs)
      agent.reasoning_callback = lambda text: publish('reasoning_callback', text)

@@ -27,7 +27,7 @@ Bip-Patch: 0021-api-bot-chat-stays-api
  create mode 100644 tests/gateway/test_api_bot_chat_stays_api.py
 
 diff --git a/gateway/platforms/api_server_bot_chat.py b/gateway/platforms/api_server_bot_chat.py
-index 9d9d74bf7c7a62f0987f57e71dcf9dba8ff208a2..9a278b8cc4f8d209b239f95284d091a796760003 100644
+index ce3765ec8101f4883e7bca156a5d2eb62ab25bc6..a38e5b19ff6e8c1b05f0ec6367d107cb121371ea 100644
 --- a/gateway/platforms/api_server_bot_chat.py
 +++ b/gateway/platforms/api_server_bot_chat.py
 @@ -44,6 +44,8 @@ async def create_peer_bot_chat(adapter, body):
@@ -52,20 +52,20 @@ index 9d9d74bf7c7a62f0987f57e71dcf9dba8ff208a2..9a278b8cc4f8d209b239f95284d091a7
          # The title is held by an API conversation no FIFO can own (#140769, MSG-21): the owner
          # moves it aside and mints the local Bot Chat for the peer, as ``create_peer_bot_chat`` does.
 diff --git a/gateway/session_bot.py b/gateway/session_bot.py
-index 5c887b804038b3aa3b4cd6c9bc9b75a4c9e2b5d6..9bf39a15dd68ef58b22f7f1ccba88653ef218eb1 100644
+index 136e0eebac50fdc0c3eb902608525a33bde17ad9..61415b26dfe2e9f49a83835fb6304db90c8bc7c8 100644
 --- a/gateway/session_bot.py
 +++ b/gateway/session_bot.py
-@@ -215,6 +215,8 @@ def displaceable_bot_chat(authority, row):
+@@ -225,6 +225,8 @@ def displaceable_bot_chat(authority, row, subject=None):
      if str(row.get('chat_id') or '').startswith('local-'):
          return None  # every delivery asks: a bound local chat answers from its own row, with no read
      db = authority.db
 +    if api_bot_chat(db, row):
 +        return None  # an API client's own Bot Chat stays where it is (BipAgents patch 0021)
      tip = db.get_session(db.get_compression_tip(row['id']) or row['id'])
-     for candidate in (row, tip):
-         if candidate is None or str(candidate.get('chat_id') or '').startswith('local-'):
-@@ -230,6 +232,20 @@ def displaceable_bot_chat(authority, row):
-     return row['id']
+     from gateway.session_route_recovery import handed_off_ref, superseded_hand_off
+     if tip is not None and (lane := handed_off_ref(authority, tip['id'])) is not None:
+@@ -273,6 +275,20 @@ def release_superseded_bot_chat_at_boot(db, store):
+         release_superseded_bot_chat(db, store, tip.get('session_key'), row['id'])
  
  
 +def api_bot_chat(db, row):
@@ -82,9 +82,9 @@ index 5c887b804038b3aa3b4cd6c9bc9b75a4c9e2b5d6..9bf39a15dd68ef58b22f7f1ccba88653
 +    return 'api_server' in (str(row.get('source') or ''), str(tip.get('source') or ''))
 +
 +
- def _kept_local_history(db, row):
+ def _kept_local_history(db, row, subject=None):
      """Whether an unbound row is local history the Bot Chat door must leave in place: a CLI, TUI
-     or Desktop row a native open adopts, or one a login stamped as its owner. A local-source row
+     or Desktop row the delivering *subject* or the host owner adopts by the native open's own rule
 diff --git a/tests/gateway/test_api_bot_chat_stays_api.py b/tests/gateway/test_api_bot_chat_stays_api.py
 new file mode 100644
 index 0000000000000000000000000000000000000000..7a25d4542d16c155616108ed23c848a015ec29f9
@@ -176,7 +176,7 @@ index 0000000000000000000000000000000000000000..7a25d4542d16c155616108ed23c848a0
 +    row = headless.authority.db.get_session_by_title('Bot Chat')
 +    assert str(row['chat_id']).startswith('local-'), row
 diff --git a/tests/gateway/test_peer_dm_bot_chat_headless.py b/tests/gateway/test_peer_dm_bot_chat_headless.py
-index 1db39ad44f6f05c52f18a692c9f88756a810f52a..f01807ba68d144c25393227e4b67c53d09c5ca01 100644
+index f5008d5107e563001bae85915fd740ef58dcbf4f..616ccbc862cb147cf7c7ff5fd9acd13a1be54c9f 100644
 --- a/tests/gateway/test_peer_dm_bot_chat_headless.py
 +++ b/tests/gateway/test_peer_dm_bot_chat_headless.py
 @@ -128,9 +128,11 @@ async def test_concurrent_peer_creates_mint_one_local_bot_chat(headless):

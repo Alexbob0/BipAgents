@@ -23,7 +23,7 @@ Bip-Patch: 0010-empty-replies-changed-retries-leaked-tool-calls
  create mode 100644 tests/agent/test_empty_response_answers_without_thinking.py
 
 diff --git a/agent/chat_completion_helpers.py b/agent/chat_completion_helpers.py
-index dcb93af1809c0c1de16c6df9c1257a26db0cdf91..77c982632cf41a7715b6ac922506dd4c35555f85 100644
+index 5f2cf34698a75a8733e25959ea780337e8aa54c0..c7afdabcc94c387ad71476395cc36aa77aa49af6 100644
 --- a/agent/chat_completion_helpers.py
 +++ b/agent/chat_completion_helpers.py
 @@ -1273,6 +1273,20 @@ def interruptible_api_call(agent, api_kwargs: dict):
@@ -47,7 +47,7 @@ index dcb93af1809c0c1de16c6df9c1257a26db0cdf91..77c982632cf41a7715b6ac922506dd4c
  def _consume_ephemeral_reasoning_off(agent) -> bool:
      """Consume the one-shot "answer without thinking" continuation flag.
  
-@@ -3056,6 +3070,10 @@ class _StreamingCall(StreamingWaitMonitor):
+@@ -3035,6 +3049,10 @@ class _StreamingCall(StreamingWaitMonitor):
          # field is persisted either way and need not mirror the details.
          detail_watch = RunawayStreamWatch()
          runaway = None
@@ -58,7 +58,7 @@ index dcb93af1809c0c1de16c6df9c1257a26db0cdf91..77c982632cf41a7715b6ac922506dd4c
  
          llamacpp = _streams_llamacpp(self.agent)
  
-@@ -3112,6 +3130,7 @@ class _StreamingCall(StreamingWaitMonitor):
+@@ -3091,6 +3109,7 @@ class _StreamingCall(StreamingWaitMonitor):
  
              choice = chunk.choices[0]
              delta = choice.delta
@@ -272,7 +272,7 @@ index 0000000000000000000000000000000000000000..7a21722cf1ded99ce2d5b2639378e02c
 +    )
 +    return True
 diff --git a/agent/turn_api_call.py b/agent/turn_api_call.py
-index 196e9dbf7248e0b862a3e4588c357aa2e8a6e4f4..3121eb52c6c5a31e43a5dc3a01b83cd2940383c4 100644
+index 9761fd9175e136bfd7c2fde3a799f561d8218658..cf2d7348df94941374b073ceb1c07e19a980e947 100644
 --- a/agent/turn_api_call.py
 +++ b/agent/turn_api_call.py
 @@ -48,6 +48,11 @@ def _should_stream(agent: Any) -> bool:
@@ -288,11 +288,11 @@ index 196e9dbf7248e0b862a3e4588c357aa2e8a6e4f4..3121eb52c6c5a31e43a5dc3a01b83cd2
      if _base.startswith(("acp://", "acp+tcp://")):
          return False
 diff --git a/agent/turn_api_request.py b/agent/turn_api_request.py
-index 1be4db0a6286c81d9024197964902b99e975b089..475a3ae88691fbb2a4d47d4e7fc7c0ff021b6dee 100644
+index f7ae756e7e26dcb9d2cbf22f29fac5b3296cca74..2821c3ae5b4195dc4f28164eee76657f73bf7e52 100644
 --- a/agent/turn_api_request.py
 +++ b/agent/turn_api_request.py
-@@ -40,6 +40,46 @@ def _set_extra_header(api_kwargs: Any, key: str, value: str) -> None:
-     api_kwargs["extra_headers"] = _xh
+@@ -57,6 +57,46 @@ def _apply_user_turn_request_headers(agent: Any, api_kwargs: Any) -> None:
+         _set_extra_header(api_kwargs, _key, _value)
  
  
 +def _template_thinking_off(agent: Any, api_kwargs: Any) -> None:
@@ -338,7 +338,7 @@ index 1be4db0a6286c81d9024197964902b99e975b089..475a3ae88691fbb2a4d47d4e7fc7c0ff
  def _fire_pre_api_request_hook(
      agent: Any, api_kwargs: Any, api_messages: Any, _llm_middleware_trace: Any, *, messages: Any,
      original_user_message: Any, approx_tokens: Any, total_chars: Any, retry_count: Any,
-@@ -118,10 +158,13 @@ def build_api_request(
+@@ -133,10 +173,13 @@ def build_request_payload(
      # A model that rejected image content gets text only; history keeps the images.
      strip_images_for_rejecting_model(agent, api_messages)
      observe_request_tools(agent, tools_for_api)
@@ -353,10 +353,10 @@ index 1be4db0a6286c81d9024197964902b99e975b089..475a3ae88691fbb2a4d47d4e7fc7c0ff
      # extra_body, kwargs strings) — see sanitize_outbound_kwargs for the #50959 rationale.
      sanitize_outbound_kwargs(agent, api_kwargs)
 diff --git a/agent/turn_context.py b/agent/turn_context.py
-index 009f43c7957f6325bb9b7d59993f5b8c4404d831..03e47a17d64f505853b869baa5f2d1b7c3559a19 100644
+index f6399b820602425108fcee22330329d6e9ed0bdf..ac081abfb117c34aa083f23cf1868196bee0bb58 100644
 --- a/agent/turn_context.py
 +++ b/agent/turn_context.py
-@@ -606,7 +606,8 @@ _PER_TURN_RESET_STATE: tuple[tuple[str, Any], ...] = (
+@@ -664,7 +664,8 @@ _PER_TURN_RESET_STATE: tuple[tuple[str, Any], ...] = (
      # Consecutive Codex reasoning-only (no answer, no tool call) responses, kept apart from
      # the aggregate incomplete count so a visible partial resets it (#67321).
      ("_codex_reasoning_only_streak", 0),
@@ -367,10 +367,10 @@ index 009f43c7957f6325bb9b7d59993f5b8c4404d831..03e47a17d64f505853b869baa5f2d1b7
      ("_reused_response_text", None),
      ("_mute_post_response", False), ("_unicode_sanitization_passes", 0),
 diff --git a/agent/turn_empty_response.py b/agent/turn_empty_response.py
-index 7a76d297cc66538c5b628f9054ba86a7aef7751a..40eedece7858e21526b3b373853cbdc775f50557 100644
+index 48842383f491db51fb18807be37280a57b49e1c2..8dd94f8f528c581db872662f6eef16e283d2d598 100644
 --- a/agent/turn_empty_response.py
 +++ b/agent/turn_empty_response.py
-@@ -43,13 +43,144 @@ class EmptyResponseVerdict:
+@@ -44,13 +44,144 @@ class EmptyResponseVerdict:
      api_call_count: int
  
  
@@ -518,7 +518,7 @@ index 7a76d297cc66538c5b628f9054ba86a7aef7751a..40eedece7858e21526b3b373853cbdc7
      ``(action_or_None, interrupt_result, deterministic_empty)``."""
      from agent.retry_utils import jittered_backoff
  
-@@ -57,12 +188,12 @@ def _retry_empty(
+@@ -58,12 +189,12 @@ def _retry_empty(
          _empty_guard.record_empty_attempt(
              agent, finish_reason=finish_reason, response=response, observed_generation=observed_generation,
          )
@@ -534,7 +534,7 @@ index 7a76d297cc66538c5b628f9054ba86a7aef7751a..40eedece7858e21526b3b373853cbdc7
          return None, None, deterministic
      agent._empty_content_retries += 1
      n = agent._empty_content_retries
-@@ -73,7 +204,7 @@ def _retry_empty(
+@@ -74,7 +205,7 @@ def _retry_empty(
      )
      _budget_note = (
          " — high-cost request, reduced retry budget"
@@ -543,7 +543,7 @@ index 7a76d297cc66538c5b628f9054ba86a7aef7751a..40eedece7858e21526b3b373853cbdc7
      )
      agent._buffer_diagnostic_status(
          f"⚠️ Empty response from model — retrying ({n}/{budget}) in {wait_time:.0f}s{_budget_note}"
-@@ -91,6 +222,9 @@ def _retry_empty(
+@@ -92,6 +223,9 @@ def _retry_empty(
      )
      if _interrupted is not None:
          return "return", _interrupted, deterministic
@@ -553,8 +553,8 @@ index 7a76d297cc66538c5b628f9054ba86a7aef7751a..40eedece7858e21526b3b373853cbdc7
      return "continue", None, deterministic
  
  
-@@ -195,6 +329,8 @@ def recover_empty_response(
-         agent._reused_response_text = final_response
+@@ -215,6 +349,8 @@ def recover_empty_response(
+         final_response = final
          return _verdict("break")
  
 +    log_empty_response_shape(agent, response, finish_reason, messages)
@@ -562,7 +562,7 @@ index 7a76d297cc66538c5b628f9054ba86a7aef7751a..40eedece7858e21526b3b373853cbdc7
      # Post-tool-call empty (no prior content, or only mid-task narration): nudge once.
      _prior_was_tool = any(m.get("role") == "tool" for m in messages[-5:])
      # Ollama puts <think> in content, not reasoning_content, so _has_structured misses
-@@ -219,6 +355,7 @@ def recover_empty_response(
+@@ -239,6 +375,7 @@ def recover_empty_response(
          append_message(messages, {
              "role": "user", "content": _EMPTY_TOOL_RESPONSE_NUDGE, "_empty_recovery_synthetic": True
          })
@@ -570,7 +570,7 @@ index 7a76d297cc66538c5b628f9054ba86a7aef7751a..40eedece7858e21526b3b373853cbdc7
          return _verdict("continue")
  
      # Thinking-only prefill: append the reasoning as-is and continue so the model sees
-@@ -242,6 +379,7 @@ def recover_empty_response(
+@@ -262,6 +399,7 @@ def recover_empty_response(
          interim_msg["_thinking_prefill"] = True
          append_message(messages, interim_msg)
          agent._session_messages = messages
@@ -579,10 +579,10 @@ index 7a76d297cc66538c5b628f9054ba86a7aef7751a..40eedece7858e21526b3b373853cbdc7
  
      # Empty-response retries: truly empty replies AND reasoning-only replies after
 diff --git a/agent/turn_final_response.py b/agent/turn_final_response.py
-index 8b0c9b1493038a08408d0e28d6d32cf0335cb012..29eb3ff8428e65725a8459653cc441a64ac6a397 100644
+index 39d1e735ad2a7c9adee57debc74c27d6d73a11ba..5587dc9b1c4fe5704417cdf8a4f8fc390497dc2b 100644
 --- a/agent/turn_final_response.py
 +++ b/agent/turn_final_response.py
-@@ -149,6 +149,15 @@ def finish_text_response(
+@@ -194,6 +194,15 @@ def finish_text_response(
  
      agent._empty_content_retries = 0
      agent._thinking_prefill_retries = 0
@@ -599,10 +599,10 @@ index 8b0c9b1493038a08408d0e28d6d32cf0335cb012..29eb3ff8428e65725a8459653cc441a6
      # provider/model switch stays visible on success.
      agent._emit_pending_fallback_notice()
 diff --git a/agent/turn_response_intake.py b/agent/turn_response_intake.py
-index 7523a885c152f7ccec2cd1eb8c29f894c916ce92..08be5f14969c228d6a6201deb12898d14b0d96bc 100644
+index 4d49fb7ffa20a5e85b5a718d1bc850c7cffc2bea..2b4acf83e0ef9176e60773bf06b3b3fe17c1e8ed 100644
 --- a/agent/turn_response_intake.py
 +++ b/agent/turn_response_intake.py
-@@ -135,6 +135,12 @@ def normalize_model_response(
+@@ -180,6 +180,12 @@ def normalize_model_response(
  
      if assistant_message.content is not None and not isinstance(assistant_message.content, str):
          assistant_message.content = _coerce_content_text(assistant_message.content)
@@ -888,10 +888,10 @@ index 0000000000000000000000000000000000000000..1a59c488b789070428d827dd9c971b6c
 +    ter.log_empty_response_shape(agent, response, "stop", [{"role": "user", "content": "nuit ?"}])
 +    assert agent._ephemeral_no_stream is True
 diff --git a/tests/agent/test_run_agent.py b/tests/agent/test_run_agent.py
-index 131befb7080dc33508d8b4dda68a16ee0be25044..d6b2d492e0d9f847b27dc16115cfeed3bae7d16d 100644
+index 551492a9f75d272f103ca018ff136915a6c5fd9f..34b1bdfecd33d316bd57c8c2602905f9c92666df 100644
 --- a/tests/agent/test_run_agent.py
 +++ b/tests/agent/test_run_agent.py
-@@ -3491,7 +3491,8 @@ class TestRunConversation:
+@@ -3461,7 +3461,8 @@ class TestRunConversation:
          assert result["api_calls"] == 1
  
      def test_truly_empty_response_stops_after_repeated_empty(self, agent):
@@ -901,7 +901,7 @@ index 131befb7080dc33508d8b4dda68a16ee0be25044..d6b2d492e0d9f847b27dc16115cfeed3
          self._setup_agent(agent)
          agent.base_url = "http://127.0.0.1:1234/v1"
          empty_resp = _mock_response(content=None, finish_reason="stop")
-@@ -3511,8 +3512,8 @@ class TestRunConversation:
+@@ -3481,8 +3482,8 @@ class TestRunConversation:
          assert result["failure_reason"] == "empty_response"
          # #34452: explanation replaces the bare "(empty)" sentinel.
          assert result["final_response"] != "(empty)"
@@ -912,7 +912,7 @@ index 131befb7080dc33508d8b4dda68a16ee0be25044..d6b2d492e0d9f847b27dc16115cfeed3
  
      def test_deterministic_empty_stops_retries_early(self, agent):
          """NS-503: consecutive zero-output-token empties with identical
-@@ -3542,14 +3543,14 @@ class TestRunConversation:
+@@ -3512,14 +3513,14 @@ class TestRunConversation:
          assert result["failed"] is False and result["completed"] is True
          assert result["failure_reason"] == "empty_response"
          assert result["final_response"] != "(empty)"
@@ -932,7 +932,7 @@ index 131befb7080dc33508d8b4dda68a16ee0be25044..d6b2d492e0d9f847b27dc16115cfeed3
          self._setup_agent(agent)
          agent.base_url = "http://127.0.0.1:1234/v1"
          agent._empty_guard_enabled = False  # as set by agent_init from config
-@@ -3572,7 +3573,7 @@ class TestRunConversation:
+@@ -3542,7 +3543,7 @@ class TestRunConversation:
          # the transcript keeps the text) and only gains the descriptor code for Desktop/TUI.
          assert result["failed"] is False and result["completed"] is True
          assert result["failure_reason"] == "empty_response"

@@ -29,7 +29,7 @@ Add `--dry-run` to see every step and command without changing anything.
    | Large | Linux server ≥ 64 GB | elsewhere | Pocket + your voice model (if one already runs) | permanent, one per person |
 
    On a 16 GB Mac mini with the model elsewhere: about 1 GB per person plus the voices — a family fits.
-4. **Installs Hermes** with its official installer, at the version tested with BipAgents (v0.22.5, `bf0203a794`), applies the
+4. **Installs Hermes** with its official installer, at the version tested with BipAgents (v0.23.1, `3b42157858`), applies the
    patches of `hermes/patches/` (the agent's questions in the app, photos kept for follow-up questions), as **one gateway per person** (Hermes' multiplex mode): every
    agent is a profile reached at `/p/<agent>/` with its own key. New agents are picked up without a restart.
    On Linux with podman, each agent's tools run in a sandbox the bridge keeps isolated: no folder of the machine

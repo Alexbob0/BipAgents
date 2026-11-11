@@ -11,9 +11,10 @@ BipAgents patch, documented in hermes/patches/README.md of the BipAgents reposit
 
 Bip-Patch: 0011-titles-reasoning-floor-glm
 ---
- agent/auxiliary_reasoning_floor.py            | 13 +++++++++++--
- tests/agent/test_auxiliary_reasoning_floor.py | 15 +++++++++++++++
- 2 files changed, 26 insertions(+), 2 deletions(-)
+ agent/auxiliary_reasoning_floor.py                | 13 +++++++++++--
+ tests/agent/test_auxiliary_reasoning_floor.py     | 15 +++++++++++++++
+ .../fixtures/provider_wire_snapshot_variants.json |  3 ++-
+ 3 files changed, 28 insertions(+), 3 deletions(-)
 
 diff --git a/agent/auxiliary_reasoning_floor.py b/agent/auxiliary_reasoning_floor.py
 index 748003e17989cbbde7fcb54a36fd401820bc92cc..3e5759c75d912fdc141b207981a0b7c60c11ac8d 100644
@@ -69,3 +70,17 @@ index a30cd2cf6da998fbea2b0288ec6ee01f4c0df239..ac33563eb61b160aae2158f92cc1b657
 +    assert auxiliary_reasoning_floor.known_reasoning_floor(disabled, "custom", base, "deepseek-v3.2") == disabled
 +    own = {"enabled": True, "effort": "medium"}
 +    assert auxiliary_reasoning_floor.known_reasoning_floor(own, "custom", base, "glm-5.3-flash") == own
+diff --git a/tests/fixtures/provider_wire_snapshot_variants.json b/tests/fixtures/provider_wire_snapshot_variants.json
+index dd0e83f0b727073283d33d76537ca00e35e10c79..3a30782f459f83e253d41ec98433c549df2c15f2 100644
+--- a/tests/fixtures/provider_wire_snapshot_variants.json
++++ b/tests/fixtures/provider_wire_snapshot_variants.json
+@@ -2552,7 +2552,8 @@
+   "off": {
+    "extra_body": {
+     "thinking": {
+-     "type": "disabled"
++     "clear_thinking": false,
++     "type": "enabled"
+     }
+    },
+    "messages": [

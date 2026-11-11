@@ -14,10 +14,10 @@ Bip-Patch: 0026-runs-todo-updated
  create mode 100644 tests/gateway/test_api_server_runs_todo.py
 
 diff --git a/gateway/platforms/api_server_runs.py b/gateway/platforms/api_server_runs.py
-index d3de00fced04f99f83c01602e7c21a7e5f1e061e..d1b35e4f81d34853c223463a3c05db7a8519cea4 100644
+index 9bba11bf43c7a8efc289575dba9d580cd9779b89..a36b51deb74f24fbdf248438f79dc4066df546e2 100644
 --- a/gateway/platforms/api_server_runs.py
 +++ b/gateway/platforms/api_server_runs.py
-@@ -114,6 +114,40 @@ def _tool_completed_preview(result: Any, redact_sensitive_text: Callable[..., st
+@@ -157,6 +157,40 @@ def _tool_completed_preview(result: Any, redact_sensitive_text: Callable[..., st
      return preview if len(preview) <= limit else preview[: limit - 3] + "..."
  
  
@@ -58,7 +58,7 @@ index d3de00fced04f99f83c01602e7c21a7e5f1e061e..d1b35e4f81d34853c223463a3c05db7a
  _RUN_STREAM_SUBSCRIBER_OVERFLOW = object()
  _RUN_STREAM_WRITE_TIMEOUT = 5.0
  
-@@ -343,6 +377,11 @@ def _make_run_event_callback(self, run_id: str, loop: asyncio.AbstractEventLoop,
+@@ -387,6 +421,11 @@ def _make_run_event_callback(self, run_id: str, loop: asyncio.AbstractEventLoop,
                  event_fields["preview"] = _tool_completed_preview(
                      kwargs.get("result"), redact_sensitive_text)
              _push(_run_event(run_id, event_type, **event_fields))
@@ -70,7 +70,7 @@ index d3de00fced04f99f83c01602e7c21a7e5f1e061e..d1b35e4f81d34853c223463a3c05db7a
          elif event_type == "model.usage":
              _push(_run_event(run_id, event_type, **kwargs["usage"]))
          elif event_type in {"subagent.start", "subagent.complete"}:
-@@ -1120,7 +1159,9 @@ async def _execute_run(self, run: _RunLaunch, *, _api_server) -> None:
+@@ -1164,7 +1203,9 @@ async def _execute_run(self, run: _RunLaunch, *, _api_server) -> None:
              def _tool_complete(call_id, name, args, result):
                  from agent.display import _detect_tool_failure
                  is_error, _ = _detect_tool_failure(name, result)
