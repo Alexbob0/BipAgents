@@ -637,6 +637,8 @@ pub fn run_args(
     // --test-type and --hide-crash-restore-bubble: no warning bar about --no-sandbox (the container is the sandbox)
     // and no « Restore pages? » after the container was stopped, over what the person watches.
     // Maximized on the 1366×768 screen, its panel kept: as on a laptop (never full screen, which sites read as a robot).
+    // No back/forward cache: a page left keeps no live copy that « back » brings again (a card payment's page, besides
+    // the history card_pay.rs forgets after it; fix review 11/11, B2).
     let base = [
         "--start-maximized",
         "--no-first-run",
@@ -645,6 +647,7 @@ pub fn run_args(
         "--ignore-gpu-blocklist",
         "--test-type",
         "--hide-crash-restore-bubble",
+        "--disable-back-forward-cache",
     ];
     let browser_args: Vec<String> = base.iter().map(|s| s.to_string()).chain(flags).collect();
     let tz = timezone(config);

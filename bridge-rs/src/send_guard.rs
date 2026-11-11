@@ -7,9 +7,11 @@
 //!   cuts the tunnel and the person gets ONE card (sandbox_sites.rs). Measured on 2026-10-28 through the proxy (TLS
 //!   application data, the handshake left out): an HTTPS GET with curl ≈ 160–260 bytes, a `pip download requests`
 //!   ≈ 3 KB per host, a shallow `git clone` ≈ 0.9 KB, a form post of 6 KB of text ≈ 8.8 KB. A page load, an API call,
-//!   an install, a login or a form of a few KB never comes near; a file, a mailbox or an export does. Slow leaks: about
-//!   1 000 small requests a day to sites nobody validated reach the day's total (a card, then the person validates an
-//!   API the agent keeps using). The browser's requests are small TLS records whose first 4 KB are not counted (its
+//!   an install, a login or a form of a few KB never comes near; a file, a mailbox or an export does. Since 11/11 a
+//!   program's every byte counts, its handshake too (data framed as handshake records was free, audit BV-4): a fresh
+//!   connection adds its ClientHello (≈ 0.5 KB with curl, up to ≈ 1.8 KB with a recent OpenSSL, estimates). Slow
+//!   leaks: a few hundred fresh connections a day to sites nobody validated reach the day's total (a card, then the
+//!   person validates an API the agent keeps using). The browser's requests are small TLS records whose first 4 KB are not counted (its
 //!   pages make many), an upload's 16 KB records are.
 //! - **The offer** (`config.cloud`, a place Kerfy hosts): a download limit per agent per day (2 GB), new connections
 //!   per agent per minute (300), `--cpus` per sandbox (1.5), the blocklist. A self-install keeps none of them unless
@@ -48,16 +50,31 @@ pub const OFFER_DOWNLOAD_DAY_MB: u64 = 2048;
 pub const OFFER_CONNECTIONS_PER_MINUTE: u64 = 300;
 pub const OFFER_CPUS: f64 = 1.5;
 
-/// The limits in the proxy's policy file (bytes; 0: none).
+/// The limits in the proxy's policy file (bytes; 0: none for the download and connection limits, nothing passes for
+/// the others). The held, registry and browser-pool limits only when bridge.toml sets them (else the proxy's own
+/// defaults, egress_proxy.py `LIMITS`: 16 KB and 64 KB an hour, 6 MB an hour and 24 MB a day, 4 MB and 32 MB).
 pub fn limits(config: &Config) -> Value {
     let s = &config.sandbox;
     let offer = |set: Option<u64>, default: u64| set.unwrap_or(if config.cloud { default } else { 0 });
-    json!({
+    let mut out = json!({
         "send_site_hour": s.send_site_kb_hour.unwrap_or(SEND_SITE_KB_HOUR) * 1024,
         "send_day": s.send_day_kb.unwrap_or(SEND_DAY_KB) * 1024,
         "download_day": offer(s.download_day_mb, OFFER_DOWNLOAD_DAY_MB) * 1024 * 1024,
         "connections_minute": offer(s.connections_per_minute, OFFER_CONNECTIONS_PER_MINUTE),
-    })
+    });
+    for (name, set, unit) in [
+        ("held_site", s.send_held_site_kb_hour, 1024),
+        ("held_hour", s.send_held_kb_hour, 1024),
+        ("registry_hour", s.registry_send_mb_hour, 1024 * 1024),
+        ("registry_day", s.registry_send_mb_day, 1024 * 1024),
+        ("browser_free_site_hour", s.browser_free_mb_site_hour, 1024 * 1024),
+        ("browser_free_day", s.browser_free_mb_day, 1024 * 1024),
+    ] {
+        if let Some(value) = set {
+            out[name] = json!(value * unit);
+        }
+    }
+    out
 }
 
 /// CPUs per sandbox (`--cpus`), if any.
@@ -287,6 +304,17 @@ mod tests {
                    "cpus": 2.0, "blocklist": true}),
         );
         assert_eq!(limits(&set)["send_site_hour"], json!(131072));
+        assert!(limits(&set).get("registry_hour").is_none()); // not set: the proxy's own default
+        let tuned = config(
+            false,
+            json!({"send_held_site_kb_hour": 8, "send_held_kb_hour": 32, "registry_send_mb_hour": 3,
+                   "registry_send_mb_day": 12, "browser_free_mb_site_hour": 1, "browser_free_mb_day": 16}),
+        );
+        let tuned = limits(&tuned);
+        assert_eq!((tuned["held_site"].clone(), tuned["held_hour"].clone()), (json!(8192), json!(32768)));
+        assert_eq!((tuned["registry_hour"].clone(), tuned["registry_day"].clone()), (json!(3145728), json!(12582912)));
+        assert_eq!(tuned["browser_free_site_hour"], json!(1048576));
+        assert_eq!(tuned["browser_free_day"], json!(16777216));
         assert_eq!(limits(&set)["download_day"], json!(500u64 * 1024 * 1024));
         assert_eq!((cpus(&set), blocklist_on(&set)), (Some(2.0), true));
         let off = config(true, json!({"cpus": 0, "download_day_mb": 0, "blocklist": false}));

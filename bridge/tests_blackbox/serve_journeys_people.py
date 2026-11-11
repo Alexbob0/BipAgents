@@ -39,7 +39,7 @@ def test_serve_people(bridges, fakes):
     assert bridge.patch("/v1/notebook/settings", headers=AUTH, json={"language": "fr"}).status_code == 200
     journey.model.calls["routine"] = lambda run: mcp_as(bridge, journey.token, "/v1/agent-tools/mcp", "routine_schedule", {
         "action": "create", "name": "Le point du soir", "schedule": "every day at 19:00",
-        "prompt": "Fais le point de la journée.", "silent": True})
+        "prompt": "Fais le point de la journée."})
     journey.model.calls["task"] = lambda run: mcp_as(bridge, journey.token, "/v1/agent-tools/mcp", "propose_task", {
         "title": "Dossier location", "prompt": "Prépare le dossier de location #lent", "budget": "small"})
     # J47, the Carnet: Léa's page, the question of the day at any hour (quiet hours of one minute), Vie's calls

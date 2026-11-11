@@ -399,6 +399,8 @@ fn through_the_agents_proxy_webrtc_kept_to_it() {
     let direct = browsers::run_args(&s.config, "budget", &ports, "/usr/bin/podman", false, None);
     assert!(flags(&direct).contains(&browsers::WEBRTC_FLAG.to_string()));
     assert!(!flags(&direct).iter().any(|f| f.starts_with("--proxy-server")));
+    // no back/forward cache (fix review 11/11, B2: « back » never brings a card payment's page again)
+    assert!(flags(&direct).contains(&"--disable-back-forward-cache".to_string()));
     // through the proxy: its own address on the browsers' network, Chrome's proxy flag, CONNECT only (no certificate
     // of ours anywhere)
     let egress =

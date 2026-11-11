@@ -32,6 +32,8 @@ pub const HEADER: &str = "x-bip-console";
 pub const SESSION_DAYS: i64 = 30;
 pub const LINK_MINUTES: i64 = 10;
 pub const PAIRING_MINUTES: i64 = 5;
+/// Pairings waiting at once (`POST /console/api/pairing` is open: beyond, 429 until some expire or are used).
+pub const MAX_PAIRINGS: usize = 20;
 
 /// The page runs only its own scripts and styles, talks only to this bridge, and is never framed.
 pub const SECURITY_HEADERS: [(&str, &str); 4] = [
@@ -143,14 +145,20 @@ impl ConsoleStore {
 
     // -- pairings approved from the iPhone app
 
-    /// A short code to read on the console, and the secret the console waits with.
-    pub fn new_pairing(&self) -> anyhow::Result<Dict> {
+    /// A short code to read on the console, and the secret the console waits with; None: MAX_PAIRINGS wait already.
+    /// A code still waiting is never replaced by a new one (audit 11/11 BA-6: the code the person reads and approves
+    /// stays the one their own browser waits with).
+    pub fn new_pairing(&self) -> anyhow::Result<Option<Dict>> {
         use rand::Rng;
         let _lock = self.guard();
-        let code = format!("{:06}", rand::rngs::OsRng.gen_range(0..1_000_000u32));
-        let wait = crate::py::token_urlsafe(24);
         let mut data = self.load();
-        Self::section(&mut data, "pairings").insert(
+        let pairings = Self::section(&mut data, "pairings");
+        if pairings.len() >= MAX_PAIRINGS {
+            return Ok(None);
+        }
+        let code = free_code(pairings, || rand::rngs::OsRng.gen_range(0..1_000_000u32));
+        let wait = crate::py::token_urlsafe(24);
+        pairings.insert(
             code.clone(),
             json!({"wait": digest(&wait), "expires": crate::py::time_time() + (PAIRING_MINUTES * 60) as f64, "approved": null}),
         );
@@ -158,7 +166,7 @@ impl ConsoleStore {
         let mut out = Dict::new();
         out.insert("code".into(), json!(code));
         out.insert("wait".into(), json!(wait));
-        Ok(out)
+        Ok(Some(out))
     }
 
     pub fn approve(&self, code: &str, name: &str) -> bool {
@@ -266,6 +274,16 @@ impl ConsoleStore {
             let _ = self.save(&data);
         }
         !found.is_empty()
+    }
+}
+
+/// A 6-digit code no pairing waits with: drawn again while taken (at most MAX_PAIRINGS of the million are).
+fn free_code(taken: &Map<String, Value>, mut draw: impl FnMut() -> u32) -> String {
+    loop {
+        let code = format!("{:06}", draw() % 1_000_000);
+        if !taken.contains_key(&code) {
+            return code;
+        }
     }
 }
 
@@ -407,7 +425,10 @@ async fn login(State(state): State<AppState>, Json(body): Json<LinkLogin>) -> Ap
 }
 
 async fn pairing(State(state): State<AppState>) -> ApiResult<Response> {
-    Ok(web::ok(Value::Object(state.console.new_pairing()?)))
+    match state.console.new_pairing()? {
+        Some(pairing) => Ok(web::ok(Value::Object(pairing))),
+        None => Err(HttpError::new(429, "too many consoles are waiting for a code: try again in a few minutes")),
+    }
 }
 
 async fn pairing_wait(State(state): State<AppState>, Json(body): Json<PairingWait>) -> ApiResult<Response> {
@@ -439,11 +460,22 @@ pub fn console_router() -> Router<AppState> {
         .route("/console/api/logout", post(logout))
 }
 
+/// A console approves no other console and revokes none: only the app does (audit 11/11 BA-6: a console approving a
+/// second one of its own would outlive its revocation). Listing them stays open to it.
+fn from_the_app(caller: &crate::auth::Caller) -> Result<(), HttpError> {
+    if caller.console {
+        return Err(HttpError::new(403, "consoles are approved and removed from the app"));
+    }
+    Ok(())
+}
+
 async fn approve(
     State(state): State<AppState>,
+    caller: crate::auth::Caller,
     Path(code): Path<String>,
     Json(body): Json<Approval>,
 ) -> ApiResult<Response> {
+    from_the_app(&caller)?;
     if !state.console.approve(&code, &body.name) {
         return Err(HttpError::new(404, "no console waits with this code"));
     }
@@ -455,7 +487,9 @@ async fn devices(State(state): State<AppState>) -> Response {
     web::ok(json!({"devices": devices}))
 }
 
-async fn revoke(State(state): State<AppState>, Path(device): Path<String>) -> ApiResult<Response> {
+async fn revoke(State(state): State<AppState>, caller: crate::auth::Caller, Path(device): Path<String>)
+    -> ApiResult<Response> {
+    from_the_app(&caller)?;
     if !state.console.revoke(&device) {
         return Err(HttpError::new(404, "unknown device"));
     }
@@ -487,7 +521,7 @@ mod tests {
         let store = ConsoleStore::new(&dir.path().join("console.json").to_string_lossy());
         let code = store.new_link().unwrap();
         assert!(store.use_link(&code) && !store.use_link(&code));
-        let pairing = store.new_pairing().unwrap();
+        let pairing = store.new_pairing().unwrap().unwrap();
         let code = pairing["code"].as_str().unwrap().to_string();
         assert_eq!(code.len(), 6);
         let wait = pairing["wait"].as_str().unwrap().to_string();
@@ -505,6 +539,50 @@ mod tests {
         assert!(!text.contains(&token) && text.starts_with("{\n \"sessions\": {}"));
         use std::os::unix::fs::PermissionsExt;
         assert_eq!(std::fs::metadata(dir.path().join("console.json")).unwrap().permissions().mode() & 0o777, 0o600);
+    }
+
+    #[test]
+    fn a_new_code_never_replaces_a_waiting_one() {
+        let mut taken = Map::new();
+        taken.insert("000007".into(), json!({}));
+        taken.insert("000009".into(), json!({}));
+        let mut draws = [7u32, 9, 7, 12].into_iter();
+        assert_eq!(free_code(&taken, || draws.next().unwrap()), "000012");
+        assert_eq!(free_code(&Map::new(), || 7), "000007");
+    }
+
+    #[test]
+    fn at_most_twenty_consoles_wait_for_a_code() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConsoleStore::new(&dir.path().join("console.json").to_string_lossy());
+        let codes: Vec<String> =
+            (0..MAX_PAIRINGS).map(|_| store.new_pairing().unwrap().unwrap()["code"].as_str().unwrap().to_string()).collect();
+        let mut distinct = codes.clone();
+        distinct.sort();
+        distinct.dedup();
+        assert_eq!(distinct.len(), MAX_PAIRINGS);
+        let before = std::fs::read_to_string(&store.path).unwrap();
+        // the 21st is refused (429) and changes nothing
+        assert!(store.new_pairing().unwrap().is_none());
+        assert_eq!(std::fs::read_to_string(&store.path).unwrap(), before);
+        // an approved one still waits for its console; an expired one makes room
+        assert!(store.approve(&codes[0], "Mac"));
+        assert!(store.new_pairing().unwrap().is_none());
+        let mut data = store.load();
+        if let Some(Value::Object(p)) = ConsoleStore::section(&mut data, "pairings").get_mut(&codes[1]) {
+            p.insert("expires".into(), json!(1.0));
+        }
+        store.save(&data).unwrap();
+        assert!(store.new_pairing().unwrap().is_some());
+        assert!(store.new_pairing().unwrap().is_none());
+    }
+
+    #[test]
+    fn a_console_approves_and_revokes_no_console() {
+        use crate::auth::Caller;
+        assert_eq!(from_the_app(&Caller { console: true, device: None }).unwrap_err().status.as_u16(), 403);
+        assert!(from_the_app(&Caller { console: false, device: None }).is_ok());
+        assert!(from_the_app(&Caller { console: false, device: Some("abc".into()) }).is_ok());
     }
 
     #[test]

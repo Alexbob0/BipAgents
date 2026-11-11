@@ -23,7 +23,7 @@ not a way around websites' rules: an agent that meets a captcha asks you, it nev
   `stealth`. The server runs inside the container, next to Chrome; Hermes starts it with `podman exec`. Chrome is
   never the server's child: `spawn_browser` starts it apart (`open_browser.sh`) and connects to it, so it outlives the
   server when Hermes restarts it, and the agent's instance keeps one id (its page with it). `close_instance` closes
-  the pages and leaves Chrome; only `quit_browser` quits it.
+  the pages and leaves Chrome; only `quit_browser` quits it (the bridge's relay never passes it on from an agent).
 - **The vault** fills passwords in this same Chrome: Hermes reaches its DevTools port (`browser.cdp_url`) and fills
   the field on the exact site the item was saved for, without the agent ever seeing the password. Chrome's own
   password manager and autofill are turned off (policies in the image): the vault keeps them.

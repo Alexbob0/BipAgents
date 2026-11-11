@@ -704,6 +704,10 @@ async fn create(State(state): State<AppState>, body: Bytes) -> ApiResult<Respons
     if !config.hermes.enabled() {
         return Err(HttpError::new(409, "this install does not manage its agents (set up by hand)"));
     }
+    if !crate::agent_shares::guest_turns_closed(&config, None) {
+        // its members' turns would run open on this Hermes (audit 11/11, BA-2); 400: both apps show the sentence
+        return Ok(crate::agent_shares::guest_turns_refused(&config, 400));
+    }
     let body = body_json(&body)?;
     let take_over = body.get("take_over").is_some_and(py::truthy);
     let handover = match read(&state_path(&config)).get("handover") {

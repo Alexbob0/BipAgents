@@ -92,10 +92,22 @@ CREATE TABLE IF NOT EXISTS watched_runs (
 """
 
 
+def patched_hermes(root: Path) -> str:
+    """A Hermes code folder with patch 0018 on (its new file and its wiring in the run API): the bridge lets
+    relatives' turns run only on such a Hermes (agent_shares.rs `guest_turns_closed`). Returns the folder."""
+    code = root / "hermes-agent"
+    for file, text in (("agent/guest_turn.py", "# patch 0018\n"),
+                       ("gateway/platforms/api_server_runs.py", "from agent.guest_turn import parse\n")):
+        (code / file).parent.mkdir(parents=True, exist_ok=True)
+        (code / file).write_text(text)
+    return str(code)
+
+
 def default_config(root: Path, fakes: Any, p8_path: str) -> Dict[str, Any]:
     """tests/conftest.py's config_dict, pointed at the fakes."""
     return {
         "bridge_key": BRIDGE_KEY,
+        "hermes": {"root": patched_hermes(root)},
         "host": "127.0.0.1",
         "port": free_port(),
         "data_dir": str(root / "data"),

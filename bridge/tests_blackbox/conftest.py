@@ -16,7 +16,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from bbkit.bridge import Bridge, Bridges  # noqa: E402
+from bbkit.bridge import Bridge, Bridges, patched_hermes  # noqa: E402
 from bbkit.fakebin import install  # noqa: E402
 from bbkit.fakes import Fakes  # noqa: E402
 
@@ -91,8 +91,8 @@ def managed_install(bridge: Bridge, fakes, agents=("coach",), **hermes: Any) -> 
     serves `agents` from the hub (`<hub>/p/<name>`). Returns the hub's HERMES_HOME."""
     home = bridge.root / ".hermes"
     (home / "profiles").mkdir(parents=True, exist_ok=True)
-    bridge.config["hermes"] = {"bin": str(bridge.fakebin / "hermes"), "home": str(home), "hub_url": fakes.hermes.url,
-                               **hermes}
+    bridge.config["hermes"] = {"root": patched_hermes(bridge.root), "bin": str(bridge.fakebin / "hermes"),
+                               "home": str(home), "hub_url": fakes.hermes.url, **hermes}
     for name in agents:
         bridge.config["agents"][name] = {"display_name": name.title(), "hermes_url": f"{fakes.hermes.url}/p/{name}",
                                          "hermes_key": "k" * 32}

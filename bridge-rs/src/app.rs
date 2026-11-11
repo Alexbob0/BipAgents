@@ -1092,7 +1092,11 @@ async fn bridge_card(
     // a card of the bridge's own (a site for the agent's programs, sandbox_sites.rs), answered here
     if let Some(id) = run_id.strip_prefix(crate::sandbox_sites::RUN_PREFIX) {
         let decision = crate::sandbox_sites::decision_of_choice(&body.choice);
-        let choice = if decision == crate::sandbox_sites::Decision::DenyAll { "deny" } else { "always" };
+        let choice = match decision {
+            crate::sandbox_sites::Decision::DenyAll => "deny",
+            crate::sandbox_sites::Decision::Always(_) => "deny_always",
+            _ => "always",
+        };
         return Ok(Some(match crate::sandbox_sites::answer(&state.config(), &agent.name, id, decision, "notification")
             .map_err(anyhow::Error::from)?
         {
@@ -1102,7 +1106,7 @@ async fn bridge_card(
     }
     // a card of the vault's (an account to create with a vault password, vault_logins.rs), answered here
     if let Some(id) = run_id.strip_prefix(crate::vault_logins::RUN_PREFIX) {
-        let allow = body.choice.trim().to_lowercase() != "deny";
+        let allow = crate::card_place::allowed(&body.choice); // an unknown word: refused
         return Ok(Some(if crate::vault_logins::answer(&state.config(), &agent.name, id, allow, "notification") {
             Ok(web::ok(json!({"ok": true, "choice": if allow { "once" } else { "deny" }})))
         } else {
@@ -1122,7 +1126,7 @@ async fn bridge_card(
     }
     // a connector's approval card (connectors.rs)
     if let Some(id) = run_id.strip_prefix(crate::connectors::RUN_PREFIX) {
-        let allow = body.choice.trim().to_lowercase() != "deny";
+        let allow = crate::card_place::allowed(&body.choice); // an unknown word: refused
         return Ok(Some(crate::connectors::answered_response(
             crate::connectors::answer(state, id, allow, "notification").await,
             allow,
@@ -1134,7 +1138,7 @@ async fn bridge_card(
     }
     // a standing mail rule's card (mail_rules.rs): on with « Oui », the mails already there filed by the bridge
     if let Some(id) = run_id.strip_prefix(crate::mail_rules::RUN_PREFIX) {
-        let allow = body.choice.trim().to_lowercase() != "deny";
+        let allow = crate::card_place::allowed(&body.choice); // an unknown word: refused
         let (config, name, id) = (state.config(), agent.name.clone(), id.to_string());
         let rule = tokio::task::spawn_blocking(move || -> anyhow::Result<Option<crate::mail_rules::Rule>> {
             let rule = crate::mail_rules::answer(&config, &name, &id, allow, "app")?;
@@ -1154,7 +1158,7 @@ async fn bridge_card(
     }
     // a mail tidy card (archive, mark read, move or trash many e-mails, mail_tidy.rs): done by the bridge on « Oui »
     if let Some(id) = run_id.strip_prefix(crate::mail_tidy::RUN_PREFIX) {
-        let allow = body.choice.trim().to_lowercase() != "deny";
+        let allow = crate::card_place::allowed(&body.choice); // an unknown word: refused
         let (config, name, id) = (state.config(), agent.name.clone(), id.to_string());
         let job = tokio::task::spawn_blocking(move || -> anyhow::Result<Option<crate::mail_tidy::Job>> {
             let job = crate::mail_tidy::answer(&config, &name, &id, allow, "app")?;
@@ -1172,9 +1176,14 @@ async fn bridge_card(
             None => Err(HttpError::new(404, "no such request (answered already?)")),
         }?));
     }
-    // a routine an agent proposed, started by an e-mail or a link (triggers.rs): on with « Oui »
+    // a routine an agent proposed, started by an e-mail or a link (triggers.rs): on with « Oui », forgotten with « Non »,
+    // as a routine's card (routines.rs): any other word (empty, unknown, another card's) changes nothing
     if let Some(id) = run_id.strip_prefix(crate::triggers::RUN_PREFIX) {
-        let allow = body.choice.trim().to_lowercase() != "deny";
+        let choice = body.choice.trim().to_lowercase();
+        let allow = matches!(choice.as_str(), "once" | "session" | "always");
+        if !allow && !crate::routines::refuses(&choice) {
+            return Err(HttpError::new(422, "choice: once or deny"));
+        }
         let (config, name, id) = (state.config(), agent.name.clone(), id.to_string());
         let answered = tokio::task::spawn_blocking(move || crate::triggers::answer(&config, &name, &id, allow))
             .await
@@ -1202,14 +1211,21 @@ async fn bridge_card(
             None => Err(HttpError::new(404, "no such request (answered already?)")),
         }?));
     }
-    // the question of a routine its agent made (routines.rs): « notify » / « silent » (an older app's « Oui » / « Non »)
-    // only change how its reports come; it is never deleted here
+    // the cards of a routine its agent made or wants changed (routines.rs `answer`): only a « Oui » starts it or applies
+    // the change; only a « Non » deletes one that never started or drops the change; any other answer changes nothing
     if let Some(id) = run_id.strip_prefix(crate::routines::RUN_PREFIX) {
         let choice = body.choice.trim().to_lowercase();
+        if !crate::routines::known_choice(&choice) {
+            return Err(HttpError::new(422, "choice: once or deny"));
+        }
         let (config, name, id, given) = (state.config(), agent.name.clone(), id.to_string(), choice.clone());
         let answered = tokio::task::spawn_blocking(move || crate::routines::answer(&config, &name, &id, &given))
             .await
             .map_err(anyhow::Error::from)?;
+        if let Some(r) = answered.as_ref().filter(|r| crate::routines::lapsed(r)) {
+            // a one-time routine started after its time: not run, one line in the Boîte (O-5)
+            crate::routines::tell_done(state, agent, r, crate::routines::Done::Lapsed, None).await;
+        }
         return Ok(Some(match answered {
             Some(r) => Ok(web::ok(json!({"ok": true, "choice": choice, "muted": r.muted}))),
             None => Err(HttpError::new(404, "no such request (answered already?)")),

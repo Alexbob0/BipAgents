@@ -391,8 +391,10 @@ pub fn proxy_command(config: &Config, podman: &str) -> Vec<String> {
         "--security-opt",
         "no-new-privileges",
         "--read-only",
+        // a ceiling, not a reservation: headroom above the proxy's own bounds (connections, head and tunnel-buffer
+        // limits) so a flooding site cannot push it to a kill-and-reset (11/11 review B-3)
         "--memory",
-        "96m",
+        "256m",
         "--pids-limit",
         "64",
         "--label",

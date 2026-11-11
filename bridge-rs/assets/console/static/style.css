@@ -139,6 +139,7 @@ audio.media { width: 100%; }
 .approval .row { flex-wrap: wrap; }
 .approval h4 { margin: 0 0 8px; }
 .approval p { margin: 0 0 10px; }
+.approval .detail { white-space: pre-wrap; overflow-wrap: anywhere; }
 .approval pre { background: var(--ground); border-radius: 10px; padding: 8px 12px; overflow-x: auto; margin: 0 0 12px; }
 .question { margin-bottom: 12px; }
 .question input { margin-top: 8px; width: 100%; padding: 8px 12px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--ground); }

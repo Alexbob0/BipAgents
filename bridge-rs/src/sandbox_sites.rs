@@ -15,8 +15,12 @@
 //!   comes back here (`POST /v1/agents/{agent}/sandbox/sites/requests/{id}`, or `/v1/approve`) and is kept with the
 //!   person's other decisions (approvals_log.rs). « Autoriser » validates that site for sending, for that agent, until
 //!   removed in « Sites autorisés », and clears the proxy's counts for it (`reset`). Hosts reported within
-//!   `GROUP_WINDOW` gather on one card; at most `MAX_PENDING` cards per agent; a refused host is not asked about again
-//!   for `QUIET_AFTER_NO` (7 days) unless the agent asks itself (`sandbox_sites_request`, once a day at most).
+//!   `GROUP_WINDOW` gather on one card; at most `MAX_PENDING` cards per agent. Two refusals (owner, 11/11):
+//!   « Refuser » (`deny`) is a no for now: no new card for that host for `QUIET_AFTER_NO` (24 hours), then the agent
+//!   may ask again; « Refuser toujours » (`deny_always`) holds until the person undoes it (listed in `refused` of the
+//!   sites' view, `DELETE …/sandbox/sites/refused/{host}`, or « Autoriser » of the host, which wins). In both cases the
+//!   site stays readable: the proxy holds it (a small sending allowance an hour, `refused` / `refused_always` in its
+//!   file), never refuses it outright.
 //! - **Older apps** read `bip_site` (the first host) and the French `description`, and answer `{allow}` (that host
 //!   only, the others wait on a card of their own) or « Tous les sites » (`all_sites`: every host on the card).
 //! - **Connectors**: the sites on a connector's approval card are validated for sending, for the connector and for its
@@ -62,10 +66,9 @@ pub const RUN_PREFIX: &str = "bip-site-";
 pub const MAX_PENDING: usize = 5;
 /// Sites per agent.
 pub const MAX_SITES: usize = 200;
-/// A refused host: not asked about again for so long when the proxy reports it.
-pub const QUIET_AFTER_NO: f64 = 7.0 * 86400.0;
-/// …nor when the agent asks itself, for so long.
-pub const QUIET_EXPLICIT: f64 = 86400.0;
+/// A host refused (« Refuser »): held by the proxy and not asked about again for so long, by the proxy's report or
+/// by the agent itself (owner, 11/11: 24 hours, so that a misled agent cannot nag, then it may ask again).
+pub const QUIET_AFTER_NO: f64 = 86400.0;
 /// A card nobody answered goes after so long.
 pub const PENDING_TTL: f64 = 14.0 * 86400.0;
 /// Hosts reported within so long gather on one card.
@@ -127,9 +130,12 @@ pub struct AgentSites {
     /// The sites validated for sending.
     #[serde(default)]
     pub sites: Vec<Site>,
-    /// Host → when the person said no (Unix seconds); with when the agent last asked again.
+    /// Host → when the person said « Refuser » (Unix seconds): held for `QUIET_AFTER_NO`.
     #[serde(default)]
     pub refused: BTreeMap<String, f64>,
+    /// Host → when the person said « Refuser toujours »: held, never asked about again, until the person undoes it.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub refused_always: BTreeMap<String, f64>,
     /// When the person last allowed a site (the proxy clears the agent's counts then).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub reset: f64,
@@ -233,9 +239,9 @@ fn connector_sites(config: &Config, agent: &str) -> Vec<String> {
     out
 }
 
-/// The proxy's view: per agent, its token's SHA-256, the hosts validated for sending (its person's, its connectors')
-/// and when its person last allowed one; the connectors' own entries; the limits; the browsers' addresses (nothing
-/// secret).
+/// The proxy's view: per agent, its token's SHA-256, the hosts validated for sending (its person's, its connectors'),
+/// the hosts refused (until when, and for good) and when its person last allowed one; the connectors' own entries; the limits; the
+/// browsers' addresses (nothing secret).
 pub fn policy_of(config: &Config, store: &Store) -> Value {
     let mut agents = Dict::new();
     for (name, entry) in &store.agents {
@@ -248,7 +254,23 @@ pub fn policy_of(config: &Config, store: &Store) -> Value {
                 hosts.push(host);
             }
         }
+        // the hosts its person refused, each until its refusal ends (QUIET_AFTER_NO), and for good: the proxy holds
+        // them (11/11 audit PI-2: a « Refuser » used to stop nothing)
+        let now = py::time_time();
+        let always: Vec<&String> = entry.refused_always.keys().filter(|h| !hosts.contains(h)).collect();
+        let refused: serde_json::Map<String, Value> = entry
+            .refused
+            .iter()
+            .filter(|&(host, &when)| when + QUIET_AFTER_NO > now && !hosts.contains(host))
+            .map(|(host, &when)| (host.clone(), json!(when + QUIET_AFTER_NO)))
+            .collect();
         let mut item = json!({"key": crate::agent_tools::digest(&entry.token), "hosts": hosts});
+        if !refused.is_empty() {
+            item["refused"] = Value::Object(refused);
+        }
+        if !always.is_empty() {
+            item["refused_always"] = json!(always);
+        }
         if entry.reset > 0.0 {
             item["reset"] = json!(entry.reset);
         }
@@ -472,6 +494,7 @@ pub fn add(config: &Config, agent: &str, raw: &str, by: &str) -> Result<bool, St
         }
         entry.sites.push(Site { host: host.clone(), at: crate::tools_knowledge::now_iso_seconds(), by: by.into() });
         entry.refused.remove(&host);
+        entry.refused_always.remove(&host);
         entry.reset = now;
         store.pending.retain(|p| !(p.agent == agent && p.host == host));
         Ok(true)
@@ -496,6 +519,20 @@ pub fn remove(config: &Config, agent: &str, host: &str) -> std::io::Result<bool>
         tracing::info!(target: "bipbridge::sandbox", agent, host = %host, "site no longer validated for sending");
     }
     Ok(removed)
+}
+
+/// A refusal undone by the person (« Refuser » or « Refuser toujours »): the host is asked about again like any
+/// other. False: it was not refused.
+pub fn unrefuse(config: &Config, agent: &str, host: &str) -> std::io::Result<bool> {
+    let host = host.trim().to_lowercase();
+    let undone = change(config, |store| {
+        let Some(entry) = store.agents.get_mut(agent) else { return false };
+        entry.refused.remove(&host).is_some() | entry.refused_always.remove(&host).is_some()
+    })?;
+    if undone {
+        tracing::info!(target: "bipbridge::sandbox", agent, host = %host, "refusal undone by the person");
+    }
+    Ok(undone)
 }
 
 /// A deleted agent: its token, sites and cards go.
@@ -535,10 +572,23 @@ pub fn view(config: &Config, agent: &AgentConfig) -> Value {
         .collect();
     let (effective, why) = effect(config, agent);
     let connectors: Vec<String> = connector_sites(config, &agent.name);
+    // the hosts refused (for good, or for 24 hours): the person sees them and can undo them
+    let now = py::time_time();
+    let mut refused: Vec<Value> = entry
+        .refused_always
+        .iter()
+        .map(|(host, &at)| json!({"host": host, "at": iso(at), "always": true, "until": null}))
+        .collect();
+    for (host, &at) in &entry.refused {
+        if at + QUIET_AFTER_NO > now && !entry.refused_always.contains_key(host) {
+            refused.push(json!({"host": host, "at": iso(at), "always": false, "until": iso(at + QUIET_AFTER_NO)}));
+        }
+    }
     json!({
         "registries": registries(config),
         "sites": entry.sites,
         "connector_sites": connectors,
+        "refused": refused,
         "pending": pending,
         "effective": effective,
         "why": why,
@@ -563,8 +613,10 @@ pub enum Asked {
     Already,
     /// A card waits for the person (`true`: made now).
     Card(Pending, bool),
-    /// The person said no on that day; not asked again before `QUIET_*`.
+    /// The person said no on that day; not asked again before `QUIET_AFTER_NO`.
     Refused(String),
+    /// The person said « Refuser toujours » on that day: not asked again until they undo it.
+    RefusedAlways(String),
     /// Too many cards wait for this agent.
     TooMany,
     Invalid(String),
@@ -597,13 +649,13 @@ pub fn ask(config: &Config, agent: &str, raw: &str, reason: &str, via: &str, byt
             return Asked::Card(p.clone(), false);
         }
         let entry = store.agents.entry(agent.to_string()).or_default();
+        if let Some(when) = entry.refused_always.get(&host).copied() {
+            return Asked::RefusedAlways(iso(when));
+        }
+        // a « Refuser » holds 24 hours, whoever asks; asking never moves it (the proxy holds the host as long)
         if let Some(when) = entry.refused.get(&host).copied() {
-            let quiet = if via == "agent" { QUIET_EXPLICIT } else { QUIET_AFTER_NO };
-            if now - when < quiet {
+            if now - when < QUIET_AFTER_NO {
                 return Asked::Refused(iso(when));
-            }
-            if via == "agent" {
-                entry.refused.insert(host.clone(), now); // asked again: once a day at most
             }
         }
         // a card made a moment ago takes it too: one card, not one per site
@@ -693,7 +745,8 @@ pub fn pending_items(config: &Config, agent: Option<&str>) -> Vec<Dict> {
                 "request_id": p.id,
                 "command": hosts.join(", "),
                 "description": card_sentence(config, &p.agent, &hosts, p.bytes),
-                "choices": ["always", "deny"],
+                // « Autoriser », « Refuser » (24 hours), « Refuser toujours » (until the person undoes it)
+                "choices": ["always", "deny", "deny_always"],
                 "created_at": p.at,
                 "session_id": null,
                 "bip_site": p.host,
@@ -720,6 +773,8 @@ pub enum Decision {
     DenyAll,
     /// An older app's « Tous les sites pour <agent> »: every host on the card validated.
     AllSites,
+    /// « Refuser toujours »: the hosts shown (None: every host on the card), held until the person undoes it.
+    Always(Option<Vec<String>>),
 }
 
 /// A card answered: the hosts validated for sending, or refused (not asked again for a while). The decision is kept
@@ -772,7 +827,10 @@ pub fn answer_seen(
             Decision::First(allow) => (*allow, hosts[..1].to_vec()),
             Decision::DenyAll => (false, hosts.clone()),
             Decision::AllSites => (true, hosts.clone()),
+            Decision::Always(None) => (false, hosts.clone()),
+            Decision::Always(Some(shown)) => (false, hosts.iter().filter(|h| shown.contains(h)).cloned().collect()),
         };
+        let always = matches!(decision, Decision::Always(_));
         let left: Vec<String> = hosts.iter().filter(|h| !chosen.contains(h)).cloned().collect();
         let entry = store.agents.entry(agent.to_string()).or_default();
         for host in &chosen {
@@ -785,6 +843,10 @@ pub fn answer_seen(
                     });
                 }
                 entry.refused.remove(host);
+                entry.refused_always.remove(host);
+            } else if always {
+                entry.refused.remove(host);
+                entry.refused_always.insert(host.clone(), now);
             } else {
                 entry.refused.insert(host.clone(), now);
             }
@@ -803,7 +865,14 @@ pub fn answer_seen(
             });
         }
         let shown_hosts = if chosen.is_empty() { hosts } else { chosen };
-        Some((card, shown_hosts, if allow { "always" } else { "deny" }))
+        let choice = if allow {
+            "always"
+        } else if always {
+            "deny_always"
+        } else {
+            "deny"
+        };
+        Some((card, shown_hosts, choice))
     })?;
     let Some((card, hosts, choice)) = decided else {
         return Ok(changed.map_or(Answered::Gone, Answered::Changed));
@@ -966,6 +1035,9 @@ pub struct Answer {
     /// The card's version the app showed (`bip_sites_version`): changed since, nothing done (409).
     #[serde(default)]
     pub version: Option<usize>,
+    /// With `allow: false`, « Refuser toujours » (until the person undoes it); else « Refuser » (24 hours).
+    #[serde(default)]
+    pub always: bool,
 }
 
 impl Validate for Answer {
@@ -975,6 +1047,9 @@ impl Validate for Answer {
 impl Answer {
     pub fn decision(&self) -> Decision {
         match (&self.hosts, self.all_sites) {
+            (hosts, false) if self.always && !self.allow => Decision::Always(
+                hosts.as_ref().map(|h| h.iter().take(MAX_HOSTS).map(|h| h.trim().to_lowercase()).collect()),
+            ),
             (_, true) => Decision::AllSites,
             (Some(hosts), _) => {
                 Decision::Hosts(self.allow, hosts.iter().take(MAX_HOSTS).map(|h| h.trim().to_lowercase()).collect())
@@ -985,12 +1060,16 @@ impl Answer {
 }
 
 /// A card answered through `/v1/approve` (a notification, or an app that answers Hermes' way): `deny` (all its
-/// hosts), an older app's `all_sites` (all of them allowed), else « Autoriser » (the first host, what older apps show).
+/// hosts, 24 hours), `deny_always` (all its hosts, for good), an older app's `all_sites` (all of them allowed),
+/// `always` / `once` « Autoriser » (the first host, what older apps show); any other word: « Refuser » (11/11 review
+/// B-1: an unknown word is never a yes).
 pub fn decision_of_choice(choice: &str) -> Decision {
     match choice.trim().to_lowercase().as_str() {
         "all_sites" => Decision::AllSites,
         "deny" => Decision::DenyAll,
-        _ => Decision::First(true),
+        "deny_always" => Decision::Always(None),
+        "always" | "once" | "session" => Decision::First(true),
+        _ => Decision::DenyAll,
     }
 }
 
@@ -1031,6 +1110,18 @@ async fn delete_site(
     Ok(web::ok(view(&config, &agent)))
 }
 
+async fn unrefuse_route(
+    State(state): State<AppState>,
+    UrlPath((name, host)): UrlPath<(String, String)>,
+) -> ApiResult<Response> {
+    let config = state.config();
+    let agent = agent_of(&config, &name)?;
+    if !unrefuse(&config, &agent.name, &host).map_err(anyhow::Error::from)? {
+        return Err(HttpError::new(404, "no such refusal"));
+    }
+    Ok(web::ok(view(&config, &agent)))
+}
+
 async fn answer_route(
     State(state): State<AppState>,
     UrlPath((name, id)): UrlPath<(String, String)>,
@@ -1050,6 +1141,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/agents/{agent}/sandbox/sites", get(get_sites).post(add_site))
         .route("/agents/{agent}/sandbox/sites/{host}", axum::routing::delete(delete_site))
+        .route("/agents/{agent}/sandbox/sites/refused/{host}", axum::routing::delete(unrefuse_route))
         .route("/agents/{agent}/sandbox/sites/requests/{id}", post(answer_route))
 }
 
@@ -1093,7 +1185,10 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
         let entry = load(config).agents.get(&agent.name).cloned().unwrap_or_default();
         let mut lines = vec![
             "Reading: every public HTTPS site is open to your programs and your browser.".to_string(),
-            format!("Sending, always allowed (package registries): {}", registries(config).join(", ")),
+            format!(
+                "Sending, allowed without a card up to a few MB an hour (package registries): {}",
+                registries(config).join(", ")
+            ),
         ];
         let mut sites: Vec<String> = entry.sites.iter().map(|s| s.host.clone()).collect();
         for site in connector_sites(config, &agent.name) {
@@ -1137,7 +1232,15 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
         Asked::Refused(when) => (
             format!(
                 "Your person refused sending to this site ({when}): don't ask again today; do without it or ask them \
-                 in words."
+                 in words. Reading it still works."
+            ),
+            true,
+            None,
+        ),
+        Asked::RefusedAlways(when) => (
+            format!(
+                "Your person refused sending to this site for good ({when}): don't ask again; do without it. Only \
+                 they can change it, in « Sites autorisés ». Reading it still works."
             ),
             true,
             None,
@@ -1231,7 +1334,7 @@ mod tests {
         let items = pending_items(&config, Some("vie"));
         assert_eq!(items.len(), 1);
         assert_eq!(items[0]["run_id"], json!(format!("bip-site-{}", card.id)));
-        assert_eq!(items[0]["choices"], json!(["always", "deny"]));
+        assert_eq!(items[0]["choices"], json!(["always", "deny", "deny_always"]));
         assert_eq!(items[0]["bip_site_kind"], json!("send"));
         assert_eq!(items[0]["bip_site_send_bytes"], json!(2 * 1024 * 1024));
         assert_eq!(items[0]["description"], json!("vie wants to send data to upload.example.net (about 2 MB)"));
@@ -1241,6 +1344,20 @@ mod tests {
         assert!(matches!(ask(&config, "vie", "upload.example.net", "", "proxy", 100_000), Asked::Refused(_)));
         assert!(matches!(ask(&config, "vie", "upload.example.net", "", "agent", 0), Asked::Refused(_)));
         assert_eq!(crate::approvals_log::list(&config, "vie", None)[0]["choice"], json!("deny"));
+        // …and the proxy learns it: nothing reaches the host until the refusal ends (written in its file)
+        let written: Value =
+            serde_json::from_str(&std::fs::read_to_string(policy_dir(&config).join(POLICY_FILE)).unwrap()).unwrap();
+        let until = written["agents"]["vie"]["refused"]["upload.example.net"].as_f64().unwrap();
+        assert!((until - py::time_time() - QUIET_AFTER_NO).abs() < 60.0, "{until}");
+        // a refusal past its week: no longer written
+        let long_ago = py::time_time() - QUIET_AFTER_NO - 1.0;
+        change(&config, |s| {
+            s.agents.get_mut("vie").unwrap().refused.insert("old.example.net".into(), long_ago);
+        })
+        .unwrap();
+        let policy = policy_of(&config, &load(&config));
+        assert!(policy["agents"]["vie"]["refused"].get("old.example.net").is_none());
+        assert!(policy["agents"]["vie"]["refused"].get("upload.example.net").is_some());
         // allowed: validated, in the proxy's file, the counts reset
         let Asked::Card(card, true) = ask(&config, "vie", "api.meteo.fr", "", "agent", 0) else { panic!() };
         answer(&config, "vie", &card.id, Decision::First(true), "app").unwrap();
@@ -1248,6 +1365,7 @@ mod tests {
         let policy = policy_of(&config, &load(&config));
         assert_eq!(policy["agents"]["vie"]["hosts"], json!(["api.meteo.fr"]));
         assert!(policy["agents"]["vie"]["reset"].as_f64().unwrap() > 0.0);
+        assert!(policy["agents"]["vie"]["refused"].get("api.meteo.fr").is_none());
         // hosts reported a moment apart: one card (MAX_HOSTS on it), their sizes added, then another
         assert!(matches!(ask(&config, "vie", "s0.example.org", "", "proxy", 70_000), Asked::Card(_, true)));
         for i in 1..MAX_HOSTS {
@@ -1309,6 +1427,62 @@ mod tests {
         assert_eq!(sentence("nl", "Dev", &one, 0), "Dev wants to send data to a.com");
         let two = ["a.com".to_string(), "b.com".to_string()];
         assert_eq!(sentence("en", "Dev", &two, 2 * 1024 * 1024), "Dev wants to send data to 2 sites (about 2 MB): a.com, b.com");
+    }
+
+    /// Owner, 11/11: « Refuser » holds a host 24 hours (no card, then the agent may ask again; asking never extends
+    /// it); « Refuser toujours » holds it until the person undoes it (listed for them; their « Autoriser » wins).
+    #[test]
+    fn refuse_for_now_and_for_good() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = with_agents(&dir, json!({"vie": {"hermes_url": "http://127.0.0.1:9300", "display_name": "Vie"}}));
+        proxy_url(&config, "vie", "http://10.233.80.2:3128").unwrap();
+        let agent = config.agent(Some("vie")).unwrap().clone();
+        let policy = |c: &Config| policy_of(c, &load(c))["agents"]["vie"].clone();
+        let back = |c: &Config, map: &str, host: &str, seconds: f64| {
+            change(c, |s| {
+                let e = s.agents.get_mut("vie").unwrap();
+                let m = if map == "always" { &mut e.refused_always } else { &mut e.refused };
+                *m.get_mut(host).unwrap() -= seconds;
+            })
+            .unwrap();
+        };
+        // « Refuser »: held 24 hours, no card meanwhile, whoever asks; asking does not move it
+        let Asked::Card(card, true) = ask(&config, "vie", "x.example.net", "", "proxy", 100_000) else { panic!() };
+        answer(&config, "vie", &card.id, Decision::Hosts(false, vec!["x.example.net".into()]), "app").unwrap().unwrap();
+        let until = policy(&config)["refused"]["x.example.net"].as_f64().unwrap();
+        assert!((until - py::time_time() - QUIET_AFTER_NO).abs() < 60.0);
+        back(&config, "now", "x.example.net", 23.0 * 3600.0);
+        assert!(matches!(ask(&config, "vie", "x.example.net", "", "agent", 0), Asked::Refused(_)));
+        assert!(matches!(ask(&config, "vie", "x.example.net", "", "proxy", 1), Asked::Refused(_)));
+        assert!((policy(&config)["refused"]["x.example.net"].as_f64().unwrap() - (until - 23.0 * 3600.0)).abs() < 1e-3);
+        assert_eq!(view(&config, &agent)["refused"][0]["always"], json!(false));
+        // …past 24 hours: a card again, the proxy no longer holds it
+        back(&config, "now", "x.example.net", 3600.0 + 1.0);
+        assert!(policy(&config).get("refused").is_none());
+        let Asked::Card(card, true) = ask(&config, "vie", "x.example.net", "", "agent", 0) else { panic!() };
+        // « Refuser toujours » (an app's {allow: false, always: true}): held with no card, still after 30 days
+        let hosts = Some(vec!["x.example.net".to_string()]);
+        let body = Answer { allow: false, hosts, all_sites: false, version: None, always: true };
+        answer(&config, "vie", &card.id, body.decision(), "app").unwrap().unwrap();
+        let kept = crate::approvals_log::list(&config, "vie", None);
+        assert!(kept.iter().any(|k| k["choice"] == json!("deny_always")), "{kept:?}");
+        back(&config, "always", "x.example.net", 30.0 * 86400.0);
+        assert!(matches!(ask(&config, "vie", "x.example.net", "", "proxy", 1), Asked::RefusedAlways(_)));
+        assert!(matches!(ask(&config, "vie", "x.example.net", "", "agent", 0), Asked::RefusedAlways(_)));
+        assert_eq!(policy(&config)["refused_always"], json!(["x.example.net"]));
+        let shown = view(&config, &agent)["refused"].clone();
+        assert_eq!((shown[0]["host"].clone(), shown[0]["always"].clone()), (json!("x.example.net"), json!(true)));
+        // the person's « Autoriser » from the allowed-sites page wins
+        assert!(add(&config, "vie", "x.example.net", "person").unwrap());
+        assert!(policy(&config).get("refused_always").is_none() && validated(&config, "vie", "x.example.net"));
+        assert_eq!(view(&config, &agent)["refused"], json!([]));
+        // or the person undoes a refusal without allowing the site: asked about again like any other
+        let Asked::Card(card, true) = ask(&config, "vie", "y.example.net", "", "proxy", 1) else { panic!() };
+        answer(&config, "vie", &card.id, decision_of_choice("deny_always"), "notification").unwrap().unwrap();
+        assert!(unrefuse(&config, "vie", "y.example.net").unwrap());
+        assert!(!unrefuse(&config, "vie", "y.example.net").unwrap());
+        assert!(matches!(ask(&config, "vie", "y.example.net", "", "proxy", 1), Asked::Card(_, true)));
+        assert!(!validated(&config, "vie", "y.example.net"));
     }
 
     /// 5/11 (Alex's Garmin test, « cartes à revalider »): a host joined the card after the app drew it; « Autoriser »

@@ -3,7 +3,8 @@
 //! device, which asks the bridge for it and sends it sealed. Only their SHA-256 is kept here.
 //!
 //!     GET    /v1/device-keys        {devices: [{id, name, created, seen, me}]}
-//!     POST   /v1/device-keys        {name}  ->  {id, key}          a key for another device of the person
+//!     POST   /v1/device-keys        {name}  ->  {id, key}          a key for another device of the person (asked
+//!                                                                  by a paired device, never a web console: 403)
 //!     DELETE /v1/device-keys/{id}   that device can't come in any more
 //!
 //!     data_dir/device-keys.json   [{id, name, hash, created, seen}]   (chmod 600)
@@ -181,7 +182,17 @@ async fn listed(State(state): State<AppState>, caller: Caller) -> Response {
     web::ok(json!({"devices": of(&state.config()).listed(caller.device.as_deref())}))
 }
 
-async fn mint(State(state): State<AppState>, Json(body): Json<NewDevice>) -> ApiResult<Response> {
+/// A web console's session is revoked on its own (`/v1/console/devices`): a key it minted would outlive it, so only
+/// a paired device (the bridge key or a device key) mints one (audit 11/11 BA-6).
+fn may_mint(caller: &Caller) -> Result<(), HttpError> {
+    if caller.console {
+        return Err(HttpError::new(403, "a device key is made from the app, not from a web console"));
+    }
+    Ok(())
+}
+
+async fn mint(State(state): State<AppState>, caller: Caller, Json(body): Json<NewDevice>) -> ApiResult<Response> {
+    may_mint(&caller)?;
     let keys = of(&state.config());
     match tokio::task::spawn_blocking(move || keys.mint(&body.name)).await.map_err(anyhow::Error::from)? {
         Ok((device, key)) => Ok(web::ok(json!({"id": device, "key": key}))),
@@ -224,5 +235,13 @@ mod tests {
         assert_eq!(keys.match_key(None), None);
         let rows: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert!(rows[0]["seen"].as_f64().unwrap() > 0.0);
+    }
+
+    #[test]
+    fn a_web_console_mints_no_device_key() {
+        let refused = may_mint(&Caller { console: true, device: None }).unwrap_err();
+        assert_eq!(refused.status.as_u16(), 403);
+        assert!(may_mint(&Caller { console: false, device: None }).is_ok());
+        assert!(may_mint(&Caller { console: false, device: Some("abc".into()) }).is_ok());
     }
 }

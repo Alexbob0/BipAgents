@@ -124,7 +124,9 @@ def test_hermes_setup_commands(monkeypatch, tmp_path):
     # its question waits an hour, in the two keys Hermes reads (0.23's migration v53 lowers only the first)
     assert "config set agent.clarify_timeout 3600" in log and "config set clarify.timeout 3600" in log
     assert "profile create finance --clone-from default --no-alias" in log   # the hub's sandbox, as the app's agents
-    assert f"-p finance config set API_SERVER_KEY {key}" in log
+    # the keys in the profiles' .env, never on a command line (/proc is world-readable; audit 11/11, BV-6)
+    assert f"write {tmp_path}/.hermes/profiles/finance/.env: API_SERVER_KEY" in log and key not in log
+    assert f"write {tmp_path}/.hermes/.env: API_SERVER_KEY" in log and "config set API_SERVER_KEY" not in log
     assert "-p finance config set API_SERVER_ENABLED" not in log   # only the hub listens
     assert "-p finance config set model.supports_vision true" in log
     assert "-p finance config set compression.threshold_tokens 100000" in log   # a local server: compress early
@@ -132,6 +134,28 @@ def test_hermes_setup_commands(monkeypatch, tmp_path):
     hermes.set_model(cloud, "finance", hermes.Model("openrouter", "x", base_url="https://openrouter.ai/api/v1"))
     assert "threshold_tokens" not in "\n".join(cloud.log)
     assert hermes.agent_url("https://mini.tail0000.ts.net:8642", "finance") == "https://mini.tail0000.ts.net:8642/p/finance"
+
+
+def test_secrets_go_to_the_env_file_only_its_owner_reads(monkeypatch, tmp_path):
+    """A key never on a command line: a neighbour on a shared server reads /proc/<pid>/cmdline (audit 11/11, BV-6).
+    In the profile's .env, created 0600 and moved over the old one, the other lines kept."""
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / ".hermes"))
+    folder = tmp_path / ".hermes" / "profiles" / "finance"
+    folder.mkdir(parents=True)
+    (folder / ".env").write_text("# mine\nAPI_SERVER_KEY=old\nOTHER=1\n")
+    (folder / ".env").chmod(0o644)
+    ran = []
+    monkeypatch.setattr(hermes.subprocess, "run", lambda args, **kw: ran.append(args) or subprocess.CompletedProcess(args, 0, "", ""))
+    runner = hermes.Runner()
+    hermes.write_env(runner, "finance", "API_SERVER_KEY", "s3cret-key")
+    hermes.set_model(runner, "finance", hermes.Model("custom", "glm", base_url="https://api.example/v1", api_key="sk-model"))
+    env = folder / ".env"
+    assert env.read_text() == "# mine\nOTHER=1\nAPI_SERVER_KEY=s3cret-key\nCUSTOM_MODEL_API_KEY=sk-model\n"
+    assert env.stat().st_mode & 0o777 == 0o600 and not (folder / ".env.bip-tmp").exists()
+    assert not any(secret in " ".join(args) for args in ran for secret in ("s3cret-key", "sk-model"))
+    assert not any(secret in line for line in runner.log for secret in ("s3cret-key", "sk-model"))
+    hermes.write_env(runner, hermes.HUB_PROFILE, "API_SERVER_KEY", "hub-key")   # the hub: HERMES_HOME's own .env
+    assert (tmp_path / ".hermes" / ".env").read_text() == "API_SERVER_KEY=hub-key\n"
 
 
 def test_names_are_the_persons():
@@ -258,7 +282,7 @@ def test_whole_dry_run(monkeypatch, tmp_path, capsys):
     out = capsys.readouterr().out
     assert "profile create lea" in out and "profile create fougere" in out
     assert "[agents.fougere]" in out and 'display_name = "Fougère"' in out
-    assert "API_SERVER_KEY <key>" in out
+    assert ".env: API_SERVER_KEY" in out and "config set API_SERVER_KEY" not in out   # never on a command line
     assert "[kyutai]" not in out
     # The bridge: this version's Rust binaries, nothing of Python's (no venv, no `-m bipbridge`).
     assert "fetch the bridge " in out and "bipbridge-macos-universal.tar.gz" in out
@@ -291,7 +315,7 @@ def test_the_agents_get_their_language_from_the_app(monkeypatch, tmp_path, capsy
     assert "Hello" in out and "Where does the model" in out and "Hermes, the agents' brain" in out
     assert "The Bips' voices" in out and "Dry run: here is what would have been done." in out
     assert "language" not in out.lower().split("the bips' voices")[0]   # nothing asked about it
-    assert "API_SERVER_KEY <key>" in out and "Où tourne" not in out
+    assert ".env: API_SERVER_KEY" in out and "Où tourne" not in out
     assert souls_written["lea"].startswith("You are Lea, your user's everyday agent.")
     assert souls_written["fern"].startswith("You are Fern") and "watches my plants" in souls_written["fern"]
     assert "answer in the language your person writes in" in souls_written["fern"] and "Tu " not in souls_written["fern"]
@@ -403,7 +427,7 @@ def test_an_existing_hermes_keeps_its_settings(monkeypatch, tmp_path, capsys):
     out = capsys.readouterr().out
     assert "You already have Hermes" in out and "Where does the model" not in out
     assert "config set API_SERVER_ENABLED true" in out and "config set API_SERVER_PORT 8642" in out
-    assert "-p cuisine config set API_SERVER_KEY <key>" in out
+    assert "/profiles/cuisine/.env: API_SERVER_KEY" in out and "config set API_SERVER_KEY" not in out
     assert "model." not in out and "terminal.backend" not in out and "tools disable" not in out
     assert "profile create" not in out and "no vault" in out
     assert '[agents.default]\ndisplay_name = "Marc"\nhermes_url = "http://127.0.0.1:8642"' in out
@@ -441,12 +465,15 @@ def test_uninstall_puts_an_existing_hermes_back(tmp_path, monkeypatch):
     (config / "bridge.toml").write_text('bridge_key = "x"\nport = 9203\n')
     runner = hermes.Runner()
     monkeypatch.setattr(runner, "run", lambda args, **k: runner.log.append(" ".join(args)) or "")
-    changes = [("default", "API_SERVER_ENABLED", "true", None), ("default", "API_SERVER_PORT", "9202", "8642")]
+    changes = [("default", "API_SERVER_ENABLED", "true", None), ("default", "API_SERVER_PORT", "9202", "8642"),
+               ("cuisine", "API_SERVER_KEY", "new-key", "old-key")]
     existing.apply_changes(runner, changes, config / existing.RECORD, "service", ["/repo/hermes/patches/0004.patch"])
     runner = hermes.Runner(dry=True)
     uninstall(runner, everything=True, home=tmp_path, system="linux", tailscale=None)
     log = "\n".join(runner.log)
     assert "config unset API_SERVER_ENABLED" in log and "config set API_SERVER_PORT 8642" in log
+    # the key of before comes back in its .env, never on a command line (audit 11/11, BV-6)
+    assert "/profiles/cuisine/.env: API_SERVER_KEY" in log and "old-key" not in log and "new-key" not in log
     assert "gateway restart" in log and "gateway uninstall" not in log
     assert "apply --reverse /repo/hermes/patches/0004.patch" in log   # our patches come back off its code
     assert f"keep {tmp_path}/.hermes" in log and f"remove {tmp_path}/.hermes\n" not in log + "\n"
@@ -897,7 +924,7 @@ def test_a_server_the_app_created_installs_without_a_question(monkeypatch, tmp_p
     # the offer's model from the start, with a placeholder key until the claim writes the person's
     assert "config set model.provider custom" in out and "config set model.default glm-5.3-flash" in out
     # (the dry run hides every *_KEY value as <key>; the value itself is the installer's placeholder)
-    assert "config set CUSTOM_MODEL_API_KEY <key>" in out and "OPENROUTER_API_KEY" not in out
+    assert ".env: CUSTOM_MODEL_API_KEY" in out and "OPENROUTER_API_KEY" not in out and "config set CUSTOM_MODEL" not in out
     assert cli.CLOUD_KEY_PLACEHOLDER == "reserve-no-key-yet"
     assert "profile create" not in out   # the agents come with the app's claim
     # The phones' 8-bit voices, without PyTorch, loaded only while they speak.

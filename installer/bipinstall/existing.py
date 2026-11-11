@@ -20,7 +20,7 @@ from typing import Dict, List, Optional, Tuple
 
 import yaml
 
-from .hermes import HUB_PROFILE, UNFINISHED, Runner, hermes_bin, hermes_checkout, hermes_home, new_key
+from .hermes import HUB_PROFILE, UNFINISHED, Runner, hermes_bin, hermes_checkout, hermes_home, new_key, write_env
 
 SANDBOX_BACKENDS = ("docker", "singularity", "modal", "daytona", "ssh", "vercel")
 RECORD = "existing-hermes.json"
@@ -167,6 +167,9 @@ def apply_changes(runner: Runner, changes: List[Tuple[str, str, str, Optional[st
                           encoding="utf-8")
         record.chmod(0o600)   # the values before may include a key
     for profile, key, value, _ in changes:
+        if key == "API_SERVER_KEY":   # a key: in the profile's .env, never on a command line (audit 11/11, BV-6)
+            write_env(runner, profile, key, value)
+            continue
         args = [hermes_bin()] + ([] if profile == HUB_PROFILE else ["-p", profile]) + ["config", "set", key, value]
         runner.run(args)
 
@@ -182,6 +185,8 @@ def restore(runner: Runner, record: Path) -> Optional[dict]:
         profile = [] if item["profile"] == HUB_PROFILE else ["-p", item["profile"]]
         if item.get("before") is None:
             runner.run([hermes_bin()] + profile + ["config", "unset", item["key"]], check=False)
+        elif item["key"] == "API_SERVER_KEY":   # the key of before: in the .env too, never on a command line (BV-6)
+            write_env(runner, item["profile"], item["key"], item["before"])
         else:
             runner.run([hermes_bin()] + profile + ["config", "set", item["key"], item["before"]], check=False)
     for patch in reversed(data.get("patched", [])):

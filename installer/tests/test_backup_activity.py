@@ -131,6 +131,7 @@ def test_an_idle_place_s_own_rewrites_are_no_change(tmp_path):
     (home / "data" / "storage.json").write_text('{"rules": {}}')
     (home / "data" / "sandbox-proxy" / "reports").mkdir(parents=True)
     (home / "data" / "sandbox-proxy" / "reports" / "usage.json").write_text('{"at": 1}')
+    (home / "data" / "sandbox-proxy" / "reports" / "counts.json").write_text('{"v": 1, "at": 1}')
     # data_dir's storage.json is only noise there: the path must end with bipagents/storage.json on a place
     (home / ".config" / "bipagents" / "bridge.toml").write_text(
         (home / ".config" / "bipagents" / "bridge.toml").read_text().replace(str(home / "data"),
@@ -150,6 +151,7 @@ def test_an_idle_place_s_own_rewrites_are_no_change(tmp_path):
     data = home / "share" / "bipagents"
     (data / "storage.json").write_text('{"rules": {}, "at": 2}')
     (data / "sandbox-proxy" / "reports" / "usage.json").write_text('{"at": 22}')
+    (data / "sandbox-proxy" / "reports" / "counts.json").write_text('{"v": 1, "at": 22, "days": {}}')
     assert fp(home)["sum"] == first["sum"]
     # A WAL with something in it is a change.
     (hermes_home / "cron" / "executions.db-wal").write_bytes(b"x" * 100)

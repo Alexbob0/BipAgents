@@ -308,6 +308,10 @@ async fn guest_turn(
     let title: String = tk::str_or_empty(body.get("title")).chars().take(80).collect();
     let roster: String = tk::str_or_empty(body.get("roster")).chars().take(1000).collect();
     let config = state.config();
+    if !crate::agent_shares::guest_turns_closed(&config, Some(&agent)) {
+        // a Hermes without patch 0018 would run the room's turn with the owner's tools (audit 11/11, BA-2)
+        return Ok(crate::agent_shares::guest_turns_refused(&config, 503));
+    }
     let host = households(&config)
         .get(&household)
         .and_then(|h| h.get("name").map(py::py_str))

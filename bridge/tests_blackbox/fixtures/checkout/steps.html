@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Commande</title></head>
+<body>
+<!-- A one-page checkout that keeps its step in memory only: reloaded, it is back at the delivery step, no card form. -->
+<h1>Livraison</h1>
+<button id="next" onclick="document.getElementById('card').hidden = false">Continuer vers le paiement</button>
+<div id="card" hidden>
+  <label for="numero">Numéro de carte</label> <input id="numero" autocomplete="cc-number">
+  <label for="cvc">Cryptogramme</label> <input id="cvc" autocomplete="cc-csc">
+  <button id="pay">Payer 12,50 €</button>
+</div>
+</body></html>

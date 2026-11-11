@@ -79,6 +79,16 @@ fn managed_config(dir: &Path, hub: &str) -> (SharedConfig, PathBuf) {
     (SharedConfig::new(config), path)
 }
 
+/// `API_SERVER_KEY=<key>` in the profile's .env, a file only its owner reads.
+fn assert_key_in_env(folder: &Path, key: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    let env = folder.join(".env");
+    let text = std::fs::read_to_string(&env).unwrap();
+    assert!(text.lines().any(|l| l == format!("API_SERVER_KEY={key}")), "{env:?}");
+    assert_eq!(std::fs::metadata(&env).unwrap().permissions().mode() & 0o777, 0o600);
+    assert_eq!(agents_admin::profile_key(folder).as_deref(), Some(key));
+}
+
 fn new_agent(value: Value) -> NewAgent {
     serde_json::from_value(value).unwrap()
 }
@@ -114,10 +124,13 @@ async fn create_custom_agent() {
     assert_eq!(agent.public_url.as_deref(), Some("https://mini.ts.net:8642/p/fougere"));
     let ran = commands.lock().unwrap().clone();
     assert_eq!(ran[0][..6], ["/opt/hermes", "profile", "create", "fougere", "--clone-from", "default"]);
-    assert_eq!(ran[1][..6], ["/opt/hermes", "-p", "fougere", "config", "set", "API_SERVER_KEY"]);
+    // Its key in the profile's .env (0600), never on a command line: every account of a shared server reads the
+    // others' command lines in /proc (audit 11/11, BV-6).
+    assert!(!ran.iter().any(|c| c.iter().any(|a| a.contains(&agent.hermes_key))), "{ran:?}");
+    assert_key_in_env(&profiles(dir.path()).join("fougere"), &agent.hermes_key);
     // Nothing says this install's agents are isolated from the bridge: no terminal, files or code until turned on.
     assert_eq!(
-        ran[2],
+        ran[1],
         [
             "/opt/hermes",
             "-p",
@@ -352,9 +365,10 @@ async fn profiles_created_on_the_server_can_be_claimed() {
     assert_eq!(jardin.public_url.as_deref(), Some("https://mini.ts.net:8642/p/jardin"));
     let cuisine = claim_profile(&config, "cuisine", None, &http, &run).await.unwrap();
     let ran = commands.lock().unwrap().clone();
-    // `--` before the key: a key starting with « - » was read as an option (lab, 2026-10-29)
-    assert_eq!(ran[0], ["/opt/hermes", "-p", "cuisine", "config", "set", "API_SERVER_KEY", "--", &cuisine.hermes_key]);
-    assert!(ran[1..].iter().all(|a| a[5].starts_with("mcp_servers.bipagents.")));
+    // A new key, written in its .env by the bridge: never on a command line (audit 11/11, BV-6).
+    assert!(!ran.iter().any(|c| c.iter().any(|a| a.contains(&cuisine.hermes_key))), "{ran:?}");
+    assert_key_in_env(&root.join("cuisine"), &cuisine.hermes_key);
+    assert!(ran.iter().all(|a| a[5].starts_with("mcp_servers.bipagents.")));
     let urls: Vec<String> = sessions.lock().unwrap().iter().map(|(u, _)| u.clone()).collect();
     assert_eq!(urls, ["/p/jardin/api/sessions", "/p/cuisine/api/sessions"]); // their « Discussion »
     assert!(!std::fs::read_to_string(root.join("cuisine/profile.yaml")).unwrap_or_default().contains("hermes-bots"));
