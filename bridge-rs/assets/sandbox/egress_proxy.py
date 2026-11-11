@@ -22,8 +22,12 @@ abuse complaint can be traced to an agent.
   reaches the site, the proxy keeps reading what the client still sends for a few seconds to know its size, then
   appends one line `{"kind": "send", "agent", "host", "bytes"}` to `BIP_REPORTS` (the bridge reads it and asks the
   person on ONE card per agent). Until the person answers, that host (or, past the day's total, every host not
-  validated) still opens for reading, each tunnel cut past `held_tunnel` bytes. The policy's `reset` (the person's
-  last « Autoriser ») clears an agent's counts.
+  validated) still opens for reading, within ONE small allowance for the hold, shared by all its tunnels:
+  `held_site` bytes per host, `held_day` bytes per agent per day across held hosts; past it the tunnel is cut and new
+  ones refused (403) until the hold ends. The policy's `reset` (the person's last « Autoriser ») clears an agent's
+  counts; its `refused` (host → until when: the person's « Refuser », kept a week) refuses that host for that agent.
+- **Where the counts live**: in this process's memory only (a restart of the proxy starts them again, as before the
+  11/11 audit fixes; the bridge keeps the refusals and validations, so those survive it).
 - **On the offer's servers** (limits the bridge sets, 0 = none): `download_day` bytes received per agent per day,
   `connections_minute` new connections per agent per minute, and `BIP_BLOCKLIST` (piracy and torrent trackers' names,
   one per line, refused with their subdomains). Each refusal says so plainly.
@@ -69,8 +73,11 @@ WAIT = 30
 HOUR = 3600
 REPORTS_MAX = 256 * 1024
 # What the bridge does not set: the guard's starting points (send_guard.rs has the same).
-LIMITS = {"send_site_hour": 64 * 1024, "send_day": 256 * 1024, "held_tunnel": 16 * 1024, "browser_record_free": 4096,
-          "download_day": 0, "connections_minute": 0}
+LIMITS = {"send_site_hour": 64 * 1024, "send_day": 256 * 1024, "browser_record_free": 4096,
+          "download_day": 0, "connections_minute": 0,
+          # while a card waits (a host held, or the day's total reached): what may still go, in all, per held host and
+          # per agent per day (11/11 audit PI-2: it was 16 KB per tunnel, again for every new tunnel)
+          "held_site": 16 * 1024, "held_day": 64 * 1024}
 # A tunnel cut: what the client still sends is read (never passed on) for so long, to say how much it wanted to send.
 SINK_IDLE = 3.0
 SINK_SECONDS = 30.0
@@ -85,8 +92,10 @@ _policy = {"stamp": None, "agents": {}, "browsers": {}, "limits": dict(LIMITS)}
 _blocklist = {"stamp": None, "names": frozenset()}
 # (agent, host) -> [window start, bytes sent this hour] to hosts not validated
 _sent = {}
-# (agent, host) -> until when its tunnels are held (cut past held_tunnel), a card being asked
+# (agent, host) -> until when its tunnels are held, a card being asked
 _held = {}
+# (agent, host) -> [until, bytes]: what passed to a held host during its hold (at most held_site)
+_held_used = {}
 # agent -> today's counts
 _days = {}
 # agent -> [minute start, new connections]
@@ -327,11 +336,13 @@ def day_of(agent):
             del _sent[key]
         for key in [k for k in _held if k[0] == agent]:
             del _held[key]
-        entry.update(since=now, unvalidated=0, held=False)
+        for key in [k for k in _held_used if k[0] == agent]:
+            del _held_used[key]
+        entry.update(since=now, unvalidated=0, held=False, held_sent=0)
     if entry is None or entry["day"] != day:
         kept = entry or {}
         entry = {"day": day, "since": max(now, kept.get("since", 0)), "sent": 0, "received": 0, "unvalidated": 0,
-                 "connections": 0, "held": False, "download_logged": False}
+                 "connections": 0, "held": False, "held_sent": 0, "download_logged": False}
         _days[agent] = entry
         if len(_days) > 4096:
             _days.clear()
@@ -358,6 +369,53 @@ def too_many_connections(agent):
 def download_over(agent):
     most = limit("download_day")
     return bool(most) and day_of(agent)["received"] >= most
+
+
+def refused(agent, host):
+    """A host the agent's person refused on its card (the policy's `refused`, host → until when): nothing goes there
+    until then, not even a read (the bridge keeps a « Refuser » a week, sandbox_sites.rs QUIET_AFTER_NO)."""
+    entry = policy().get(agent) if agent else None
+    marks = entry.get("refused") if isinstance(entry, dict) else None
+    until = marks.get(normal(host)) if isinstance(marks, dict) else None
+    return isinstance(until, (int, float)) and not isinstance(until, bool) and until > time.time()
+
+
+def next_midnight():
+    """The end of today (UTC, as `today`)."""
+    return (int(time.time()) // 86400 + 1) * 86400
+
+
+def hold_of(agent, host, day):
+    """Until when this agent's sends to this host are held (a card waits for it, or the day's total was reached),
+    else 0."""
+    until = _held.get((agent, host), 0)
+    if day["held"]:
+        until = max(until, next_midnight())
+    return until if until > time.time() else 0
+
+
+def held_allowance(agent, host, until):
+    """[until, bytes]: what went to this held host during its hold, all its tunnels together."""
+    key = (agent, host)
+    used = _held_used.get(key)
+    if used is None or used[0] <= time.time():
+        used = [until, 0]
+        if len(_held_used) > 16384:
+            _held_used.clear()
+        _held_used[key] = used
+    used[0] = max(used[0], until)
+    return used
+
+
+def held_spent(agent, host):
+    """A new connection to a held host whose allowance went (the host's, or the agent's for the day): refused until
+    the hold ends."""
+    day = day_of(agent)
+    if not hold_of(agent, host, day):
+        return False
+    used = _held_used.get((agent, host))
+    host_spent = used is not None and used[0] > time.time() and used[1] >= limit("held_site")
+    return host_spent or day["held_sent"] >= limit("held_day")
 
 
 class Tls:
@@ -428,17 +486,32 @@ class Guard:
         if not self.counted:
             day["sent"] += len(data)
             return True
+        if refused(self.agent, self.host):
+            # the person said « Refuser » while this tunnel was open
+            self.cut = "held"
+            return False
         size = self.tls.count(data) if self.tls is not None else len(data)
         if not size:
             day["sent"] += len(data)
             return True
         key = (self.agent, self.host)
         now = time.time()
-        if day["held"] or _held.get(key, 0) > now:
-            # a card waits: reading still opens, each tunnel cut past a request's size
-            if self.app + size > limit("held_tunnel"):
+        until = hold_of(self.agent, self.host, day)
+        if until:
+            # a card waits: reading still opens, within ONE allowance for the host's hold and one for the agent's day,
+            # whatever the number of tunnels; past it, cut, and new tunnels refused until the hold ends
+            used = held_allowance(self.agent, self.host, until)
+            over_site = used[1] + size > limit("held_site")
+            over_day = day["held_sent"] + size > limit("held_day")
+            if over_site or over_day:
+                if over_site:
+                    used[1] = max(used[1], limit("held_site"))
+                if over_day:
+                    day["held_sent"] = max(day["held_sent"], limit("held_day"))
                 self.cut = "held"
                 return False
+            used[1] += size
+            day["held_sent"] += size
             self.app += size
             day["sent"] += len(data)
             return True
@@ -566,7 +639,11 @@ PHONE_REFUSED = "Site refused by the phone exit"
 PHONE_FAILED = "Bad Gateway (the phone could not reach the site)"
 CONNECTIONS = "Too many new connections - wait a minute"
 UNKNOWN_BROWSER = "Unknown browser"
+REFUSED = "Sending to this site refused by your person - do without it"
+PAUSED = "Sending paused - your person has a card to answer about this site"
 BODIES = {
+    REFUSED: "Your person refused sending to this site: nothing reaches it for now. Do without it, or ask them.",
+    PAUSED: "You sent this site more than a small amount: your person has a card to answer. Wait for their answer.",
     NOT_CONNECTOR: "This connector may only reach the sites your person approved with it.",
     NOT_OPEN: "Only the package registries can be reached without your own access.",
     NOT_HTTPS: "Your programs reach sites over HTTPS only.",
@@ -750,6 +827,13 @@ async def handle(reader, writer):
     if counted and download_over(agent):
         log("blocked (download limit)", method, target, agent)
         return await answer(writer, 403, DOWNLOADS)
+    if counted and not validated(agent, host):
+        if refused(agent, host):
+            log("blocked (refused by the person)", method, target, agent)
+            return await answer(writer, 403, REFUSED)
+        if held_spent(agent, host):
+            log("blocked (sending paused: a card waits)", method, target, agent)
+            return await answer(writer, 403, PAUSED)
     if agent is not None and too_many_connections(agent):
         log("blocked (connections per minute)", method, target, agent)
         return await answer(writer, 429, CONNECTIONS)

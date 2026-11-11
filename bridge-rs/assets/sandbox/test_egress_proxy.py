@@ -240,7 +240,7 @@ async def send_tls(port, host, auth, app_bytes, chunk=16000, kind=23):
 
 
 VIE = basic("vie", "t-vie")
-LIMITS = {"send_site_hour": 64 * 1024, "send_day": 256 * 1024, "held_tunnel": 16 * 1024}
+LIMITS = {"send_site_hour": 64 * 1024, "send_day": 256 * 1024, "held_site": 16 * 1024, "held_day": 64 * 1024}
 
 
 def test_a_big_upload_is_cut_with_one_report_a_validated_site_passes(tmp_path, monkeypatch):
@@ -269,10 +269,10 @@ def test_a_big_upload_is_cut_with_one_report_a_validated_site_passes(tmp_path, m
     assert lines[0]["day"] is False
     assert out["read"][0].startswith("HTTP/1.1 200")
     assert out["validated"][0].startswith("HTTP/1.1 200")
-    # what reached the sites: the form, at most the hour's budget of the upload, the small read, a held tunnel's cap,
-    # and the validated megabyte whole
+    # what reached the sites: the form, at most the hour's budget of the upload, the small read and the rest of the
+    # host's held allowance (both held tunnels together), and the validated megabyte whole
     assert site.received >= 1024 * 1024 + 6000
-    assert site.received < 1024 * 1024 + 6000 + 64 * 1024 + 3000 + 16 * 1024 + 6 * 1024
+    assert site.received < 1024 * 1024 + 6000 + 64 * 1024 + 16 * 1024 + 6 * 1024
 
 
 def test_data_framed_as_handshake_records_is_cut_and_reported(tmp_path, monkeypatch):
@@ -290,6 +290,95 @@ def test_data_framed_as_handshake_records_is_cut_and_reported(tmp_path, monkeypa
     assert [(l["agent"], l["host"]) for l in lines] == [("vie", "drop.example.net")], lines
     assert lines[0]["bytes"] >= 900 * 1024
     assert site.received <= 64 * 1024
+
+
+def test_a_held_host_shares_one_allowance_then_refuses(tmp_path, monkeypatch):
+    """PI-2 (11/11): once a send to a host was cut, its new tunnels share ONE held allowance (16 KB), not 16 KB each;
+    past it, new connections to it are refused (403) until the hold ends. Other hosts are untouched."""
+    proxy, _, reports = load(tmp_path, monkeypatch, AGENTS, LIMITS)
+    site = Site()
+
+    async def steps(port):
+        out = {}
+        out["big"] = await send_tls(port, "upload.example.net", VIE, 300 * 1024)
+        await asyncio.sleep(0.5)
+        before = site.received
+        # requests of 3 KB (with their 0.5 KB hello): four fit in the host's held 16 KB, the fifth is cut
+        out["tunnels"] = [await send_tls(port, "upload.example.net", VIE, 3000) for _ in range(20)]
+        await asyncio.sleep(0.5)
+        out["held"] = site.received - before
+        out["other"] = await send_tls(port, "other.example.net", VIE, 3000)
+        return out
+
+    out = asyncio.run(through(proxy, monkeypatch, site, steps))
+    assert len(reports_of(reports)) == 1                       # one card, the held cuts are not reported
+    assert 4 * (522 + 3005) <= out["held"] <= 16 * 1024, out["held"]
+    statuses = [t[0].split(" ")[1] for t in out["tunnels"]]
+    assert statuses == ["200"] * 5 + ["403"] * 15, statuses
+    assert out["tunnels"][-1][0] == "HTTP/1.1 403 Sending paused - your person has a card to answer about this site"
+    assert out["other"][0].startswith("HTTP/1.1 200")
+
+
+def test_a_held_day_shares_one_allowance(tmp_path, monkeypatch):
+    """Past the day's total every host not validated is held: all of them together get held_day (64 KB) more, then
+    new connections to them are refused; a validated host still passes."""
+    proxy, _, _ = load(tmp_path, monkeypatch, AGENTS, LIMITS)
+    proxy.day_of("vie")["held"] = True
+    site = Site()
+
+    async def steps(port):
+        results = [await send_tls(port, f"h{i}.example.net", VIE, 10 * 1024, chunk=2000) for i in range(12)]
+        await asyncio.sleep(0.5)
+        held = site.received
+        validated = await send_tls(port, "data.gouv.fr", VIE, 100 * 1024)
+        return results, held, validated
+
+    results, held, validated = asyncio.run(through(proxy, monkeypatch, site, steps))
+    assert held <= 64 * 1024, held
+    assert results[-1][0].startswith("HTTP/1.1 403 Sending paused")
+    assert validated[0].startswith("HTTP/1.1 200") and validated[1] == 100 * 1024
+
+
+def test_refuser_holds_autoriser_frees(tmp_path, monkeypatch):
+    """BV-7 (11/11): the person's « Refuser » reaches the proxy (`refused`, until its week ends): a new connection to
+    that host is refused and nothing reaches it; past the date, or on another host, as before. « Autoriser » (the host
+    validated, `reset`): the same upload goes whole."""
+    import time
+    proxy, policy, reports = load(tmp_path, monkeypatch, AGENTS, LIMITS)
+    site = Site()
+
+    def rewrite(change, bump):
+        data = json.loads(policy.read_text())
+        change(data["agents"]["vie"])
+        policy.write_text(json.dumps(data))
+        os.utime(policy, ns=(bump, bump))
+
+    async def steps(port):
+        out = {}
+        out["big"] = await send_tls(port, "upload.example.net", VIE, 300 * 1024)
+        await asyncio.sleep(0.5)
+        rewrite(lambda e: e.update(refused={"upload.example.net": time.time() + 7 * 86400,
+                                            "gone.example.net": time.time() - 1}), 10)
+        before = site.received
+        out["refused"] = await send_tls(port, "upload.example.net", VIE, 1000)
+        out["refused_sub"] = await send_tls(port, "www.upload.example.net", VIE, 1000)   # the host only
+        out["expired"] = await send_tls(port, "gone.example.net", VIE, 1000)
+        await asyncio.sleep(0.3)
+        out["passed"] = site.received - before
+        rewrite(lambda e: (e.pop("refused"), e["hosts"].append("upload.example.net"),
+                           e.update(reset=time.time() + 1)), 20)
+        before = site.received
+        out["allowed"] = await send_tls(port, "upload.example.net", VIE, 300 * 1024)
+        await asyncio.sleep(0.3)
+        out["allowed_bytes"] = site.received - before
+        return out
+
+    out = asyncio.run(through(proxy, monkeypatch, site, steps))
+    assert out["refused"][0] == "HTTP/1.1 403 Sending to this site refused by your person - do without it"
+    assert out["refused_sub"][0].startswith("HTTP/1.1 200") and out["expired"][0].startswith("HTTP/1.1 200")
+    assert out["passed"] == 2 * (522 + 1005)                    # the two others only, nothing to the refused host
+    assert out["allowed"][0].startswith("HTTP/1.1 200") and out["allowed_bytes"] >= 300 * 1024
+    assert len(reports_of(reports)) == 1
 
 
 def test_downloads_of_any_size_pass(tmp_path, monkeypatch):

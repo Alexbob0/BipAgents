@@ -16,7 +16,8 @@
 //!   person's other decisions (approvals_log.rs). « Autoriser » validates that site for sending, for that agent, until
 //!   removed in « Sites autorisés », and clears the proxy's counts for it (`reset`). Hosts reported within
 //!   `GROUP_WINDOW` gather on one card; at most `MAX_PENDING` cards per agent; a refused host is not asked about again
-//!   for `QUIET_AFTER_NO` (7 days) unless the agent asks itself (`sandbox_sites_request`, once a day at most).
+//!   for `QUIET_AFTER_NO` (7 days) unless the agent asks itself (`sandbox_sites_request`, once a day at most), and for
+//!   as long the proxy lets nothing of that agent reach it (`refused` in its file, since 11/11).
 //! - **Older apps** read `bip_site` (the first host) and the French `description`, and answer `{allow}` (that host
 //!   only, the others wait on a card of their own) or « Tous les sites » (`all_sites`: every host on the card).
 //! - **Connectors**: the sites on a connector's approval card are validated for sending, for the connector and for its
@@ -233,9 +234,9 @@ fn connector_sites(config: &Config, agent: &str) -> Vec<String> {
     out
 }
 
-/// The proxy's view: per agent, its token's SHA-256, the hosts validated for sending (its person's, its connectors')
-/// and when its person last allowed one; the connectors' own entries; the limits; the browsers' addresses (nothing
-/// secret).
+/// The proxy's view: per agent, its token's SHA-256, the hosts validated for sending (its person's, its connectors'),
+/// the hosts refused (until when) and when its person last allowed one; the connectors' own entries; the limits; the
+/// browsers' addresses (nothing secret).
 pub fn policy_of(config: &Config, store: &Store) -> Value {
     let mut agents = Dict::new();
     for (name, entry) in &store.agents {
@@ -248,7 +249,19 @@ pub fn policy_of(config: &Config, store: &Store) -> Value {
                 hosts.push(host);
             }
         }
+        // the hosts its person refused, each until its refusal ends (QUIET_AFTER_NO): the proxy lets nothing reach
+        // them until then (11/11 audit PI-2: a « Refuser » used to stop nothing)
+        let now = py::time_time();
+        let refused: serde_json::Map<String, Value> = entry
+            .refused
+            .iter()
+            .filter(|&(host, &when)| when + QUIET_AFTER_NO > now && !hosts.contains(host))
+            .map(|(host, &when)| (host.clone(), json!(when + QUIET_AFTER_NO)))
+            .collect();
         let mut item = json!({"key": crate::agent_tools::digest(&entry.token), "hosts": hosts});
+        if !refused.is_empty() {
+            item["refused"] = Value::Object(refused);
+        }
         if entry.reset > 0.0 {
             item["reset"] = json!(entry.reset);
         }
@@ -1241,6 +1254,20 @@ mod tests {
         assert!(matches!(ask(&config, "vie", "upload.example.net", "", "proxy", 100_000), Asked::Refused(_)));
         assert!(matches!(ask(&config, "vie", "upload.example.net", "", "agent", 0), Asked::Refused(_)));
         assert_eq!(crate::approvals_log::list(&config, "vie", None)[0]["choice"], json!("deny"));
+        // …and the proxy learns it: nothing reaches the host until the refusal ends (written in its file)
+        let written: Value =
+            serde_json::from_str(&std::fs::read_to_string(policy_dir(&config).join(POLICY_FILE)).unwrap()).unwrap();
+        let until = written["agents"]["vie"]["refused"]["upload.example.net"].as_f64().unwrap();
+        assert!((until - py::time_time() - QUIET_AFTER_NO).abs() < 60.0, "{until}");
+        // a refusal past its week: no longer written
+        let long_ago = py::time_time() - QUIET_AFTER_NO - 1.0;
+        change(&config, |s| {
+            s.agents.get_mut("vie").unwrap().refused.insert("old.example.net".into(), long_ago);
+        })
+        .unwrap();
+        let policy = policy_of(&config, &load(&config));
+        assert!(policy["agents"]["vie"]["refused"].get("old.example.net").is_none());
+        assert!(policy["agents"]["vie"]["refused"].get("upload.example.net").is_some());
         // allowed: validated, in the proxy's file, the counts reset
         let Asked::Card(card, true) = ask(&config, "vie", "api.meteo.fr", "", "agent", 0) else { panic!() };
         answer(&config, "vie", &card.id, Decision::First(true), "app").unwrap();
@@ -1248,6 +1275,7 @@ mod tests {
         let policy = policy_of(&config, &load(&config));
         assert_eq!(policy["agents"]["vie"]["hosts"], json!(["api.meteo.fr"]));
         assert!(policy["agents"]["vie"]["reset"].as_f64().unwrap() > 0.0);
+        assert!(policy["agents"]["vie"]["refused"].get("api.meteo.fr").is_none());
         // hosts reported a moment apart: one card (MAX_HOSTS on it), their sizes added, then another
         assert!(matches!(ask(&config, "vie", "s0.example.org", "", "proxy", 70_000), Asked::Card(_, true)));
         for i in 1..MAX_HOSTS {
