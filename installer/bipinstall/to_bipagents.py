@@ -62,6 +62,13 @@ MODEL_KEYS = ("model", "providers", "custom_providers", "fallback_model", "fallb
               "delegation")
 # Hermes manages these itself (its migrations' schema version).
 MANAGED_KEYS = {"_config_version"}
+# Settings the target Hermes' own config migrations retire or rewrite on purpose (hermes_cli/config_migrations*.py),
+# not a setting of the person's lost. v0.23.1: v52 drops `browser.backend` and `browser.extension_control` (agent-browser
+# and the built-in browser_* tools left Hermes; found by the release bench's move, 11/11), v53 lowers an
+# `agent.clarify_timeout` still at 3600 to 90 (the legacy `clarify.timeout`, read first, keeps the hour: hermes.py
+# CLARIFY_WAIT, the bridge's tool_diet.rs).
+HERMES_RETIRED = ("browser.backend", "browser.extension_control")
+HERMES_REWRITTEN = {"agent.clarify_timeout": (3600, 90)}
 # Per home, the person's own files that must not change (beside config.yaml and .env).
 KEPT_FILES = ("SOUL.md", "profile.yaml", "memories")
 SPARE_GB = 1.5   # beyond the copies: the target's own new tools (a Python, a Node: ~0.6 GB measured)
@@ -565,7 +572,8 @@ def _empty(value) -> bool:
 
 def settings_problems(before: Dict[str, Dict[str, str]], after: Dict[str, Dict[str, str]]) -> List[str]:
     """What changed that must not: a .env or the model's section not byte for byte the same, a setting lost or
-    changed, a file of the person's changed or gone. Hermes may add settings, and drop empty ones."""
+    changed, a file of the person's changed or gone. Hermes may add settings, drop empty ones, and retire or rewrite
+    the ones its migrations name (HERMES_RETIRED, HERMES_REWRITTEN)."""
     problems: List[str] = []
     for folder, files in before.items():
         now = after.get(folder, {})
@@ -592,6 +600,10 @@ def settings_problems(before: Dict[str, Dict[str, str]], after: Dict[str, Dict[s
         old_leaves, new_leaves = _leaves(old_data), _leaves(new_data)
         for key, value in old_leaves.items():
             if key.split(".")[0] in MANAGED_KEYS or _empty(value):
+                continue
+            if any(key == r or key.startswith(r + ".") for r in HERMES_RETIRED) and key not in new_leaves:
+                continue
+            if key in HERMES_REWRITTEN and (value, new_leaves.get(key)) == HERMES_REWRITTEN[key]:
                 continue
             if key not in new_leaves:
                 problems.append(f"{where}: setting {key} is gone")
