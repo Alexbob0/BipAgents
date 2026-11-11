@@ -531,6 +531,37 @@ pub async fn stop_all(config: &Config) {
     }
 }
 
+/// At start: the payments' (and vault fills') holds a stopped bridge left in the agents' browsers (security check
+/// 11/11, N2). Nobody would end them (the held payments are memory only), and the card may still be typed in a tab:
+/// as nothing here knows which tab or fields any more, every tab is left on an empty page with its history forgotten
+/// (the browser's container restarted when that can't be done), and only then is the hold lifted. The browser's gate
+/// keeps the agent out meanwhile (a payment's hold never lapses, browser/hold_gate.py).
+pub async fn end_stale_holds(config: Arc<Config>) {
+    for agent in config.agents.values() {
+        let name = agent.name.as_str();
+        let Some(port) = crate::browsers::ports_of(&config, name).and_then(|p| p.get("cdp").copied()) else {
+            continue;
+        };
+        let _one_at_a_time = lock_of(name).lock_owned().await;
+        if held().contains_key(name) {
+            continue; // a payment of this run
+        }
+        let token = py::uuid4_hex();
+        if !crate::browsers::stale_payment_hold(&config, name, &token).await {
+            continue;
+        }
+        tracing::warn!(agent = %name, "card payment: a hold left by a stopped bridge, its tabs left");
+        match Page::leave_every_tab(port, &token).await {
+            Ok(tabs) => tracing::info!(agent = %name, tabs = tabs, "card payment: every tab left"),
+            Err(exc) => {
+                tracing::warn!(agent = %name, exc = %exc, "card payment: tabs not left, browser restarted");
+                crate::browsers::restart(&config, name).await;
+            }
+        }
+        crate::browsers::hold_for_payment(&config, name, None).await;
+    }
+}
+
 // --- the tools -----------------------------------------------------------------------------------------------------
 
 /// One payment at a time per agent.

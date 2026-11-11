@@ -26,7 +26,7 @@ import threading
 import time
 
 HOLD = "/tmp/bipagents-hold"
-LIMIT = 15 * 60   # a hold the app never gave back (closed, crashed) lapses
+LIMIT = 15 * 60   # a person's hold the app never gave back (closed, crashed) lapses; a payment's never does
 WAIT = ("The person has taken over this browser in the BipAgents app (to log in, or to do something themselves). "
         "Do not use the browser until they hand it back: tell them you are waiting, or go on with something else.")
 
@@ -46,8 +46,12 @@ def paying() -> bool:
 
 
 def held() -> bool:
+    """The flag is there: the person's hold for less than `LIMIT`, a card payment's (or a vault fill's) whatever its
+    age. A payment's never lapses by itself (security check 11/11, N2): a bridge restarted mid-payment leaves it with
+    the card maybe still typed in a tab, and only the bridge (its start-up sweep: every tab left, then the flag
+    removed) or a restart of this container ends it."""
     try:
-        return time.time() - os.path.getmtime(HOLD) < LIMIT
+        return paying() or time.time() - os.path.getmtime(HOLD) < LIMIT
     except OSError:
         return False
 

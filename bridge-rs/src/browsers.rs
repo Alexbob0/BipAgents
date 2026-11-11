@@ -516,6 +516,44 @@ pub fn payment_release_command() -> String {
     format!("[ \"$(head -c 4 {HOLD_FLAG} 2>/dev/null)\" = card ] && rm -f {HOLD_FLAG}; exit 0")
 }
 
+/// `STALE_CHECK`'s answer when the browser carries a payment's flag.
+pub const STALE_HOLD: i32 = 7;
+
+/// The command that looks for a payment's hold in the browser (exit `STALE_HOLD`; 0: none), changing nothing.
+pub fn stale_check_command() -> String {
+    format!("[ \"$(head -c 4 {HOLD_FLAG} 2>/dev/null)\" = card ] && exit {STALE_HOLD}; exit 0")
+}
+
+/// The command that gives a payment's hold `token` (still « card »: nothing changes for the agent), so the bridge can
+/// reach the page to leave it; nothing written when the flag is not a payment's (exit 1).
+pub fn rekey_hold_command(token: &str) -> String {
+    format!(
+        "[ \"$(head -c 4 {HOLD_FLAG} 2>/dev/null)\" = card ] || exit 1; umask 077; printf 'card %s' {token} > \
+         {HOLD_FLAG}"
+    )
+}
+
+/// At start (card_pay.rs `end_stale_holds`): whether a payment's (or a vault fill's) hold was left in the agent's
+/// browser by a bridge that stopped meanwhile; it carries `token` from now on.
+pub async fn stale_payment_hold(config: &Config, agent: &str, token: &str) -> bool {
+    let host = Host::real(config);
+    let Some(engine) = host.runtime.clone() else { return false };
+    if !has_ports(config, agent) || !token.bytes().all(|b| b.is_ascii_alphanumeric()) {
+        return false;
+    }
+    let run = |command: String| {
+        (host.exec)(vec![engine.clone(), "exec".into(), container(agent), "sh".into(), "-c".into(), command])
+    };
+    run(stale_check_command()).await == STALE_HOLD && run(rekey_hold_command(token)).await == 0
+}
+
+/// The agent's browser container started again (`--rm`: Chrome, its pages and the hold's flag go with the old one).
+pub async fn restart(config: &Config, agent: &str) {
+    let host = Host::real(config);
+    let code = (host.exec)(vec!["systemctl".into(), "--user".into(), "restart".into(), container(agent)]).await;
+    tracing::info!(agent = %agent, code = code, "browser restarted");
+}
+
 /// The command that turns a payment's hold into the person's (`end_payment_hold`): only a « card » flag changes.
 pub fn payment_to_person_command(token: &str) -> String {
     format!(
@@ -1326,5 +1364,20 @@ mod tests {
         assert_eq!(run_on(&flag, Some("card 0123abcd"), &to_person), (0, Some("human 99ff".into())));
         assert_eq!(run_on(&flag, None, &to_person), (0, None));
         assert_eq!(run_on(&flag, Some("human 77aa"), &to_person), (0, human()));
+    }
+
+    #[test]
+    fn a_payments_hold_left_behind_is_found_and_given_a_new_token() {
+        // Security check 11/11, N2: after a restart the bridge knows no payment's token; it gives the flag one.
+        let dir = tempfile::tempdir().unwrap();
+        let flag = dir.path().join("hold");
+        let card = || Some("card 0123abcd".to_string());
+        assert_eq!(run_on(&flag, Some("card 0123abcd"), &stale_check_command()), (STALE_HOLD, card()));
+        assert_eq!(run_on(&flag, Some("human 77aa"), &stale_check_command()), (0, Some("human 77aa".into())));
+        assert_eq!(run_on(&flag, None, &stale_check_command()), (0, None));
+        let rekey = rekey_hold_command("5e5e");
+        assert_eq!(run_on(&flag, Some("card 0123abcd"), &rekey), (0, Some("card 5e5e".into())));
+        assert_eq!(run_on(&flag, Some("human 77aa"), &rekey), (1, Some("human 77aa".into())));
+        assert_eq!(run_on(&flag, None, &rekey), (1, None));
     }
 }

@@ -356,6 +356,9 @@ impl AppState {
             self.spawn(crate::welcome::restore_moved_aside_all(self.clone()));
             let shared = self.config.clone();
             self.spawn(async move { crate::browsers::vault_only_all(&shared.get()).await });
+            // a card payment's hold left by this bridge's previous run: its tabs left, then lifted (card_pay.rs)
+            let shared = self.config.clone();
+            self.spawn(async move { crate::card_pay::end_stale_holds(shared.get()).await });
             if config.hermes.isolated {
                 // « Coordonnées » in an agent's Hermes vault only while its browser is on (vault.rs)
                 let (shared, vault) = (self.config.clone(), self.vault.clone());
