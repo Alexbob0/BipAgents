@@ -104,7 +104,8 @@ RESERVED_PROFILES = frozenset({"hermes", "default", "test", "tmp", "root", "sudo
 def profile_name(display_name: str, taken=()) -> str:
     """« Léa » → « lea », « Mon coach » → « mon-coach »: the profile (and bridge) id of a name the person chose."""
     plain = unicodedata.normalize("NFKD", display_name).encode("ascii", "ignore").decode().lower()
-    slug = "-".join("".join(c if c.isalnum() else " " for c in plain).split())[:32] or "agent"
+    # never a dash at either end (a 32-character cut can leave one): an id that reads as an option on a command line
+    slug = "-".join("".join(c if c.isalnum() else " " for c in plain).split())[:32].strip("-") or "agent"
     if slug in RESERVED_PROFILES:
         slug = f"{slug}-agent"
     taken = set(taken)

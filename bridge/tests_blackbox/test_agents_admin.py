@@ -47,8 +47,8 @@ def test_create_custom_agent(bridges, fakes):
     assert created == {"id": "fougere", "name": "Fougère", "url": "https://mini.ts.net:8642/p/fougere"}   # no Hermes key
     commands = hermes_args(bridge)
     key = tomllib.loads(bridge.toml_text())["agents"]["fougere"]["hermes_key"]   # its new API_SERVER_KEY
-    assert commands[0] == ["profile", "create", "fougere", "--clone-from", "default", "--no-alias", "--description",
-                           "suit mes plantes"]
+    assert commands[0] == ["profile", "create", "fougere", "--clone-from", "default", "--no-alias",
+                           "--description=suit mes plantes"]
     # Its key in the profile's .env (0600), never on a command line: every account of a shared server reads the
     # others' command lines in /proc (audit 11/11, BV-6).
     assert not any(key in arg for c in commands for arg in c)
@@ -154,6 +154,30 @@ def test_refusals(bridges, fakes):
     taken = bridge.post("/v1/agents", headers=AUTH, json={"name": "Wellness", "kind": "wellness"})
     assert taken.json()["id"] == "wellness-2"   # « wellness » already exists in this bridge
     assert hermes_args(bridge)[0][:3] == ["profile", "create", "wellness-2"]
+
+
+def test_names_and_roles_that_start_with_a_dash(bridges, fakes):
+    """Bug 11/11: « - Budget », « -x »… The id never has a dash at either end, and a role that starts with one
+    (« -budget », « --help ») is the description Hermes gets, never one of its options."""
+    bridge, home = managed(bridges, fakes)
+    made = {}
+    for name, role in [("- Budget", "-budget"), ("-x", "--help"), ("--", "- suit mes plantes"),
+                       ("a" * 31 + " suite", "-tri")]:
+        resp = bridge.post("/v1/agents", headers=AUTH, json={"name": name, "custom": {"role": role, "category": "home"}})
+        assert resp.status_code == 201, (name, resp.text)
+        made[name] = (resp.json()["id"], resp.json()["name"], role)
+    assert [i for i, _, _ in made.values()] == ["budget", "x", "agent", "a" * 31]
+    creates = [c for c in hermes_args(bridge) if c[:2] == ["profile", "create"]]
+    assert [c[2] for c in creates] == ["budget", "x", "agent", "a" * 31]
+    assert [c[-1] for c in creates] == [f"--description={role}" for _, _, role in made.values()]
+    for agent, name, _ in made.values():
+        assert (home / "profiles" / agent / "SOUL.md").is_file()
+    assert made["- Budget"][1] == "- Budget"   # the name shown is the one typed
+    # served and listed like any other
+    listed = {a["id"] for a in bridge.get("/v1/agents", headers=AUTH).json()["agents"]}
+    assert {"budget", "x", "agent", "a" * 31} <= listed
+    again = bridge.post("/v1/agents", headers=AUTH, json={"name": "-budget", "kind": "finance"})
+    assert again.status_code == 201 and again.json()["id"] == "budget-2", again.text
 
 
 def test_a_failing_hermes_is_a_502(bridges, fakes):
