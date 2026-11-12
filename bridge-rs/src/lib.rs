@@ -54,6 +54,7 @@ pub mod cited_files;
 pub mod credit;
 pub mod cronwatch;
 pub mod no_reply;
+pub mod hermes_footer;
 pub mod fcm;
 pub mod media;
 pub mod spoken;

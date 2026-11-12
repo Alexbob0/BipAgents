@@ -1421,6 +1421,27 @@ fn section_lines(text: &str, name: &str) -> Vec<String> {
     lines
 }
 
+/// The hub's sandbox written into a profile that relies on it (`terminal.backend: docker` in its own config.yaml): Hermes
+/// never gives a profile the hub's backend (shares::terminal_backend), so such an agent ran its tools on this machine,
+/// as this account, while the bridge treated it as sandboxed. Wellness on Alex's place (moved in by hand on 13/10):
+/// « Failed to write file: Permission denied: /workspace » on 11/11, the bridge having sent it to /workspace/brouillons.
+/// Once: a profile that sets a backend of its own (docker, local, ssh…) is never touched, nor an existing Hermes the
+/// person brought (installer/bipinstall/existing.py: « no terminal is touched »).
+async fn sandbox_of_its_own(config: &Config, agent: &AgentConfig, folder: &Path, run: &Run) -> anyhow::Result<()> {
+    if crate::shares::own_terminal_backend(folder).is_some() || crate::agent_restart::existing_hermes(config) {
+        return Ok(());
+    }
+    let home = folder.parent().and_then(Path::parent).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    run(
+        strings(&[&config.hermes.bin, "-p", &agent.name, "config", "set", "terminal.backend", "docker"]),
+        env_of(&[("HERMES_HOME", &home)]),
+    )
+    .await?;
+    tracing::warn!(target: "bipbridge::agents", agent = %agent.name,
+        "its tools ran on this machine (its profile set no sandbox of its own): now in the hub's sandbox");
+    Ok(())
+}
+
 /// The files an agent is sent, where its tools can open them: a sandbox sees nothing of this machine but what its
 /// profile mounts (`terminal.docker_volumes`), so its uploads folder is mounted there, read-only, at /fichiers, and the
 /// bridge names them by that path. Agents whose tools run here, or set up by hand, are left as they are. Returns the
@@ -1436,11 +1457,14 @@ pub async fn mount_uploads(
     let folder = crate::shares::profile_dir(&config, agent);
     let host = agent.upload_dir_host.clone().unwrap_or_default();
     let Some(folder) = folder else { return Ok(agent.clone()) };
-    if agent.shares == "external"
-        || host.is_empty()
-        || !folder.is_dir()
-        || crate::shares::terminal_backend(&folder).as_deref() != Some("docker")
-    {
+    if agent.shares == "external" || !folder.is_dir() || crate::shares::terminal_backend(&folder).as_deref() != Some("docker") {
+        return Ok(agent.clone());
+    }
+    sandbox_of_its_own(&config, agent, &folder, run).await?;
+    if !crate::agent_restart::existing_hermes(&config) {
+        crate::sandbox::label_hermes_folders(&folder, run).await;
+    }
+    if host.is_empty() {
         return Ok(agent.clone());
     }
     if crate::sandbox::isolates(&config, agent) {

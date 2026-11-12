@@ -187,22 +187,27 @@ fn env_value(path: &Path, key: &str) -> Option<String> {
     None
 }
 
-/// Where the agent's tools run, as its gateway sees it: the profile's own setting (config.yaml, then its .env's
-/// TERMINAL_ENV), else what it gets from the gateway's home (`hermes profile create` without --clone copies none of
-/// it: such a profile runs in the hub's sandbox through the hub's environment).
+/// Where the agent's tools are meant to run: the profile's own setting (`own_terminal_backend`), else the hub's, the
+/// gateway's home, which every agent of the install is cloned from (installer `setup_hub`, `hermes profile create
+/// --clone-from default`). Hermes itself never takes the hub's: in a gateway serving several profiles, each turn's
+/// terminal is the profile's own files over Hermes' defaults (`local`: tools/terminal_scope.py, since 2026-08-31), so
+/// a profile that sets none (moved in by hand, made without --clone) ran its tools on this machine while the bridge
+/// sent it to the sandbox's /workspace (Wellness, 11/11). `agents_admin::mount_uploads` writes the hub's into such a
+/// profile at start.
 pub fn terminal_backend(folder: &Path) -> Option<String> {
     let home = folder.parent().and_then(Path::parent).map(Path::to_path_buf).unwrap_or_default();
-    for config_dir in [folder.to_path_buf(), home] {
-        if let Some(Value::Object(terminal)) = profile_config(&config_dir).get("terminal") {
-            if let Some(backend) = terminal.get("backend").filter(|b| crate::py::truthy(b)) {
-                return Some(crate::py::py_str(backend));
-            }
-        }
-        if let Some(env) = env_value(&config_dir.join(".env"), "TERMINAL_ENV") {
-            return Some(env);
+    own_terminal_backend(folder).or_else(|| own_terminal_backend(&home))
+}
+
+/// The backend a profile sets itself, as Hermes reads it for that profile alone: its config.yaml's `terminal.backend`,
+/// else its .env's `TERMINAL_ENV`; None: Hermes' default (`local`, this machine).
+pub fn own_terminal_backend(folder: &Path) -> Option<String> {
+    if let Some(Value::Object(terminal)) = profile_config(folder).get("terminal") {
+        if let Some(backend) = terminal.get("backend").filter(|b| crate::py::truthy(b)) {
+            return Some(crate::py::py_str(backend));
         }
     }
-    None
+    env_value(&folder.join(".env"), "TERMINAL_ENV")
 }
 
 /// The profile's `terminal.docker_volumes`, as strings (none when it is not a list).

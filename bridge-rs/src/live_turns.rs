@@ -145,7 +145,8 @@ async fn turn(State(state): State<AppState>, Json(body): Json<Turn>) -> ApiResul
         Some(status @ (400..=499)) => HttpError::new(status, "your agent refused this message"),
         _ => HttpError::new(502, UNREACHABLE),
     })?;
-    let mut response = Response::new(axum::body::Body::from_stream(without_media(upstream.bytes_stream())));
+    let mut response =
+        Response::new(axum::body::Body::from_stream(without_media(upstream.bytes_stream(), agent.name.clone())));
     for (name, value) in [("content-type", "text/event-stream; charset=utf-8"), ("cache-control", "no-store"), ("x-accel-buffering", "no")] {
         response.headers_mut().insert(name, axum::http::HeaderValue::from_static(value));
     }
@@ -153,8 +154,9 @@ async fn turn(State(state): State<AppState>, Json(body): Json<Turn>) -> ApiResul
 }
 
 /// Hermes' events as the apps get them: a reply's `MEDIA:` lines out (media.rs), the files at the end as its
-/// `attachments`; its keepalives passed on.
-fn without_media<S, E>(chunks: S) -> impl futures::Stream<Item = Result<bytes::Bytes, std::io::Error>> + Send
+/// `attachments`, its end without Hermes' file-mutation verifier (hermes_footer.rs: never said aloud); its keepalives
+/// passed on.
+fn without_media<S, E>(chunks: S, agent: String) -> impl futures::Stream<Item = Result<bytes::Bytes, std::io::Error>> + Send
 where
     S: futures::Stream<Item = Result<bytes::Bytes, E>> + Send + 'static,
     E: std::error::Error + Send + Sync + 'static,
@@ -181,6 +183,7 @@ where
                 }
             };
             let Some(event) = event else { continue };
+            let event = crate::hermes_footer::scrub_event(event, &agent);
             let mut shown = Vec::new();
             if crate::hermes::is_terminal(&event.r#type) || event.r#type == "assistant.completed" {
                 shown = media.flush_events("assistant.delta", event.data.get("run_id").unwrap_or(&Value::Null));
