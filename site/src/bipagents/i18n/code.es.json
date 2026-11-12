@@ -17,7 +17,7 @@
     "formTitle": "Tu código llega por correo",
     "email": "Tu correo",
     "send": "Recibir mi código",
-    "fine": "Un código por dirección.",
+    "fine": "Un código por dirección. Tu dirección se lee un instante, solo para enviarte tu código, a través de Proton AG (Suiza). No la guardamos: solo guardamos una huella calculada con una clave secreta (un dato seudónimo), para comprobar que una dirección recibe un solo código, hasta el 31 de diciembre de 2026 como máximo. Proton guarda el mensaje enviado hasta que lo borramos de la bandeja de salida. Se rechazan las direcciones desechables, y el antirrobot no deja nada en tu dispositivo. Bases: el envío que pides (art. 6.1.b RGPD) y la prevención de abusos (art. 6.1.f).",
     "privacy": "Privacidad",
     "js": {
       "sending": "Enviando…",
