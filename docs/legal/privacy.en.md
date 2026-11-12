@@ -327,15 +327,16 @@ them. If you uninstall the app, Apple or Google report the token as invalid and 
   in it.
 - **Report this reply** (long press on a reply) sends the report **from the app**, through Kerfy Studio's relay, to
   Kerfy Studio only: not to your server, not to the model provider. It contains the reason, your optional details,
-  **the text of the reported reply**, the agent's category, the app version and the phone model. **Not your email
-  address, not your name, not the agent's name.** Nothing is sent until you tap "Send". On the way, the relay sees
-  your phone's IP address and only uses it to limit abuse (section 4.1). Since the report contains no way to reach
-  you, we cannot answer it: write to support if you expect an answer.
+  **the text of the reported reply**, the agent's category, the app version and the phone model. **Not your name, not
+  the agent's name.** The field "Your email, if you want an answer" is optional: if you fill it in, your address
+  travels with the report, is only used to answer you and is kept with it (retention below); otherwise we cannot
+  answer you. Nothing is sent until you tap "Send". On the way, the relay sees your phone's IP address and only uses it
+  to limit abuse (section 4.1).
 - **Report this message** (long press on another person's message, in a family agent or a shared agent, section
   2 bis) sends the report from the app, through Kerfy Studio's relay, then by email to Kerfy Studio only, through its
   email provider (Proton AG, Switzerland); Proton keeps the sent message until we delete it from the outbox. It
   contains the reason, any details you add, **the message text, its author's displayed first name and the agent's
-  name**. Not your name or email address, unless you add it to get an answer or you send it by email (below). The
+  name**. Not your name; your email address only if you fill in the same optional field or you send it by email (below). The
   author isn't told about your report. Kerfy Studio doesn't read the conversation and cannot delete the message.
   Depending on the case, it may advise you, tell the agent's creator if they have an account, or take a measure
   provided for in the terms of use or the acceptable use policy: the person concerned is then told, with the reasons
@@ -738,6 +739,19 @@ and the anti-bot calculation: Kerfy Studio's legitimate interest in preventing a
 fairly (article 6(1)(f)). **Retention.** The address's fingerprint, until the end of the beta, 31 December 2026 at the
 latest. If you then create an account, section 5.2 applies to your account.
 
+### 5.14 Unused beta places
+
+During the beta and the free month, your place records the time of your last action, never its content: a message, a
+voice note, a photo or a file sent to an agent, a Live call, a card you answer. Routines and watchers running on their
+own don't count. It sends it to the guichet with the technical monitoring (section 5.6). The guichet only uses it to
+free a beta place nobody has used for 7 days: it warns you on day 5 by a notification and an email, sent by Proton AG
+(section 5.9); Proton keeps the sent message until we delete it from the outbox. A freed place, like a beta place
+whose free month ends without a subscription, goes to someone else: only the last encrypted copy of its backups,
+unreadable without its key (section 5.5), is kept 30 days, then erased.
+
+**Legal basis.** Performance of the beta terms (GDPR article 6(1)(b)). **Retention.** The time of the last action:
+replaced at each action, erased with the place; the encrypted copy: 30 days after the place is freed.
+
 ## 6. What Kerfy Studio does not do
 
 - No ads, no advertising identifier, no tracking across apps or websites. No analytics tool in the app: only the count
@@ -912,7 +926,9 @@ of the applicable safeguards.
 | Fingerprint of the IP address (beta codes, "Get a code", the website's cancellation page, reports of shared agents) | 2 days at most; up to 30 days in the encrypted copies of the database |
 | Cancellation on the website: the declaration (email, number, reason, end date, date and time) | 3 years |
 | Cancellation on the website: the email address typed, to limit tries | 2 days at most |
-| Content of your place | During the subscription (beta place: until the end of the free month, 31 December 2026); when the subscription or the free month ends, the place is suspended, then erased 30 days after its suspension (3 days after a free week that was not continued) |
+| Content of your place | During the subscription, then 30 days (3 days after a free week that was not continued) |
+| Freed beta place (7 days unused, or end of the free month on 31 December 2026 without a subscription) | Only its encrypted copy is kept, 30 days after it is freed, then erased |
+| Time of your last action on a beta place | Replaced at each action; erased with the place |
 | Backups | 2 hours (all), then 48 hours (hourly), 21 days (daily), nothing older; erased with the place; what you delete is gone from them within 30 days, every copy included |
 | Backup files a place deletes, set aside by the guichet | 5 days |
 | Replaced or deleted versions at Scaleway (the places' backups, encrypted copies of the guichet's database) | 1 day |

@@ -12,10 +12,16 @@ Kerfy Studio, the publisher of BipAgents.
   beta.
 - **The AI credit offered.** 2 € of model use per person and per month, with a strict cap. Once this credit is used,
   your agents no longer call the model until the next month: nothing is charged to you. It cannot be sold or refunded.
+- **Unused place.** During the beta and the free month, a place nobody uses for 7 days is freed for someone else.
+  Using your place means sending a message, a voice note, a photo or a file to an agent, making a Live call or
+  answering a card; routines and watchers running on their own don't count. You are warned on day 5 by a notification
+  and an email. Once the place is freed, only an encrypted copy of your data is kept 30 days, then erased. Within those
+  30 days, "Resume my place" in the app brings it back, if a place is free.
 - **End of the beta.** The beta ends on 30 November 2026. Your place then stays free until 31 December 2026. It never
-  becomes paid unless you choose a subscription. Without a subscription, your place is then suspended (the AI stops),
-  then erased with its data 30 days after its suspension. We tell you by email and in the app at least 7 days before
-  the suspension, and you can export your data until it is erased.
+  becomes paid unless you choose a subscription. Without a subscription, your place is then freed the same way: the
+  encrypted copy is kept 30 days, and subscribing within those 30 days brings your agents back. We tell you by email
+  and in the app at least 7 days before the free month ends, and you can export your data from the app until your
+  place is freed.
 - **No warranty.** It is a test version: features may be missing, change, misbehave or stop, and data may be lost. Keep
   a copy of what matters to you. The beta is provided as is, without warranty, to the extent the law allows.
 - **It can change.** We may change or stop the beta, or your participation.

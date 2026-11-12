@@ -166,8 +166,8 @@ With the all-included offer, the [acceptable use policy](acceptable-use.en.md) s
 ## 11. Reporting an answer or a message
 
 - In the app: **long press a reply › Report this reply**. The report goes from the app, through Kerfy Studio's relay,
-  to Kerfy Studio only, with the reply's text; if the relay does not answer, the app offers to send it by email. Also
-  tell your agent so it doesn't do it again.
+  to Kerfy Studio only, with the reply's text; you can add your email if you want an answer. If the relay does not
+  answer, the app offers to send it by email. Also tell your agent so it doesn't do it again.
 - Another person's message (family agent, shared agent): **long press › Report this message**. The report goes to
   Kerfy Studio only, with the message text, its author's displayed first name and the agent's name, without your name;
   you can add your email if you want an answer. The author isn't told. Kerfy Studio doesn't read conversations and
