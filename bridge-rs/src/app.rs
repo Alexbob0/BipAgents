@@ -165,7 +165,11 @@ impl Services {
         }
         // Without an APNs key of its own, an install's apps register with the publisher's relay (push_service below).
         let sender = apns.clone().map(Sender::Apns);
-        let push_mode = apns.is_some().then_some("apns");
+        // « apns » tells the apps to give their APNs token itself: only without the publisher's relay. With it (every
+        // install since 2026-11-12, Alex's own too) they register there; a phone still known by its APNs token is
+        // sent to directly until its next launch moves it (no notification lost in between).
+        let relay_set = config.push_service_url.as_deref().is_some_and(|u| !u.is_empty());
+        let push_mode = (apns.is_some() && !relay_set).then_some("apns");
         // Android: FCM with the Firebase project's key, else the publisher's relay.
         let mut fcm = None;
         if let Some(account) = config.fcm_service_account.as_deref() {
@@ -187,6 +191,10 @@ impl Services {
             .as_deref()
             .filter(|u| !u.is_empty())
             .map(|url| Arc::new(RelayClient::new(url, "", http.clone())));
+        if push_service.is_none() && (apns.is_none() || fcm.is_none()) {
+            // 2026-11-12: the offer's places and the installs from before 2026-11-04 had none: no phone was told
+            tracing::warn!("no push relay ([push] service_url): the phones this bridge has no key for get no notification");
+        }
         let push = Arc::new(PushService::new(shared.clone(), store.clone(), sender, android, push_service.clone()));
         let hub = Arc::new(
             RunHub::new(hermes.clone(), Some(push.clone()), config.limits.watch_max_seconds, Some(store.clone()))
@@ -814,11 +822,26 @@ async fn register_device(State(state): State<AppState>, Json(body): Json<DeviceR
         None => None,
     };
     let mut device = state.store.upsert_device_keyed(&token, &environment, &agent_ids, push_key.as_deref()).await?;
+    if let Some(key) = push_key.as_deref() {
+        // the same phone under another token (its APNs or Firebase one before the relay's): one row, one notification
+        for other in state.store.delete_same_phone(&token, key).await? {
+            tracing::info!(token = %redact6(&other), now = %environment, "same phone's other token dropped");
+        }
+    }
     // the key is the phone's own business: the answer only says its pushes are sealed now
     if device.remove("push_key").is_some() {
         device.insert("sealed".into(), Value::Bool(true));
     }
     tracing::info!(token = %redact6(&token), env = %environment, agents = ?J(&agent_ids), "device registered");
+    let reachable = match environment.as_str() {
+        "relay" => state.push_service.is_some(),
+        "fcm" => state.fcm.is_some(),
+        _ => state.apns.is_some(),
+    };
+    if !reachable {
+        tracing::warn!(token = %redact6(&token), env = %environment,
+            "device registered, but this bridge has no way to send to it (no key of its own, no [push] service_url)");
+    }
     if let Some(previous) = previous_token(body.previous.as_deref(), &environment).filter(|p| *p != token) {
         // the same phone's former token: forgotten now rather than told too until its push fails
         if state.store.delete_device_in(&previous, &environment).await? {

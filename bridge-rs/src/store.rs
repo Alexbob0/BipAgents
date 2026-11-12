@@ -460,6 +460,20 @@ impl Store {
         Ok(self.run_count("DELETE FROM devices WHERE token=?", vec![text(token)]).await? > 0)
     }
 
+    /// The same phone's other rows (same `push_key`, the phone's own key, never shared): a phone that moved to the
+    /// publisher's relay keeps one row, not its APNs or Firebase token beside (two notifications per event). The
+    /// tokens dropped are returned.
+    pub async fn delete_same_phone(&self, token: &str, push_key: &str) -> anyhow::Result<Vec<String>> {
+        let rows = self
+            .run("SELECT token FROM devices WHERE push_key=? AND token<>?", vec![text(push_key), text(token)])
+            .await?;
+        let tokens: Vec<String> = rows.iter().filter_map(|r| r["token"].as_str().map(str::to_string)).collect();
+        for other in &tokens {
+            self.delete_device(other).await?;
+        }
+        Ok(tokens)
+    }
+
     /// A device's row dropped only when it has this environment (a phone's former token, replaced).
     pub async fn delete_device_in(&self, token: &str, environment: &str) -> anyhow::Result<bool> {
         Ok(self.run_count("DELETE FROM devices WHERE token=? AND environment=?", vec![text(token), text(environment)]).await?
@@ -572,6 +586,13 @@ mod tests {
         assert!(!store.delete_device_in("cd", "relay").await.unwrap());
         assert!(store.delete_device_in("cd", "fcm").await.unwrap());
         assert!(store.get_device("cd").await.unwrap().is_none());
+        // the same phone (its key) moved to the relay: its APNs row goes, another phone's stays
+        store.upsert_device_keyed("apns1", "production", &["a".into()], Some("K1")).await.unwrap();
+        store.upsert_device_keyed("apns2", "production", &["a".into()], Some("K2")).await.unwrap();
+        store.upsert_device_keyed("r2.x", "relay", &["a".into()], Some("K1")).await.unwrap();
+        assert_eq!(store.delete_same_phone("r2.x", "K1").await.unwrap(), vec!["apns1".to_string()]);
+        assert!(store.get_device("apns1").await.unwrap().is_none() && store.get_device("apns2").await.unwrap().is_some());
+        assert!(store.get_device("r2.x").await.unwrap().is_some());
 
         let item = store
             .add_outbox("lea", "Bonjour", NewOutbox { ntfy_id: Some("n1".into()), ..Default::default() })

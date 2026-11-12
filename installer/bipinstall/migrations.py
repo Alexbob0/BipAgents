@@ -98,6 +98,76 @@ def push_relay_service(runner: hermes.Runner, home: Path) -> str:
             else "this bridge no longer relays other installs' notifications") + " (bridge restarted)"
 
 
+def push_service_everywhere(runner: hermes.Runner, home: Path) -> str:
+    """Every install sends its notifications through the publisher's relay (`[push] service_url`), not only the ones
+    that relayed through another bridge (2026-11-12: the offer's places and the installs made before 2026-11-04 18:31,
+    when PUSH_SERVICE_URL was still empty, had none; their bridge answered `push_relay: false`, the phones registered
+    a token it could never send to, and no notification ever left). An install with an Apple key of its own gets it
+    too (Alex 2026-11-12: every install through the relay; the bridge prefers it as soon as `service_url` is set, its
+    `[apns]` and .p8 are left for the person to remove). A `service_url` already given is kept; an empty one is filled. Then the
+    bridge restarts (its turns first, drain.py), and the phones take a relay token at their next launch."""
+    from .family import bridge_restart
+    from .stack import PUSH_SERVICE_URL
+    config = home / ".config" / "bipagents" / "bridge.toml"
+    if not config.is_file():
+        return "no bridge here"
+    if not PUSH_SERVICE_URL:
+        raise NotYet("the publisher's push relay has no address in this version yet")
+    line = f'service_url = "{PUSH_SERVICE_URL}"'
+
+    def has_one(text: str) -> bool:
+        return bool(re.search(r'^\s*service_url\s*=\s*"[^"\s]+"', _push_table(text), re.M))
+
+    if has_one(config.read_text(encoding="utf-8")):
+        return "notifications already go through the publisher's push relay"
+
+    def changed(text: str) -> str:
+        if has_one(text):
+            return text
+        out, inside, put = [], False, False
+        for row in text.splitlines():
+            header = row.strip()
+            if header.startswith("[") and header.endswith("]"):
+                inside = header == "[push]"
+                out.append(row)
+                if inside and not put:
+                    out.append(line)
+                    put = True
+                continue
+            if inside and re.match(r"\s*service_url\s*=", row):
+                continue   # an empty one, replaced by the line above
+            out.append(row)
+        body = "\n".join(out).rstrip("\n") + "\n"
+        return body if put else body + f"\n[push]\n{line}\n"
+    runner.log.append(f"write {config}")
+    if not runner.dry:
+        bridgeconf.update(config, changed)
+        from . import drain
+        drain.until_quiet(config, "bridge")   # the turns going on end first (drain.py)
+    runner.run(bridge_restart(home), check=False)
+    said = "notifications now go through the publisher's push relay (bridge restarted; phones follow at their next launch)"
+    key = re.search(r'^\s*p8_path\s*=\s*"([^"]+)"', config.read_text(encoding="utf-8"), re.M)
+    if key:
+        # Alex 2026-11-12: his own install too. Its [apns] stays for now: a phone still known by its APNs token is sent
+        # to directly until its next launch gives a relay token (bridge-rs app.rs push_mode), so none is missed.
+        said += (f"; the Apple key {key.group(1)} is no longer needed once every phone moved (the bridge's log says "
+                 "« same phone's other token dropped »): remove the [apns] table and that file yourself")
+    return said
+
+
+def _push_table(text: str) -> str:
+    """The lines of `[push]` (empty when there is none)."""
+    out, inside = [], False
+    for line in text.splitlines():
+        header = line.strip()
+        if header.startswith("[") and header.endswith("]"):
+            inside = header == "[push]"
+            continue
+        if inside:
+            out.append(line)
+    return "\n".join(out)
+
+
 def clarify_hour(runner: hermes.Runner, home: Path) -> str:
     """A question waits an hour for its answer (2026-11-10, before Hermes 0.23: it waits 90 s, and its config migration
     v53 lowers an hour to that): the hub of each Hermes of this account (~/.hermes, each space's), the profile every
@@ -121,7 +191,11 @@ def clarify_hour(runner: hermes.Runner, home: Path) -> str:
 MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
     ("2026-11-04-push-relay-service", push_relay_service),
     ("2026-11-10-clarify-hour", clarify_hour),
+    ("2026-11-12-push-service-everywhere", push_service_everywhere),
 ]
+
+# BipAgents' own settings (bridge.toml), never the person's Hermes: applied on an install over their own Hermes too.
+BRIDGE_ONLY = {"2026-11-04-push-relay-service", "2026-11-12-push-service-everywhere"}
 
 
 def done() -> List[str]:
@@ -151,7 +225,7 @@ def run(runner: hermes.Runner, home: Optional[Path] = None, own_hermes: bool = T
     for mid, apply in MIGRATIONS:
         if mid not in pending():
             continue
-        if not own_hermes:
+        if not own_hermes and mid not in BRIDGE_ONLY:
             said.append(f"{mid}: not applied to your own Hermes (run `install.sh update --apply-to-my-hermes` "
                         "to apply it)")
             continue
