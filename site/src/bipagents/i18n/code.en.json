@@ -1,0 +1,47 @@
+{
+  "page": {
+    "code": {
+      "title": "Get a code — BipAgents",
+      "description": "Join the BipAgents beta: with your own Hermes, no code and no limit, or with an all-included place, your code comes by e-mail."
+    }
+  },
+  "code": {
+    "kicker": "Beta",
+    "title": "How do you want to use BipAgents?",
+    "ownTitle": "I want to use my Hermes",
+    "ownText": "On your computer or your server: one command, then you scan the QR code in the app. No code, no limit.",
+    "ownCta": "See how",
+    "placeTitle": "I want a place",
+    "placeText": "Your private space on a server in Europe, with the AI credit. Free during the beta.",
+    "placeCta": "Get my code",
+    "formTitle": "Your code comes by e-mail",
+    "email": "Your e-mail",
+    "send": "Get my code",
+    "fine": "One code per address.",
+    "privacy": "Privacy",
+    "js": {
+      "sending": "Sending…",
+      "sent": "On its way! Check your inbox, and your spam folder.",
+      "badEmail": "This address doesn’t look right.",
+      "disposable": "Disposable addresses don’t work: use your usual address.",
+      "robot": "The check didn’t work. Try again.",
+      "network": "One code a day from this network. Come back tomorrow.",
+      "today": "No more codes today. Come back tomorrow.",
+      "full": "There are no places left for now.",
+      "later": "It isn’t possible right now. Try again later.",
+      "widget": {
+        "label": "I’m not a robot",
+        "verifying": "Checking…",
+        "verified": "Checked",
+        "verify": "Check",
+        "verificationRequired": "Tick the box first.",
+        "waitAlert": "Checking, one moment.",
+        "error": "The check didn’t work. Try again.",
+        "expired": "The check expired. Try again.",
+        "loading": "Loading…",
+        "reload": "Start again",
+        "cancel": "Cancel"
+      }
+    }
+  }
+}

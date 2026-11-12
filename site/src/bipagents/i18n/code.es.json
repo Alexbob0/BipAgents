@@ -1,0 +1,47 @@
+{
+  "page": {
+    "code": {
+      "title": "Conseguir un código — BipAgents",
+      "description": "Únete a la beta de BipAgents: con tu propio Hermes, sin código ni límite, o con una plaza todo incluido, tu código llega por correo."
+    }
+  },
+  "code": {
+    "kicker": "Beta",
+    "title": "¿Cómo quieres usar BipAgents?",
+    "ownTitle": "Quiero usar mi Hermes",
+    "ownText": "En tu ordenador o tu servidor: un comando y luego escaneas el código QR en la app. Sin código, sin límite.",
+    "ownCta": "Ver cómo",
+    "placeTitle": "Quiero una plaza",
+    "placeText": "Tu espacio privado en un servidor en Europa, con el crédito de IA. Gratis durante la beta.",
+    "placeCta": "Recibir mi código",
+    "formTitle": "Tu código llega por correo",
+    "email": "Tu correo",
+    "send": "Recibir mi código",
+    "fine": "Un código por dirección.",
+    "privacy": "Privacidad",
+    "js": {
+      "sending": "Enviando…",
+      "sent": "¡En camino! Mira tu bandeja de entrada, y también el spam.",
+      "badEmail": "Esta dirección no parece correcta.",
+      "disposable": "Las direcciones desechables no sirven: usa tu dirección habitual.",
+      "robot": "La comprobación no ha funcionado. Inténtalo otra vez.",
+      "network": "Un código al día desde esta red. Vuelve mañana.",
+      "today": "No quedan códigos por hoy. Vuelve mañana.",
+      "full": "No quedan plazas por ahora.",
+      "later": "Ahora no es posible. Inténtalo más tarde.",
+      "widget": {
+        "label": "No soy un robot",
+        "verifying": "Comprobando…",
+        "verified": "Comprobado",
+        "verify": "Comprobar",
+        "verificationRequired": "Marca la casilla primero.",
+        "waitAlert": "Comprobando, un momento.",
+        "error": "La comprobación no ha funcionado. Inténtalo otra vez.",
+        "expired": "La comprobación ha caducado. Inténtalo otra vez.",
+        "loading": "Cargando…",
+        "reload": "Volver a empezar",
+        "cancel": "Cancelar"
+      }
+    }
+  }
+}

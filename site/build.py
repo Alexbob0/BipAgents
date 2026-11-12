@@ -351,10 +351,12 @@ def demo_clips(t: Dict[str, Any]) -> Dict[str, str]:
 # too (« on my computer », #install); the demo and every question have their own pages, sharing the header and the
 # footer (src/bipagents/partials/). /install/ only sends to the home's #install (old links keep working).
 PAGES = (("home", "index.html", ""), ("demo", "demo.html", "demo/"), ("faq", "faq.html", "faq/"),
-         ("install", "install.html", "install/"), ("beta", "beta.html", "beta/"),
+         ("install", "install.html", "install/"), ("beta", "beta.html", "beta/"), ("code", "code.html", "code/"),
          ("grokbot", "grok-bot.html", "grok-bot/"), ("status", "status.html", "status/"))
 # The status page reads the guichet's public snapshot (guichet-rs/src/public_status.rs in the guichet's repo).
 STATUS_API = "https://guichet.bipagents.com/v1/public-status"
+# « Obtenir un code » asks the guichet for its proof of work and sends the address there (guichet-rs/src/beta.rs, altcha.rs).
+GUICHET = "https://guichet.bipagents.com"
 FAQ_HOME = (1, 3, 2, 6, 5, 11)  # what's included, AI credit, free week, stopping, Duo/Famille, the AI model
 #                                  (who reads what is the privacy section's, so not repeated here)
 FAQ_COUNT = 11
@@ -369,6 +371,10 @@ def bipagents(version: str) -> Path:
     assets.mkdir(parents=True)
     for name in ("site.css", "site.js", "notfound.js"):
         copy(src / name, assets / name)
+    # « Obtenir un code »'s check that a person is there: ALTCHA's widget (MIT, altcha 3.4.1 from npm, its CSP build
+    # dist/external + the PBKDF2 worker), served from here like everything else (src/bipagents/altcha/README.txt).
+    for name in ("altcha.min.js", "altcha.css", "pbkdf2.js", "LICENSE-altcha.txt"):
+        copy(src / "altcha" / name, assets / "altcha" / name)
     # The home's living room: its script, the painting, the Bips' sprites (scripts/salon-sprites/) and the easel's
     # handwriting (Caveat, SIL OFL 1.1), all served from here like everything else.
     for name in ("salon.js", "salon-bg.webp", "caveat-600.woff2", "OFL-caveat.txt"):
@@ -469,6 +475,7 @@ def bipagents(version: str) -> Path:
                         f'<span class="buy-label">{html.escape(t["pricing"]["cta"])}</span><span aria-hidden="true">→</span></a>'
                         if default_url else ""),
             "betahref": f"{paths[lang]}beta/",
+            "codehref": f"{paths[lang]}code/",
             "grokbothref": f"{paths[lang]}grok-bot/",
             "statushref": f"{paths[lang]}status/",
             "grokbotprompt": html.escape(migrate_prompt(lang), quote=False),
@@ -494,6 +501,7 @@ def bipagents(version: str) -> Path:
         # Each page gets the data its script needs: the home its prices.
         data = {
             "status": {**common, "status": t["status"]["js"], "statusApi": STATUS_API},
+            "code": {**common, "code": t["code"]["js"], "guichet": GUICHET, "version": version},
             "home": {**common, "prices": {**{k: v for k, v in prices.items() if not k.startswith("_")},
                                 "default": default_currency},
                      "checkout": {plan: {period: checkout_url(cfg, plan, period, lang) for period in ("month", "year")}

@@ -5,8 +5,12 @@
   playing its own demo: one phone and a button per example (one per Bip of « Build your team »), its clip in the page's language,
   `/demo/#<scenario>` opening on one; the home links to it under « Build your team » and from each Bip's card),
   `/faq/` (every question), `/status/` (the service status: the guichet's public `GET /v1/public-status`, read every minute; « Impossible de joindre le service » when the guichet itself doesn't answer; a local copy may read a mock with `?api=` on 127.0.0.1/localhost only), `/beta/` (the public beta: what it is, what testers get, what we ask, TestFlight and
-  Google Play badges, its terms on kerfystudio.com `/beta/`; « Join the beta » is the main button everywhere, the
-  Carnet section after the cards shows what the agents keep); `/install/` only sends to the home's `#install`. English at `/`, French, German and
+  Google Play badges, its terms on kerfystudio.com `/beta/`, a « Get a code » button; « Join the beta » is the main
+  button everywhere, the Carnet section after the cards shows what the agents keep), `/code/` (« Get a code »: two
+  choices first, « I want to use my Hermes » → the home's `#install`, no code; « I want a place » → an e-mail address
+  and ALTCHA's « I'm not a robot » (its widget served from `/assets/altcha/`, src/bipagents/altcha/README.txt), the
+  code sent by e-mail by the guichet's `POST /v1/beta/request`, never shown; `?api=` for a local guichet or mock as
+  `/status/`); `/install/` only sends to the home's `#install`. English at `/`, French, German and
   Spanish at `/fr/`, `/de/`, `/es/` (and `/fr/demo/`, `/fr/faq/`…).
 - **kerfystudio.com** — the publisher: its two apps (BipAgents, Tablée), how it works, the company's details (what Apple
   and Google check for an organization), contact, support, the privacy policy and terms in four languages and the
