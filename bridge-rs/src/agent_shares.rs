@@ -3,8 +3,8 @@
 //!   faire de demande mais voit tout ce que tu lui mets / demandes »): the relative READS the owner's own conversations
 //!   with it, read-only, from the share on or with the ones before (the owner's choice per household); she never
 //!   writes, asks, answers its cards or calls it. The feed: agent_feed.rs (internal/notes/personal-share-readonly.md);
-//! - **the family's agent** (family_agent.rs): each member talks to it in her own conversation (« relative's turns »
-//!   below, guest turns of Hermes patch 0018). Only the family's agent has them now.
+//! - **the family's agent** (family_agent.rs): ONE conversation, common to its members, each of whom writes in it
+//!   (family_thread.rs, internal/notes/family-common-thread.md), through the routes below.
 //!
 //! **The owner's side** (Alex shares Cuisine with Marie):
 //!
@@ -27,22 +27,21 @@
 //!     POST   /family/shared                                  {agent, name, category, color, shared}  (to the relative)
 //!     GET    /family/s/{agent}/feed…                         the owner's conversations, read-only (agent_feed.rs)
 //!
-//! and, for the family's agent only (a personal agent answers them 403 `shared_read_only`):
+//! and, for the family's agent only (a personal agent answers them 403 `shared_read_only`), each naming its one
+//! conversation (`family_thread::CID`) whatever `cid` the member's bridge gives:
 //!
-//!     GET    /family/s/{agent}/conversations                 {conversations: [conv]}       (this relative's only)
-//!     POST   /family/s/{agent}/conversations                 {title?}  → conv
-//!     GET    /family/s/{agent}/conversations/{cid}/timeline  a timeline page (docs/conversations.md §6.6)
+//!     GET    /family/s/{agent}/conversations                 {conversations: [the family's]}
+//!     POST   /family/s/{agent}/conversations                 → the family's
+//!     GET    /family/s/{agent}/conversations/{cid}/timeline  its timeline page (`by` on each person's item)
 //!     GET    /family/s/{agent}/conversations/{cid}/events    SSE: `thread` {thread: cid, version} at each change
-//!     GET    /family/s/{agent}/conversations/{cid}/runs/{run}/events   SSE: the turn's words as they come (text,
-//!                                                            approvals and the end only: no tool step crosses)
-//!     POST   /family/s/{agent}/conversations/{cid}/messages  {text, person?, client_id?, files?}  → {run_id}  (409
-//!                                                            while a turn goes on; `files`: ids sent first,
-//!                                                            shared_files.rs)
-//!     POST   /family/s/{agent}/conversations/{cid}/stop      {ok}
-//!     DELETE /family/s/{agent}/conversations/{cid}           {ok}
-//!     POST   /family/s/{agent}/approval                      {run_id, choice | answer, request_id?}  → Hermes' answer
-//!
-//!     conv    {id, title, created, updated, messages, tokens: {input, output}}
+//!     GET    /family/s/{agent}/conversations/{cid}/runs/{run}/events   SSE: anyone's turn as it goes (text, cards
+//!                                                            with their `by`, the end; no tool step)
+//!     POST   /family/s/{agent}/conversations/{cid}/messages  {text, person?, client_id?, files?}  started | queued |
+//!                                                            steered (family_thread.rs `member_post`)
+//!     POST   /family/s/{agent}/conversations/{cid}/stop      {ok, stopped?}  her own turn only
+//!     DELETE /family/s/{agent}/conversations/{cid}           409: it is everyone's
+//!     POST   /family/s/{agent}/approval                      {run_id, choice | answer, request_id?}  her turn's cards
+//!     GET    /family/s/{agent}/pages/{page}                  a page of the family's agent
 //!
 //! **The relative's side** (Marie's app, her bridge's key; `id` is `<agent>__<household>`, e.g. `cuisine__alex`):
 //!
@@ -53,28 +52,17 @@
 //!
 //! A shared agent's conversations are threads of her own bridge's routes with `agent=<id>` (threads/mod.rs), relayed
 //! to the owner's bridge: a personal agent's through agent_feed.rs (read only: her writes answer 403
-//! `shared_read_only`), the family's agent's here: `GET /v1/threads` (her list), `…/{cid}/timeline`,
-//! `GET /v1/threads/events?thread=<cid>` (on screen while open: no push meanwhile), `POST …/{cid}/messages` (`new`: a
-//! conversation opened by its first message), `…/{cid}/stop`, `DELETE …/{cid}`, `GET /v1/runs/{run}/events?agent=<id>
-//! &thread=<cid>` (the words live). Her pending approvals are also in her `GET /v1/approvals`, and `POST /v1/approve`
-//! with that agent relays her answer; while her app isn't looking, her bridge follows the turn and pushes the approval
-//! and the reply to her devices.
+//! `shared_read_only`), the family's agent's here (`main` and `new` are its one conversation). Her pending approvals
+//! are also in her `GET /v1/approvals`, and `POST /v1/approve` with that agent relays her answer; while her app isn't
+//! looking, her bridge follows her turn and pushes its cards and reply to her devices.
 //!
-//! **Safety of a member's turn with the family's agent** (on the owner's bridge):
-//! - Her words reach the agent framed as a relative's message, never as the owner's instructions, with run
-//!   instructions saying so (family_agent.rs `member_instructions`, souls.rs `CONTENT_RULE`).
-//! - The owner's private data stays closed, by permissions (internal/next/relative-turns.md): the bridge's MCP tools
-//!   answer only the family's (agent_tools.rs); Hermes' own tools: the run is marked (`guest_turn`, patch 0018,
-//!   `guest_tools`): Hermes offers it only those and `web_search`, and refuses every other tool a model names anyway;
-//!   it leaves the agent's USER.md out. A Hermes without patch 0018 ignores the mark, so on such a Hermes no member's
-//!   turn runs (`guest_turns_closed`, audit 11/11 BA-2).
-//! - Approvals belong to the person talking: hers are left out of the owner's Boîte and `/v1/approve` refuses them.
-//! - Only text crosses: `MEDIA:` lines are taken out of the replies (rooms.rs `room_text`); her files go into the
-//!   agent's pool (shared_files.rs).
-//! - Credit: the owner's key; the tokens are counted per member here (`tokens`).
+//! A member's turn with the family's agent is a normal run of it (family_thread.rs says how it stays the family's);
+//! the guest turns of Hermes patch 0018 (`guest_tools`, `guest_turns_closed`, `RELATIVE_TOOLS`, `closed_tool`) are
+//! another household's agent's and a relative's discussion's (peers.rs, rooms_remote.rs). Her tokens are counted per
+//! member here (`count_turn`, `tokens`).
 //!
 //! `<data>/agent-shares.json` (0600): what is shared with whom (`shared`), each share's choice (`history`: {agent:
-//! {household: {mode, since}}}), the family's members' conversations and their tokens; `<data>/shared-with-me.json`
+//! {household: {mode, since}}}), the family's members' entries (family_thread.rs) and their tokens; `<data>/shared-with-me.json`
 //! (0600): the agents relatives share with this person (what of each she has opened: `seen`).
 //!
 //! No Python counterpart.
@@ -101,11 +89,8 @@ use crate::{py, Dict};
 
 pub const TEXT_MAX: usize = 8000;
 pub const TITLE_MAX: usize = 80;
-pub const SESSION_TITLE: &str = "BipAgents · proche";
 /// A relative's turn is no longer « going on » after this (a restart lost its follower): the tools open again.
 pub const TURN_MAX_SECONDS: f64 = 3600.0;
-/// Conversations a relative keeps with one agent.
-pub const CONVERSATIONS_MAX: usize = 50;
 /// The bridge's MCP tools a relative's turn may use: the agent's own memory pages (common, decision 3A) and tools
 /// reading nothing of the owner's.
 /// Not `dates`: it reads the birthdays of the owner's Carnet (2026-10-27).
@@ -195,11 +180,6 @@ pub const GUEST_TURNS_OPEN: &str = "hermes_guest_turns_open";
 /// conversation, read in her own turns only (shared_files.rs, Alex 11/11).
 pub const FRIEND_TOOLS: [&str; 2] = [crate::agent_tools::CREATE_PAGE, crate::shared_files::TOOL_NAME];
 
-/// A member's turn with the family's agent: its family tools (family_agent.rs `TOOLS`).
-pub fn relative_guest_tools() -> Vec<String> {
-    guest_tools(&crate::family_agent::TOOLS)
-}
-
 /// What a relative's bridge answers, and the owner's, to anything but reading a personal agent shared with her.
 pub const READ_ONLY: &str = "shared_read_only";
 
@@ -208,8 +188,6 @@ pub fn read_only_refused() -> HttpError {
     HttpError::with_code(403, "this agent is shared with you to read only", READ_ONLY)
 }
 
-/// The first line of a relative's message as the agent gets it (taken off again for the thread).
-const FRAME_MARK: &str = "a relative of your person";
 
 static LOCK: Mutex<()> = Mutex::new(());
 /// Approvals waiting for this person in agents shared with her: (shared id, run_id, request_id) → the approval.
@@ -574,34 +552,6 @@ fn turn_going(c: &Value, at: f64) -> Option<String> {
     (at - started < TURN_MAX_SECONDS).then(|| str_of(run, "id")).filter(|id| !id.is_empty())
 }
 
-/// The conversation reserved for a turn about to start (`run.id` a `starting_…` mark): None when a turn goes on.
-fn reserve_turn(path: &PathBuf, cid: &str) -> anyhow::Result<Option<String>> {
-    let mark = format!("starting_{}", crate::py::token_hex(6));
-    update(path, |data| {
-        let Some(Value::Object(c)) = object_mut(data, "conversations").get_mut(cid) else { return None };
-        if turn_going(&Value::Object(c.clone()), now()).is_some() {
-            return None;
-        }
-        c.insert("run".into(), json!({"id": mark, "started": now()}));
-        Some(mark)
-    })
-}
-
-/// The reservation `mark` replaced by the run Hermes started, or let go when none started.
-fn settle_turn(path: &PathBuf, cid: &str, mark: &str, run_id: Option<&str>) -> anyhow::Result<()> {
-    update(path, |data| {
-        if let Some(Value::Object(c)) = object_mut(data, "conversations").get_mut(cid) {
-            if c.get("run").and_then(|r| r.get("id")).and_then(Value::as_str) == Some(mark) {
-                let run = run_id.map(|id| json!({"id": id, "started": now()})).unwrap_or(Value::Null);
-                c.insert("run".into(), run);
-            }
-            if run_id.is_some() {
-                c.insert("updated".into(), json!(now()));
-            }
-        }
-    })
-}
-
 /// Whether a relative talks to `agent` right now (the owner's private tools are then closed to it).
 pub fn relative_turn(config: &Config, agent: &str) -> bool {
     let data = read(&owner_path(config));
@@ -672,20 +622,6 @@ pub(crate) fn shown_household(config: &Config, household: &str) -> String {
     household_name(&households(config), household)
 }
 
-/// The relative's words as the agent gets them.
-pub fn framed(person: &str, household: &str, text: &str) -> String {
-    format!("[{person}, {FRAME_MARK} (household « {household} »), writes to you:]\n{text}")
-}
-
-fn unframed(text: &str) -> String {
-    let shown = crate::live_brief::visible(text); // without the current time at its top (dates/now.rs)
-    let text = shown.as_str();
-    match text.split_once('\n') {
-        Some((first, rest)) if first.starts_with('[') && first.contains(FRAME_MARK) => rest.to_string(),
-        _ => text.to_string(),
-    }
-}
-
 pub(crate) fn household_of(state: &AppState, headers: &HeaderMap) -> ApiResult<String> {
     let header = headers.get("authorization").and_then(|v| v.to_str().ok()).unwrap_or("");
     let token = header.strip_prefix("Bearer ").unwrap_or(header).trim();
@@ -741,65 +677,20 @@ async fn served_list(
     UrlPath(agent): UrlPath<String>,
 ) -> ApiResult<Response> {
     let (household, agent) = talking_agent(&state, &headers, &agent)?;
-    if crate::family_thread::is_common(&state.config(), &agent.name) {
-        // one conversation, the family's (family_thread.rs)
-        return Ok(web::ok(json!({"conversations": [crate::family_thread::member_view(&state.config(), &agent.name, &household)]})));
-    }
-    let data = read(&owner_path(&state.config()));
-    let mut out: Vec<Value> = object(&data, "conversations")
-        .map(|all| {
-            all.iter()
-                .filter(|(_, c)| str_of(c, "household") == household && str_of(c, "agent") == agent.name)
-                .map(|(id, c)| conversation_view(id, c))
-                .collect()
-        })
-        .unwrap_or_default();
-    out.reverse();
-    Ok(web::ok(json!({"conversations": out})))
+    // one conversation, the family's (family_thread.rs)
+    Ok(web::ok(json!({"conversations": [crate::family_thread::member_view(&state.config(), &agent.name, &household)]})))
 }
 
 async fn served_create(
     State(state): State<AppState>,
     headers: HeaderMap,
     UrlPath(agent): UrlPath<String>,
-    body: Bytes,
 ) -> ApiResult<Response> {
     let (household, agent) = talking_agent(&state, &headers, &agent)?;
-    let body = body_json(&body)?;
-    let title: String = tk::squeeze(&tk::str_or_empty(body.get("title"))).chars().take(TITLE_MAX).collect();
+    // no new conversation with a family agent: its one conversation (family_thread.rs)
     let config = state.config();
-    if crate::family_thread::is_common(&config, &agent.name) {
-        // no new conversation with a family agent: its one conversation (family_thread.rs)
-        crate::family_thread::entry(&config, &agent.name, &household, None)?;
-        return Ok(web::ok(crate::family_thread::member_view(&config, &agent.name, &household)));
-    }
-    let count = object(&read(&owner_path(&config)), "conversations")
-        .map(|all| {
-            all.values().filter(|c| str_of(c, "household") == household && str_of(c, "agent") == agent.name).count()
-        })
-        .unwrap_or(0);
-    if count >= CONVERSATIONS_MAX {
-        return Err(HttpError::new(409, "too many conversations with this agent: end one first"));
-    }
-    let cid = format!("c{}", py::token_hex(6));
-    let session_title = format!("{SESSION_TITLE} {household} {cid}");
-    let session = state
-        .hermes
-        .create_session(&agent, &session_title)
-        .await
-        .map_err(|_| HttpError::new(502, "the agent can't be reached"))?;
-    let mut fields = Map::new();
-    fields.insert("title".into(), json!(session_title));
-    fields.insert("hidden".into(), Value::Bool(true)); // not in the owner's own list
-    if state.hermes.update_session(&agent, &session, fields).await.is_err() {
-        tracing::info!(agent = %agent.name, "shared agent: the conversation could not be hidden");
-    }
-    let at = now();
-    let entry = json!({"agent": agent.name, "household": household, "session": session, "title": title,
-                       "created": at, "updated": at, "messages": 0, "tokens": tokens_value(0, 0), "run": null});
-    update(&owner_path(&config), |data| object_mut(data, "conversations").insert(cid.clone(), entry.clone()))?;
-    tracing::info!(agent = %agent.name, household = %household, "shared agent: conversation opened");
-    Ok(web::ok(conversation_view(&cid, &entry)))
+    crate::family_thread::entry(&config, &agent.name, &household, None)?;
+    Ok(web::ok(crate::family_thread::member_view(&config, &agent.name, &household)))
 }
 
 /// The cards of her turn waiting for her: its approvals and its questions (Hermes' clarify).
@@ -824,80 +715,15 @@ pub(crate) fn prompts_of(state: &AppState, agent: &str, run_id: &str) -> (Vec<Va
     )
 }
 
-/// The timeline of this household's conversation (docs/conversations.md §6.6), as `/v1/threads/{id}/timeline`
-/// answers, under the conversation's id: its people's and agent's words and notices only (only text crosses: no
-/// file, tool step or Boîte message of the owner's), and the pages made at this household's request
-/// (shared_pages.rs), which her bridge asks for by `GET …/pages/{page}`.
+/// The family conversation's timeline as a member reads it (family_thread.rs).
 async fn served_timeline(
     State(state): State<AppState>,
     headers: HeaderMap,
-    UrlPath((agent, cid)): UrlPath<(String, String)>,
+    UrlPath((agent, _cid)): UrlPath<(String, String)>,
     q: web::QueryMap,
 ) -> ApiResult<Response> {
     let (household, agent) = talking_agent(&state, &headers, &agent)?;
-    if crate::family_thread::is_common(&state.config(), &agent.name) {
-        return Ok(web::ok(crate::family_thread::member_timeline(&state, &agent, &household, &q).await?));
-    }
-    let c = conversation(&state.config(), &household, &agent.name, &cid)?;
-    let want = crate::threads::want_of(&q)?;
-    let threads = crate::threads::threads_of(&state);
-    let unreachable = |_| HttpError::new(502, "the agent can't be reached");
-    // read as Hermes keeps it now: a relative's turn is a guest run, whose end does not refresh the owner's copy
-    threads.source(&agent).forget(&str_of(&c, "session"));
-    let thread = threads.resolve(&agent, &str_of(&c, "session")).await.map_err(unreachable)?.ok_or_else(HttpError::not_found)?;
-    let segments = threads.line(&agent, &thread).await.map_err(unreachable)?;
-    let items: Vec<crate::threads::timeline::Item> = threads
-        .items(&agent, &thread, &segments)
-        .await
-        .map_err(unreachable)?
-        .into_iter()
-        .filter(|i| matches!(i.kind(), "message" | "notice"))
-        .map(|mut i| {
-            let files = pool_files(i.body.remove("attachments"));
-            if !files.is_empty() {
-                i.body.insert("attachments".into(), Value::Array(files));
-            }
-            if i.body.get("role") == Some(&json!("person")) {
-                let words = unframed(i.text());
-                i.body.insert("text".into(), json!(words.trim()));
-            }
-            i
-        })
-        .collect();
-    let page = crate::threads::timeline::page(items, &want);
-    // the turn going on, as the shared screen draws it: writing, or waiting for her answer, since when
-    let (run, (approvals, questions)) = match turn_going(&c, now()) {
-        Some(run_id) => {
-            let prompts = prompts_of(&state, &agent.name, &run_id);
-            let status = if prompts.0.is_empty() && prompts.1.is_empty() { "writing" } else { "approval" };
-            let started = c.get("run").and_then(|r| r.get("started")).cloned().unwrap_or(Value::Null);
-            (json!({"run_id": run_id, "status": status, "started": started}), prompts)
-        }
-        None => (Value::Null, Default::default()),
-    };
-    // the timeline's own answer (its catch-up marks too: `joins`, `reset`, `replaced`): the apps read her conversation
-    // in the conversation screen of their own agents, a catch-up after her turn included
-    let shown = json!({"id": cid, "kind": "shared", "title": c.get("title"), "version": thread.version});
-    let pending = json!({"run": run, "approvals": approvals, "questions": questions});
-    Ok(web::ok(page.answer(shown, thread.version, pending, false)))
-}
-
-/// Of a message's attachments, the files of the agent's pool her messages carry (shared_files.rs), path and kind
-/// only.
-fn pool_files(attachments: Option<Value>) -> Vec<Value> {
-    let Some(Value::Array(all)) = attachments else { return Vec::new() };
-    all.into_iter()
-        .filter(|a| crate::shared_files::is_pool_path(&str_of(a, "path")))
-        .map(|a| {
-            let mut kept = Map::new();
-            for k in ["id", "kind", "name", "mime", "size", "path", "offset"] {
-                if let Some(v) = a.get(k) {
-                    kept.insert(k.into(), v.clone());
-                }
-            }
-            Value::Object(kept)
-        })
-        .collect()
+    Ok(web::ok(crate::family_thread::member_timeline(&state, &agent, &household, &q).await?))
 }
 
 /// A page made at this household's request (shared_pages.rs): its HTML, for her bridge (`GET /v1/media` there).
@@ -988,16 +814,10 @@ async fn served_events(
     headers: HeaderMap,
     UrlPath((agent, cid)): UrlPath<(String, String)>,
 ) -> ApiResult<Response> {
-    let (household, agent) = talking_agent(&state, &headers, &agent)?;
+    let (_, agent) = talking_agent(&state, &headers, &agent)?;
+    // the family conversation: the main thread's hints, anyone's message or turn (family_thread.rs)
     let threads = crate::threads::threads_of(&state);
-    let unreachable = |_| HttpError::new(502, "the agent can't be reached");
-    let thread = if crate::family_thread::is_common(&state.config(), &agent.name) {
-        // the family conversation: the main thread's hints, anyone's message or turn (family_thread.rs)
-        threads.main(&agent).await.map_err(unreachable)?
-    } else {
-        let c = conversation(&state.config(), &household, &agent.name, &cid)?;
-        threads.resolve(&agent, &str_of(&c, "session")).await.map_err(unreachable)?.ok_or_else(HttpError::not_found)?
-    };
+    let thread = threads.main(&agent).await.map_err(|_| HttpError::new(502, "the agent can't be reached"))?;
     Ok(thread_hints(&state, thread.id, cid))
 }
 
@@ -1025,25 +845,17 @@ pub(crate) fn thread_hints(state: &AppState, thread: String, shown: String) -> R
 async fn served_run_events(
     State(state): State<AppState>,
     headers: HeaderMap,
-    UrlPath((agent, cid, run_id)): UrlPath<(String, String, String)>,
+    UrlPath((agent, _cid, run_id)): UrlPath<(String, String, String)>,
 ) -> ApiResult<Response> {
     let (household, agent) = talking_agent(&state, &headers, &agent)?;
-    let config = state.config();
-    let family = crate::family_thread::is_common(&config, &agent.name);
-    let going = if family {
-        // anyone's turn of the family conversation: everyone sees it as it goes (family_thread.rs)
-        crate::family_thread::running(&state, &agent).await
-    } else {
-        turn_going(&conversation(&config, &household, &agent.name, &cid)?, now())
-    };
-    if going.as_deref() != Some(run_id.as_str()) {
+    // anyone's turn of the family conversation: everyone sees it as it goes (family_thread.rs)
+    if crate::family_thread::running(&state, &agent).await.as_deref() != Some(run_id.as_str()) {
         return Err(HttpError::new(404, "no such turn"));
     }
     // its cards say whose turn it is (only its writer answers)
-    let by = family.then(|| {
-        crate::family_thread::author_of(&config, &agent.name, &run_id, &state.households.name()).by_of(&household)
-    });
-    Ok(turn_words(&state, &agent, &run_id, true, by))
+    let config = state.config();
+    let by = crate::family_thread::author_of(&config, &agent.name, &run_id, &state.households.name()).by_of(&household);
+    Ok(turn_words(&state, &agent, &run_id, true, Some(by)))
 }
 
 /// A turn's words as they come, only text crossing: its deltas, its end, and (`prompts`) its approvals and questions
@@ -1186,30 +998,6 @@ pub(crate) fn counters_of(session: &Dict) -> (i64, i64) {
     (k("input"), k("output"))
 }
 
-/// The relative's turn followed to its end on the owner's bridge (a follower: the hub keeps its approvals, nothing is
-/// pushed to the owner), then its tokens counted for that relative.
-async fn follow_turn(
-    state: AppState,
-    agent: AgentConfig,
-    household: String,
-    cid: String,
-    run_id: String,
-    base: (i64, i64),
-) {
-    let mut listener = state.hub.subscribe(&agent, &run_id, "shared", false);
-    let followed = tokio::time::timeout(Duration::from_secs_f64(TURN_MAX_SECONDS), async {
-        while listener.next().await.is_some() {}
-    })
-    .await;
-    listener.close();
-    if followed.is_err() {
-        let _ = state.hermes.stop_run(&agent, &run_id).await;
-    }
-    let session =
-        conversation(&state.config(), &household, &agent.name, &cid).map(|c| str_of(&c, "session")).unwrap_or_default();
-    count_turn(&state, &agent, &household, &cid, &run_id, base, &session).await;
-}
-
 /// A relative's turn that ended (in her own conversation, or in the family conversation: family_thread.rs): its run
 /// let go in her entry `cid`, its tokens counted for her household (the family's credit, per member), her screen told.
 pub(crate) async fn count_turn(
@@ -1229,12 +1017,6 @@ pub(crate) async fn count_turn(
             ((after.0 - base.0).max(0), (after.1 - base.1).max(0))
         }
     };
-    let said = |m: &Dict| matches!(m.get("role").and_then(Value::as_str), Some("user" | "assistant"));
-    // the family conversation is everyone's: its messages are not counted as hers
-    let messages = match crate::family_thread::is_common(&config, &agent.name) {
-        true => None,
-        false => state.hermes.session_messages(agent, session).await.map(|m| m.iter().filter(|m| said(m)).count()).ok(),
-    };
     let kept = update(&owner_path(&config), |data| {
         if let Some(Value::Object(c)) = object_mut(data, "conversations").get_mut(cid) {
             if c.get("run").and_then(|r| r.get("id")).and_then(Value::as_str) == Some(run_id) {
@@ -1242,9 +1024,6 @@ pub(crate) async fn count_turn(
             }
             let t = c.get("tokens").cloned().unwrap_or_else(|| tokens_value(0, 0));
             c.insert("tokens".into(), tokens_value(n(&t, "input") + used.0, n(&t, "output") + used.1));
-            if let Some(count) = messages {
-                c.insert("messages".into(), json!(count));
-            }
             c.insert("updated".into(), json!(now()));
         }
         let per = object_mut(data, "tokens").entry(household.to_string()).or_insert_with(|| json!({}));
@@ -1267,128 +1046,41 @@ pub(crate) async fn count_turn(
 async fn served_post(
     State(state): State<AppState>,
     headers: HeaderMap,
-    UrlPath((agent, cid)): UrlPath<(String, String)>,
+    UrlPath((agent, _cid)): UrlPath<(String, String)>,
     body: Bytes,
 ) -> ApiResult<Response> {
     let (household, agent) = talking_agent(&state, &headers, &agent)?;
     let body = body_json(&body)?;
-    if crate::family_thread::is_common(&state.config(), &agent.name) {
-        // into the family conversation, as the creator's own messages go: started, queued, or her own turn steered
-        return Ok(web::ok(crate::family_thread::member_post(&state, &agent, &household, &body).await?));
-    }
-    let text = tk::strip(&tk::str_or_empty(body.get("text"))).to_string();
-    // her files, sent first into the agent's pool for this conversation (shared_files.rs): their ids, a scan's text
-    let file_ids = crate::shared_files::named(body.get("files"));
-    if (text.is_empty() && file_ids.is_empty()) || text.chars().count() > TEXT_MAX {
-        return Err(HttpError::new(422, format!("a message of 1 to {TEXT_MAX} characters, or files")));
-    }
-    let config = state.config();
-    let c = conversation(&config, &household, &agent.name, &cid)?;
-    if !guest_turns_closed(&config, Some(&agent)) {
-        // shared before, and its Hermes updated since without the patch: no turn rather than an open one (503: her
-        // app says « your relative's agents don't answer for now »)
-        return Ok(guest_turns_refused(&config, 503));
-    }
-    let attachments = crate::shared_files::claim(&config, &agent.name, &household, &cid, &file_ids)?;
-    // one run per shared conversation: reserved in the same locked write as the test, before Hermes is called
-    let Some(reserved) = reserve_turn(&owner_path(&config), &cid)? else {
-        return Err(HttpError::new(409, "the agent is still answering"));
-    };
-    let linked = households(&config);
-    let shown = household_name(&linked, &household);
-    let person: String = Some(tk::squeeze(&tk::str_or_empty(body.get("person"))))
-        .filter(|p| !p.is_empty())
-        .unwrap_or_else(|| shown.clone())
-        .chars()
-        .take(40)
-        .collect();
-    // who writes, for what is made at their request (shared_pages.rs: « Faite à la demande de Marie »)
-    update(&owner_path(&config), |data| {
-        if let Some(Value::Object(c)) = object_mut(data, "conversations").get_mut(&cid) {
-            c.insert("person".into(), json!(person));
-        }
-    })?;
-    let rules = crate::names::localize(
-        &crate::family_agent::member_instructions(&person),
-        &crate::names::agent_language(&config, &agent.name),
-    );
-    let session = str_of(&c, "session");
-    let base = state.hermes.session(&agent, &session).await.map(|s| counters_of(&s)).unwrap_or((0, 0));
-    let words = crate::dates::now::stamped(&config, &agent, &framed(&person, &shown, &text));
-    // her photos as image parts, her documents as one line each (threads/send.rs, as for one's own agents)
-    let input = crate::threads::send::input_of(None, &words, &attachments);
-    let tools = relative_guest_tools();
-    let started = state.hermes.start_guest_run(&agent, input, &session, Some(&rules), &tools).await;
-    let run_id = started.as_ref().ok().cloned();
-    settle_turn(&owner_path(&config), &cid, &reserved, run_id.as_deref())?;
-    let run_id = run_id.ok_or_else(|| HttpError::new(502, "the agent can't be reached"))?;
-    let keys: Vec<String> = file_ids.iter().map(|(k, _)| k.clone()).collect();
-    crate::shared_files::mark_sent(&config, &agent.name, &keys)?;
-    tracing::info!(agent = %agent.name, household = %household, files = file_ids.len(), "shared agent: a relative's turn");
-    // her app's id for the message: its item carries it once Hermes has it (threads/send.rs), with its files
-    let client_id = tk::str_or_empty(body.get("client_id"));
-    if crate::threads::send::CLIENT_ID.is_match(&client_id) {
-        let threads = crate::threads::threads_of(&state);
-        if let Ok(Some(thread)) = threads.resolve(&agent, &session).await {
-            crate::threads::send::keep(&threads, &agent.name, &thread.id, &client_id, &text, &attachments).await?;
-            threads.bump(&thread, "sent").await?;
-        }
-    }
-    state.spawn(follow_turn(state.clone(), agent, household, cid, run_id.clone(), base));
-    Ok(web::ok(json!({"run_id": run_id})))
+    // into the family conversation, as the creator's own messages go: started, queued, or her own turn steered
+    Ok(web::ok(crate::family_thread::member_post(&state, &agent, &household, &body).await?))
 }
 
 async fn served_stop(
     State(state): State<AppState>,
     headers: HeaderMap,
-    UrlPath((agent, cid)): UrlPath<(String, String)>,
+    UrlPath((agent, _cid)): UrlPath<(String, String)>,
 ) -> ApiResult<Response> {
     let (household, agent) = talking_agent(&state, &headers, &agent)?;
     let config = state.config();
-    if crate::family_thread::is_common(&config, &agent.name) {
-        // her own turn only: another person's goes on (family_thread.rs)
-        let creator = state.households.name();
-        let mine = crate::family_thread::running(&state, &agent)
-            .await
-            .filter(|run| crate::family_thread::author_of(&config, &agent.name, run, &creator).household == household);
-        if let Some(run_id) = mine {
-            let _ = state.hermes.stop_run(&agent, &run_id).await;
-            return Ok(web::ok(json!({"ok": true})));
-        }
-        return Ok(web::ok(json!({"ok": true, "stopped": false})));
-    }
-    let c = conversation(&config, &household, &agent.name, &cid)?;
-    if let Some(run_id) = turn_going(&c, now()) {
+    // her own turn only: another person's goes on (family_thread.rs)
+    let creator = state.households.name();
+    let mine = crate::family_thread::running(&state, &agent)
+        .await
+        .filter(|run| crate::family_thread::author_of(&config, &agent.name, run, &creator).household == household);
+    if let Some(run_id) = mine {
         let _ = state.hermes.stop_run(&agent, &run_id).await;
+        return Ok(web::ok(json!({"ok": true})));
     }
-    Ok(web::ok(json!({"ok": true})))
-}
-
-async fn end_conversation(state: &AppState, agent: &AgentConfig, cid: &str, c: &Value) -> anyhow::Result<()> {
-    if let Some(run_id) = turn_going(c, now()) {
-        let _ = state.hermes.stop_run(agent, &run_id).await;
-    }
-    if let Err(err) = state.hermes.delete_session(agent, &str_of(c, "session")).await {
-        tracing::info!(agent = %agent.name, error = %err, "shared agent: a conversation was not deleted in Hermes");
-    }
-    update(&owner_path(&state.config()), |data| {
-        object_mut(data, "conversations").shift_remove(cid);
-    })?;
-    Ok(()) // the files sent in it stay in the agent's pool, everyone's (shared_files.rs)
+    Ok(web::ok(json!({"ok": true, "stopped": false})))
 }
 
 async fn served_delete(
     State(state): State<AppState>,
     headers: HeaderMap,
-    UrlPath((agent, cid)): UrlPath<(String, String)>,
+    UrlPath((agent, _cid)): UrlPath<(String, String)>,
 ) -> ApiResult<Response> {
-    let (household, agent) = talking_agent(&state, &headers, &agent)?;
-    if crate::family_thread::is_common(&state.config(), &agent.name) {
-        return Err(HttpError::new(409, "the family's conversation is everyone's: it can't be deleted"));
-    }
-    let c = conversation(&state.config(), &household, &agent.name, &cid)?;
-    end_conversation(&state, &agent, &cid, &c).await?;
-    Ok(web::ok(json!({"ok": true})))
+    talking_agent(&state, &headers, &agent)?;
+    Err(HttpError::new(409, "the family's conversation is everyone's: it can't be deleted"))
 }
 
 /// The relative answers an approval or a question (`answer`) of their own turn (never one of the owner's runs).
@@ -1409,9 +1101,7 @@ async fn served_approval(
     let config = state.config();
     if let Some(card) = run_id.strip_prefix(crate::routines::RUN_PREFIX) {
         // the card of a routine she asked a family agent for (family_thread.rs): hers only
-        if !crate::family_thread::is_common(&config, &agent.name)
-            || crate::routines::card_by(&config, &agent.name, card).as_deref() != Some(household.as_str())
-        {
+        if crate::routines::card_by(&config, &agent.name, card).as_deref() != Some(household.as_str()) {
             return Err(HttpError::new(404, "no such turn"));
         }
         let answered = crate::app::routine_card(&state, &agent, card, &value).await?;
@@ -2158,15 +1848,6 @@ mod tests {
     }
 
     #[test]
-    fn a_relatives_words_are_framed_for_the_agent_and_shown_plain() {
-        let text = framed("Marie", "Marie", "Une recette avec des poireaux ?");
-        assert!(text.starts_with("[Marie, a relative of your person (household « Marie »), writes to you:]\n"));
-        assert_eq!(unframed(&text), "Une recette avec des poireaux ?");
-        // a person's own bracket line is kept
-        assert_eq!(unframed("[note]\nhello"), "[note]\nhello");
-    }
-
-    #[test]
     fn only_harmless_tools_answer_during_a_relatives_turn() {
         for friend in [true, false] {
             assert!(closed_tool("knowledge_read", friend).is_none());
@@ -2249,30 +1930,6 @@ mod tests {
         let family = guest_tools(&crate::family_agent::TOOLS);
         assert!(family.contains(&"mcp__bipagents__family_notebook_write".to_string()));
         assert_eq!(crate::hermes::guest_turn(&tools)["tools"][5], "web_search");
-    }
-
-    #[test]
-    fn two_quick_messages_start_one_run() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("shares.json");
-        update(&path, |data| {
-            object_mut(data, "conversations").insert("c1".into(), json!({"agent": "vie", "run": null}));
-        })
-        .unwrap();
-        let first = reserve_turn(&path, "c1").unwrap().expect("free");
-        assert!(reserve_turn(&path, "c1").unwrap().is_none(), "the second waits for the first");
-        assert!(reserve_turn(&path, "ghost").unwrap().is_none());
-        settle_turn(&path, "c1", &first, Some("run_1")).unwrap();
-        assert_eq!(turn_going(&read(&path)["conversations"]["c1"], now()).as_deref(), Some("run_1"));
-        assert!(reserve_turn(&path, "c1").unwrap().is_none());
-        // a run that could not start lets the conversation go
-        update(&path, |data| {
-            object_mut(data, "conversations").insert("c2".into(), json!({"agent": "vie", "run": null}));
-        })
-        .unwrap();
-        let mark = reserve_turn(&path, "c2").unwrap().unwrap();
-        settle_turn(&path, "c2", &mark, None).unwrap();
-        assert!(reserve_turn(&path, "c2").unwrap().is_some());
     }
 
     #[test]
