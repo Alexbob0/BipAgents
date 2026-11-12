@@ -58,6 +58,11 @@ def markdown(text: str, links: Dict[str, str]) -> str:
         stripped = line.strip()
         if not stripped:
             flush(); i += 1; continue
+        if stripped.startswith("<!--"):  # a note for the editors (one or more lines), never published
+            flush()
+            while i < len(lines) and "-->" not in lines[i]:
+                i += 1
+            i += 1; continue
         heading = re.match(r"^(#{1,4})\s+(.*)$", stripped)
         if heading:
             flush()
