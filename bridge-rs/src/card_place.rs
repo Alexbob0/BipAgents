@@ -163,7 +163,9 @@ pub fn bridge_cards(state: &AppState, config: &Config, agent: Option<&str>) -> V
     items.extend(crate::phone_exit::store::pending_items(config, agent));
     items.extend(crate::routines::pending_items(config, agent));
     items.extend(crate::agent_hops::pending_items(config, agent));
-    items
+    items.extend(crate::held_approvals::pending_items(config, agent));
+    // the kinds a « Toujours » may cover offer it (approval_level.rs)
+    items.into_iter().map(|item| crate::approval_level::with_always(config, item)).collect()
 }
 
 fn run_id_of(item: &Dict) -> String {
@@ -195,6 +197,11 @@ fn fold_key(item: &Dict) -> Option<String> {
         // standing rules doing the same thing in the same mailbox (several senders to « Factures »)
         let (action, mailbox) = (field("bip_mail_rule", "action")?, field("bip_mail_rule", "mailbox")?);
         return Some(format!("{agent}\u{1f}mailrule\u{1f}{action}\u{1f}{mailbox}"));
+    }
+    if run.starts_with(crate::held_approvals::RUN_PREFIX) {
+        // what a turn nobody followed asked, of the same kind (held_approvals.rs): one card
+        let kind = field("bip_held", "kind")?;
+        return Some(format!("{agent}\u{1f}held\u{1f}{kind}"));
     }
     None
 }
@@ -722,21 +729,52 @@ pub fn allowed(choice: &str) -> bool {
 
 /// What the resumed turn reads (a hidden note: not in the conversation's timeline).
 pub fn resume_note(decisions: &[(String, bool)]) -> String {
+    resume_note_for(decisions, None)
+}
+
+/// `resume_note` for a routine's run (`routine`: its name): the reply is that routine's report. A line already in
+/// quotes (`told_words`) is kept as it is.
+pub fn resume_note_for(decisions: &[(String, bool)], routine: Option<&str>) -> String {
     let lines: Vec<String> = decisions
         .iter()
         .map(|(what, ok)| {
-            let what = if what.is_empty() { "your request".to_string() } else { format!("« {what} »") };
+            let what = match what.as_str() {
+                "" => "your request".to_string(),
+                w if w.starts_with('«') => w.to_string(),
+                w => format!("« {w} »"),
+            };
             format!("- {what}: {}", if *ok { "ALLOWED" } else { "REFUSED" })
         })
         .collect();
+    let report = match routine {
+        Some(name) => format!(
+            " Your reply is the report of your routine « {name} » to them: in a few words, what was done now that they \
+             answered."
+        ),
+        None => String::new(),
+    };
     format!(
         "<!--bip:card\nNot from the person: they answered in the app, and your turn ended before you were told:\n{}\nGo \
          on with what you were doing from where it stopped, now that you have the answer (don't ask for it again). \
-         Refused: don't do it and don't ask again; say in one short sentence what that changes. If nothing is left to \
-         do or say, {}.\n-->",
+         Refused: don't do it and don't ask again; say in one short sentence what that changes.{report} If nothing is \
+         left to do or say, {}.\n-->",
         lines.join("\n"),
         crate::background_turn::SILENT_RULE
     )
+}
+
+/// What the resumed turn reads of card `card`'s answer: a held approval's says to do it now, exactly
+/// (held_approvals.rs); a mail card's, that the bridge does it already (its « Oui » moves the mails itself).
+fn told_words(config: &Config, card: &str, summary: &str, ok: bool) -> String {
+    if let Some(words) = crate::held_approvals::resume_words(config, card, summary, ok) {
+        return words;
+    }
+    let by_bridge = card.starts_with(crate::mail_tidy::RUN_PREFIX) || card.starts_with(crate::mail_rules::RUN_PREFIX);
+    match (ok && by_bridge, summary.is_empty()) {
+        (true, true) => "« your request » — being done now by the app itself: don't do it again".to_string(),
+        (true, false) => format!("« {summary} » — being done now by the app itself: don't do it again"),
+        (false, _) => summary.to_string(),
+    }
 }
 
 /// The card's own tools whose result tells its answer (the site asked again: « You may send to it already »).
@@ -881,7 +919,8 @@ fn resume(state: &AppState, card: &str, place: &Place, decision: &Decision) {
     let first = {
         let mut waiting = RESUMES.lock().unwrap_or_else(|e| e.into_inner());
         let list = waiting.entry(key.clone()).or_default();
-        list.push((card.to_string(), place.summary.clone(), allowed(&decision.choice)));
+        let ok = allowed(&decision.choice);
+        list.push((card.to_string(), told_words(&config, card, &place.summary, ok), ok));
         list.len() == 1
     };
     if !first {
@@ -913,7 +952,10 @@ async fn resume_turn(state: &AppState, agent: &AgentConfig, conversation: &str, 
     use crate::background_turn::{Delivery, Kind, Pipeline, Turn};
     let pipeline = Pipeline::of(state);
     let told: Vec<(String, bool)> = decisions.iter().map(|(_, what, ok)| (what.clone(), *ok)).collect();
-    let mut turn = Turn::new(agent, Kind::Card, conversation, resume_note(&told));
+    // a routine's run (a card it asked at night): the reply is its report, in the Boîte as the routine's
+    let routine = crate::routines::of_session(state, agent, conversation).await;
+    let note = resume_note_for(&told, routine.as_ref().map(|r| r.name.as_str()));
+    let mut turn = Turn::new(agent, Kind::Card, conversation, note);
     turn.budget = Some(RESUME_BUDGET);
     tracing::info!(agent = %agent.name, conversation, cards = decisions.len(), "a card answered: the agent resumes");
     let config = state.config();
@@ -921,6 +963,12 @@ async fn resume_turn(state: &AppState, agent: &AgentConfig, conversation: &str, 
     // started: the answers leave their places (told now, never again)
     let started = |_: &str| cards.iter().for_each(|card| forget(&config, card));
     match pipeline.run_then(&turn, started).await {
+        Ok(ran) if ran.answered() && !crate::background_turn::is_silent(&ran.text) && routine.is_some() => {
+            if let Some(r) = &routine {
+                let sent = crate::routines::deliver_resumed(state, &pipeline, agent, r, &ran).await;
+                tracing::info!(agent = %agent.name, routine = %r.id, sent = %sent, "a routine's card answered: its report");
+            }
+        }
         Ok(ran) if ran.answered() && !crate::background_turn::is_silent(&ran.text) => {
             let title = config.agent(Some(&agent.name)).map(|a| a.display_name.clone()).filter(|n| !n.is_empty());
             let delivery = Delivery {

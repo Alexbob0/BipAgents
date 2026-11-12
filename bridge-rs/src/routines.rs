@@ -1342,6 +1342,34 @@ async fn deliver(state: &AppState, pipeline: &Pipeline, agent: &AgentConfig, r: 
     "sent".into()
 }
 
+/// The routine whose run went on in conversation `session` of `agent` (its hidden thread's origin), if any.
+pub async fn of_session(state: &AppState, agent: &AgentConfig, session: &str) -> Option<Routine> {
+    if session.is_empty() || session == "main" {
+        return None;
+    }
+    let thread = crate::threads::threads_of(state).thread_of(agent, session).await?;
+    if thread.origin.get("kind").and_then(Value::as_str) != Some("routine") {
+        return None;
+    }
+    let id = thread.origin.get("routine").and_then(Value::as_str)?;
+    get(&state.config(), id).filter(|r| r.agent == agent.name)
+}
+
+/// A routine's run resumed after the person answered its card (card_place.rs, held_approvals.rs): its reply is the
+/// routine's report, where its reports land (muted: kept in its run's conversation).
+pub async fn deliver_resumed(
+    state: &AppState,
+    pipeline: &Pipeline,
+    agent: &AgentConfig,
+    r: &Routine,
+    ran: &crate::background_turn::Ran,
+) -> String {
+    if r.muted {
+        return "muted".into();
+    }
+    deliver(state, pipeline, agent, r, ran).await
+}
+
 /// The agent's Hermes jobs, read once, kept here, and deleted from Hermes (it no longer runs them). An unreachable
 /// Hermes is tried again at the next look.
 pub async fn migrate(state: &AppState, agent: &AgentConfig) {

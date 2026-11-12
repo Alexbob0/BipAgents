@@ -37,6 +37,7 @@ pub mod main_cli;
 pub mod storage_watch;
 pub mod space_tidy;
 pub mod heavy_work;
+pub mod held_approvals;
 pub mod feature_tips;
 pub mod beta_measures;
 pub mod store;
