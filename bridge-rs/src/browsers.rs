@@ -1219,8 +1219,10 @@ pub fn stale_proxies(config: &Config) -> Vec<String> {
 /// [`stale_proxies`] over the processes given: (its binary, its arguments).
 pub fn stale_of(config: &Config, proxy: &Path, running: &[(PathBuf, Vec<String>)]) -> Vec<String> {
     // the agents, and the spare ones the hub's gateway serves too (agent_pool.rs: their own browser, not in `[agents]`)
+    // and the abandoned ones it still serves until they are removed (a batch cut short, agent_pool.rs `abandoned`)
     let mut served: Vec<String> = config.agents.values().map(|a| a.name.clone()).collect();
     served.extend(crate::agent_pool::spares(config).into_iter().map(|s| s.id));
+    served.extend(crate::agent_pool::abandoned(config));
     let mut out: Vec<String> = Vec::new();
     for (exe, args) in running {
         let shown = exe.to_string_lossy();
@@ -1237,18 +1239,24 @@ pub fn stale_of(config: &Config, proxy: &Path, running: &[(PathBuf, Vec<String>)
     out
 }
 
-/// [`with_proxy`] in each spare agent's profile (agent_pool.rs): not in `[agents]`, so not reconciled, but served by
-/// the hub's gateway, which starts their browser proxy too (9/11 lab: five spares kept the old one after the wave).
+/// [`with_proxy`] in each spare agent's profile (agent_pool.rs), the abandoned ones too until they are removed: not in
+/// `[agents]`, so not reconciled, but served by the hub's gateway, which starts their browser proxy too (9/11 lab: five
+/// spares kept the old one after the wave; 12/11 lab: one spare of a batch cut short at the install did).
 pub fn spares_follow(config: &Config) {
     let proxy = proxy_binary();
     if !Path::new(&proxy).exists() {
         return;
     }
-    for spare in crate::agent_pool::spares(config) {
-        let agent = spare.agent(config, "");
-        let path = crate::agents_admin::profile_folder(config, &agent).join("config.yaml");
+    let mut ids: Vec<String> = crate::agent_pool::spares(config).into_iter().map(|s| s.id).collect();
+    ids.extend(crate::agent_pool::abandoned(config));
+    let profiles = PathBuf::from(crate::agents_admin::install_home(config)).join("profiles");
+    for id in ids {
+        let path = profiles.join(&id).join("config.yaml");
+        if !path.is_file() {
+            continue;
+        }
         if let Err(exc) = crate::profile_files::edit(&path, |data| with_proxy(data, &proxy)) {
-            tracing::warn!(agent = %spare.id, error = %format!("{exc:#}"), "spare's browser proxy not brought up to date");
+            tracing::warn!(agent = %id, error = %format!("{exc:#}"), "spare's browser proxy not brought up to date");
         }
     }
 }
