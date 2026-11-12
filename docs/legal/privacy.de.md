@@ -88,15 +88,12 @@ Mit deinem eigenen Computer oder deinem eigenen Server:
   liest oder schreibt, wird für sie sichtbar: Die App erinnert dich vor dem Teilen daran. Du kannst diese Wahl ändern
   oder das Teilen jederzeit beenden; danach haben sie keinen Zugriff mehr. Dasselbe gilt für einen Agenten, den ein
   Angehöriger mit dir teilt.
-- **Der Familienagent** läuft bei der Person, die ihn erstellt hat. Die Dateien und Fotos, die man ihm schickt, werden
-  auf ihrem Server (oder ihrem Platz) aufbewahrt und sind für alle sichtbar, die den Agenten nutzen, sie selbst
-  eingeschlossen, mit dem Vornamen dessen, der sie geschickt hat; der Agent kann sie nutzen, wann immer einer von ihnen
-  ihm schreibt. Die Nachrichten bleiben in der Unterhaltung jedes Einzelnen. Bei einem gescannten Dokument ohne Text
-  erkennt dein Telefon den Text (auf dem Gerät) und schickt ihn mit der Datei. Dein eigener Server behält eine Datei
-  nur, solange sie gesendet wird. Die Dateien werden gelöscht, wenn der Absender sie löscht, den Agenten nicht mehr
-  nutzt oder sein Haushalt die Familie verlässt, wenn der Agent gelöscht wird, und spätestens
-  nach der Frist, die auf diesem Server für Dateien gewählt ist (standardmäßig 30 Tage). Wie bei allem, was über diesen
-  Server läuft, kann die Person, die ihn verwaltet, technisch darauf zugreifen.
+- **Der Familienagent** hat eine einzige Unterhaltung, gemeinsam für die Mitglieder, die sein Ersteller gewählt hat
+  (die ganze Familie oder einige Mitglieder): Was jeder dort schreibt, und seine Antworten sind für diese Mitglieder
+  sichtbar, und er merkt sich, was jeder ihm sagt. Dateien und Fotos, die man ihm schickt, sind für diese Mitglieder
+  sichtbar und werden 30 Tage beim Ersteller aufbewahrt. Er kann Seiten, Audios und Routinen erstellen: Ihre Ergebnisse
+  erscheinen in der gemeinsamen Unterhaltung. Er greift nie auf die E-Mails, den Kalender, die Gesundheitsdaten oder
+  das persönliche Notizbuch von irgendjemandem zu.
 
 **Mit dem Alles-inklusive-Angebot** tritt dein Platz an die Stelle deines Servers, und Kerfy Studio wählt den Hoster
 und den KI-Router: Abschnitt 5 sagt, wer was sieht.

@@ -84,13 +84,11 @@ Con tu propio ordenador o tu propio servidor:
   en esas conversaciones con sus herramientas (correo, calendario, salud, contactos, Cuaderno…) pasa a ser visible para
   ellos: la app te lo recuerda antes de compartir. Puedes cambiar esta elección o dejar de compartir cuando quieras; una
   vez que dejas de compartir, ya no tienen acceso. Lo mismo vale para un agente que un familiar comparte contigo.
-- **El agente de la familia** funciona en casa de la persona que lo creó. Los archivos y fotos que se le envían se
-  guardan en su servidor (o su plaza) y son visibles para todos los que usan el agente, esa persona incluida, con el
-  nombre de quien los envió; el agente puede usarlos cuando cualquiera de ellos le escribe. Los mensajes se quedan en la
-  conversación de cada uno. Para un documento escaneado sin texto, tu teléfono reconoce su texto (en el dispositivo) y
-  lo envía con el archivo. Tu propio servidor solo guarda un archivo el tiempo de enviarlo. Los archivos se borran
-  cuando quien los envió los elimina, deja de usar el agente o su hogar deja la familia, cuando el agente se elimina y, como muy tarde, al final del plazo elegido en ese servidor para los archivos (30 días por
-  defecto). Como con todo lo que pasa por ese servidor, la persona que lo administra puede acceder a ellos técnicamente.
+- **El agente de la familia** tiene una sola conversación, común a los miembros que eligió quien lo creó (toda la
+  familia o algunos miembros): lo que cada uno escribe ahí y sus respuestas son visibles para esos miembros, y recuerda
+  lo que cada uno le dice. Los archivos y fotos que se le envían son visibles para esos miembros y se guardan 30 días
+  en casa de quien lo creó. Puede hacer páginas, audios y rutinas: sus resultados llegan a la conversación común.
+  Nunca accede al correo, al calendario, a la salud ni al Cuaderno personal de nadie.
 
 **Con la oferta todo incluido**, tu plaza ocupa el lugar de tu servidor, y Kerfy Studio elige el proveedor de
 alojamiento y el enrutador de IA: la sección 5 dice quién ve qué.

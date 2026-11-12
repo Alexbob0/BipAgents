@@ -83,14 +83,11 @@ With your own computer or your own server:
   conversations with its tools (mail, calendar, health, contacts, Notebook…) becomes visible to them: the app reminds
   you before you share. You can change this choice or stop sharing at any time; once you stop, they no longer have
   access. The same goes for an agent a relative shares with you.
-- **The family agent** runs at the person who created it. The files and photos sent to it are kept on that person's
-  server (or place) and are visible to everyone who uses the agent, that person included, with the first name of whoever sent them;
-  the agent can use them whenever any of them writes to it. Messages stay in each person's own conversation. For a
-  scanned document with no text, your phone recognises its text (on the device) and sends it with the file. Your own
-  server only holds a file while it is being sent. Files are deleted when the person who sent them deletes them, stops
-  using the agent or their household leaves the family, when the agent is deleted, and at the
-  latest after the time chosen on that server for files (30 days by default). As with anything on that server, the
-  person who runs it can technically reach them.
+- **The family agent** has a single conversation, shared by the members its creator chose (the whole family or some
+  of them): what each of them writes there and its replies are visible to those members, and it remembers what each
+  person tells it. Files and photos sent to it are visible to those members and kept for 30 days with its creator. It
+  can make pages, audio and routines; their results arrive in the shared conversation. It never reaches anyone's mail,
+  calendar, health data or personal Carnet.
 
 **With the all-included offer**, your place takes the place of your server, and Kerfy Studio chooses the hosting
 provider and the AI router: section 5 says who sees what.

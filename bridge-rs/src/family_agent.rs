@@ -49,7 +49,7 @@
 //!     POST /v1/family-agent/notebook     {op, …} → notebook view
 //!     GET  /v1/family-agent/usage        {members: [{id, name, input, output, conversations}]}
 //!
-//!     view {id, agent, name, category, color, mine, owner, new, since}; the creator's adds {everyone, members}
+//!     view {id, agent, name, category, color, mine, owner, new, since, everyone}; the creator's adds {members}
 //!
 //! Between the bridges (the household key):
 //!
@@ -723,7 +723,8 @@ pub async fn refresh(state: &AppState, force: bool) {
                 continue;
             }
             let offer = json!({"agent": agent, "name": a.get("name"), "category": a.get("category"),
-                               "color": a.get("color"), "shared": true, "family": true});
+                               "color": a.get("color"), "shared": true, "family": true,
+                               "everyone": a.get("everyone").is_none_or(py::truthy)});
             if crate::agent_shares::receive_offer(&config, &household, offer.as_object().unwrap_or(&Map::new())).is_ok() {
                 kept.push(agent);
             }
@@ -748,7 +749,8 @@ fn own_view(config: &Config, agent: &AgentConfig) -> Value {
 fn member_view(id: &str, entry: &Value) -> Value {
     json!({"id": id, "agent": entry.get("agent"), "name": entry.get("name"), "category": entry.get("category"),
            "color": entry.get("color"), "mine": false, "owner": entry.get("owner"),
-           "new": entry.get("new").is_some_and(py::truthy), "since": entry.get("since")})
+           "new": entry.get("new").is_some_and(py::truthy), "since": entry.get("since"),
+           "everyone": entry.get("everyone").is_none_or(py::truthy)})
 }
 
 fn handover_view(config: &Config) -> Value {
@@ -845,7 +847,8 @@ async fn tell_all(state: &AppState, agent: &AgentConfig, shared: bool) {
         let url = crate::family_relay::reach_url(&entry);
         let key = entry.get("key_out").map(py::py_str).unwrap_or_default();
         let body = json!({"agent": agent.name, "name": agent.display_name, "category": agent.category,
-                          "color": agent.color, "shared": shared, "family": true});
+                          "color": agent.color, "shared": shared, "family": true,
+                          "everyone": members(&config, &agent.name).is_none()});
         let told = crate::door_tls::household_client(&state.http, &entry)
             .post(format!("{url}/family/shared"))
             .timeout(Duration::from_secs(10))
@@ -1194,7 +1197,8 @@ async fn served_view(State(state): State<AppState>, headers: HeaderMap) -> ApiRe
     let agents: Vec<Value> = own_agents(&config)
         .iter()
         .filter(|a| crate::agent_shares::shared_with(&config, &a.name).contains(&household))
-        .map(|a| json!({"agent": a.name, "name": a.display_name, "category": a.category, "color": a.color}))
+        .map(|a| json!({"agent": a.name, "name": a.display_name, "category": a.category, "color": a.color,
+                        "everyone": members(&config, &a.name).is_none()}))
         .collect();
     let first = agents.first().cloned().ok_or_else(|| HttpError::new(404, "no family agent for this household"))?;
     Ok(web::ok(json!({"agent": first["agent"], "name": first["name"], "category": first["category"],

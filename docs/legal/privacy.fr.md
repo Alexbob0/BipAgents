@@ -87,15 +87,11 @@ Avec ton propre ordinateur ou ton propre serveur :
   devient visible pour eux : l'app te le rappelle avant de partager. Tu changes ce choix ou arrêtes le partage quand tu
   veux ; une fois le partage arrêté, ils n'y ont plus accès. Il en va de même pour un agent qu'un proche partage avec
   toi.
-- **L'agent de la famille** fonctionne chez la personne qui l'a créé. Les fichiers et photos qu'on lui envoie sont
-  gardés sur son serveur (ou sa place) et visibles de tous ceux qui utilisent l'agent, elle comprise, avec le prénom de qui les a
-  envoyés ; l'agent peut s'en servir quand n'importe lequel d'entre eux lui écrit. Les messages, eux, restent dans la
-  conversation de chacun. Pour un document scanné sans texte, ton téléphone en reconnaît le texte (sur l'appareil) et
-  l'envoie avec le fichier. Ton propre serveur ne garde un fichier que le temps de l'envoyer. Les fichiers sont effacés
-  quand celui qui les a envoyés les supprime, quand il arrête d'utiliser l'agent ou que son foyer quitte la famille,
-  quand l'agent est supprimé, et au plus tard au bout de la durée choisie sur ce serveur pour les
-  fichiers (30 jours par défaut). Comme pour tout ce qui passe par ce serveur, la personne qui l'administre peut
-  techniquement y accéder.
+- **L'agent de la famille** a une seule conversation, commune aux membres choisis par celui qui l'a créé (toute la
+  famille ou certains membres) : ce que chacun y écrit et ses réponses sont visibles de ces membres, et il se souvient
+  de ce que chacun lui dit. Les fichiers et photos qu'on lui envoie sont visibles de ces membres et gardés 30 jours chez
+  celui qui l'a créé. Il peut faire des pages, des audios et des routines : leurs résultats arrivent dans la
+  conversation commune. Il n'accède jamais au courrier, à l'agenda, à la santé ni au Carnet personnel de personne.
 
 **Avec l'offre tout compris**, ta place remplace ton serveur, et Kerfy Studio choisit l'hébergeur et le routeur d'IA :
 la section 5 dit qui voit quoi.

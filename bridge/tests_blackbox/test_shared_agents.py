@@ -13,7 +13,7 @@ from bbkit.common import AUTH, sse
 from test_households_and_peers import household
 
 # A relative's run as Hermes gets it (patch 0018's mark), for the family's agent's members and other households'
-# agents: the bridge tools of RELATIVE_TOOLS and web search, nothing else (test_shared_agent_files.py).
+# agents: the bridge tools of RELATIVE_TOOLS and web search, nothing else.
 RELATIVE_RUN_TOOLS = ["mcp__bipagents__knowledge_read", "mcp__bipagents__knowledge_search", "mcp__bipagents__weather",
                       "mcp__bipagents__route", "mcp__bipagents__map_image", "web_search"]
 SESSION = "api_main"

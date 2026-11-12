@@ -1143,8 +1143,9 @@ async fn offered(State(state): State<AppState>, headers: HeaderMap, body: Bytes)
     Ok(web::ok(json!({"ok": true})))
 }
 
-/// An offer from a linked household kept (or taken back): `{agent, name, category, color, shared, family?}`. The
-/// family's agent (family_agent.rs) is « added » at once, and `new` until the person opened it.
+/// An offer from a linked household kept (or taken back): `{agent, name, category, color, shared, family?,
+/// everyone?}`. The family's agent (family_agent.rs) is « added » at once, `new` until the person opened it, and
+/// `everyone`: for the whole family (true when not said), else for the members its creator chose.
 pub fn receive_offer(config: &Config, household: &str, body: &Dict) -> ApiResult<()> {
     let agent: String = tk::str_or_empty(body.get("agent")).chars().take(64).collect();
     if agent.is_empty()
@@ -1187,6 +1188,8 @@ pub fn receive_offer(config: &Config, household: &str, body: &Dict) -> ApiResult
             entry["family"] = json!(true);
             entry["new"] =
                 before.as_ref().map(|a| a.get("new").cloned().unwrap_or(json!(false))).unwrap_or(json!(true));
+            // for the whole family, or for the members its creator chose (the apps' one-time sentence)
+            entry["everyone"] = json!(body.get("everyone").is_none_or(py::truthy));
         }
         agents.insert(id.clone(), entry);
     })?;

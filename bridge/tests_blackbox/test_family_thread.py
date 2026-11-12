@@ -203,6 +203,10 @@ def test_several_family_agents_each_for_whom_its_creator_chose(bridges, fakes):
     assert ids(b) == ["budget__alex", "famille__alex"]
     assert ids(c) == ["famille__alex"]
     assert sorted(x["id"] for x in c.get("/v1/shared-agents", headers=AUTH).json()["agents"]) == ["famille__alex"]
+    # for whom each one is, on the members' side (the apps' one-time sentence: the whole family, or those who use it)
+    everyone = lambda bridge: {x["id"]: x["everyone"] for x in bridge.get("/v1/shared-agents", headers=AUTH).json()["agents"]}  # noqa: E731
+    assert everyone(b) == {"famille__alex": True, "budget__alex": False}
+    assert {x["id"]: x["everyone"] for x in b.get("/v1/family-agent", headers=AUTH).json()["agents"]} == everyone(b)
     # « Nouveau » per agent
     assert b.post("/v1/family-agent/seen", headers=AUTH, json={"agent": "budget__alex"}).json() == {"ok": True}
     news = {x["id"]: x["new"] for x in b.get("/v1/family-agent", headers=AUTH).json()["agents"]}
@@ -212,9 +216,11 @@ def test_several_family_agents_each_for_whom_its_creator_chose(bridges, fakes):
     whole = a.put("/v1/family-agent/budget/members", headers=AUTH, json={"members": None})
     assert whole.status_code == 200 and whole.json()["everyone"] is True, whole.text
     assert wait(lambda: "budget__alex" in [x["id"] for x in c.get("/v1/shared-agents", headers=AUTH).json()["agents"]])
+    assert wait(lambda: everyone(b).get("budget__alex") is True and everyone(c).get("budget__alex") is True)
     only = a.put("/v1/family-agent/budget/members", headers=AUTH, json={"members": ["paul"]})
     assert only.status_code == 200 and only.json()["everyone"] is False
     assert wait(lambda: "budget__alex" not in [x["id"] for x in b.get("/v1/shared-agents", headers=AUTH).json()["agents"]])
+    assert wait(lambda: everyone(c).get("budget__alex") is False)
     refused = b.post("/v1/threads/main/messages", headers=AUTH,
                      json={"agent": "budget__alex", "client_id": "C0FFEE00-0000-4000-8000-0000000000D1", "text": "Hello"})
     assert refused.status_code in (403, 404, 409), refused.text
