@@ -14,22 +14,27 @@ starten. Sie wird von Kerfy Studio angeboten, dem Herausgeber von BipAgents.
 - **Das geschenkte KI-Guthaben.** 2 € Nutzung des Modells pro Person und pro Monat, mit einer festen Obergrenze. Ist
   dieses Guthaben verbraucht, rufen deine Agenten das Modell bis zum nächsten Monat nicht mehr auf: Dir wird nichts
   berechnet. Es kann weder verkauft noch erstattet werden.
-- **Ungenutzter Platz.** Während der Beta und des geschenkten Monats wird ein Platz, den 7 Tage lang niemand nutzt,
-  für jemand anderen freigegeben. Seinen Platz nutzen heißt: einem Agenten eine Nachricht, eine Sprachnachricht, ein
-  Foto oder eine Datei schicken, einen Live-Anruf führen oder auf eine Karte antworten; Routinen und Überwachungen, die
-  von selbst laufen, zählen nicht. Am 5. Tag sagen wir dir mit einer Benachrichtigung und einer E-Mail Bescheid. Ist
-  der Platz freigegeben, wird nur eine verschlüsselte Kopie deiner Daten 30 Tage aufbewahrt und dann gelöscht. In
-  diesen 30 Tagen bringt „Meinen Platz zurückholen“ in der App ihn wieder in Gang, wenn noch ein Platz frei ist.
+- **Ungenutzter Platz.** Während der Beta und des geschenkten Monats wird ein Platz, dem 7 Tage lang niemand
+  geschrieben hat, für jemand anderen freigegeben. Deinen Agenten schreiben heißt: ihnen eine Nachricht, eine
+  Sprachnachricht, ein Foto oder eine Datei schicken, einen Live-Anruf führen, auf eine Karte antworten oder auf „Platz
+  behalten“ tippen; Routinen und Überwachungen laufen weiter, zählen aber nicht. Am 5. Tag sagen wir dir mit einer
+  Benachrichtigung, einer E-Mail und einem Banner in der App Bescheid, mit dem Knopf „Platz behalten“.
+- **Was die Freigabe ändert.** Der Server deines Platzes wird für jemand anderen zurückgesetzt, und dort bleibt keine
+  Kopie deiner Daten: Nur die verschlüsselte Kopie der Sicherungen deines Platzes wird aufbewahrt und nach 30 Tagen
+  endgültig gelöscht. Wenn du einen Familienagenten erstellt hast, verschwindet seine gemeinsame Unterhaltung für alle
+  seine Mitglieder, bis du deinen Platz zurückholst, und das Teilen deiner Agenten zum Lesen endet ebenfalls.
 - **Ende der Beta.** Die Beta endet am 30. November 2026. Dein Platz bleibt danach bis zum 31. Dezember 2026
   geschenkt. Er wird nie kostenpflichtig, ohne dass du ein Abo wählst. Ohne Abo wird dein Platz danach auf dieselbe
-  Weise freigegeben: Die verschlüsselte Kopie wird 30 Tage aufbewahrt, und wenn du in diesen 30 Tagen ein Abo abschließt,
-  bekommst du deine Agenten zurück. Wir sagen dir per E-Mail und in der App mindestens 7 Tage vor dem Ende des
-  geschenkten Monats Bescheid, und du kannst deine Daten aus der App exportieren, bis dein Platz freigegeben wird.
+  Weise freigegeben. Wir sagen dir per E-Mail und in der App mindestens 7 Tage vor dem Ende des geschenkten Monats
+  Bescheid.
+- **Deine Daten.** Du kannst sie aus der App exportieren, bis dein Platz freigegeben wird. Danach, während der 30 Tage,
+  bekommst du sie nur zurück, indem du deinen Platz zurückholst: mit „Meinen Platz zurückholen“ in der App, wenn noch
+  ein Platz frei ist, oder, nach dem Ende des geschenkten Monats, mit einem Abo.
 - **Ohne Gewähr.** Es ist eine Testversion: Funktionen können fehlen, sich ändern, fehlerhaft sein oder ausfallen, und
   Daten können verloren gehen. Bewahre eine Kopie von dem auf, was dir wichtig ist. Die Beta wird so bereitgestellt,
   wie sie ist, ohne Gewähr, soweit das Gesetz es erlaubt.
 - **Sie kann sich ändern.** Wir können die Beta oder deine Teilnahme ändern oder beenden.
-- **Deine Daten.** Sie werden so verarbeitet, wie es die [Datenschutzerklärung](privacy.de.md) beschreibt. Die
+- **Ihre Verarbeitung.** Deine Daten werden so verarbeitet, wie es die [Datenschutzerklärung](privacy.de.md) beschreibt. Die
   [Nutzungsbedingungen](terms.de.md) und die [Richtlinie zur zulässigen Nutzung](acceptable-use.de.md) gelten ebenfalls.
 - **Die Installation.** Auf dem iPhone läuft die Beta über TestFlight, die Test-App von Apple; auf Android über das
   Testprogramm von Google Play. Deren eigene Bedingungen gelten ebenfalls. Herausgeber der App und dein

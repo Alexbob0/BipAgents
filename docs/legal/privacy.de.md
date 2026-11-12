@@ -114,6 +114,9 @@ Seiten, Audios und Routinen, die er erstellt, erscheinen in dieser Unterhaltung.
   Unterhaltung und seine Dateien für alle gelöscht.
 - **Wer entscheidet.** Die Person, die den Agenten erstellt, wählt seine Mitglieder und seine Werkzeuge und kann ein
   Mitglied entfernen. Auf ihrem eigenen Server ist sie den anderen Mitgliedern gegenüber dafür verantwortlich.
+- **Während der Beta**: Wenn der Platz der Person, die den Agenten erstellt hat, freigegeben wird (Abschnitt 5.14),
+  verschwindet die gemeinsame Unterhaltung für alle Mitglieder, bis sie ihren Platz zurückholt; dasselbe gilt für das
+  Teilen ihrer Agenten zum Lesen.
 
 **Ein persönlicher Agent, den du mit deinen Angehörigen teilst.** Du kannst sie deine Unterhaltungen mit einem deiner
 Agenten lesen lassen (deine Nachrichten, seine Antworten, die Fotos, Dateien, Seiten und Karten), ab dem Teilen, oder
@@ -818,19 +821,28 @@ zum 31. Dezember 2026. Wenn du danach ein Konto erstellst, gilt für dein Konto 
 
 ### 5.14 Ungenutzte Beta-Plätze
 
-Während der Beta und des geschenkten Monats vermerkt dein Platz die Uhrzeit deiner letzten Aktion, nie ihren Inhalt:
-eine Nachricht, eine Sprachnachricht, ein Foto oder eine Datei, die du einem Agenten schickst, ein Live-Anruf, eine
-Karte, auf die du antwortest. Routinen und Überwachungen, die von selbst laufen, zählen nicht. Er schickt sie mit der
-technischen Überwachung an den Guichet (Abschnitt 5.6). Der Guichet nutzt sie nur, um einen Beta-Platz freizugeben,
-den seit 7 Tagen niemand nutzt: Er sagt dir am 5. Tag mit einer Benachrichtigung und einer E-Mail Bescheid, verschickt
-über Proton AG (Abschnitt 5.9); Proton bewahrt die gesendete Nachricht auf, bis wir sie aus dem Postausgang löschen.
-Ein freigegebener Platz geht, wie ein Beta-Platz, dessen geschenkter Monat ohne Abo endet, an jemand anderen: Nur die
-letzte verschlüsselte Kopie seiner Sicherungen, ohne ihren Schlüssel unlesbar (Abschnitt 5.5), wird 30 Tage
-aufbewahrt und dann gelöscht.
+Während der Beta und des geschenkten Monats vermerkt dein Platz die Uhrzeit, zu der du deinen Agenten zuletzt
+geschrieben hast, nie, was du geschrieben hast: eine Nachricht, eine Sprachnachricht, ein Foto oder eine Datei, die du
+einem Agenten schickst, ein Live-Anruf, eine Karte, auf die du antwortest, oder „Platz behalten“. Routinen und
+Überwachungen laufen weiter, zählen aber nicht. Er schickt diese Uhrzeit mit der technischen Überwachung an den
+Guichet (Abschnitt 5.6). Der Guichet nutzt sie nur, um einen Beta-Platz freizugeben, dem seit 7 Tagen niemand
+geschrieben hat. Er sagt dir am 5. Tag mit einer Benachrichtigung, einem Banner in der App und einer E-Mail Bescheid,
+verschickt über Proton AG (Abschnitt 5.9); Proton bewahrt die gesendete Nachricht auf, bis wir sie aus dem
+Postausgang löschen.
 
-**Rechtsgrundlage.** Erfüllung der Beta-Bedingungen (Art. 6 Abs. 1 lit. b DSGVO). **Dauer.** Die Uhrzeit der letzten
-Aktion: bei jeder Aktion ersetzt, mit dem Platz gelöscht; die verschlüsselte Kopie: 30 Tage nach der Freigabe des
-Platzes.
+**Bei der Freigabe** (7 Tage ohne Nachricht oder Ende des geschenkten Monats ohne Abo) wird der Server des Platzes für
+jemand anderen zurückgesetzt, und es bleibt dort keine Kopie deiner Daten (das tägliche Abbild von OVHcloud, das ihn
+enthielt, wird innerhalb von etwa einem Tag ersetzt, Abschnitt 5.5). Nur die verschlüsselte Kopie der Sicherungen
+deines Platzes wird aufbewahrt, bei Scaleway, in Frankreich (Abschnitt 5.5), und nach 30 Tagen endgültig gelöscht.
+Diese Kopie bleibt ein personenbezogenes Datum: Sie kann Gesundheitsdaten und die Nachrichten deiner Angehörigen
+enthalten. Ihr Schlüssel bleibt auf deinem Telefon (und in der Kopie, die dein Wiederherstellungscode öffnet,
+Abschnitt 5.2).
+<!-- TODO (Kerfy Studio, 12/11): ne pas écrire ici « nous ne pouvons pas la lire » tant que ce n'est pas confirmé. -->
+Wenn du einen Familienagenten erstellt hast, verschwindet seine gemeinsame Unterhaltung für alle seine Mitglieder, bis
+du deinen Platz zurückholst, und das Teilen deiner Agenten zum Lesen endet ebenfalls (Abschnitt 2 bis).
+
+**Rechtsgrundlage.** Erfüllung der Beta-Bedingungen (Art. 6 Abs. 1 lit. b DSGVO). **Dauer.** Die Uhrzeit: bei jedem
+Schreiben ersetzt, mit dem Platz gelöscht; die verschlüsselte Kopie: 30 Tage nach der Freigabe des Platzes.
 
 ## 6. Was Kerfy Studio nicht tut
 
@@ -1009,8 +1021,8 @@ des Guichets und des Relays: OVHcloud, in Frankreich. Hoster der Sicherungen: Sc
 | Kündigung auf der Website: die Erklärung (E-Mail, Nummer, Grund, gewünschtes Ende, Datum und Uhrzeit) | 3 Jahre |
 | Kündigung auf der Website: die eingegebene E-Mail-Adresse, um die Versuche zu begrenzen | Höchstens 2 Tage |
 | Inhalt deines Platzes | Während des Abos, dann 30 Tage (3 Tage nach einer nicht fortgesetzten kostenlosen Woche) |
-| Freigegebener Beta-Platz (7 Tage ohne Nutzung oder Ende des geschenkten Monats am 31. Dezember 2026 ohne Abo) | Nur seine verschlüsselte Kopie wird aufbewahrt, 30 Tage nach der Freigabe, dann gelöscht |
-| Uhrzeit deiner letzten Aktion auf einem Beta-Platz | Bei jeder Aktion ersetzt; mit dem Platz gelöscht |
+| Freigegebener Beta-Platz (7 Tage ohne Nachricht an deine Agenten oder Ende des geschenkten Monats am 31. Dezember 2026 ohne Abo) | Server zurückgesetzt; nur die verschlüsselte Kopie seiner Sicherungen wird aufbewahrt, 30 Tage nach der Freigabe, dann endgültig gelöscht |
+| Uhrzeit, zu der du deinen Agenten zuletzt geschrieben hast (Beta-Platz) | Bei jedem Schreiben ersetzt; mit dem Platz gelöscht |
 | Sicherungen | 2 Stunden (alle), dann 48 Stunden (stündlich), 21 Tage (täglich), nichts Älteres; mit dem Platz gelöscht; was du löschst, ist innerhalb von 30 Tagen daraus verschwunden, alle Kopien eingeschlossen |
 | Sicherungsdateien, die ein Platz löscht, vom Guichet beiseitegelegt | 5 Tage |
 | Ersetzte oder gelöschte Versionen bei Scaleway (Sicherungen der Plätze, verschlüsselte Kopien der Datenbank des Guichets) | 1 Tag |
