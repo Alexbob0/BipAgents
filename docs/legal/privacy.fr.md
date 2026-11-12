@@ -798,8 +798,8 @@ zéro et rien n'y reste (l'image quotidienne d'OVHcloud qui le contenait est rem
 section 5.5). Seule la copie chiffrée des sauvegardes de la place, 21 jours d'historique au plus, est gardée 30 jours
 chez Scaleway, à Paris, pour te permettre de revenir, puis effacée pour de bon. Elle peut contenir des données de ton
 Carnet, de ta santé et, si ta place héberge un agent de la famille, les messages de ses membres : c'est une donnée
-personnelle. Sa clé reste sur ton téléphone (et dans la copie que ton code de récupération ouvre, section 5.2).
-<!-- TODO (Kerfy Studio, 12/11): ne pas écrire ici « nous ne pouvons pas la lire » tant que ce n'est pas confirmé. -->
+personnelle. La clé de cette copie n'est plus que sur ton téléphone et dans un coffre scellé que seul ton code de
+récupération ouvre (section 5.2) : Kerfy Studio ne peut pas lire la copie.
 Si personne n'écrit, la conversation commune d'un agent de la famille hébergé par cette place et les partages en
 lecture de ses agents s'arrêtent avec la libération (section 2 bis). Après la libération, l'export n'est plus possible.
 

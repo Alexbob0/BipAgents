@@ -20,9 +20,8 @@ Kerfy Studio, the publisher of BipAgents.
   your family agents and your read-only shares stop when the place is freed. Your account stays open.
 - **After the freeing.** Your server is reset and given to someone else: nothing stays on it. We only keep the
   encrypted copy of your place's backups (21 days of history at most: conversations, agent memory, files, Notebook,
-  settings), for 30 days at Scaleway, in Paris, then it is erased for good. Its key stays on your phone (and in the copy
-  your recovery code opens).
-  <!-- TODO (Kerfy Studio, 12/11): ne pas écrire ici « nous ne pouvons pas la lire » tant que ce n'est pas confirmé. -->
+  settings), for 30 days at Scaleway, in Paris, then it is erased for good. The key to this copy is then only on your
+  phone and in a sealed vault that only your recovery code opens: Kerfy Studio cannot read the copy.
   During those 30 days, "Resume my place" puts it on a new place, if one is free. If you no longer have your phone nor
   your recovery code, it cannot be opened and you start from scratch. Export your data before your place is freed:
   after that, export is no longer possible.

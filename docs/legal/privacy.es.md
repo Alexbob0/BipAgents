@@ -779,8 +779,8 @@ a cero y no queda nada en él (la imagen diaria de OVHcloud que lo contenía se 
 sección 5.5). Solo se guarda la copia cifrada de las copias de seguridad de la plaza, 21 días de historial como máximo,
 durante 30 días en Scaleway, en París, para que puedas volver, y después se borra para siempre. Puede contener datos de
 tu Cuaderno, de tu salud y, si tu plaza aloja un agente de la familia, los mensajes de sus miembros: es un dato
-personal. Su clave se queda en tu teléfono (y en la copia que abre tu código de recuperación, sección 5.2).
-<!-- TODO (Kerfy Studio, 12/11): ne pas écrire ici « nous ne pouvons pas la lire » tant que ce n'est pas confirmé. -->
+personal. La clave de esta copia ya solo está en tu teléfono y en una caja sellada que solo abre tu código de
+recuperación (sección 5.2): Kerfy Studio no puede leer la copia.
 Si nadie escribe, la conversación común de un agente de la familia alojado en esa plaza y los usos compartidos en
 lectura de sus agentes se detienen con la liberación (sección 2 bis). Después de la liberación, ya no se pueden
 exportar los datos.

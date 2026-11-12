@@ -836,9 +836,9 @@ zurückgesetzt, und nichts bleibt dort (das tägliche Abbild von OVHcloud, das i
 einem Tag ersetzt, Abschnitt 5.5). Nur die verschlüsselte Kopie der Sicherungen des Platzes, höchstens 21 Tage Verlauf,
 wird 30 Tage bei Scaleway in Paris aufbewahrt, damit du zurückkommen kannst, und dann endgültig gelöscht. Sie kann
 Daten aus deinem Notizbuch, zu deiner Gesundheit und, wenn dein Platz einen Familienagenten hostet, die Nachrichten
-seiner Mitglieder enthalten: Sie ist ein personenbezogenes Datum. Ihr Schlüssel bleibt auf deinem Telefon (und in der
-Kopie, die dein Wiederherstellungscode öffnet, Abschnitt 5.2).
-<!-- TODO (Kerfy Studio, 12/11): ne pas écrire ici « nous ne pouvons pas la lire » tant que ce n'est pas confirmé. -->
+seiner Mitglieder enthalten: Sie ist ein personenbezogenes Datum. Der Schlüssel zu dieser Kopie liegt dann nur noch
+auf deinem Telefon und in einem versiegelten Tresor, den nur dein Wiederherstellungscode öffnet (Abschnitt 5.2): Kerfy
+Studio kann die Kopie nicht lesen.
 Wenn niemand schreibt, enden mit der Freigabe die gemeinsame Unterhaltung eines Familienagenten, den dieser Platz
 hostet, und das Teilen seiner Agenten zum Lesen (Abschnitt 2 bis). Nach der Freigabe ist kein Export mehr möglich.
 

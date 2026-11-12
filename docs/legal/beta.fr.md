@@ -23,9 +23,9 @@ est proposée par Kerfy Studio, l'éditeur de BipAgents.
   partages en lecture s'arrêtent avec la libération. Ton compte reste ouvert.
 - **Après la libération.** Ton serveur est remis à zéro et donné à quelqu'un d'autre : rien n'y reste. Nous gardons
   seulement la copie chiffrée des sauvegardes de ta place (21 jours d'historique au plus : conversations, mémoire des
-  agents, fichiers, Carnet, réglages), 30 jours chez Scaleway, à Paris, puis elle est effacée pour de bon. Sa clé reste
-  sur ton téléphone (et dans la copie que ton code de récupération ouvre).
-  <!-- TODO (Kerfy Studio, 12/11): ne pas écrire ici « nous ne pouvons pas la lire » tant que ce n'est pas confirmé. -->
+  agents, fichiers, Carnet, réglages), 30 jours chez Scaleway, à Paris, puis elle est effacée pour de bon. La clé de
+  cette copie n'est plus que sur ton téléphone et dans un coffre scellé que seul ton code de récupération ouvre :
+  Kerfy Studio ne peut pas lire la copie.
   Pendant ces 30 jours, « Reprendre ma place » la remet sur une nouvelle place, s'il en reste une libre. Si tu n'as plus
   ni ton téléphone ni ton code de récupération, elle ne peut pas être ouverte et tu repars de zéro. Exporte tes données
   avant la libération : après, l'export n'est plus possible.

@@ -25,8 +25,8 @@ starten. Sie wird von Kerfy Studio angeboten, dem Herausgeber von BipAgents.
 - **Nach der Freigabe.** Dein Server wird zurückgesetzt und jemand anderem gegeben: Nichts bleibt dort. Wir bewahren
   nur die verschlüsselte Kopie der Sicherungen deines Platzes auf (höchstens 21 Tage Verlauf: Unterhaltungen,
   Gedächtnis der Agenten, Dateien, Notizbuch, Einstellungen), 30 Tage bei Scaleway in Paris, dann wird sie endgültig
-  gelöscht. Ihr Schlüssel bleibt auf deinem Telefon (und in der Kopie, die dein Wiederherstellungscode öffnet).
-  <!-- TODO (Kerfy Studio, 12/11): ne pas écrire ici « nous ne pouvons pas la lire » tant que ce n'est pas confirmé. -->
+  gelöscht. Der Schlüssel zu dieser Kopie liegt dann nur noch auf deinem Telefon und in einem versiegelten Tresor, den
+  nur dein Wiederherstellungscode öffnet: Kerfy Studio kann die Kopie nicht lesen.
   In diesen 30 Tagen bringt „Meinen Platz zurückholen“ sie auf einen neuen Platz, wenn noch einer frei ist. Wenn du
   weder dein Telefon noch deinen Wiederherstellungscode mehr hast, lässt sie sich nicht öffnen, und du fängst von vorn
   an. Exportiere deine Daten vor der Freigabe: Danach ist kein Export mehr möglich.

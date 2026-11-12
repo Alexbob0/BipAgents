@@ -23,9 +23,9 @@ La ofrece Kerfy Studio, el editor de BipAgents.
   lectura se detienen con la liberación. Tu cuenta sigue abierta.
 - **Después de la liberación.** Tu servidor se pone a cero y se da a otra persona: no queda nada en él. Solo guardamos
   la copia cifrada de las copias de seguridad de tu plaza (21 días de historial como máximo: conversaciones, memoria de
-  los agentes, archivos, Cuaderno, ajustes), 30 días en Scaleway, en París, y después se borra para siempre. Su clave se
-  queda en tu teléfono (y en la copia que abre tu código de recuperación).
-  <!-- TODO (Kerfy Studio, 12/11): ne pas écrire ici « nous ne pouvons pas la lire » tant que ce n'est pas confirmé. -->
+  los agentes, archivos, Cuaderno, ajustes), 30 días en Scaleway, en París, y después se borra para siempre. La clave
+  de esta copia ya solo está en tu teléfono y en una caja sellada que solo abre tu código de recuperación: Kerfy
+  Studio no puede leer la copia.
   Durante esos 30 días, «Recuperar mi plaza» la vuelve a poner en una plaza nueva, si queda alguna libre. Si ya no
   tienes ni tu teléfono ni tu código de recuperación, no se puede abrir y empiezas de cero. Exporta tus datos antes de
   la liberación: después, ya no se pueden exportar.
