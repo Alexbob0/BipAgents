@@ -1,0 +1,156 @@
+{{>top}}
+<!-- ============================================================ GET A CODE (the guichet's /v1/beta/challenge and /v1/beta/request) -->
+<link rel="stylesheet" href="/assets/altcha/altcha.css?v={{version}}">
+<script type="module" src="/assets/altcha/altcha.min.js?v={{version}}"></script>
+<style>
+.code-wrap { max-width: 860px; margin: 0 auto; }
+.code-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.code-choice { display: flex; flex-direction: column; gap: 10px; padding: 28px; border-radius: var(--radius); background: var(--card);
+  box-shadow: var(--shadow), inset 0 0 0 2px var(--line); color: var(--ink); text-decoration: none; transition: transform .2s, box-shadow .2s; }
+.code-choice:hover { transform: translateY(-3px); box-shadow: var(--shadow-big), inset 0 0 0 2px var(--ink); }
+.code-choice[aria-pressed="true"] { box-shadow: var(--shadow-big), inset 0 0 0 2px var(--ink); background: linear-gradient(180deg, var(--tint), var(--card) 70%); }
+.code-choice i { width: 56px; height: 56px; }
+.code-choice h2 { font-size: clamp(22px, 2.6vw, 28px); line-height: 1.15; letter-spacing: -.02em; }
+.code-choice p { color: var(--ink2); flex: 1; }
+.code-choice .go { font-weight: 900; color: var(--deep); }
+.code-form { margin-top: 24px; padding: 28px; border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow); }
+.code-form:not(.open):not(:target) { display: none; }
+.code-form h2 { font-size: 24px; letter-spacing: -.02em; }
+.code-form form { display: grid; gap: 14px; margin-top: 16px; }
+.code-form label { font-weight: 800; }
+.code-form input[type="email"] { width: 100%; height: 52px; padding: 0 18px; border: 0; border-radius: 16px; font: inherit; font-size: 17px;
+  color: var(--ink); background: var(--ground); box-shadow: inset 0 0 0 1.5px var(--line); }
+.code-form input[type="email"]:focus { outline: 2px solid var(--ink); outline-offset: 1px; }
+.code-form altcha-widget { --altcha-max-width: 100%; --altcha-border-radius: 16px; }
+.code-form button { justify-self: start; border: 0; cursor: pointer; font: inherit; }
+.code-form button[disabled] { opacity: .6; cursor: progress; }
+.code-say { min-height: 1.5em; font-weight: 800; }
+.code-say[data-tone="ok"] { color: var(--green-deep); }
+.code-say[data-tone="no"] { color: var(--coral-deep); }
+.code-fine { color: var(--muted); font-size: 14px; }
+@media (max-width: 680px) {
+  .code-choices { grid-template-columns: 1fr; }
+  .code-choice, .code-form { padding: 22px; }
+  .code-form button { justify-self: stretch; }
+}
+</style>
+<section class="section page-section" id="code">
+  <div class="section-head">
+    <p class="chip-beta">{{code.kicker}}</p>
+    <h1 class="page-h1">{{code.title}}</h1>
+  </div>
+  <div class="code-wrap">
+    <div class="code-choices">
+      <a class="code-choice" href="{{installhref}}" style="--tint:var(--teal-tint);--deep:var(--teal-deep)">
+        <i data-bip-static="work" aria-hidden="true"></i>
+        <h2>{{code.ownTitle}}</h2>
+        <p>{{code.ownText}}</p>
+        <span class="go">{{code.ownCta}} →</span>
+      </a>
+      <a class="code-choice" id="choose-place" href="#place" aria-controls="place" aria-pressed="false" style="--tint:var(--coral-tint);--deep:var(--coral-deep)">
+        <i data-bip-static="home" aria-hidden="true"></i>
+        <h2>{{code.placeTitle}}</h2>
+        <p>{{code.placeText}}</p>
+        <span class="go">{{code.placeCta}} →</span>
+      </a>
+    </div>
+    <div class="code-form" id="place">
+      <h2>{{code.formTitle}}</h2>
+      <form id="code-form" novalidate>
+        <label for="code-email">{{code.email}}</label>
+        <input id="code-email" name="email" type="email" required autocomplete="email" inputmode="email" maxlength="254" spellcheck="false">
+        <altcha-widget id="code-check" auto="onfocus" name="altcha"></altcha-widget>
+        <button class="pill pill-ink" type="submit" id="code-send">{{code.send}}</button>
+        <p class="code-say" id="code-say" role="status" aria-live="polite"></p>
+        <p class="code-fine">{{code.fine}} <a href="https://kerfystudio.com{{legalprefix}}/privacy/">{{code.privacy}}</a></p>
+      </form>
+    </div>
+  </div>
+</section>
+<script>
+// the page's data (#site-data) comes after this script, in the footer; the widget's module runs before this event
+document.addEventListener("DOMContentLoaded", () => {
+  const data = JSON.parse(document.getElementById("site-data").textContent);
+  const t = data.code, lang = data.lang;
+  // a local copy of the site may ask another guichet (?api=http://127.0.0.1:…), the real site only its own
+  const local = ["127.0.0.1", "localhost"].includes(location.hostname);
+  const api = ((local && new URLSearchParams(location.search).get("api")) || data.guichet).replace(/\/$/, "");
+  const $ = (id) => document.getElementById(id);
+  const form = $("code-form"), email = $("code-email"), widget = $("code-check"), send = $("code-send"), say = $("code-say");
+  const box = $("place"), choose = $("choose-place");
+
+  // the widget: its proof-of-work worker and texts from this site, nothing fetched elsewhere
+  const altcha = globalThis.$altcha;
+  if (altcha) {
+    altcha.algorithms.set("PBKDF2/SHA-256", () => new Worker(`/assets/altcha/pbkdf2.js?v=${data.version}`));
+    altcha.i18n.set(lang, { ...(altcha.i18n.get("en") || {}), ...t.widget });
+  }
+  widget.setAttribute("language", lang);
+  widget.setAttribute("challenge", `${api}/v1/beta/challenge`);
+  if (widget.configure) widget.configure({ hideFooter: true, hideLogo: true, challenge: `${api}/v1/beta/challenge`, language: lang });
+
+  function open(focus) {
+    box.classList.add("open");
+    choose.setAttribute("aria-pressed", "true");
+    if (focus) {
+      box.scrollIntoView({ behavior: "smooth", block: "start" });
+      setTimeout(() => email.focus({ preventScroll: true }), 300);
+    }
+  }
+  choose.addEventListener("click", (e) => { e.preventDefault(); history.replaceState(null, "", "#place"); open(true); });
+  if (location.hash === "#place") open(false);
+
+  function tell(text, tone) { say.textContent = text; say.dataset.tone = tone || ""; }
+
+  // the guichet's refusals, in the page's words (beta.rs request)
+  function why(status, detail) {
+    if (status === 400) return /disposable/.test(detail) ? t.disposable : t.badEmail;
+    if (status === 403) return t.robot;
+    if (status === 429) return /today/.test(detail) ? t.today : t.network;
+    if (status === 410) return t.full;
+    return t.later;
+  }
+
+  // the proof: already there, being found (the widget starts when the form gets the focus), or asked now
+  function proved() {
+    const state = widget.getState ? widget.getState() : "";
+    if (state === "verified") return Promise.resolve();
+    if (state !== "verifying") return widget.verify();
+    return new Promise((resolve) => {
+      const changed = (ev) => {
+        const s = ev.detail && ev.detail.state;
+        if (s && s !== "verifying") { widget.removeEventListener("statechange", changed); resolve(); }
+      };
+      widget.addEventListener("statechange", changed);
+    });
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!email.value.trim() || !email.checkValidity()) { tell(t.badEmail, "no"); email.focus(); return; }
+    send.disabled = true;
+    tell(t.sending);
+    try {
+      await proved();
+      const proof = (form.elements.altcha && form.elements.altcha.value) || "";
+      if (!proof) throw Object.assign(new Error("no proof"), { status: 403 });
+      // JSON as text/plain: a simple request, no preflight; no cookie is sent or set
+      const res = await fetch(`${api}/v1/beta/request`, {
+        method: "POST", headers: { "content-type": "text/plain;charset=UTF-8" }, credentials: "omit", cache: "no-store",
+        body: JSON.stringify({ email: email.value.trim(), lang, altcha: proof }),
+      });
+      const answer = await res.json().catch(() => ({}));
+      if (!res.ok || !answer.sent) { tell(why(res.status, answer.detail || ""), "no"); return; }
+      tell(t.sent, "ok");
+      form.reset();
+    } catch (err) {
+      tell(err && err.status === 403 ? t.robot : t.later, "no");
+    } finally {
+      send.disabled = false;
+      // each proof is used once: a fresh one for the next try
+      if (widget.reset) widget.reset();
+    }
+  });
+});
+</script>
+{{>foot}}

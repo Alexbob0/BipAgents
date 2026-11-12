@@ -1,0 +1,47 @@
+{
+  "page": {
+    "code": {
+      "title": "Einen Code bekommen — BipAgents",
+      "description": "Mach bei der BipAgents-Beta mit: mit deinem eigenen Hermes, ohne Code und ohne Limit, oder mit einem Alles-inklusive-Platz, dein Code kommt per E-Mail."
+    }
+  },
+  "code": {
+    "kicker": "Beta",
+    "title": "Wie möchtest du BipAgents nutzen?",
+    "ownTitle": "Ich will mein Hermes nutzen",
+    "ownText": "Auf deinem Computer oder deinem Server: ein Befehl, dann scannst du den QR-Code in der App. Ohne Code, ohne Limit.",
+    "ownCta": "So geht’s",
+    "placeTitle": "Ich will einen Platz",
+    "placeText": "Dein privater Bereich auf einem Server in Europa, mit dem KI-Guthaben. Kostenlos während der Beta.",
+    "placeCta": "Meinen Code bekommen",
+    "formTitle": "Dein Code kommt per E-Mail",
+    "email": "Deine E-Mail",
+    "send": "Meinen Code bekommen",
+    "fine": "Ein Code pro Adresse.",
+    "privacy": "Datenschutz",
+    "js": {
+      "sending": "Wird gesendet…",
+      "sent": "Ist unterwegs! Schau in dein Postfach, auch in den Spam-Ordner.",
+      "badEmail": "Diese Adresse sieht nicht richtig aus.",
+      "disposable": "Wegwerf-Adressen gehen nicht: Nimm deine übliche Adresse.",
+      "robot": "Die Prüfung hat nicht geklappt. Versuch es noch mal.",
+      "network": "Ein Code pro Tag aus diesem Netz. Komm morgen wieder.",
+      "today": "Heute gibt es keine Codes mehr. Komm morgen wieder.",
+      "full": "Im Moment sind keine Plätze mehr frei.",
+      "later": "Das geht gerade nicht. Versuch es später noch mal.",
+      "widget": {
+        "label": "Ich bin kein Roboter",
+        "verifying": "Wird geprüft…",
+        "verified": "Geprüft",
+        "verify": "Prüfen",
+        "verificationRequired": "Setz zuerst das Häkchen.",
+        "waitAlert": "Wird geprüft, einen Moment.",
+        "error": "Die Prüfung hat nicht geklappt. Versuch es noch mal.",
+        "expired": "Die Prüfung ist abgelaufen. Versuch es noch mal.",
+        "loading": "Wird geladen…",
+        "reload": "Neu starten",
+        "cancel": "Abbrechen"
+      }
+    }
+  }
+}

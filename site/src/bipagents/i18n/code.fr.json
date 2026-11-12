@@ -1,0 +1,47 @@
+{
+  "page": {
+    "code": {
+      "title": "Obtenir un code — BipAgents",
+      "description": "Rejoins la bêta de BipAgents : avec ton propre Hermes, sans code ni limite, ou avec une place tout compris, ton code arrive par e-mail."
+    }
+  },
+  "code": {
+    "kicker": "Bêta",
+    "title": "Comment veux-tu utiliser BipAgents ?",
+    "ownTitle": "Je veux utiliser mon Hermes",
+    "ownText": "Sur ton ordinateur ou ton serveur : une commande, puis tu scannes le QR code dans l’app. Sans code, sans limite.",
+    "ownCta": "Voir comment",
+    "placeTitle": "Je veux une place",
+    "placeText": "Ton espace privé sur un serveur en Europe, avec le crédit d’IA. Gratuit pendant la bêta.",
+    "placeCta": "Recevoir mon code",
+    "formTitle": "Ton code arrive par e-mail",
+    "email": "Ton e-mail",
+    "send": "Recevoir mon code",
+    "fine": "Un code par adresse.",
+    "privacy": "Confidentialité",
+    "js": {
+      "sending": "Envoi…",
+      "sent": "C’est parti ! Regarde ta boîte mail, et les indésirables.",
+      "badEmail": "Cette adresse ne semble pas bonne.",
+      "disposable": "Les adresses jetables ne marchent pas : mets ton adresse habituelle.",
+      "robot": "La vérification n’a pas marché. Réessaie.",
+      "network": "Un code par jour depuis ce réseau. Reviens demain.",
+      "today": "Plus de code pour aujourd’hui. Reviens demain.",
+      "full": "Il n’y a plus de place pour le moment.",
+      "later": "Ce n’est pas possible pour le moment. Réessaie plus tard.",
+      "widget": {
+        "label": "Je ne suis pas un robot",
+        "verifying": "Vérification…",
+        "verified": "Vérifié",
+        "verify": "Vérifier",
+        "verificationRequired": "Coche la case d’abord.",
+        "waitAlert": "Vérification en cours, un instant.",
+        "error": "La vérification n’a pas marché. Réessaie.",
+        "expired": "La vérification a expiré. Réessaie.",
+        "loading": "Chargement…",
+        "reload": "Recommencer",
+        "cancel": "Annuler"
+      }
+    }
+  }
+}
