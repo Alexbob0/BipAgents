@@ -303,6 +303,10 @@ the app yourself with your own Apple account, Kerfy Studio's relay is not used.
   address, not your name, not the agent's name.** Nothing is sent until you tap "Send". On the way, the relay sees
   your phone's IP address and only uses it to limit abuse (section 4.1). Since the report contains no way to reach
   you, we cannot answer it: write to support if you expect an answer.
+- **Report this message** (long press on another person's message, in a family agent's shared conversation or in a
+  conversation a relative shares with you) takes the same path, with the same content, plus **that person's first
+  name as shown and the agent's name**. They are not told. Legal basis: Kerfy Studio's legitimate interest in
+  moderating what users exchange with each other.
 - **If the relay does not answer**, the app offers to send the same report by email: we then also receive your email
   address.
 

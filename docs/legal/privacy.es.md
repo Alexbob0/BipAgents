@@ -311,6 +311,10 @@ la app tú mismo con tu propia cuenta de Apple, no se usa el relé de Kerfy Stud
   pulsas «Enviar». El relé ve de paso la dirección IP de tu teléfono y solo la usa para limitar abusos (sección 4.1).
   Como la denuncia no contiene ningún medio para contactarte, no podemos responderla: escribe al soporte si esperas
   una respuesta.
+- **Denunciar este mensaje** (mantener pulsado el mensaje de otra persona, en la conversación común de un agente de
+  la familia o en una conversación que un familiar comparte contigo) sigue el mismo camino, con el mismo contenido,
+  más **el nombre de pila de esa persona tal como aparece y el nombre del agente**. No se le avisa. Base legal: el
+  interés legítimo de Kerfy Studio en moderar lo que los usuarios intercambian entre sí.
 - **Si el relé no responde**, la app te propone enviar la misma denuncia por correo: entonces también recibimos tu
   dirección de correo.
 

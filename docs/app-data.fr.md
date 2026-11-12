@@ -274,6 +274,7 @@ Il n’est utilisé que si la version de l’app définit un hôte de relais (`B
   (`relay/src/seal.rs`). Le jeton de relais est donné aux bridges qui n’ont pas leur propre clé de notification, et au
   guichet. L’inscription a lieu une fois les notifications autorisées, et seulement si un bridge, l’offre ou le compte
   en a besoin.
+- « Signaler ce message » (le message d'une autre personne dans une conversation partagée) passe par le même `POST /v1/report` : son texte commence par « Message d'une personne (pas de l'agent), écrit par « <prénom affiché> », agent « <nom> » : », suivi du message (7 000 caractères au plus) ; le reste est identique.
 - `POST /v1/report` (« Signaler cette réponse ») : **le texte de la réponse signalée**, le motif, le commentaire
   facultatif, la catégorie de l’agent, la version de l’app, le modèle du téléphone (iOS : identifiant matériel comme
   `iPhone17,1` ; Android : fabricant + modèle), la plateforme et la langue. Il n’y a ni nom, ni adresse, ni compte. Le

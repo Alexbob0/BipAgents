@@ -322,6 +322,10 @@ l'oublie. Si tu compiles l'app toi-même avec ton propre compte Apple, le relais
   appuyé sur « Envoyer ». Le relais voit au passage l'adresse IP de ton téléphone et ne s'en sert que pour limiter
   les abus (section 4.1). Comme le signalement ne contient aucun moyen de te joindre, nous ne pouvons pas y
   répondre : écris au support si tu attends une réponse.
+- **Signaler ce message** (appui long sur le message d'une autre personne, dans la conversation commune d'un agent de la
+  famille ou dans une conversation qu'un proche te partage) suit le même chemin, avec le même contenu, plus **le
+  prénom de cette personne tel qu'il s'affiche et le nom de l'agent**. Elle n'en est pas prévenue. Base légale :
+  l'intérêt légitime de Kerfy Studio à modérer ce que les utilisateurs échangent entre eux.
 - **Si le relais ne répond pas**, l'app te propose d'envoyer le même signalement par e-mail : nous recevons alors
   aussi ton adresse e-mail.
 

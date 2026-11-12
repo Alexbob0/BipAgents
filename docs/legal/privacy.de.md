@@ -333,6 +333,11 @@ Relay von Kerfy Studio nicht genutzt.
   bevor du auf „Senden“ tippst. Das Relay sieht dabei die IP-Adresse deines Telefons und nutzt sie nur, um Missbrauch
   zu begrenzen (Abschnitt 4.1). Da die Meldung keine Möglichkeit enthält, dich zu erreichen, können wir nicht darauf
   antworten: Schreib dem Support, wenn du eine Antwort erwartest.
+- **Diese Nachricht melden** (lange auf die Nachricht einer anderen Person drücken, im gemeinsamen Gespräch eines
+  Familienagenten oder in einem Gespräch, das ein Angehöriger mit dir teilt) nimmt denselben Weg, mit demselben
+  Inhalt, dazu **den Vornamen dieser Person, wie er angezeigt wird, und den Namen des Agenten**. Sie wird nicht
+  benachrichtigt. Rechtsgrundlage: das berechtigte Interesse von Kerfy Studio, zu moderieren, was Nutzer
+  untereinander austauschen.
 - **Wenn das Relay nicht antwortet**, bietet dir die App an, dieselbe Meldung per E-Mail zu schicken: Dann erhalten
   wir auch deine E-Mail-Adresse.
 

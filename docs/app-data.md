@@ -257,6 +257,7 @@ Used only when the build sets a relay host (`BIPPushRelayHost` / `push.relayHost
   (the token sealed with XChaCha20-Poly1305, under a key only the relay holds; `relay/src/seal.rs`). The relay token
   goes to bridges that have no push key of their own, and to the guichet. Registration happens once notifications are
   allowed, and only when one of the bridges, the offer or the account needs it.
+- "Report this message" (another person's message in a shared conversation) uses the same `POST /v1/report`: its text starts with « Message d'une personne (pas de l'agent), écrit par « <shown first name> », agent « <name> » : » followed by the message (at most 7,000 characters); the rest is the same.
 - `POST /v1/report` ("Report this reply"): **the text of the reported reply**, the reason, the optional comment, the
   agent's category, app version, phone model (iOS: hardware id such as `iPhone17,1`; Android: manufacturer + model),
   platform, language. There is no name, address or account. The relay forwards it to the guichet's `/v1/reports`
