@@ -862,13 +862,14 @@ pub async fn from_spare(
 
 /// `n` spares made as one batch (agent_pool.rs `refill`): their profiles a few at a time, served, their browser and
 /// uploads, the bridge's tools; one wait for their tools to be listed and at most one restart of the hub's gateway,
-/// only when all its agents are idle. Those made are returned (a failed one is left out, its folder hidden).
+/// only when all its agents are idle. Those made are returned (a failed one is left out), with every id tried: each
+/// is held (agent_pool.rs `hold`) until the caller has put the made ones in the pool and `release`s them all.
 pub async fn make_spares(
     shared: &SharedConfig,
     n: usize,
     http: &reqwest::Client,
     run: &Run,
-) -> Vec<crate::agent_pool::Spare> {
+) -> (Vec<crate::agent_pool::Spare>, Vec<String>) {
     let config = shared.get();
     let started = std::time::Instant::now();
     // replaced when it is taken; the guide's daily personality meanwhile
@@ -876,12 +877,14 @@ pub async fn make_spares(
     let items: Vec<(PlannedAgent, AgentConfig)> = (0..n)
         .map(|_| {
             let id = crate::agent_pool::new_id();
+            crate::agent_pool::hold(&id);
             let planned =
                 PlannedAgent { profile: id.clone(), name: String::new(), soul: soul.clone(), description: String::new() };
             let agent = hub_agent(&config, &id, "", &crate::py::token_urlsafe(32));
             (planned, agent)
         })
         .collect();
+    let tried: Vec<String> = items.iter().map(|(p, _)| p.profile.clone()).collect();
     let mut preparing: Vec<BoxFuture<'_, anyhow::Result<()>>> = Vec::new();
     for (planned, agent) in &items {
         preparing.push(Box::pin(prepare_profile(shared, planned, agent, run, false)));
@@ -925,7 +928,7 @@ pub async fn make_spares(
         }
     }
     tracing::info!(target: "bipbridge::agents", spares = made.len(), seconds = format!("{:.1}", started.elapsed().as_secs_f64()), "spare agents made");
-    made.iter().map(crate::agent_pool::Spare::of).collect()
+    (made.iter().map(crate::agent_pool::Spare::of).collect(), tried)
 }
 
 /// The hub profile of a planned agent: made, given its key and personality, served, then saved in the bridge's

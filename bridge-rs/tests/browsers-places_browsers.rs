@@ -359,6 +359,53 @@ fn after_an_update_the_agents_browser_follows_the_bridges_own_proxy() {
     }
 }
 
+#[tokio::test]
+async fn a_spare_cut_short_follows_the_new_proxy_then_goes() {
+    // 12/11 lab: the installer restarted the bridge while a batch of spares was made; agent_06161a63's browser was set
+    // up, the pool file never had it. After the wave the hub's gateway still ran the public release's proxy for it.
+    let s = setup();
+    let new = PathBuf::from("/home/p/.local/share/bipagents/bridge/new/bip-browser-mcp");
+    let old = "/home/p/.local/share/bipagents/bridge/old/bip-browser-mcp";
+    let (cut, pooled, making) = ("agent_06161a63", "agent_1a2b3c4d", "agent_5e6f7a8b");
+    for id in [cut, pooled, making] {
+        let profile = s.hub.join("profiles").join(id);
+        std::fs::create_dir_all(&profile).unwrap();
+        std::fs::write(profile.join("config.yaml"), format!("mcp_servers:\n  stealth:\n    command: {old}\n")).unwrap();
+        std::fs::create_dir_all(s.tmp.join("browsers").join(id)).unwrap();
+    }
+    std::fs::write(s.tmp.join("spare-agents.json"), format!(r#"[{{"id": "{pooled}", "key": "{}"}}]"#, "s".repeat(32))).unwrap();
+    bipbridge::agent_pool::hold(making); // a batch being made now by this bridge: not abandoned
+    // a tombstone (Hermes' profiles/.deleted/) is never an abandoned spare
+    std::fs::create_dir_all(s.hub.join("profiles").join(".deleted").join("agent_99999999")).unwrap();
+    std::fs::create_dir_all(s.hub.join("profiles").join("agent_99999999")).unwrap();
+    assert_eq!(bipbridge::agent_pool::abandoned(&s.config), [cut]);
+    // its proxy is seen as stale (the tick restarts the hub's gateway through a hub agent, once idle)
+    let settings = |id: &str| s.tmp.join("browsers").join(id).join("mcp.json").to_string_lossy().into_owned();
+    let proc = |exe: &str, args: &[&str]| (PathBuf::from(exe), args.iter().map(|a| a.to_string()).collect::<Vec<_>>());
+    assert_eq!(browsers::stale_of(&s.config, &new, &[proc(old, &[old, &settings(cut)])]), [cut]);
+    // and its profile names this bridge's proxy, so the gateway's restart starts the new one
+    browsers::spares_follow(&s.config);
+    let command = |id: &str| {
+        let text = std::fs::read_to_string(s.hub.join("profiles").join(id).join("config.yaml")).unwrap();
+        pyyaml::to_json(&pyyaml::load(&text).unwrap())["mcp_servers"]["stealth"]["command"].clone()
+    };
+    if Path::new(&browsers::proxy_binary()).exists() {
+        assert_eq!(command(cut), browsers::proxy_binary());
+        assert_eq!(command(pooled), browsers::proxy_binary());
+        assert_eq!(command(making), old); // the batch's own, written when made
+    }
+    // then removed as a deleted agent is: its Hermes profile and its browser; the others kept
+    assert_eq!(bipbridge::agent_pool::discard_abandoned(&s.config, &s.run).await, [cut]);
+    let ran = s.ran();
+    assert!(ran.contains(&v(&["/opt/hermes", "profile", "delete", cut, "--yes"])), "{ran:?}");
+    assert!(!ran.iter().any(|c| c.iter().any(|a| a == pooled || a == making)), "{ran:?}");
+    assert!(!s.tmp.join("browsers").join(cut).exists());
+    assert!(s.tmp.join("browsers").join(pooled).exists() && s.tmp.join("browsers").join(making).exists());
+    // once its batch is done, a spare that didn't make it into the pool is abandoned too
+    bipbridge::agent_pool::release(&[making.to_string()]);
+    assert!(bipbridge::agent_pool::abandoned(&s.config).contains(&making.to_string()));
+}
+
 #[test]
 fn a_unit_written_before_the_policy_gets_its_mounts_once() {
     let place = Path::new("/home/x/.local/share/bipagents/browsers/budget");

@@ -16,9 +16,10 @@
 //! internal/notes/instant-agents.md): the model and key a spare was cloned with are brought in line with the hub's
 //! when it is taken (`follow_hub_model`), without a restart.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
 use serde::{Deserialize, Serialize};
 
@@ -104,6 +105,26 @@ impl Spare {
 /// One reader/writer of the pool file at a time.
 static FILE_LOCK: Mutex<()> = Mutex::new(());
 
+/// Spares this bridge is making or has taken: their profile is in neither list for a while (made, not yet in the
+/// pool; taken, not yet in `[agents]`), and is never [`abandoned`].
+static HELD: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
+
+fn held() -> std::sync::MutexGuard<'static, HashSet<String>> {
+    HELD.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// A spare being made (agents_admin.rs `make_spares`): not [`abandoned`] until [`release`]d.
+pub fn hold(id: &str) {
+    held().insert(id.to_string());
+}
+
+pub fn release(ids: &[String]) {
+    let mut held = held();
+    for id in ids {
+        held.remove(id);
+    }
+}
+
 fn pool_path(config: &Config) -> Option<PathBuf> {
     let source = config.source_path.as_deref().filter(|p| !p.is_empty())?;
     Some(Path::new(source).parent()?.join(POOL_FILE))
@@ -161,11 +182,74 @@ pub fn take(config: &Config) -> Option<Spare> {
         return None;
     }
     let taken = kept.remove(0);
+    held().insert(taken.id.clone()); // in no list until `[agents]` has it: never abandoned meanwhile
     if let Err(exc) = write_raw(config, &kept) {
         tracing::warn!(error = %exc, "spare agents' file not written: the spare is not taken");
         return None;
     }
     Some(taken)
+}
+
+/// The hub's spare profiles (`agent_<8 hex>`) that no list has: not in the pool, not in `[agents]`, not being made or
+/// taken by this bridge. A batch cut short leaves them: 12/11 lab, the installer restarted the bridge 3 s after
+/// `agent_06161a63`'s browser was set up; the gateway still served that profile (its tools refused, « unknown agent »)
+/// and its browser proxy stayed the public release's after the wave, as no update looked at it.
+pub fn abandoned(config: &Config) -> Vec<String> {
+    if !config.hermes.enabled() {
+        return Vec::new();
+    }
+    let _lock = FILE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let pooled: HashSet<String> = read_raw(config).into_iter().map(|s| s.id).collect();
+    let held = held();
+    let root = PathBuf::from(crate::agents_admin::install_home(config)).join("profiles");
+    let mut out: Vec<String> = std::fs::read_dir(&root)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|id| {
+            is_spare_id(id)
+                && !config.agents.contains_key(id)
+                && !pooled.contains(id)
+                && !held.contains(id)
+                && !root.join(".deleted").join(id).exists()
+        })
+        .collect();
+    out.sort();
+    out
+}
+
+/// The [`abandoned`] spares removed as a deleted agent is (agents_admin.rs `delete_agent`: its profile, browser,
+/// volumes, tools' token). Returns their ids.
+pub async fn discard_abandoned(config: &Config, run: &Run) -> Vec<String> {
+    let ids = abandoned(config);
+    for id in &ids {
+        let mut env = std::collections::BTreeMap::new();
+        if !config.hermes.home.is_empty() {
+            env.insert("HERMES_HOME".to_string(), config.hermes.home.clone());
+        }
+        let command = vec![config.hermes.bin.clone(), "profile".into(), "delete".into(), id.clone(), "--yes".into()];
+        if let Err(exc) = run(command, env).await {
+            // a folder cut short before Hermes made it a profile: ours alone (a spare id is never the person's)
+            let folder = profile_folder(config, id);
+            if folder.exists() {
+                if let Err(removed) = std::fs::remove_dir_all(&folder) {
+                    tracing::warn!(agent = %id, error = %format!("{exc:#}; {removed}"), "abandoned spare agent not removed");
+                    continue;
+                }
+            }
+        }
+        if crate::browsers::folder(config, id).exists() {
+            if let Err(exc) = crate::browsers::remove(config, id, run).await {
+                tracing::warn!(agent = %id, error = %format!("{exc:#}"), "abandoned spare agent's browser not removed");
+            }
+        }
+        crate::sandbox::forget(config, id, run).await;
+        crate::agent_tools::forget(config, id);
+        tracing::info!(agent = %id, "abandoned spare agent removed");
+    }
+    ids
 }
 
 /// Spares made ready, added to the pool.
@@ -237,7 +321,7 @@ const CALM_CHECK: std::time::Duration = std::time::Duration::from_secs(3);
 /// The pool refilled in the background when spares are missing, once the hub's agents are all idle.
 pub fn refill_soon(shared: &SharedConfig, http: &reqwest::Client, run: &Run) {
     let config = shared.get();
-    if wanted(&config) <= spares(&config).len() || REFILLING.swap(true, Ordering::SeqCst) {
+    if (wanted(&config) <= spares(&config).len() && abandoned(&config).is_empty()) || REFILLING.swap(true, Ordering::SeqCst) {
         return;
     }
     let (shared, http, run) = (shared.clone(), http.clone(), run.clone());
@@ -246,6 +330,7 @@ pub fn refill_soon(shared: &SharedConfig, http: &reqwest::Client, run: &Run) {
         while started.elapsed() < CALM_WAIT && !calm(&shared.get()).await {
             tokio::time::sleep(CALM_CHECK).await;
         }
+        discard_abandoned(&shared.get(), &run).await;
         let made = refill(&shared, &http, &run).await;
         REFILLING.store(false, Ordering::SeqCst);
         if !made.is_empty() {
@@ -272,9 +357,11 @@ pub async fn refill(shared: &SharedConfig, http: &reqwest::Client, run: &Run) ->
     if missing == 0 {
         return Vec::new();
     }
-    let made = crate::agents_admin::make_spares(shared, missing, http, run).await;
+    let (made, tried) = crate::agents_admin::make_spares(shared, missing, http, run).await;
     let ids: Vec<String> = made.iter().map(|s| s.id.clone()).collect();
-    if let Err(exc) = add(&shared.get(), &made) {
+    let added = add(&shared.get(), &made);
+    release(&tried); // in the pool now; a failed one is abandoned, removed at the next refill
+    if let Err(exc) = added {
         tracing::warn!(error = %exc, "spare agents' file not written");
         return Vec::new();
     }
