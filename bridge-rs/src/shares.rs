@@ -297,6 +297,9 @@ async fn set_volumes(config: &Config, name: &str, folder: &Path, volumes: &[Stri
 }
 
 fn write_skill(folder: &Path, linked: bool, text: &str) -> std::io::Result<()> {
+    if crate::profile_files::hands_off(folder) {
+        return Ok(()); // the person's own Hermes (profile_files::hands_off)
+    }
     let skill_dir = folder.join("skills").join("shared-data");
     if linked {
         std::fs::create_dir_all(&skill_dir)?;

@@ -7,7 +7,9 @@ sandbox or this machine), the model (shown only), how the gateway runs. What is 
 
 - the local API of the gateway, when it is off: on, on 127.0.0.1, on this install's port, with a new key;
 - each profile shown in the app gets its own key when it has none (the multiplex gateway serves it at /p/<profile>/);
-- nothing else: no model, terminal, tools or personality is touched.
+- nothing else: no model, terminal, tools or personality is touched. The bridge, once running, adds only its tools'
+  entry (`mcp_servers.bipagents`) to the shown profiles but the main one (profile_files.rs hands_off), and
+  `bipinstall uninstall` puts each file back byte for byte from the copies taken here (clean_profiles).
 """
 from __future__ import annotations
 
@@ -154,15 +156,178 @@ def plan_changes(existing: Existing, shown: List[str], port: int) -> List[Tuple[
     return changes
 
 
+# The files of a profile BipAgents may change (the installer: the .env's API lines; the bridge: its tools' entry in
+# config.yaml), kept as they were before (SNAPSHOT/<profile>/) so uninstalling puts them back byte for byte.
+KEPT_FILES = ("config.yaml", ".env", "SOUL.md")
+SNAPSHOT = "existing-hermes-files"
+# What BipAgents adds to a profile and takes out again when uninstalled (files or folders, relative to the profile):
+# the bridge's tools' entries, settings record, lock, temporary files, and what older bridges wrote (styled documents
+# skills, Hermes' config backups of its `config set`s, the prompt-cache day file of patch 0023).
+OUR_SERVERS = ("bipagents", "bipagents_checkout", "bipagents_files")
+OUR_FILES = ("bipagents-settings.json", ".bipagents-profile.lock", "skills/.bipagents-style-skills.json",
+             "skills/docs-styles", "skills/slides-styles", "memories/.prompt-day.json")
+OUR_ENV = ("API_SERVER_ENABLED", "API_SERVER_HOST", "API_SERVER_PORT", "API_SERVER_KEY", "TERMINAL_DOCKER_VOLUMES")
+BLOCK = re.compile(r"\n*<!-- bipagents:([\w-]+) -->.*?<!-- /bipagents:\1 -->[ \t]*\n?", re.S)
+
+
+def profile_folder(home: Path, profile: str) -> Path:
+    return home if profile == HUB_PROFILE else home / "profiles" / profile
+
+
+def snapshot(home: Path, profiles: List[str], into: Path) -> dict:
+    """Each profile's files as they are now (KEPT_FILES copied, 0600) and the Hermes config backups already there:
+    what uninstalling compares with."""
+    kept: dict = {}
+    for profile in profiles:
+        folder = profile_folder(home, profile)
+        target = into / profile
+        target.mkdir(parents=True, exist_ok=True, mode=0o700)
+        files = []
+        for name in KEPT_FILES:
+            if (folder / name).is_file():
+                (target / name).write_bytes((folder / name).read_bytes())
+                (target / name).chmod(0o600)
+                files.append(name)
+        backups = folder / "backups" / "config"
+        kept[profile] = {"files": files, "backups": sorted(p.name for p in backups.iterdir()) if backups.is_dir() else [],
+                         "had": [rel for rel in OUR_FILES if (folder / rel).exists()]}
+    return kept
+
+
+def _without_ours(data) -> dict:
+    data = dict(data) if isinstance(data, dict) else {}
+    servers = data.get("mcp_servers")
+    if isinstance(servers, dict):
+        servers = {k: v for k, v in servers.items() if k not in OUR_SERVERS}
+        if servers:
+            data["mcp_servers"] = servers
+        else:
+            data.pop("mcp_servers")
+    return data
+
+
+def _strip_blocks(text: str) -> str:
+    return BLOCK.sub("\n", text)
+
+
+def _put_back_config(path: Path, before: Optional[bytes], runner: Runner) -> None:
+    if not path.is_file():
+        return
+    now = read_yaml(path)
+    if before is not None:
+        try:
+            was = yaml.safe_load(before.decode("utf-8")) or {}
+        except (UnicodeDecodeError, yaml.YAMLError):
+            was = None
+        if was is not None and _without_ours(now) == _without_ours(was):
+            if path.read_bytes() != before:
+                runner.log.append(f"put back {path} as it was")
+                if not runner.dry:
+                    path.write_bytes(before)
+            return
+    servers = now.get("mcp_servers")
+    if isinstance(servers, dict) and any(k in servers for k in OUR_SERVERS):   # changed since: only ours taken out
+        runner.log.append(f"take the bridge's tools out of {path}")
+        if not runner.dry:
+            path.write_text(yaml.safe_dump(_without_ours(now), allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+
+def _put_back_soul(path: Path, before: Optional[bytes], runner: Runner) -> None:
+    if not path.is_file():
+        return
+    text = path.read_text(encoding="utf-8", errors="replace")
+    stripped = _strip_blocks(text)
+    if before is not None and stripped.rstrip() == before.decode("utf-8", "replace").rstrip():
+        if path.read_bytes() != before:
+            runner.log.append(f"put back {path} as it was")
+            if not runner.dry:
+                path.write_bytes(before)
+    elif stripped != text:
+        runner.log.append(f"take the bridge's blocks out of {path}")
+        if not runner.dry:
+            path.write_text(stripped.rstrip() + "\n", encoding="utf-8")
+
+
+def _put_back_env(path: Path, before: Optional[bytes], runner: Runner) -> None:
+    if not path.is_file() or before is None:
+        return
+    def theirs(values: Dict[str, str]) -> Dict[str, str]:
+        return {k: v for k, v in values.items() if k not in OUR_ENV}
+    was_file = path.with_name(".env.bipagents-before")
+    try:
+        was_file.write_bytes(before)
+        was = read_env(was_file)
+    finally:
+        was_file.unlink(missing_ok=True)
+    now = read_env(path)
+    ours_before = {k: v for k, v in was.items() if k in OUR_ENV}
+    if theirs(now) == theirs(was) and path.read_bytes() != before:
+        runner.log.append(f"put back {path} as it was")
+        if not runner.dry:
+            path.write_bytes(before)
+    elif "TERMINAL_DOCKER_VOLUMES" in now and "TERMINAL_DOCKER_VOLUMES" not in ours_before:
+        runner.log.append(f"take TERMINAL_DOCKER_VOLUMES out of {path}")
+        if not runner.dry:
+            lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+            path.write_text("".join(l for l in lines if not l.strip().removeprefix("export ").startswith(
+                "TERMINAL_DOCKER_VOLUMES=")), encoding="utf-8")
+
+
+def clean_profiles(runner: Runner, home: Path, data: dict, snapshots: Optional[Path]) -> None:
+    """Every profile put back as before BipAgents (`bipinstall uninstall`, after the bridge stopped): the files it
+    changed byte for byte when nothing else changed in them meanwhile (else only what BipAgents added taken out),
+    and the files and folders it added removed. A record of an older install (no snapshot): every profile cleaned of
+    what BipAgents adds."""
+    import shutil
+    kept = data.get("snapshot")
+    if kept is None:
+        names = [HUB_PROFILE] + (sorted(p.name for p in (home / "profiles").iterdir() if p.is_dir())
+                                 if (home / "profiles").is_dir() else [])
+        kept = {name: {"files": [], "backups": None, "had": []} for name in names}
+    for profile, info in kept.items():
+        folder = profile_folder(home, profile)
+        if not folder.is_dir():
+            continue
+        def before(name: str) -> Optional[bytes]:
+            path = (snapshots / profile / name) if snapshots else None
+            return path.read_bytes() if path is not None and name in info.get("files", []) and path.is_file() else None
+        _put_back_config(folder / "config.yaml", before("config.yaml"), runner)
+        _put_back_soul(folder / "SOUL.md", before("SOUL.md"), runner)
+        _put_back_env(folder / ".env", before(".env"), runner)
+        for rel in OUR_FILES:
+            target = folder / rel
+            if rel in info.get("had", []) or not (target.exists() or target.is_symlink()):
+                continue
+            runner.log.append(f"remove {target}")
+            if not runner.dry:
+                shutil.rmtree(target) if target.is_dir() and not target.is_symlink() else target.unlink()
+        backups = folder / "backups" / "config"
+        if info.get("backups") is not None and backups.is_dir():   # Hermes' backups of our `config set`s
+            for extra in sorted(set(p.name for p in backups.iterdir()) - set(info["backups"])):
+                runner.log.append(f"remove {backups / extra}")
+                if not runner.dry:
+                    (backups / extra).unlink()
+            for empty in (backups, backups.parent):
+                if not runner.dry and not info["backups"] and empty.is_dir() and not any(empty.iterdir()):
+                    empty.rmdir()
+        for leftover in folder.glob(".*.bipagents-tmp"):
+            if not runner.dry:
+                leftover.unlink(missing_ok=True)
+
+
 def apply_changes(runner: Runner, changes: List[Tuple[str, str, str, Optional[str]]], record: Path,
-                  gateway: str, patched: Optional[List[str]] = None, declined: Optional[List[str]] = None) -> None:
+                  gateway: str, patched: Optional[List[str]] = None, declined: Optional[List[str]] = None,
+                  profiles: Optional[List[str]] = None) -> None:
     """Writes them through Hermes' own `config set`, after noting what to put back: the settings, the patches
-    applied to its code, how the gateway ran; and the fixes the person refused (not offered again by updates)."""
+    applied to its code, how the gateway ran, the fixes the person refused (not offered again by updates), and each
+    shown profile's files as they were (`profiles`, with the main one: snapshot)."""
     runner.log.append(f"write {record}")
     if not runner.dry:
         record.parent.mkdir(parents=True, exist_ok=True)
+        shown = list(dict.fromkeys([HUB_PROFILE] + list(profiles or [])))
+        kept = snapshot(hermes_home(), shown, record.parent / SNAPSHOT)
         record.write_text(json.dumps({"preexisting": True, "gateway": gateway, "patched": patched or [],
-                                      "declined": sorted(declined or []), "restore": [
+                                      "declined": sorted(declined or []), "snapshot": kept, "restore": [
             {"profile": p, "key": k, "before": before} for p, k, _, before in changes]}, indent=2) + "\n",
                           encoding="utf-8")
         record.chmod(0o600)   # the values before may include a key
@@ -191,6 +356,8 @@ def restore(runner: Runner, record: Path) -> Optional[dict]:
             runner.run([hermes_bin()] + profile + ["config", "set", item["key"], item["before"]], check=False)
     for patch in reversed(data.get("patched", [])):
         runner.run(["git", "-C", str(hermes_checkout()), "apply", "--reverse", patch], check=False)
+    if data.get("preexisting"):
+        clean_profiles(runner, hermes_home(), data, record.parent / SNAPSHOT)
     return data if data.get("preexisting") else None
 
 
@@ -208,15 +375,13 @@ def same_version(existing: Existing, wanted: str) -> bool:
 
 
 def bridge_writes(shown: List[str]) -> Optional[str]:
-    """What the bridge itself writes, once it runs, in the shown profiles other than the main one (it serves those at
-    /p/<profile>/ as its own agents: profile_files.rs reconcile, tool_diet.rs, agent_tools.rs): said before « Ready
-    to go? », since uninstalling does not take it out yet (test of 12/11 on a fresh Hermes v0.23.1)."""
+    """What the bridge itself writes, once it runs, in the shown profiles other than the main one: only its tools'
+    entry (profile_files.rs hands_off, Alex 12/11 « mains propres »), said before « Ready to go? »."""
     others = [profile_label(p) for p in shown if p != HUB_PROFILE]
     if not others:
         return None
-    return (f"{', '.join(others)}: the app's tools and rules added to their profile (config.yaml, SOUL.md, two skills), "
-            "their thinking level\n    set by the app, and Hermes' cron tool off for them (the app's routines "
-            "instead). Uninstalling leaves these.")
+    return (f"{', '.join(others)}: one entry in their config.yaml, the app's tools (mcp_servers.bipagents). Their "
+            "personality,\n    thinking level, tools and scheduled jobs stay as they are.")
 
 
 def profile_label(name: str) -> str:

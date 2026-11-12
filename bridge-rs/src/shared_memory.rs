@@ -357,6 +357,8 @@ pub fn circle(config: &Config) -> Vec<Member> {
             let limit = memory_edit::limit(&folder, "user");
             Member { name: a.name.clone(), gives: !notebook::health_agent(config, &a.name), limit, folder }
         })
+        // not the profiles of an existing Hermes the person brought: their USER.md stays theirs (profile_files::hands_off)
+        .filter(|m| !crate::profile_files::hands_off(&m.folder))
         .filter(|m| m.folder.is_dir())
         .collect()
 }

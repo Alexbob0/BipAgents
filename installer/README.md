@@ -109,14 +109,18 @@ your main profile included, and shows everything it will change before it starts
 - a service for your gateway when it is not running, or a restart when it already runs as a service (one you started
   by hand, you restart yourself).
 
-Once running, the bridge also writes in the shown agents other than your main profile: its tools and rules in their
-`config.yaml` and `SOUL.md` (and two skills), their thinking level, and Hermes' cron tool off for them (the app's
-routines instead). The installer says so before it starts; uninstalling doesn't take it out yet. Your Hermes'
-scheduled jobs stay in your Hermes.
+Once running, the bridge adds one thing to the shown agents other than your main profile: an entry in their
+`config.yaml` that gives them the app's tools (`mcp_servers.bipagents`). It never touches their personality
+(`SOUL.md`), thinking level, other tools, skills, memory or scheduled jobs: they stay yours, so they don't get the
+app's own rules either (the Carnet's habits, the language they write first in, the documents' styles), and files sent
+from the app aren't mounted in a sandbox of yours.
 
-All of it is written down in `~/.config/bipagents/existing-hermes.json`: uninstalling puts every setting back and
-takes the patches off. `--all` never removes a Hermes that was there before BipAgents. When your agents' tools do not
-run in a sandbox, the bridge keeps no passwords (no vault): it tells you so, without changing their tools. It needs a
+All of it is written down in `~/.config/bipagents/existing-hermes.json`, with a copy of each shown profile's
+`config.yaml`, `.env` and `SOUL.md` as they were: uninstalling puts those files back byte for byte (when you changed
+nothing else in them meanwhile; otherwise only what BipAgents added is taken out), removes what it added, takes the
+patches off, and leaves your gateway as it ran before. `--all` never removes a Hermes that was there before BipAgents.
+When your agents' tools do not run in a sandbox, the bridge keeps no passwords (no vault): it tells you so, without
+changing their tools. It needs a
 Hermes that serves several agents at one address (`hermes update` otherwise).
 
 ## The Carnet

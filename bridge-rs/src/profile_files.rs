@@ -63,6 +63,75 @@ pub fn lock(folder: &Path) -> std::io::Result<ProfileLock> {
     }
 }
 
+// -- hands off: an existing Hermes the person brought -------------------------------------------------------------
+
+/// The Hermes home of an existing Hermes the person brought (installer/bipinstall/existing.py, Alex 12/11: « mains
+/// propres »): in its profiles this bridge writes only the entry of its own tools (`mcp_servers.bipagents`), never
+/// their personality (SOUL.md), thinking level, tool diet, routing, skills, settings record or Hermes' commands.
+/// Every other write asked of a file under it is dropped here, the one writer of the profile files, so no caller
+/// needs to know (set at start by app::create_app).
+static HANDS_OFF: std::sync::RwLock<Vec<PathBuf>> = std::sync::RwLock::new(Vec::new());
+
+/// The MCP servers the bridge may write in a hands-off profile: the one that gives it its tools.
+const HANDS_OFF_SERVERS: &[&str] = &[crate::agent_tools::SERVER_NAME];
+
+/// Hands off the profiles under `home` (None: nothing to add). Never taken back while the bridge runs: the record
+/// that says so doesn't change then (and tests in one process each have a home of their own).
+pub fn set_hands_off(home: Option<PathBuf>) {
+    if let Some(home) = home {
+        let mut homes = HANDS_OFF.write().unwrap_or_else(|e| e.into_inner());
+        if !homes.contains(&home) {
+            homes.push(home);
+        }
+    }
+}
+
+/// The hands-off home for this config: its Hermes home when the person brought their Hermes.
+pub fn hands_off_home(config: &Config) -> Option<PathBuf> {
+    if !crate::agent_restart::existing_hermes(config) {
+        return None;
+    }
+    let home = if config.hermes.home.is_empty() {
+        crate::py::join(&crate::py::expanduser("~"), ".hermes")
+    } else {
+        config.hermes.home.clone()
+    };
+    Some(PathBuf::from(home))
+}
+
+/// Whether `path` is a file (or folder) of a hands-off Hermes.
+pub fn hands_off(path: &Path) -> bool {
+    HANDS_OFF.read().unwrap_or_else(|e| e.into_inner()).iter().any(|home| path.starts_with(home))
+}
+
+/// What may change in a hands-off config file: `before`, with only the bridge's own tools' entry taken from `after`.
+pub fn hands_off_change(before: &Yaml, after: &Yaml) -> Yaml {
+    let mut kept = if before.is_map() { before.clone() } else { Yaml::map() };
+    for name in HANDS_OFF_SERVERS {
+        let old = before.get("mcp_servers").and_then(|s| s.get(name)).cloned();
+        let new = after.get("mcp_servers").and_then(|s| s.get(name)).cloned();
+        if old == new {
+            continue;
+        }
+        match new {
+            Some(entry) => {
+                if !kept.get("mcp_servers").is_some_and(Yaml::is_map) {
+                    kept.insert("mcp_servers", Yaml::map());
+                }
+                if let Some(servers) = kept.get_mut("mcp_servers") {
+                    servers.insert(name, entry);
+                }
+            }
+            None => {
+                if let Some(servers) = kept.get_mut("mcp_servers") {
+                    servers.remove(name);
+                }
+            }
+        }
+    }
+    kept
+}
+
 fn folder_of(path: &Path) -> PathBuf {
     path.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."))
 }
@@ -130,6 +199,9 @@ pub fn try_edit(path: &Path, change: impl FnOnce(&mut Yaml) -> anyhow::Result<()
     let before = load(path)?;
     let mut data = if before.is_map() { before.clone() } else { Yaml::map() };
     change(&mut data)?;
+    if hands_off(path) {
+        data = hands_off_change(&before, &data);
+    }
     if data == before {
         return Ok(false);
     }
@@ -140,6 +212,9 @@ pub fn try_edit(path: &Path, change: impl FnOnce(&mut Yaml) -> anyhow::Result<()
 /// A text file of the profile (`SOUL.md`…) changed by `change` (given None for a missing file; returning None leaves
 /// the file as it is); whether it was written.
 pub fn edit_text(path: &Path, change: impl FnOnce(Option<&str>) -> Option<String>) -> anyhow::Result<bool> {
+    if hands_off(path) {
+        return Ok(false); // the person's own SOUL.md and other texts, as they wrote them
+    }
     let _lock = lock(&folder_of(path))?;
     let before = match std::fs::read_to_string(path) {
         Ok(text) => Some(text),
@@ -165,6 +240,12 @@ pub async fn hermes(
     args: Vec<String>,
     env: BTreeMap<String, String>,
 ) -> anyhow::Result<String> {
+    if hands_off(folder) {
+        // Hermes' own `config set` / `tools` on the person's own Hermes: not run (terminal.docker_volumes, a backend…)
+        tracing::info!(target: "bipbridge::agents", folder = %folder.display(), command = ?args.get(1..4),
+            "left as it is: the person's own Hermes");
+        return Ok(String::new());
+    }
     let folder = folder.to_path_buf();
     tokio::task::spawn_blocking(move || {
         let _held = lock(&folder)?;
@@ -291,6 +372,9 @@ pub fn settings(folder: &Path) -> AgentSettings {
 /// The record changed by `change` under the profile's lock; whether it was written. A record of a later version is
 /// left alone (Err).
 pub fn update_settings(folder: &Path, change: impl FnOnce(&mut AgentSettings)) -> anyhow::Result<bool> {
+    if hands_off(folder) {
+        return Ok(false); // no settings record in a profile of the person's own Hermes
+    }
     let _lock = lock(folder)?;
     let before = settings(folder);
     if before.version > SETTINGS_VERSION {
@@ -398,6 +482,58 @@ pub fn reconcile_all(config: &Config) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_hands_off_profile_gets_only_the_bridge_tools_entry() {
+        // the person's own Hermes (Alex 12/11, « mains propres »): their file byte for byte but for that entry
+        let home = folder();
+        let profile = home.join("profiles").join("jardin");
+        std::fs::create_dir_all(&profile).unwrap();
+        let config = profile.join("config.yaml");
+        let theirs = "# my own comment\nagent:\n  reasoning_effort: medium\nmcp_servers:\n  jardin:\n    command: python3\n";
+        std::fs::write(&config, theirs).unwrap();
+        std::fs::write(profile.join("SOUL.md"), "Tu es Persil.\n").unwrap();
+        set_hands_off(Some(home.clone()));
+        assert!(hands_off(&config) && !hands_off(&folder().join("config.yaml")));
+        // anything but the tools' entry: nothing written at all
+        let wrote = edit(&config, |data| {
+            set_key(data, "agent.reasoning_effort", Yaml::str("low"));
+            set_key(data, "agent.disabled_toolsets", Yaml::str("cronjob"));
+        })
+        .unwrap();
+        assert!(!wrote);
+        assert_eq!(std::fs::read_to_string(&config).unwrap(), theirs);
+        // the tools' entry with other changes: only the entry
+        edit(&config, |data| {
+            set_key(data, "agent.reasoning_effort", Yaml::str("low"));
+            set_server(data, crate::agent_tools::SERVER_NAME, Some(&[("url", Yaml::str("http://127.0.0.1:9203/v1/t"))]));
+            set_server(data, "bipagents_checkout", Some(&[("url", Yaml::str("http://127.0.0.1:9203/v1/c"))]));
+        })
+        .unwrap();
+        let now = load(&config).unwrap();
+        assert_eq!(now.get("agent").and_then(|a| a.get("reasoning_effort")).and_then(Yaml::as_str), Some("medium"));
+        let servers = now.get("mcp_servers").unwrap();
+        assert!(servers.get("jardin").is_some() && servers.get("bipagents").is_some());
+        assert!(servers.get("bipagents_checkout").is_none());
+        // the personality and the settings record: never
+        assert!(!edit_text(&profile.join("SOUL.md"), |_| Some("Tu es Persil.\n\n<!-- bipagents:language -->\n".into())).unwrap());
+        assert_eq!(std::fs::read_to_string(profile.join("SOUL.md")).unwrap(), "Tu es Persil.\n");
+        assert!(!update_settings(&profile, |s| s.thinking = Some("low".into())).unwrap());
+        assert!(!profile.join(SETTINGS_FILE).exists());
+    }
+
+    #[tokio::test]
+    async fn hermes_commands_are_not_run_on_a_hands_off_profile() {
+        let home = folder();
+        set_hands_off(Some(home.clone()));
+        fn fails(_: &[String], _: &BTreeMap<String, String>) -> anyhow::Result<String> {
+            anyhow::bail!("ran")
+        }
+        let args: Vec<String> = ["hermes", "-p", "dev", "config", "set", "terminal.docker_volumes", "[]"].map(String::from).into();
+        let got = hermes(&home.join("profiles").join("dev"), fails, args.clone(), BTreeMap::new()).await.unwrap();
+        assert_eq!(got, "");
+        assert!(hermes(&folder(), fails, args, BTreeMap::new()).await.is_err()); // elsewhere: run
+    }
 
     fn folder() -> PathBuf {
         let dir = std::env::temp_dir().join(format!("profile-files-{}", uuid::Uuid::new_v4()));

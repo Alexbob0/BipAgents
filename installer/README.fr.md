@@ -110,15 +110,19 @@ afficher dans l'app, ton profil principal compris, et te montre avant de commenc
 - un service pour ta gateway si elle ne tourne pas, ou un redémarrage si elle tourne déjà en service (à la main,
   tu la redémarres toi-même).
 
-Une fois lancé, le bridge écrit aussi dans les agents affichés autres que ton profil principal : ses outils et ses
-règles dans leur `config.yaml` et leur `SOUL.md` (plus deux skills), leur niveau de réflexion, et l'outil cron d'Hermes
-coupé pour eux (les routines de l'app à la place). L'installateur le dit avant de commencer ; la désinstallation ne
-l'enlève pas encore. Les tâches planifiées de ton Hermes restent dans ton Hermes.
+Une fois lancé, le bridge ajoute une seule chose aux agents affichés autres que ton profil principal : une entrée
+dans leur `config.yaml` qui leur donne les outils de l'app (`mcp_servers.bipagents`). Il ne touche jamais à leur
+personnalité (`SOUL.md`), leur niveau de réflexion, leurs autres outils, leurs skills, leur mémoire ni leurs tâches
+planifiées : tout ça reste à toi. Ils n'ont donc pas non plus les règles propres à l'app (les habitudes du Carnet, la
+langue dans laquelle ils écrivent en premier, les styles des documents), et les fichiers envoyés depuis l'app ne sont
+pas montés dans un bac à sable à toi.
 
-Tout ça est noté dans `~/.config/bipagents/existing-hermes.json` : la désinstallation remet chaque réglage comme
-avant et retire les correctifs. `--all` ne supprime jamais un Hermes qui était là avant BipAgents. Si les outils de
-tes agents ne tournent pas dans un bac à sable, le bridge ne garde pas de mots de passe (pas de coffre) : il te le
-dit, sans changer leurs outils. Il faut une version d'Hermes qui sert plusieurs agents à la même adresse
+Tout ça est noté dans `~/.config/bipagents/existing-hermes.json`, avec une copie du `config.yaml`, du `.env` et du
+`SOUL.md` de chaque profil affiché tels qu'ils étaient : la désinstallation remet ces fichiers à l'identique, octet
+pour octet (si tu n'y as rien changé entre-temps ; sinon elle retire seulement ce que BipAgents a ajouté), supprime ce
+qu'il a ajouté, retire les correctifs et laisse ta gateway comme elle tournait avant. `--all` ne supprime jamais un
+Hermes qui était là avant BipAgents. Si les outils de tes agents ne tournent pas dans un bac à sable, le bridge ne
+garde pas de mots de passe (pas de coffre) : il te le dit, sans changer leurs outils. Il faut une version d'Hermes qui sert plusieurs agents à la même adresse
 (`hermes update` sinon).
 
 ## Le Carnet

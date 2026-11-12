@@ -459,13 +459,13 @@ def test_an_existing_hermes_with_its_api_on_keeps_its_port_and_key(tmp_path, mon
 
 
 def test_an_existing_hermes_is_told_what_the_bridge_writes_in_its_profiles():
-    """Seen on a fresh Hermes v0.23.1 (12/11): the bridge rewrote the shown profiles' config.yaml and SOUL.md, not the
-    main one's, and uninstalling left it: said before « Ready to go? »."""
+    """Alex 12/11, « mains propres »: the bridge writes only its tools' entry in the shown profiles (not the main
+    one's), said before « Ready to go? »."""
     from bipinstall.existing import bridge_writes
     assert bridge_writes(["default"]) is None
     said = bridge_writes(["default", "dev", "jardin_potager"])
     assert said.startswith("Dev, Jardin Potager: ") and "Hermes" not in said.split(":")[0]
-    assert "SOUL.md" in said and "cron" in said and "Uninstalling leaves these." in said
+    assert "mcp_servers.bipagents" in said and "personality" in said and "scheduled jobs stay as they are" in said
 
 
 def test_uninstall_puts_an_existing_hermes_back(tmp_path, monkeypatch):
@@ -491,6 +491,82 @@ def test_uninstall_puts_an_existing_hermes_back(tmp_path, monkeypatch):
     assert "gateway restart" in log and "gateway uninstall" not in log
     assert "apply --reverse /repo/hermes/patches/0004.patch" in log   # our patches come back off its code
     assert f"keep {tmp_path}/.hermes" in log and f"remove {tmp_path}/.hermes\n" not in log + "\n"
+
+
+def _tree(root: Path) -> dict:
+    return {str(p.relative_to(root)): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}
+
+
+def test_uninstall_gives_an_existing_hermes_back_byte_for_byte(tmp_path, monkeypatch):
+    """Alex 12/11, « mains propres »: everything BipAgents added to the person's Hermes taken out again, their files
+    back byte for byte (the bridge rewrote config.yaml in its own format; older bridges also wrote SOUL.md blocks,
+    skills, a settings record, Hermes config backups, TERMINAL_DOCKER_VOLUMES)."""
+    import yaml
+    from bipinstall import existing
+    from bipinstall.uninstall import uninstall
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / ".hermes"))
+    hermes_home = _existing_hermes(tmp_path)
+    cuisine = hermes_home / "profiles" / "cuisine"
+    (cuisine / "config.yaml").write_text("# Basile's own comment\nmodel:\n  default: glm-5.3\nmcp_servers:\n"
+                                         "  recettes:\n    command: python3\nagent:\n  reasoning_effort: medium\n")
+    (cuisine / "SOUL.md").write_text("Tu es Basile, le cuisinier de Léa.\n")
+    (cuisine / ".env").write_text("EUROUTER_API_KEY=k\n")
+    (cuisine / "backups" / "config").mkdir(parents=True)
+    (cuisine / "backups" / "config" / "config.yaml.good.1").write_text("theirs\n")
+    (cuisine / "skills" / "menus").mkdir(parents=True)
+    (cuisine / "skills" / "menus" / "SKILL.md").write_text("---\nname: menus\n---\n")
+    before = _tree(hermes_home)
+    config = tmp_path / ".config" / "bipagents"
+    config.mkdir(parents=True)
+    (config / "bridge.toml").write_text('bridge_key = "x"\nport = 9203\n')
+    runner = hermes.Runner()
+    monkeypatch.setattr(runner, "run", lambda args, **k: runner.log.append(" ".join(args)) or "")
+    changes = existing.plan_changes(existing.detect_existing(run=lambda args: ""), ["default", "cuisine"], 9202)
+    existing.apply_changes(runner, changes, config / existing.RECORD, "service", [], profiles=["default", "cuisine"])
+    # what the installer (the .env keys above) and the bridge, this one or an older one, then wrote
+    data = yaml.safe_load((cuisine / "config.yaml").read_text())
+    data["mcp_servers"]["bipagents"] = {"url": "http://127.0.0.1:9203/v1/agent-tools/mcp", "timeout": 1800}
+    data["mcp_servers"]["bipagents_checkout"] = {"url": "http://127.0.0.1:9203/v1/agent-tools/checkout"}
+    (cuisine / "config.yaml").write_text(yaml.safe_dump(data))
+    (cuisine / "SOUL.md").write_text("Tu es Basile, le cuisinier de Léa.\n\n<!-- bipagents:language -->\nAnswer in "
+                                     "French.\n<!-- /bipagents:language -->\n<!-- bipagents:notebook -->\nx\n"
+                                     "<!-- /bipagents:notebook -->\n")
+    with open(cuisine / ".env", "a") as fh:
+        fh.write("TERMINAL_DOCKER_VOLUMES=[\"/x/uploads:/fichiers:ro,z\"]\n")
+    for rel in ("bipagents-settings.json", ".bipagents-profile.lock", "skills/.bipagents-style-skills.json",
+                "skills/docs-styles/SKILL.md", "skills/slides-styles/scripts/deck.py", "memories/.prompt-day.json",
+                "backups/config/config.yaml.good.2"):
+        (cuisine / rel).parent.mkdir(parents=True, exist_ok=True)
+        (cuisine / rel).write_text("ours\n")
+    assert _tree(hermes_home) != before
+    runner = hermes.Runner()
+    monkeypatch.setattr(runner, "run", lambda args, **k: runner.log.append(" ".join(args)) or "")
+    uninstall(runner, everything=False, home=tmp_path, system="linux", tailscale=None)
+    after = _tree(hermes_home)
+    assert sorted(set(after) ^ set(before)) == [] and [k for k in before if before[k] != after[k]] == []
+    assert not config.exists()   # the snapshot went with the bridge's config
+
+
+def test_uninstall_cleans_what_an_older_install_left_without_a_snapshot(tmp_path, monkeypatch):
+    import json as _json
+    from bipinstall import existing
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / ".hermes"))
+    hermes_home = _existing_hermes(tmp_path)
+    cuisine = hermes_home / "profiles" / "cuisine"
+    (cuisine / "config.yaml").write_text("model:\n  default: glm-5.3\nmcp_servers:\n  bipagents:\n    url: http://x\n")
+    (cuisine / "SOUL.md").write_text("Tu es Basile.\n\n<!-- bipagents:language -->\nx\n<!-- /bipagents:language -->\n")
+    (cuisine / "skills" / "docs-styles").mkdir(parents=True)
+    (cuisine / "bipagents-settings.json").write_text("{}")
+    record = tmp_path / "existing-hermes.json"
+    record.write_text(_json.dumps({"preexisting": True, "gateway": "service", "restore": []}))
+    runner = hermes.Runner()
+    monkeypatch.setattr(runner, "run", lambda args, **k: "")
+    existing.restore(runner, record)
+    assert (cuisine / "config.yaml").read_text() == "model:\n  default: glm-5.3\n"
+    assert (cuisine / "SOUL.md").read_text() == "Tu es Basile.\n"
+    assert not (cuisine / "skills" / "docs-styles").exists() and not (cuisine / "bipagents-settings.json").exists()
 
 
 def test_a_rented_server_is_recognised(tmp_path):

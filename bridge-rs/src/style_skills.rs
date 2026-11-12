@@ -91,6 +91,9 @@ fn defaults_json(skill: &str, style: &str) -> String {
 
 /// Writes `bytes` at `path` when it differs; whether it did.
 fn write_if_changed(path: &Path, bytes: &[u8]) -> std::io::Result<bool> {
+    if crate::profile_files::hands_off(path) {
+        return Ok(false); // no skill of ours in the person's own Hermes
+    }
     if std::fs::read(path).is_ok_and(|current| current == bytes) {
         return Ok(false);
     }
