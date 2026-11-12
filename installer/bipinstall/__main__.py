@@ -634,7 +634,7 @@ def install_on_existing(args, runner: hermes.Runner, machine: Machine, existing)
                      "manual": "your gateway runs by hand: you'll restart it at the end",
                      "stopped": "your gateway isn't running: I'll install it as a service, which starts by itself"}
                     [existing.gateway]))
-    say(ui.note("Uninstalling BipAgents undoes the rest." if later else "Uninstalling BipAgents undoes all of this."))
+    say(ui.note("Uninstalling BipAgents undoes all of this: your files come back as they were."))
     if not yes(ask("\nReady to go? (y/n)", "y")):
         return 1
 
@@ -649,7 +649,8 @@ def install_on_existing(args, runner: hermes.Runner, machine: Machine, existing)
         skipped = hermes.apply_patches(runner, REPO / "hermes" / "patches", applied=patched)
         if skipped:
             say(ui.note(f"Fixes not applied: {', '.join(skipped)} (the app works, without these features)."))
-    apply_changes(runner, changes, inst.config_dir / RECORD, existing.gateway, patched, declined)
+    apply_changes(runner, changes, inst.config_dir / RECORD, existing.gateway, patched, declined,
+                  profiles=[p.name for p in shown])
     for profile in shown:
         inst.agents.append(AgentEntry(profile.name, names[profile.name], key_of(existing, changes, profile.name) or "",
                                       root=profile.name == hermes.HUB_PROFILE))

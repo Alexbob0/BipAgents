@@ -225,8 +225,9 @@ def test_a_profile_without_a_sandbox_of_its_own_gets_the_hubs(bridges, fakes):
 
 
 def test_an_existing_hermes_keeps_its_profiles_terminals(bridges, fakes):
-    """A Hermes the person brought (installer/bipinstall/existing.py: « no terminal is touched »): a profile of theirs
-    that sets no backend stays as they made it."""
+    """A Hermes the person brought (installer/bipinstall/existing.py: « no terminal is touched »; Alex 12/11, « mains
+    propres »): its profiles stay as they made them, sandbox mounts, network and backend included; only the bridge's
+    tools' entry is added."""
     bridge, hub, _ = isolated(bridges, fakes)
     (bridge.root / "existing-hermes.json").write_text(json.dumps({"preexisting": True, "gateway": "service"}))
     (hub / "config.yaml").write_text(yaml.safe_dump({"terminal": {"backend": "docker"}}))
@@ -234,10 +235,20 @@ def test_an_existing_hermes_keeps_its_profiles_terminals(bridges, fakes):
     data = yaml.safe_load((folder / "config.yaml").read_text())
     del data["terminal"]["backend"]
     (folder / "config.yaml").write_text(yaml.safe_dump(data))
-    started(bridge, hub, ["vie", "wellness"])
-    time.sleep(1)
+    theirs = {name: yaml.safe_load((profile(hub, name) / "config.yaml").read_text()) for name in ("vie", "wellness")}
+    (folder / "SOUL.md").write_text("Tu es Wellness, à ma façon.\n")
+    bridge.start()
+    wait_registered(bridge, ["vie", "wellness"])
+    time.sleep(2)
+    for name, before in theirs.items():
+        now = yaml.safe_load((profile(hub, name) / "config.yaml").read_text())
+        assert set(now.pop("mcp_servers", {})) <= {"bipagents"}, name
+        assert now == before, name
     assert "backend" not in terminal(hub, "wellness")
-    assert not any("terminal.backend" in a for a in bridge.commands.of("hermes"))
+    assert not any("terminal." in " ".join(a) for a in bridge.commands.of("hermes"))
+    assert (folder / "SOUL.md").read_text() == "Tu es Wellness, à ma façon.\n"   # no block, no language rule
+    assert not (folder / "bipagents-settings.json").exists()
+    assert not (folder / "skills" / "docs-styles").exists() and not (folder / "skills" / "slides-styles").exists()
 
 
 def test_without_the_registries_proxy_the_sandbox_gets_no_network_at_all(bridges, fakes):

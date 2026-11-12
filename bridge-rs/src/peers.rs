@@ -397,6 +397,9 @@ pub fn write_contacts(config: &Config, links: &[(String, String)], households: O
     for agent in config.agents.values() {
         let Some(home) = managed_home(config, agent) else { continue };
         let skill = contacts_skill_path(&home, &agent.name);
+        if crate::profile_files::hands_off(&skill) {
+            continue; // the person's own Hermes (profile_files::hands_off)
+        }
         let mut targets: Vec<&String> = links.iter().filter(|(s, _)| *s == agent.name).map(|(_, t)| t).collect();
         targets.sort();
         if targets.is_empty() {

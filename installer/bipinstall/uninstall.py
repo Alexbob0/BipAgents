@@ -116,6 +116,10 @@ def uninstall(runner: Runner, *, everything: bool, home: Optional[Path] = None, 
     preexisting = restore(runner, config.parent / RECORD)
     if preexisting and preexisting.get("gateway") == "service" and Path(hermes_bin()).exists():
         runner.run([hermes_bin(), "gateway", "restart"], check=False)   # its own service, without our settings
+    elif preexisting and preexisting.get("gateway") == "stopped" and Path(hermes_bin()).exists():
+        # not running before BipAgents, which made it a service: stopped and that service taken out again
+        runner.run([hermes_bin(), "gateway", "stop"], check=False)
+        runner.run([hermes_bin(), "gateway", "uninstall"], check=False)
     #    Otherwise Hermes' gateway service (Hermes removes its own unit / plist).
     elif not preexisting and Path(hermes_bin()).exists():
         runner.run([hermes_bin(), "gateway", "stop"], check=False)

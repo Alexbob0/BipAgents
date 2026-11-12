@@ -1688,6 +1688,8 @@ pub fn create_app(config: Config, options: AppOptions) -> anyhow::Result<App> {
     let queues = crate::msg_queue::queues_of(&state); // before any run ends: the hub tells it each end
     crate::threads::threads_of(&state); // the same: the hub and the push service point at the threads
     let config = state.config();
+    // An existing Hermes the person brought: its profiles left as they are, but for the bridge's tools' entry
+    crate::profile_files::set_hands_off(crate::profile_files::hands_off_home(&config));
     crate::profile_files::reconcile_all(&config); // what the bridge decides in each profile, as this bridge renders it
     crate::voices::heal_defaults(&state.config); // after the souls: their language says the Bip's
     let config = state.config();

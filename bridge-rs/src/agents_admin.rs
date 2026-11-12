@@ -1472,6 +1472,9 @@ pub async fn mount_uploads(
     let folder = crate::shares::profile_dir(&config, agent);
     let host = agent.upload_dir_host.clone().unwrap_or_default();
     let Some(folder) = folder else { return Ok(agent.clone()) };
+    if crate::profile_files::hands_off(&folder) {
+        return Ok(agent.clone()); // the person's own Hermes: no mount, no folder rights changed (profile_files::hands_off)
+    }
     if agent.shares == "external" || !folder.is_dir() || crate::shares::terminal_backend(&folder).as_deref() != Some("docker") {
         return Ok(agent.clone());
     }
