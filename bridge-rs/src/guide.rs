@@ -209,7 +209,7 @@ pub(crate) fn note_requested(config: &Config, agent: &str) {
     }
 }
 
-fn now() -> f64 {
+pub(crate) fn now() -> f64 {
     py::time_time()
 }
 
@@ -321,7 +321,7 @@ fn may_propose_project(config: &Config, agent: &AgentConfig) -> bool {
 /// agent de sport » got « je ne crée que des projets »): the person's own agents, not the family's, a project agent,
 /// one shared with relatives or linked with another household's agents (vault::others_facing_agents): other people
 /// talk to those, and their wishes don't make agents in this person's place.
-fn may_propose_agent_when_asked(config: &Config, agent: &AgentConfig) -> bool {
+pub(crate) fn may_propose_agent_when_asked(config: &Config, agent: &AgentConfig) -> bool {
     config.hermes.enabled() && !crate::vault::others_facing(config, &agent.name)
 }
 
@@ -348,9 +348,40 @@ fn propose_agent_tool() -> Value {
             "kind": {"type": "string", "enum": crate::souls::CATEGORIES},
             "name": {"type": "string"},
             "role": {"type": "string", "description": "one line, in their language"},
+            "tone": {"type": "string"},
+            "for": {"type": "string", "enum": ["me", "family"]},
+            "members": {"type": "array", "items": {"type": "string"}, "description": "family: first names; none = all"},
+            "tools": {"type": "array", "items": {"type": "string"}, "description": "what it must reach: web, weather, \
+    browser, calendar, reminders, contacts, mail, health, file, notebook, or a service (strava…)"},
             "handover": {"type": "string", "description": "what they told you that it should know"}},
             "required": ["kind", "name", "role"]},
     })
+}
+
+/// A « Créer X » card's tools from the agent's words: the apps' tiles and the services it may connect, each once (an
+/// unknown word is left out: the card stays right without a retry).
+fn card_tools(arguments: &Dict) -> (Vec<String>, Vec<String>) {
+    let services = crate::guide_team::services();
+    let (mut tiles, mut others) = (Vec::new(), Vec::new());
+    for t in arguments.get("tools").and_then(Value::as_array).into_iter().flatten() {
+        let t = tk::squeeze(&tk::str_or_empty(Some(t))).to_lowercase();
+        let t = match t.as_str() {
+            "email" | "mails" | "e-mail" => "mail".to_string(),
+            "agenda" => "calendar".to_string(),
+            "files" => "file".to_string(),
+            _ => t,
+        };
+        if crate::guide_team::TILES.contains(&t.as_str()) {
+            if !tiles.contains(&t) {
+                tiles.push(t);
+            }
+        } else if services.contains(&t) && !others.contains(&t) {
+            others.push(t);
+        }
+    }
+    tiles.truncate(crate::guide_team::TOOLS_MAX);
+    others.truncate(crate::guide_team::TOOLS_MAX);
+    (tiles, others)
 }
 
 /// `propose_agent` for an agent that is not the guide: the same card, only when the person asks for an agent (the
@@ -589,6 +620,14 @@ fn str_of(d: &Dict, key: &str) -> String {
     tk::str_or_empty(d.get(key))
 }
 
+/// A list of strings of a card (empty when missing).
+fn strings(d: &Dict, key: &str) -> Vec<String> {
+    d.get(key)
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+        .unwrap_or_default()
+}
+
 // -- the first choice -----------------------------------------------------------------------------------------------
 
 /// The agents that count as the person's own (the pre-created placeholder does not).
@@ -596,7 +635,7 @@ fn own_agents(config: &Config) -> Vec<&AgentConfig> {
     config.agents.values().filter(|a| !placeholder(a)).collect()
 }
 
-fn placeholder(agent: &AgentConfig) -> bool {
+pub(crate) fn placeholder(agent: &AgentConfig) -> bool {
     agent.display_name.trim() == crate::cloud_setup::PLACEHOLDER_NAME
 }
 
@@ -637,6 +676,8 @@ fn proposal_view(config: &Config, p: &Dict) -> Value {
         let target = str_of(p, "target");
         if let Some(t) = config.agents.get(&target) {
             out.insert("target_name".into(), json!(t.display_name));
+        } else if p.get("create").and_then(Value::as_bool) == Some(true) {
+            out.insert("target_name".into(), json!(GUIDE_NAME)); // no guide yet: the tap makes Bip (agent_create.rs)
         }
     }
     Value::Object(out)
@@ -665,11 +706,11 @@ pub fn view(config: &Config) -> Value {
 
 // -- the tools ------------------------------------------------------------------------------------------------------
 
-fn declined_now(state: &GuideState, key: &str) -> bool {
+pub(crate) fn declined_now(state: &GuideState, key: &str) -> bool {
     state.declined.get(key).is_some_and(|until| *until > now())
 }
 
-fn key_of(p: &Dict) -> String {
+pub(crate) fn key_of(p: &Dict) -> String {
     match p.get("type").and_then(Value::as_str) {
         Some("agent") => format!("agent:{}", str_of(p, "kind")),
         Some("switch") => format!("switch:{}", str_of(p, "target")),
@@ -845,6 +886,27 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
             proposal.insert("name".into(), json!(new_name));
             proposal.insert("role".into(), json!(role));
             proposal.insert("handover".into(), json!(arg(arguments, "handover", 1200)));
+            // the form's other fields (agent_create.rs): tone, for whom, what it must reach
+            let tone = arg(arguments, "tone", 120);
+            proposal.insert("tone".into(), if tone.is_empty() { Value::Null } else { json!(tone) });
+            let members: Vec<String> = arguments
+                .get("members")
+                .and_then(Value::as_array)
+                .map(|all| {
+                    all.iter()
+                        .filter_map(Value::as_str)
+                        .map(|m| tk::head(&tk::squeeze(m), 40).to_string())
+                        .filter(|m| !m.is_empty())
+                        .take(FRIENDS_MAX)
+                        .collect()
+                })
+                .unwrap_or_default();
+            let family = arg(arguments, "for", 10) == "family" || !members.is_empty();
+            proposal.insert("for".into(), json!(if family { "family" } else { "me" }));
+            proposal.insert("members".into(), json!(if family { members } else { Vec::new() }));
+            let (tiles, services) = card_tools(arguments);
+            proposal.insert("tools".into(), json!(tiles));
+            proposal.insert("services".into(), json!(services));
         }
         SUGGEST_SWITCH => {
             let Some(target) = find_agent(config, &arg(arguments, "agent", 60)).filter(|t| t.name != agent.name) else {
@@ -937,7 +999,7 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
 // -- what the person accepts ----------------------------------------------------------------------------------------
 
 /// The language an agent writes in (its personality's block), else the place's.
-fn language_of(config: &Config, agent: &AgentConfig) -> String {
+pub(crate) fn language_of(config: &Config, agent: &AgentConfig) -> String {
     crate::agents_admin::read_soul(config, agent)
         .ok()
         .and_then(|s| crate::souls::split_language(&s).1)
@@ -1149,10 +1211,32 @@ pub struct Accept {
     pub category: Option<String>,
     #[serde(default)]
     pub color: Option<String>,
+    /// An agent card: « me » or « family », when the person changed it on the card (agent_create.rs).
+    #[serde(default, rename = "for")]
+    pub for_whom: Option<String>,
+    /// An agent card for the family: the households picked (none: the card's first names, else the whole family).
+    #[serde(default)]
+    pub people: Option<Vec<String>>,
 }
 
 impl Validate for Accept {
     fn validate(&self, errors: &mut Vec<FieldError>) {
+        if self.for_whom.as_deref().is_some_and(|f| f != "me" && f != "family") {
+            errors.push(FieldError::new(
+                "value_error",
+                vec![json!("body"), json!("for")],
+                "Value error, me or family".to_string(),
+                json!(self.for_whom),
+            ));
+        }
+        if self.people.as_ref().is_some_and(|p| p.len() > 20 || p.iter().any(|h| h.len() > 80)) {
+            errors.push(FieldError::new(
+                "value_error",
+                vec![json!("body"), json!("people")],
+                "Value error, at most 20 households".to_string(),
+                json!(self.people),
+            ));
+        }
         if let Some(members) = &self.members {
             if members.len() > 6 || members.iter().any(|m| m.len() > 8) {
                 errors.push(FieldError::new(
@@ -1228,7 +1312,7 @@ impl Validate for GuideSwitch {
     }
 }
 
-fn creation_failed(exc: anyhow::Error) -> HttpError {
+pub(crate) fn creation_failed(exc: anyhow::Error) -> HttpError {
     if let Some(e) = exc.downcast_ref::<crate::agents_admin::AgentError>() {
         return HttpError::new(400, e.0.clone());
     }
@@ -1241,11 +1325,11 @@ fn creation_failed(exc: anyhow::Error) -> HttpError {
 
 pub(crate) fn created_json(config: &Config, agent: &AgentConfig) -> Value {
     json!({"id": agent.name, "name": agent.display_name, "url": agent.public_url,
-           "group": crate::agent_groups::group_of(config, &agent.name)})
+           "group": crate::agent_groups::group_of(config, &agent.name), "category": agent.category})
 }
 
 /// `agent` becomes the guide (the previous one stops), its first conversation asking the person's needs when `intro`.
-fn make_guide(config: &Config, agent: &str, intro: bool) -> anyhow::Result<Option<String>> {
+pub(crate) fn make_guide(config: &Config, agent: &str, intro: bool) -> anyhow::Result<Option<String>> {
     change(config, |s| {
         let before = s.guide.replace(agent.to_string());
         s.named.retain(|a| a != agent);
@@ -1352,7 +1436,7 @@ async fn put_guide(
     Ok(web::ok(json!({"guide": load(&config).guide})))
 }
 
-fn take_proposal(config: &Config, id: &str) -> anyhow::Result<Option<Dict>> {
+pub(crate) fn take_proposal(config: &Config, id: &str) -> anyhow::Result<Option<Dict>> {
     change(config, |s| {
         let found = s.proposals.iter().position(|p| str_of(p, "id") == id)?;
         Some(s.proposals.remove(found))
@@ -1408,12 +1492,37 @@ async fn accept(
                 .map(tk::squeeze)
                 .filter(|r| !r.is_empty())
                 .unwrap_or_else(|| str_of(&proposal, "role"));
+            let tone = str_of(&proposal, "tone");
+            let family = body.for_whom.as_deref().map_or(str_of(&proposal, "for") == "family", |f| f == "family");
+            if family {
+                // the family's agent, made by the family route (agent_create.rs)
+                let card = crate::agent_create::FamilyCard {
+                    name: &name,
+                    role: &role,
+                    tone: &tone,
+                    lang: &lang,
+                    first_names: &strings(&proposal, "members"),
+                    people: body.people.clone(),
+                };
+                let agent = crate::agent_create::family_from_card(&state, &card).await?;
+                note_requested(&state.config(), &agent.name);
+                take_proposal(&state.config(), &id)?;
+                let config = state.config();
+                crate::beta_measures::card_accepted(&config, None, now());
+                refresh(&config);
+                return Ok(web::json_response(
+                    201,
+                    &json!({"type": "agent", "kind": "home", "agent": created_json(&config, &agent), "family": true,
+                            "suggested": []}),
+                ));
+            }
             let request = crate::agents_admin::NewAgent {
                 name,
                 kind: Some(kind.clone()),
                 lang: Some(lang.clone()),
                 group: body.group.clone(),
                 role: Some(role),
+                tone: Some(tone).filter(|t| !t.is_empty()),
                 ..Default::default()
             };
             let agent = {
@@ -1427,14 +1536,25 @@ async fn accept(
                 .await
                 .map_err(creation_failed)?
             };
+            // its look and the tiles that need nothing, as the form does; the others wait for the person (`suggested`)
+            let tools = strings(&proposal, "tools");
+            crate::guide_team::look_and_tools(&state, &agent, &kind, None, &tools).await;
+            let mut suggested: Vec<String> =
+                tools.into_iter().filter(|t| !crate::guide_team::ON_AT_CREATION.contains(&t.as_str())).collect();
+            suggested.extend(strings(&proposal, "services"));
             note_requested(&state.config(), &agent.name);
             take_proposal(&state.config(), &id)?;
             let config = state.config();
+            let agent = config.agents.get(&agent.name).cloned().unwrap_or(agent);
             crate::beta_measures::card_accepted(&config, None, now());
             hand_over(&config, &agent, &from.display_name, &str_of(&proposal, "handover"), &lang)?;
             crate::welcome::wait_for(&config, &agent, &kind, &lang);
             refresh(&config);
-            Ok(web::json_response(201, &json!({"type": "agent", "kind": kind, "agent": created_json(&config, &agent)})))
+            Ok(web::json_response(
+                201,
+                &json!({"type": "agent", "kind": kind, "agent": created_json(&config, &agent), "family": false,
+                        "suggested": suggested}),
+            ))
         }
         Some("project") => {
             let name = body
@@ -1484,6 +1604,18 @@ async fn accept(
                 201,
                 &json!({"type": "room", "room": crate::rooms::room_view(&config, &room, Some(&*state.hub))}),
             ))
+        }
+        Some("switch") if proposal.get("create").and_then(Value::as_bool) == Some(true) => {
+            // « Continuer avec Bip » to create an agent (agent_create.rs): Bip made when there is none, its first
+            // question started in its thread with the person's words handed over as data
+            let summary = str_of(&proposal, "summary");
+            let started =
+                crate::agent_create::start(&state, Some(lang), Some((from.display_name.clone(), summary.clone())), None)
+                    .await?;
+            take_proposal(&state.config(), &id)?;
+            Ok(web::ok(json!({"type": "switch", "agent": started["agent"], "from": {"id": from.name, "name": from.display_name},
+                              "summary": summary, "create": true, "created": started["created"],
+                              "thread": started["thread"]})))
         }
         Some("switch") => {
             let Some(target) = config.agents.get(&str_of(&proposal, "target")).cloned() else {

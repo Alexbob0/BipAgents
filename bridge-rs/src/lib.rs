@@ -89,6 +89,7 @@ pub mod agent_feed;
 pub mod agent_shares;
 pub mod read_shares;
 pub mod templates;
+pub mod templates_catalogue;
 pub mod templates_scrub;
 pub mod agents_admin;
 /// Spare agents made ahead, so a new agent is files only (no Python counterpart).
@@ -155,6 +156,7 @@ pub mod archives;
 pub mod whatsapp_import;
 pub mod assistant_import;
 pub mod favicons;
+pub mod agent_create;
 pub mod guide;
 pub mod guide_team;
 pub mod welcome;

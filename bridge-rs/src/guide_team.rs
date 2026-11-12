@@ -112,7 +112,7 @@ impl Drop for Creating {
 static TURNS: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::Mutex::new(()));
 
 /// The services an agent may be offered to connect (« Se connecter avec… » and the app's catalog).
-fn services() -> Vec<String> {
+pub(crate) fn services() -> Vec<String> {
     let mut out: Vec<String> = crate::connections::catalog().iter().map(|s| s.id.clone()).collect();
     for item in crate::services::catalog() {
         let id = tk::str_or_empty(item.get("id"));
@@ -350,10 +350,34 @@ fn members(proposal: &Dict) -> Vec<Value> {
 
 /// Its look, its tools that need nothing, its mission. Failures here leave a note, never the agent undone.
 async fn finish(state: &AppState, agent: &AgentConfig, member: &Value, from: &str, lang: &str) -> Vec<String> {
-    let mut notes = Vec::new();
     let kind = tk::str_or_empty(member.get("kind"));
     let color = member.get("color").and_then(Value::as_str).map(str::to_string);
-    let look = crate::voices::AgentAppearance { category: kind, color, outfit: None, costumes: None };
+    let tools: Vec<String> = member
+        .get("tools")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().map(|x| tk::str_or_empty(Some(x))).collect())
+        .unwrap_or_default();
+    let mut notes = look_and_tools(state, agent, &kind, color, &tools).await;
+    let config = state.config();
+    let agent = config.agent(Some(&agent.name)).cloned().unwrap_or_else(|| agent.clone());
+    if let Err(exc) = crate::guide::hand_over(&config, &agent, from, &mission_text(member, lang), lang) {
+        tracing::warn!(target: "bipbridge::guide", agent = %agent.name, error = %exc, "team agent's mission not kept");
+        notes.push("mission".to_string());
+    }
+    notes
+}
+
+/// A new agent's look (its kind, a colour) and, of `tools`, the tiles that need nothing switched on; the others wait
+/// for the person (a team member, a « Créer X » card's agent). Returns what failed (« look », « tools »).
+pub(crate) async fn look_and_tools(
+    state: &AppState,
+    agent: &AgentConfig,
+    kind: &str,
+    color: Option<String>,
+    tools: &[String],
+) -> Vec<String> {
+    let mut notes = Vec::new();
+    let look = crate::voices::AgentAppearance { category: kind.to_string(), color, outfit: None, costumes: None };
     if crate::voices::set_agent_appearance(
         axum::extract::State(state.clone()),
         axum::extract::Path(agent.name.clone()),
@@ -364,11 +388,6 @@ async fn finish(state: &AppState, agent: &AgentConfig, member: &Value, from: &st
     {
         notes.push("look".to_string());
     }
-    let tools: Vec<String> = member
-        .get("tools")
-        .and_then(Value::as_array)
-        .map(|a| a.iter().map(|x| tk::str_or_empty(Some(x))).collect())
-        .unwrap_or_default();
     let toolsets: indexmap::IndexMap<String, crate::agents_admin::LaxBool> = tools
         .iter()
         .filter(|t| ON_AT_CREATION.contains(&t.as_str()) && *t != "weather" && *t != "notebook")
@@ -386,15 +405,9 @@ async fn finish(state: &AppState, agent: &AgentConfig, member: &Value, from: &st
         if let Err(exc) =
             crate::agents_admin::write_settings(&state.config, &agent, &settings, &crate::agents_admin::default_run()).await
         {
-            tracing::warn!(target: "bipbridge::guide", agent = %agent.name, error = %tk::head(&exc.to_string(), 200), "team agent's tools not set");
+            tracing::warn!(target: "bipbridge::guide", agent = %agent.name, error = %tk::head(&exc.to_string(), 200), "new agent's tools not set");
             notes.push("tools".to_string());
         }
-    }
-    let config = state.config();
-    let agent = config.agent(Some(&agent.name)).cloned().unwrap_or_else(|| agent.clone());
-    if let Err(exc) = crate::guide::hand_over(&config, &agent, from, &mission_text(member, lang), lang) {
-        tracing::warn!(target: "bipbridge::guide", agent = %agent.name, error = %exc, "team agent's mission not kept");
-        notes.push("mission".to_string());
     }
     notes
 }

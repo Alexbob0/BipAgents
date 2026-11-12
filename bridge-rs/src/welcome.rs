@@ -16,7 +16,8 @@
 //! (lan.rs), or told by the app (`POST /v1/guide/welcome/{agent}/done {session}`, for a phone that reaches Hermes
 //! directly). From then on it stays at the top of that conversation only, on every app, and no other conversation
 //! opens with it. Agents that existed before, an imported agent, a team member (it writes its own « Premiers pas »),
-//! a project or family agent never get one.
+//! a project or family agent never get one. An agent adopted from Kerfy's catalogue (2026-11-12) opens with its
+//! model's own first message (`wait_for_text`).
 //!
 //! That first conversation is the agent's one thread (2026-11-01, Alex, his wife's agent made with the guide: « c'est
 //! allé dans une discussion séparée, pas celle principale. Donc quand on va sur l'agent directement, on ne voit pas la
@@ -52,6 +53,9 @@ pub struct Waiting {
     /// That conversation was checked to be the agent's one thread (its Bot Chat), made so when it wasn't (`adopt`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub main: bool,
+    /// Its own first message (an agent adopted from Kerfy's catalogue, templates_catalogue.rs), instead of its kind's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
 }
 
 /// The languages the welcomes are written in (the apps' languages); any other gets English.
@@ -809,7 +813,10 @@ pub fn view(config: &Config, state: &crate::guide::GuideState) -> Value {
             continue; // written to in a conversation the bridge didn't learn: nowhere to show it
         }
         let guide = state.guide.as_deref() == Some(id.as_str());
-        let (text, suggestions) = message(&agent.display_name, &waiting.kind, &waiting.lang, guide);
+        let (text, suggestions) = match &waiting.text {
+            Some(own) => (own.clone(), Vec::new()),
+            None => message(&agent.display_name, &waiting.kind, &waiting.lang, guide),
+        };
         out.insert(id.clone(), json!({"text": text, "suggestions": suggestions, "session": waiting.session}));
     }
     Value::Object(out)
@@ -823,6 +830,16 @@ pub fn wait_for(config: &Config, agent: &AgentConfig, kind: &str, lang: &str) {
         s.welcome.entry(agent.name.clone()).or_insert(waiting);
     });
     if let Err(err) = result {
+        tracing::warn!(target: "bipbridge::guide", agent = %agent.name, error = %err, "welcome not kept");
+    }
+}
+
+/// `agent` was adopted from Kerfy's catalogue: its first conversation opens with the model's own first message.
+pub fn wait_for_text(config: &Config, agent: &AgentConfig, lang: &str, text: &str) {
+    let waiting = Waiting { kind: "custom".into(), lang: language(lang).to_string(), text: Some(text.to_string()), ..Default::default() };
+    if let Err(err) = crate::guide::change(config, |s| {
+        s.welcome.insert(agent.name.clone(), waiting);
+    }) {
         tracing::warn!(target: "bipbridge::guide", agent = %agent.name, error = %err, "welcome not kept");
     }
 }

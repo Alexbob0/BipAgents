@@ -1025,6 +1025,8 @@ fn live_rules(state: &AppState, agent: &AgentConfig) -> String {
 pub async fn message_notes(state: &AppState, agent: &AgentConfig, session: &str, text: &str, kinds: &[String]) -> Option<String> {
     let briefs = state.briefs.clone();
     let config = state.config();
+    // « crée un agent » (agent_create.rs): the family's names for Bip's « for whom », read only then
+    let family = if crate::agent_create::asks_for_agent(text) { crate::agent_create::family_names(state) } else { Vec::new() };
     let (agent, session, text, kinds) = (agent.clone(), session.to_string(), text.to_string(), kinds.to_vec());
     // a feature to discover, at a good moment (feature_tips.rs): the message's signals, the agent busy or not
     let moment = crate::feature_tips::Moment {
@@ -1063,6 +1065,8 @@ pub async fn message_notes(state: &AppState, agent: &AgentConfig, session: &str,
                 crate::feature_tips::on_message(&config, &agent.name, &session, &text, &kinds, &moment, crate::py::time_time()),
                 // a voice message: its reply will be listened to (spoken.rs, the radio rules)
                 kinds.iter().any(|k| k == "voice").then(|| crate::spoken::voice_note(&lang)),
+                // a new agent asked for: Bip's questions, or the card to Bip (agent_create.rs)
+                (!session.starts_with("cron_")).then(|| crate::agent_create::on_message(&config, &agent, &text, &family)).flatten(),
             ]
                 .into_iter()
                 .flatten()

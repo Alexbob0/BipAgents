@@ -17,7 +17,7 @@ def test_health_is_public_and_reports_reachability(bridge):
     assert body["ok"] is True and body["pocket"] is True and body["apns"] is True
     assert "version" in body
     assert body.pop("features", []) in ([], ["agent_groups", "files_kept", "calendar", "health_categories", "contacts", "time_zone",
-                                                    "message_search", "agent_templates", "agent_notify", "agent_queue",
+                                                    "message_search", "agent_templates", "agent_create_bip", "agent_catalogue", "agent_notify", "agent_queue",
                                                     "threads", "notifications", "push_seal"])   # Rust
     assert body.pop("space", "off") == "off"   # Rust: the space's encryption (space.rs), off here
     assert body == {"ok": True, "version": body["version"], "pocket": True, "voice_server": None,
