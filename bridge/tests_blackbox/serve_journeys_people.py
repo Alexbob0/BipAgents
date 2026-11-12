@@ -57,7 +57,35 @@ def family_agent(bridges, fakes, journey):
     give_agent_token(bridge, AGENT, journey.token)
     assert bridge.post("/v1/agent-tools/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
                        headers={"Authorization": f"Bearer {journey.token}", "Accept": "application/json"}).status_code == 200
-    return {"agent": "maison__marie", "name": "Maison", "owner": "Marie"}
+    family_files(bridges, fakes, journey, marie)
+    return {"agent": "maison__marie", "name": "Maison", "owner": "Marie", "other": "Paul", "other_file": "menu-de-noel.pdf"}
+
+
+def family_files(bridges, fakes, journey, marie):
+    """J55: Paul, another member of Marie's family, sent « Maison » a PDF (kept on Marie's place, in its pool:
+    everyone's who uses it); `#fichiers` makes the agent list its files with `read_sent_file` (as Maison, Marie's
+    place's token), in whoever's turn."""
+    from test_households_and_peers import household
+    from test_shared_agent_files import tiny_pdf
+    paul = household(bridges, fakes, "paul", ["jardin"])
+    assert paul.put("/v1/family/name", headers=AUTH, json={"name": "Paul"}).status_code == 200
+    invitation = marie.post("/v1/family/invite", headers=AUTH).json()
+    joined = paul.post("/v1/family/join", headers=AUTH,
+                       json={k: invitation[k] for k in ("url", "code", "fingerprint") if invitation.get(k)})
+    assert joined.status_code == 200, joined.text
+    assert paul.get("/v1/family-agent", headers=AUTH).json()["agent"]["id"] == "maison__marie"
+    shared = {"agent": "maison__marie"}
+    stored = paul.post("/v1/files", headers=AUTH, data=shared,
+                       files={"file": ("menu-de-noel.pdf", tiny_pdf("Menu de Noel : dinde aux marrons"), "application/pdf")})
+    assert stored.status_code == 200, stored.text
+    sent = paul.post("/v1/threads/new/messages", headers=AUTH,
+                     json={**shared, "client_id": "C0FFEE00-0000-4000-8000-0000000055A1", "text": "Le menu de Noël",
+                           "attachments": [{"kind": "document", "name": "menu-de-noel.pdf", "mime": "application/pdf",
+                                            "path": stored.json()["path"]}]})
+    assert sent.status_code == 200, sent.text
+    token = "maison-token-for-the-journeys-0123456789"
+    give_agent_token(marie, "maison", token)
+    journey.model.calls["files"] = lambda run: mcp_as(marie, token, "/v1/agent-tools/mcp", "read_sent_file", {})
 
 
 def test_serve_people(bridges, fakes):

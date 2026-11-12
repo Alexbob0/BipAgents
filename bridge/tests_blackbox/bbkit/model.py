@@ -487,10 +487,11 @@ class PeopleModel(ScriptedModel):
 | `#relais` | writes to another agent (`message_agent`) five times in one turn (the hop cap) |
 | `#carnet` | reads a page of the Carnet, files a fact, asks the question of the day (`notebook_read`, `notebook_write`) |
 | `#rangement` | files a fact on the Carnet's « Famille » page again (`notebook_write`): J52, after the person moved one like it |
+| `#fichiers` | lists the files everyone sent the agent (`read_sent_file`, no path): J55, a shared agent's pool |
 
     A run started with `message` instead of `input` (another household's agent through `/peer/…`) is read the same."""
 
-    MARKERS = ("#routine", "#tache", "#famille", "#etapes", "#relais", "#carnet", "#rangement")
+    MARKERS = ("#routine", "#tache", "#famille", "#etapes", "#relais", "#carnet", "#rangement", "#fichiers")
 
     @classmethod
     def upgrade(cls, model: ScriptedModel) -> "PeopleModel":
@@ -556,6 +557,12 @@ class PeopleModel(ScriptedModel):
                 except Exception as exc:  # noqa: BLE001 - the 5th is refused: the tool's error is the step's result
                     self.step_results.append({"run": run.id, "tool": "message_agent", "error": str(exc)})
             lines.append("J’ai échangé avec Coach, je te tiens au courant.")
+        if "#fichiers" in words and "files" in self.calls:
+            # the files everyone who uses the agent sent it (its pool), named in the reply
+            opening += self.say(run, "Je regarde les fichiers. ")
+            made = step("files", "mcp_bipagents_read_sent_file", {})
+            names = re.findall(r"« ([^»]+) »", made)
+            lines.append("Les fichiers : " + ", ".join(names) + "." if names else "Aucun fichier pour l’instant.")
         if "#rangement" in words and "rangement" in self.calls:
             opening += self.say(run, "Je note ça. ")
             for tool, arguments, act in self.calls["rangement"](run):

@@ -76,7 +76,7 @@
 //! - Approvals belong to the person talking: the relative's are left out of the owner's Boîte and `/v1/approve`
 //!   refuses them (403); she answers through her bridge.
 //! - Only text crosses: `MEDIA:` lines are taken out of the replies (rooms.rs `room_text`). Her own files go the other
-//!   way, into her conversation only (shared_files.rs: stored on this place, read by the agent in her turns only).
+//!   way, into the agent's pool (shared_files.rs: on this place, everyone's who uses the agent, its owner included).
 //! - Credit: the turn runs with the owner's agent, its model and the owner's key: with a Famille plan that key draws
 //!   from the family's pool (credit-pool, the guichet), else it is the owner's credit. The tokens are counted per
 //!   relative here (`tokens` in the share view) so the payer can see them.
@@ -433,25 +433,21 @@ pub fn set_shared(config: &Config, agent: &str, wanted: &[String]) -> anyhow::Re
             kept.push(h.clone());
         }
     }
-    let ended = update(&owner_path(config), |data| {
+    update(&owner_path(config), |data| {
         object_mut(data, "shared").insert(agent.to_string(), json!(kept));
         // a relative no longer shared with: their conversations go (the hidden sessions are left to Hermes)
         let gone: Vec<String> = before.iter().filter(|h| !kept.contains(h)).cloned().collect();
-        let conversations = object_mut(data, "conversations");
-        let ended: Vec<String> = conversations
-            .iter()
-            .filter(|(_, c)| str_of(c, "agent") == agent && gone.contains(&str_of(c, "household")))
-            .map(|(cid, _)| cid.clone())
-            .collect();
-        conversations.retain(|cid, _| !ended.contains(cid));
-        ended
+        object_mut(data, "conversations")
+            .retain(|_, c| !(str_of(c, "agent") == agent && gone.contains(&str_of(c, "household"))));
     })?;
-    // and the files they sent in them (shared_files.rs)
-    for cid in &ended {
-        crate::shared_files::forget_conversation(config, agent, cid);
-    }
     let added = kept.iter().filter(|h| !before.contains(*h)).cloned().collect();
-    let removed = before.into_iter().filter(|h| !kept.contains(h)).collect();
+    let removed: Vec<String> = before.into_iter().filter(|h| !kept.contains(h)).collect();
+    // the files they sent to it go (shared_files.rs); shared with nobody any more: all of its pool
+    if kept.is_empty() && !crate::family_agent::is_family(config, agent) {
+        crate::shared_files::forget_agent(config, agent);
+    } else {
+        crate::shared_files::forget_households(config, agent, &removed);
+    }
     Ok((added, removed))
 }
 
@@ -563,13 +559,19 @@ request, a few a day. {}",
     ) + &format!(" {}", sent_files_rule(person))
 }
 
-/// What a relative's turn is told of the files they send (shared_files.rs): theirs, read in their own turns.
+/// What a relative's turn is told of the files (shared_files.rs): those everyone who uses the agent sent are
+/// everyone's, read with `read_sent_file`.
 pub fn sent_files_rule(person: &str) -> String {
     format!(
-        "Files {person} sends you here are theirs: their photos come with their message; read a document with \
-read_sent_file (the path of its « Pièce jointe » line). Never pass them or what they say on to anyone else, unless \
-{person} asks you to (the family Carnet, a page)."
+        "The files and photos sent to you by everyone who uses you ({person}, your person, the other relatives) are \
+the family's: {person}'s photos come with their message; read a document with read_sent_file (the path of its « Pièce \
+jointe » line), and with no path it lists everyone's files, who sent each. Never send them outside the family."
     )
+}
+
+/// A household's name as this person's place shows it (who sent a file, shared_files.rs).
+pub(crate) fn shown_household(config: &Config, household: &str) -> String {
+    household_name(&households(config), household)
 }
 
 /// The relative's words as the agent gets them.
@@ -731,7 +733,7 @@ async fn served_timeline(
         .into_iter()
         .filter(|i| matches!(i.kind(), "message" | "notice"))
         .map(|mut i| {
-            let pages = their_pages(i.body.remove("attachments"), &agent.name, &theirs, &cid);
+            let pages = their_pages(i.body.remove("attachments"), &agent.name, &theirs);
             if !pages.is_empty() {
                 i.body.insert("attachments".into(), Value::Array(pages));
             }
@@ -760,15 +762,15 @@ async fn served_timeline(
     Ok(web::ok(page.answer(shown, thread.version, pending, false)))
 }
 
-/// Of a message's attachments, the pages of `agent` made for this household (`theirs`) and the files she sent in this
-/// conversation `cid` (shared_files.rs), path and kind only.
-fn their_pages(attachments: Option<Value>, agent: &str, theirs: &[String], cid: &str) -> Vec<Value> {
+/// Of a message's attachments, the pages of `agent` made for this household (`theirs`) and the files of the agent's
+/// pool her messages carry (shared_files.rs), path and kind only.
+fn their_pages(attachments: Option<Value>, agent: &str, theirs: &[String]) -> Vec<Value> {
     let prefix = format!("{}/{agent}/", crate::pages::PREFIX);
     let Some(Value::Array(all)) = attachments else { return Vec::new() };
     all.into_iter()
         .filter_map(|a| {
             let path = str_of(&a, "path");
-            let hers = crate::shared_files::in_conversation(&path, cid);
+            let hers = crate::shared_files::is_pool_path(&path);
             let page = path.strip_prefix(&prefix).and_then(|p| p.strip_suffix(".html"));
             if !hers && !page.is_some_and(|page| theirs.iter().any(|t| t == page)) {
                 return None;
@@ -1086,8 +1088,6 @@ async fn follow_turn(
     }
     // her turn's reply stored: her conversation read again (its cached rows forgotten), her screen told to read it
     crate::threads::threads_of(&state).touch(&agent.name, Some(&session), "ended").await;
-    // Hermes' own copies of her photos, out of the owner's turns' reach (shared_files.rs)
-    crate::shared_files::forget_hermes_copies(&state, &agent, &session).await;
     tracing::info!(agent = %agent.name, household = %household, tokens = used.0 + used.1, "shared agent: turn ended");
 }
 
@@ -1100,11 +1100,8 @@ async fn served_post(
     let (household, agent) = shared_agent(&state, &headers, &agent)?;
     let body = body_json(&body)?;
     let text = tk::strip(&tk::str_or_empty(body.get("text"))).to_string();
-    // her files, sent first into this conversation (shared_files.rs): their ids
-    let file_ids: Vec<String> = match body.get("files") {
-        Some(Value::Array(ids)) => ids.iter().map(py::py_str).collect(),
-        _ => Vec::new(),
-    };
+    // her files, sent first into the agent's pool for this conversation (shared_files.rs): their ids, a scan's text
+    let file_ids = crate::shared_files::named(body.get("files"));
     if (text.is_empty() && file_ids.is_empty()) || text.chars().count() > TEXT_MAX {
         return Err(HttpError::new(422, format!("a message of 1 to {TEXT_MAX} characters, or files")));
     }
@@ -1115,7 +1112,7 @@ async fn served_post(
         // app says « your relative's agents don't answer for now »)
         return Ok(guest_turns_refused(&config, 503));
     }
-    let attachments = crate::shared_files::claim(&config, &agent.name, &cid, &file_ids)?;
+    let attachments = crate::shared_files::claim(&config, &agent.name, &household, &cid, &file_ids)?;
     // one run per shared conversation: reserved in the same locked write as the test, before Hermes is called
     let Some(reserved) = reserve_turn(&owner_path(&config), &cid)? else {
         return Err(HttpError::new(409, "the agent is still answering"));
@@ -1152,7 +1149,8 @@ async fn served_post(
     let run_id = started.as_ref().ok().cloned();
     settle_turn(&owner_path(&config), &cid, &reserved, run_id.as_deref())?;
     let run_id = run_id.ok_or_else(|| HttpError::new(502, "the agent can't be reached"))?;
-    crate::shared_files::mark_sent(&config, &cid, &file_ids)?;
+    let keys: Vec<String> = file_ids.iter().map(|(k, _)| k.clone()).collect();
+    crate::shared_files::mark_sent(&config, &agent.name, &keys)?;
     tracing::info!(agent = %agent.name, household = %household, files = file_ids.len(), "shared agent: a relative's turn");
     // her app's id for the message: its item carries it once Hermes has it (threads/send.rs), with its files
     let client_id = tk::str_or_empty(body.get("client_id"));
@@ -1190,8 +1188,7 @@ async fn end_conversation(state: &AppState, agent: &AgentConfig, cid: &str, c: &
     update(&owner_path(&state.config()), |data| {
         object_mut(data, "conversations").shift_remove(cid);
     })?;
-    crate::shared_files::forget_conversation(&state.config(), &agent.name, cid); // the files she sent in it
-    Ok(())
+    Ok(()) // the files sent in it stay in the agent's pool, everyone's (shared_files.rs)
 }
 
 async fn served_delete(
@@ -1413,6 +1410,11 @@ async fn put_shares(
     tracing::info!(agent = %agent.name, added = ?added, removed = ?removed, "shared agent: shares set");
     if !added.is_empty() {
         crate::own_space::apart_when_idle(&state, &agent.name); // a relative talks to it: out of the person's hub
+    }
+    if before.is_empty() && !added.is_empty() {
+        // shared for the first time: its new tool (read_sent_file, shared_files.rs) in its Hermes once it is idle,
+        // without waiting for the tools' stale check
+        crate::agent_restart::request_restart(&agent.name, crate::agent_restart::SERVICES);
     }
     let mut view = share_view(&config, &agent);
     view["told"] = Value::Object(told);

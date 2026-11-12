@@ -2044,7 +2044,7 @@ async fn mcp(
                 return Ok(answer(closed));
             }
             if name == crate::shared_files::TOOL_NAME {
-                // a file she sent: hers to have read, in her own turn only (shared_files.rs checks that run itself)
+                // the files everyone who uses the agent sent, its pool (shared_files.rs)
                 return Ok(answer(crate::shared_files::read_call(&state, &agent.name, &arguments).await));
             }
             if name != CREATE_PAGE {
@@ -2061,12 +2061,8 @@ async fn mcp(
         }
         crate::shared_pages::Who::Owner => {
             if name == crate::shared_files::TOOL_NAME {
-                // a relative's file is read in her own turns only, never in the owner's (shared_files.rs)
-                tracing::info!(agent = %agent.name, "read_sent_file in the owner's own turn: refused");
-                return Ok(answer(tool_text(
-                    "No relative is talking to you now: the files they sent are read in their own conversations only.",
-                    true,
-                )));
+                // the owner's turns too: the files of everyone who uses the agent are everyone's (shared_files.rs)
+                return Ok(answer(crate::shared_files::read_call(&state, &agent.name, &arguments).await));
             }
             // a page made in a conversation shown to friends: theirs to see, not to pass on (read_shares.rs)
             if name == CREATE_PAGE && crate::read_shares::shared_turn(&state, &agent.name) {
