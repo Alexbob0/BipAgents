@@ -12,20 +12,24 @@ Kerfy Studio, the publisher of BipAgents.
   beta.
 - **The AI credit offered.** 2 € of model use per person and per month, with a strict cap. Once this credit is used,
   your agents no longer call the model until the next month: nothing is charged to you. It cannot be sold or refunded.
-- **Unused place.** During the beta and the free month, a place nobody uses for 7 days is freed for someone else.
-  Using your place means sending a message, a voice note, a photo or a file to an agent, making a Live call or
-  answering a card; routines and watchers running on their own don't count. You are warned on day 5 by a notification
-  and an email. Once the place is freed, only an encrypted copy of your data is kept 30 days, then erased. Within those
-  30 days, "Resume my place" in the app brings it back, if a place is free.
+- **Unused place.** During the beta and the free month, a place nobody has written to for 7 days is freed for someone
+  else. Writing to your agents means sending them a message, a voice note, a photo or a file, making a Live call,
+  answering a card or tapping "Keep my place"; routines and watchers keep running, but don't count. On day 5, you are
+  warned by a notification, an email and a banner in the app, with the "Keep my place" button.
+- **What freeing changes.** Your place's server is reset for someone else, and no copy of your data remains on it: only
+  the encrypted copy of your place's backups is kept, then erased for good after 30 days. If you created a family
+  agent, its shared conversation disappears for all its members until you take your place back, and the read-only
+  shares of your agents stop too.
 - **End of the beta.** The beta ends on 30 November 2026. Your place then stays free until 31 December 2026. It never
-  becomes paid unless you choose a subscription. Without a subscription, your place is then freed the same way: the
-  encrypted copy is kept 30 days, and subscribing within those 30 days brings your agents back. We tell you by email
-  and in the app at least 7 days before the free month ends, and you can export your data from the app until your
-  place is freed.
+  becomes paid unless you choose a subscription. Without a subscription, your place is then freed the same way. We
+  tell you by email and in the app at least 7 days before the free month ends.
+- **Your data.** You can export it from the app until your place is freed. After that, during the 30 days, you only get
+  it back by taking your place back: "Resume my place" in the app, if a place is free, or, after the free month ends,
+  by subscribing.
 - **No warranty.** It is a test version: features may be missing, change, misbehave or stop, and data may be lost. Keep
   a copy of what matters to you. The beta is provided as is, without warranty, to the extent the law allows.
 - **It can change.** We may change or stop the beta, or your participation.
-- **Your data.** It is handled as described in the [privacy policy](privacy.en.md). The [terms of use](terms.en.md)
+- **How it is handled.** Your data is handled as described in the [privacy policy](privacy.en.md). The [terms of use](terms.en.md)
   and the [acceptable use policy](acceptable-use.en.md) also apply.
 - **Installing it.** On iPhone, the beta goes through TestFlight, Apple's testing app; on Android, through Google Play's
   testing programme. Their own terms apply too. The app's publisher and your contact remain Kerfy Studio.
