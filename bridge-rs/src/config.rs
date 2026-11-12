@@ -537,7 +537,8 @@ impl Default for NotebookConfig {
 /// without handing over has its task started by the bridge (`handoff_rescue`, 2026-10-24).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct JobsConfig {
-    /// Euros of tokens a task the person asked for may take without their go (≈ 0.20 €).
+    /// Euros of tokens a task the person asked for may take without their go (≈ 0.20 €; five times that on a home
+    /// install, jobs.rs `HOME_BUDGET_SCALE`).
     pub direct_budget_eur: f64,
     /// The safety net on or off.
     pub handoff: bool,

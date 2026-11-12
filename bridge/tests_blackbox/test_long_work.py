@@ -18,8 +18,8 @@ from bbkit.common import AUTH, read_sse, sse, in_session, boite_items
 from bbkit.mcp import call, give_token, rpc, text_of
 from bbkit.servers import wait_until
 
-# 0.20 € at 0.95 × 0.50 € + 0.05 × 1.50 € per million tokens
-DEFAULT_TOKENS = 363_636
+# 0.20 € five times at home (jobs.rs HOME_BUDGET_SCALE) at 0.95 × 0.50 € + 0.05 × 1.50 € per million tokens
+DEFAULT_TOKENS = 1_818_181
 
 
 def jobs(bridge):
@@ -42,7 +42,7 @@ def test_start_task_starts_a_task_within_the_direct_budget(bridges, fakes):
     result = call(bridge, "start_task", {"title": "Tri des mails", "instructions": "Trie mes mails de la semaine."})
     assert not result["isError"], text_of(result)
     # at home, in tokens only (the euros are counted at the `[notebook]` prices, not the person's own model's)
-    assert text_of(result).startswith("Started in the background (budget about 363,636 tokens)")
+    assert text_of(result).startswith("Started in the background (budget about 1,818,181 tokens)")
     assert "€" not in text_of(result) and "« Background tasks »" in text_of(result)
     job = jobs(bridge)[0]
     assert (job["state"], job["proposed_by"], job["max_tokens"]) == ("running", "asked", DEFAULT_TOKENS)
@@ -63,11 +63,11 @@ def test_start_task_refuses_more_than_the_direct_budget(bridges, fakes):
     fakes.hermes.rounds = 1000
     above = call(bridge, "start_task", {"title": "Grosse recherche", "instructions": "Cherche.", "budget_eur": 1.5})
     assert above["isError"]
-    assert "more than the 363,636 tokens a task may take without your person's go" in text_of(above)
+    assert "more than the 1,818,181 tokens a task may take without your person's go" in text_of(above)
     assert "propose_task" in text_of(above)
     assert not fakes.hermes.seen("/v1/runs", "POST") and jobs(bridge) == []
-    smaller = call(bridge, "start_task", {"title": "Petite recherche", "instructions": "Cherche.", "budget_eur": 0.1})
-    assert not smaller["isError"] and jobs(bridge)[0]["budget_eur"] == 0.1
+    smaller = call(bridge, "start_task", {"title": "Petite recherche", "instructions": "Cherche.", "budget_eur": 0.5})
+    assert not smaller["isError"] and jobs(bridge)[0]["budget_eur"] == 0.5
     assert jobs(bridge)[0]["max_tokens"] == DEFAULT_TOKENS // 2
     assert bridge.delete(f"/v1/jobs/{jobs(bridge)[0]['id']}", headers=AUTH).status_code == 200
 
@@ -92,7 +92,7 @@ def test_the_direct_budget_is_configured(bridges, fakes):
     give_token(bridge)
     fakes.hermes.rounds = 1000
     result = call(bridge, "start_task", {"title": "Comparatif", "instructions": "Compare 10 appartements."})
-    assert text_of(result).startswith("Started in the background (budget about 1,000,000 tokens)")   # 0.55 €
+    assert text_of(result).startswith("Started in the background (budget about 5,000,000 tokens)")   # 0.55 €, five times at home
     assert bridge.delete(f"/v1/jobs/{jobs(bridge)[0]['id']}", headers=AUTH).status_code == 200
 
 
@@ -102,7 +102,7 @@ def test_notebook_fill_starts_the_carnets_task(bridges, fakes):
     fakes.hermes.rounds = 1000
     result = call(bridge, "notebook_fill", {})
     assert not result["isError"]
-    assert text_of(result).startswith("Started in the background (budget about 363,636 tokens)")
+    assert text_of(result).startswith("Started in the background (budget about 1,818,181 tokens)")
     job = jobs(bridge)[0]
     assert (job["title"], job["template"], job["proposed_by"]) == ("Fill the Notebook", "notebook_fill", "asked")
     # the Carnet by its English name, as the agent's person reads it (names.rs)

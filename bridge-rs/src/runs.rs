@@ -2266,7 +2266,7 @@ impl RunHub {
         };
         let title = rescue_title(&request);
         let prompt = rescue_prompt(&request, &steps, &said);
-        let budget = config.jobs.direct_budget_eur;
+        let budget = crate::jobs::direct_budget_eur(&config);
         let started = tokio::time::timeout(
             Duration::from_secs(45),
             jobs.create_from(&agent, &title, &prompt, budget, None, "asked", session.as_deref()),

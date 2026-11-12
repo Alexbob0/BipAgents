@@ -14,8 +14,16 @@
 //!
 //! The prices: on a place of the offer, the guichet's list (read once an hour, the agent's model or the region's
 //! default); elsewhere, or the guichet away, `[jobs] price_in / price_cached / price_out` when set, else the
-//! `[notebook]` prices (cache reads at the input price: a home install's model is the person's own, its tokens are
-//! what the apps show there).
+//! `[notebook]` prices.
+//!
+//! A home install (its own model, the apps show tokens there): a cache read counts `HOME_CACHE_WEIGHT` (10 %) of a
+//! fresh input token unless `[jobs] price_cached` says otherwise (Alex, 2026-11-12: his task asked « Continuer » again
+//! and again, each step's whole conversation, read again from the cache, counted in full). Why 10 %: a local server
+//! (llama.cpp's prompt cache, vLLM's / SGLang's prefix caching, Ollama keeping the context) skips the prefill of a
+//! prefix it holds, the costly part of reading a prompt; what is left is reading the KV cache back, a small fraction;
+//! the providers a home install may use instead bill a cache read 10 % (Anthropic, DeepSeek, OpenAI's recent models)
+//! to 25 % of fresh input. A place of the offer whose guichet is away keeps the cache at the input price (on the
+//! high side, as before: there it is the person's credit).
 
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
@@ -87,15 +95,25 @@ impl Prices {
     }
 }
 
-/// The install's own prices: `[jobs] price_*` when set, else the `[notebook]` ones (no cache discount).
+/// What a cache read counts on a home install, as a share of a fresh input token (the module's doc).
+pub const HOME_CACHE_WEIGHT: f64 = 0.10;
+
+/// The install's own prices (the module's doc), on a place of the offer or not.
 pub fn configured(config: &Config) -> Prices {
+    configured_on(config, crate::handover::on_offer())
+}
+
+/// `configured`: `[jobs] price_*` when set, else the `[notebook]` ones; cache reads at `[jobs] price_cached` when set,
+/// else at `HOME_CACHE_WEIGHT` of the input price at home, at the input price on the offer.
+pub fn configured_on(config: &Config, offer: bool) -> Prices {
+    let weight = if offer { 1.0 } else { HOME_CACHE_WEIGHT };
     let j = &config.jobs;
     if j.price_in > 0.0 || j.price_out > 0.0 {
-        let cached = if j.price_cached > 0.0 { j.price_cached } else { j.price_in };
+        let cached = if j.price_cached > 0.0 { j.price_cached } else { j.price_in * weight };
         return Prices { input: j.price_in, cached, output: j.price_out };
     }
     let n = &config.notebook;
-    Prices { input: n.price_in.max(0.0), cached: n.price_in.max(0.0), output: n.price_out.max(0.0) }
+    Prices { input: n.price_in.max(0.0), cached: n.price_in.max(0.0) * weight, output: n.price_out.max(0.0) }
 }
 
 /// One model's prices in the guichet's list (`input_eur_per_mtok`, `cached_eur_per_mtok`, `output_eur_per_mtok`);
@@ -165,7 +183,7 @@ mod tests {
         let real = GLM.cost(1_500_000, 1_350_000, 30_000);
         assert!((real - (0.015 + 0.027 + 0.0105)).abs() < 1e-9, "{real}");
         // what the old count said for the same tokens (everything at 0.50 / 1.50, no cache): fifteen times more
-        let old = configured(&Config::with_key("k")).cost(1_500_000, 1_350_000, 30_000);
+        let old = configured_on(&Config::with_key("k"), true).cost(1_500_000, 1_350_000, 30_000);
         assert!((old - 0.795).abs() < 1e-9, "{old}");
         assert_eq!(GLM.cost(10, 50, -3), 10.0 * 0.02 / 1e6, "cache reads never more than the input, nothing negative");
     }
@@ -198,14 +216,32 @@ mod tests {
     #[test]
     fn the_install_s_prices() {
         let mut config = Config::with_key("k");
-        assert_eq!(configured(&config), Prices { input: 0.50, cached: 0.50, output: 1.50 });
+        // a place of the offer whose guichet is away: as before, cache reads at the input price
+        assert_eq!(configured_on(&config, true), Prices { input: 0.50, cached: 0.50, output: 1.50 });
+        // a home install: a cache read counts a tenth of a fresh input token
+        assert_eq!(configured_on(&config, false), Prices { input: 0.50, cached: 0.05, output: 1.50 });
         config.jobs.price_in = 0.1;
         config.jobs.price_out = 0.35;
-        assert_eq!(configured(&config), Prices { input: 0.1, cached: 0.1, output: 0.35 });
+        assert_eq!(configured_on(&config, true), Prices { input: 0.1, cached: 0.1, output: 0.35 });
+        let home = configured_on(&config, false);
+        assert!((home.cached - 0.01).abs() < 1e-12 && home.input == 0.1 && home.output == 0.35, "{home:?}");
         config.jobs.price_cached = 0.02;
-        assert_eq!(configured(&config), GLM);
-        assert_eq!(configured(&Config::with_key("k")).tokens_for(0.20), 363_636);
+        assert_eq!(configured_on(&config, true), GLM);
+        assert_eq!(configured_on(&config, false), GLM, "[jobs] price_cached wins at home too");
+        assert_eq!(configured_on(&Config::with_key("k"), false).tokens_for(0.20), 363_636);
         let job = json!({"prices": GLM.to_value()});
         assert_eq!(Prices::of_job(job.as_object().unwrap()), Some(GLM));
+    }
+
+    #[test]
+    fn a_long_task_at_home_counts_its_cache_reads_lightly() {
+        // Alex, 2026-11-12, a home install: 40 steps, each reading its 30 k-token conversation again (28.5 k of it from
+        // the cache, 1.5 k new), writing 1 k
+        let config = Config::with_key("k");
+        let (input, cached, output) = (40 * 30_000, 40 * 28_500, 40 * 1_000);
+        let before = configured_on(&config, true).cost(input, cached, output);
+        let now = configured_on(&config, false).cost(input, cached, output);
+        assert!((before - 0.66).abs() < 1e-9, "{before}"); // 3.3 times the small budget (0.20): three « Continuer »
+        assert!((now - (0.03 + 0.057 + 0.06)).abs() < 1e-9, "{now}"); // 0.147: within it
     }
 }
