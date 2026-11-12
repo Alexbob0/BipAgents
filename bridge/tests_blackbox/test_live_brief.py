@@ -24,18 +24,21 @@ def talk(n, start=0):
 
 # 4/11 (Alex asked a pronunciation in a call; the agent started an audio file while he waited): a call's turns and its
 # warm-up have the tools that make media or long outputs refused (Hermes patch 0024, `model_options.closed_tools`).
-LIVE_CLOSED = ["browser_*", "computer_use", "delegate_task", "image_generate", "mcp__bipagents__create_audio",
-               "mcp__bipagents__create_page", "mcp__bipagents__create_podcast", "mcp__bipagents__heavy_work",
-               "mcp__bipagents__start_task", "mcp__bipagents_files__shared_files_write", "mcp__stealth__*", "patch",
+LIVE_CLOSED = ["browser_*", "clarify", "computer_use", "delegate_task", "image_generate",
+               "mcp__bipagents__create_audio", "mcp__bipagents__create_page", "mcp__bipagents__create_podcast",
+               "mcp__bipagents__heavy_work", "mcp__bipagents__start_task", "mcp__bipagents_files__shared_files_write", "mcp__stealth__*", "patch",
                "text_to_speech", "video_generate", "write_file", "xai_video_edit", "xai_video_extend"]
 LIVE_OPTIONS = {"reasoning": {"enabled": False}, "closed_tools": LIVE_CLOSED}
+# 12/11: a question card nobody sees in a call (the call screens show none): `clarify` closed, the call's rules (the
+# bridge's words, first in the prelude's note) say to ask out loud.
+ASK_ALOUD = ("No clarify tool in this call (the person sees no card): to ask something, ask it out loud in one short "
+             "sentence and wait for the person's spoken answer. ")
 # The quick ones a call keeps.
 LIVE_KEPT = ["web_search", "web_extract", "mcp__bipagents__notebook_search", "mcp__bipagents__notebook_write",
              "mcp__bipagents__calendar_list", "mcp__bipagents__calendar_add", "mcp__bipagents__reminders_add",
              "mcp__bipagents__mail_search", "mcp__bipagents__mail_read", "mcp__bipagents__map_image",
              "mcp__bipagents__route", "mcp__bipagents__weather", "mcp__bipagents__message_agent",
-             "mcp__bipagents__propose_task", "mcp__bipagents__knowledge_search", "mcp__bipagents__after_call", "clarify",
-             "memory"]
+             "mcp__bipagents__propose_task", "mcp__bipagents__knowledge_search", "mcp__bipagents__after_call", "memory"]
 
 
 def closes(closed, name):
@@ -134,7 +137,8 @@ def test_a_call_start_has_the_model_read_its_prelude_without_waiting(bridge, fak
     assert started.status_code == 200 and started.json() == {"ok": True, "live_session": "api_s1"}   # the call's own
     assert wait_until(lambda: hermes.deleted, timeout=10)
     chat, = hermes.chats
-    assert chat["message"].startswith(prelude + "\n\n<!--bip:warm") and not chat.get("instructions")
+    ruled = "<!--bip:live\n" + ASK_ALOUD + "Rules\n\nBrief of s1\n-->"
+    assert chat["message"].startswith(ruled + "\n\n<!--bip:warm") and not chat.get("instructions")
     assert chat["model_options"] == LIVE_OPTIONS   # what the call's turns send: the same tools in the cache
     (_, call), (_, warm) = hermes.created
     assert call["title"].startswith("Live · ") and warm["title"].startswith("BipAgents · live · ")
@@ -163,7 +167,7 @@ def test_a_call_s_turns_go_through_the_bridge(bridge, fakes):
             assert json.loads(first[6:]) == {"event": "assistant.delta", "run_id": "run_l1", "delta": "Salut"}
             assert any("run.completed" in line for line in lines)
     turn, = hermes.streams
-    assert turn == {"agent": "", "session": live, "input": "<!--bip:live\nRules\n-->\n\nBonjour",
+    assert turn == {"agent": "", "session": live, "input": "<!--bip:live\n" + ASK_ALOUD + "Rules\n-->\n\nBonjour",
                     "model_options": LIVE_OPTIONS}
     hermes.stream_script = []
     photo = {"kind": "image", "mime": "image/png", "data": "AAAA"}
@@ -307,7 +311,7 @@ def test_a_call_s_turns_close_the_media_and_long_tools_and_keep_the_quick_ones(b
     closed = hermes.streams[-1]["model_options"]["closed_tools"]
     for media in ["mcp__bipagents__create_audio", "mcp__bipagents__create_podcast", "text_to_speech", "image_generate",
                   "mcp__bipagents__create_page", "write_file", "mcp__stealth__navigate", "browser_navigate",
-                  "delegate_task", "mcp__bipagents__start_task"]:
+                  "delegate_task", "mcp__bipagents__start_task", "clarify"]:
         assert closes(closed, media), media
     for quick in LIVE_KEPT:
         assert not closes(closed, quick), quick

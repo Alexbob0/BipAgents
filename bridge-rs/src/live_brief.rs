@@ -600,7 +600,7 @@ impl Briefs {
         // the call's turns' options (their closed tools included): the warm-up renders as they do
         let options = crate::live_turns::live_turn_options(&self.config.get(), agent);
         let extra = json!({"model_options": options});
-        let message = format!("{prelude}\n\n{WARM_MESSAGE}");
+        let message = format!("{}\n\n{WARM_MESSAGE}", crate::live_turns::with_call_rules(prelude));
         let reply = self.scratch_chat(agent, WARM_TITLE, &message, extra, 60.0).await;
         lock(&RUNNING).remove(&agent.name);
         tracing::info!(agent = %agent.name, ms = started.elapsed().as_millis() as u64, ok = reply.is_ok(), "live warm-up");
