@@ -249,9 +249,9 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
 
 - La personne qui souscrit invite les autres par e-mail, avec un lien qui ne sert qu'une fois. Chaque personne invitée
   crée son propre compte et a **sa propre place** et ses agents ; le crédit d'IA est celui du forfait, partagé
-  (section 6). **Ni la personne qui paie ni Kerfy Studio ne peuvent lire ses agents ou ses conversations**, sauf ce qu'elle choisit
-  elle-même de partager (un agent qu'elle partage, ce qu'elle écrit à un agent de la famille, son agenda si elle
-  l'ouvre à l'agent de la famille).
+  (section 6). **Ni la personne qui paie ni Kerfy Studio ne lisent ses agents ou ses conversations**, sauf ce qu'elle
+  choisit de partager : un agent qu'elle partage en lecture, ce qu'elle écrit dans un agent de la famille (lu par ses
+  membres) et son agenda si elle l'ouvre à un agent de la famille.
 - **Ce que voit la personne qui paie** : combien du crédit d'IA chaque personne a utilisé dans le mois (un montant en
   euros, et son estimation en messages), pour suivre le crédit de la famille et fixer des limites. **Jamais ce que
   chacun écrit ni ce que font ses agents.** Chaque personne invitée voit ce qu'il reste du crédit pour tout le monde,
@@ -418,8 +418,8 @@ déjà payé. Si tu n'es pas d'accord, tu peux résilier sans frais avant qu'il 
 
 - En cas de problème, écris d'abord à **support@bipagents.com** pour chercher une solution.
 - **Médiation** : si ta réclamation écrite n'a pas abouti, tu peux saisir gratuitement le médiateur de la consommation
-  de Kerfy Studio : [à compléter : nom du médiateur, adresse postale, site web]. Tu dois le saisir dans l'année qui suit
-  ta réclamation écrite (articles L612-1, L612-2, L616-1 et R616-1 du Code de la consommation).
+  de Kerfy Studio. Médiateur : en cours de désignation ; aucune vente n'a lieu pendant la bêta. Tu dois le saisir dans
+  l'année qui suit ta réclamation écrite (articles L612-1, L612-2, L616-1 et R616-1 du Code de la consommation).
 - Ces conditions sont soumises au **droit français**. Si tu es consommateur et résides dans un autre pays de l'Union
   européenne, tu gardes en plus la protection des règles impératives de ce pays. Les tribunaux compétents sont ceux
   indiqués dans les conditions d'utilisation (section 20). Si tu vis hors de l'Union européenne, la section 17
@@ -444,13 +444,6 @@ facture les taxes de ton pays, calculées par Stripe Tax, et tu résilies sur la
   date et la façon de résilier en ligne ; un changement de prix t'est annoncé une seconde fois entre 7 et 30 jours avant
   de s'appliquer (section 5 ; Business and Professions Code de Californie, articles 17600 et suivants).
 - **Âge** : aucune personne de moins de 13 ans ne peut utiliser une place (section 7).
-- **Arbitrage individuel** : tout litige entre toi et Kerfy Studio lié à l'offre est réglé par un **arbitrage
-  individuel et définitif**, administré par [à compléter : organisme d'arbitrage et ses règles pour les consommateurs],
-  et non devant un tribunal. Tu peux toujours saisir le tribunal des petits litiges (small claims court) de ton comté
-  pour une demande qui en relève. Kerfy Studio prend en charge les frais de l'organisme d'arbitrage au-delà de ce que
-  tu paierais pour saisir un tribunal. **Tu renonces à agir dans le cadre d'une action collective** (class action) ou
-  d'un arbitrage collectif, comme partie ou comme membre. Tu peux refuser cette clause d'arbitrage en écrivant à
-  support@bipagents.com dans les 30 jours qui suivent ta souscription ; le reste du contrat ne change pas.
 - **Responsabilité** : dans la mesure où la loi de ton État le permet, la responsabilité totale de Kerfy Studio envers
   toi est limitée au montant que tu as payé pour l'offre pendant les 12 mois précédant le fait en cause, et Kerfy Studio
   ne répond pas des dommages indirects ; cette règle remplace, pour toi, la phrase de la section 14 sur l'absence de
@@ -502,8 +495,7 @@ facture les taxes de ton pays, calculées par Stripe Tax, et tu résilies sur la
 - **Renoncer au contrat** : la fonction de la section 12 reste à ta disposition. Elle s'ajoute aux droits d'annulation
   que te donne la loi de ta province (au Québec, ceux de la Loi sur la protection du consommateur pour les contrats
   conclus à distance).
-- **Tribunaux** : la clause d'arbitrage, la renonciation aux actions collectives et le plafond de responsabilité
-  prévus pour les États-Unis ne s'appliquent pas à toi. Tu peux saisir les tribunaux de ta province, y compris dans le
+- **Tribunaux** : le plafond de responsabilité prévu pour les États-Unis ne s'applique pas à toi. Tu peux saisir les tribunaux de ta province, y compris dans le
   cadre d'une action collective.
 - **Droit applicable** : le droit français, avec les règles de protection du consommateur de ta province qui
   s'imposent. Si tu vis au Québec, ces règles du Québec s'appliquent et tu peux saisir les tribunaux du Québec.

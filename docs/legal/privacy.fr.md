@@ -19,7 +19,7 @@
 - Avec ton propre serveur, Kerfy Studio ne peut recevoir que trois choses :
   1. de quoi acheminer tes **notifications** par son relais : un jeton d'appareil scellé, jamais le texte de tes
      messages en clair ;
-  2. ce que tu choisis de nous envoyer : un **e-mail** au support, ou le **signalement** d'une réponse depuis l'app ;
+  2. ce que tu choisis de nous envoyer : un **e-mail** au support, ou le **signalement** d'une réponse ou d'un message depuis l'app ;
   3. des **rapports de plantage**, seulement si tu as activé leur partage dans les réglages de ton téléphone.
 - Avec l'offre tout compris, Kerfy Studio traite aussi ton compte, l'état de ton abonnement, des données techniques
   sur ta place (jamais son contenu) et tes sauvegardes, illisibles sans leur clé, qui reste sur ta place et sur tes appareils (section 5.5) ; il héberge ta place
@@ -78,26 +78,46 @@ Avec ton propre ordinateur ou ton propre serveur :
   le bridge les lit pour remplir un paiement que tu as validé. Le code de sécurité n'est jamais gardé : tu le tapes à
   chaque paiement. L'agent (le modèle d'IA) ne voit jamais ces numéros, et Kerfy Studio n'en reçoit rien. Avec l'offre
   tout compris, la carte reste sur ton téléphone (section 5.10).
-- **Plusieurs personnes sur un même serveur** (fonction famille) : chaque personne a sa propre installation, séparée
-  des autres. La personne qui administre le serveur en est responsable vis-à-vis des autres.
-- **Un agent personnel que tu partages avec tes proches** : ils peuvent lire tes conversations avec lui (tes
-  messages, ses réponses, les photos, fichiers, pages et cartes), à partir du moment où tu le partages, ou aussi celles
-  d'avant si tu le choisis. Ils ne peuvent ni lui écrire ni lui demander quoi que ce soit, et ne voient pas sa mémoire.
-  Ce que l'agent lit ou écrit dans ces conversations avec ses outils (messagerie, agenda, santé, contacts, Carnet…)
-  devient visible pour eux : l'app te le rappelle avant de partager. Tu changes ce choix ou arrêtes le partage quand tu
-  veux ; une fois le partage arrêté, ils n'y ont plus accès. Il en va de même pour un agent qu'un proche partage avec
-  toi.
-- **L'agent de la famille** a une seule conversation, commune aux membres choisis par celui qui l'a créé (toute la
-  famille ou certains membres) : ce que chacun y écrit et ses réponses sont visibles de ces membres, et il se souvient
-  de ce que chacun lui dit. Les fichiers et photos qu'on lui envoie sont visibles de ces membres et gardés 30 jours chez
-  celui qui l'a créé. Il peut faire des pages, des audios et des routines : leurs résultats arrivent dans la
-  conversation commune. Il n'accède jamais au courrier, à la santé ni au Carnet personnel de personne. Il ne lit l'agenda d'un membre
-  que si celui-ci le lui a permis (Réglages › Calendrier, ou la page de l'agent) : il le demande alors au serveur de
-  ce membre au moment de répondre, sans en garder de copie chez celui qui l'a créé, et ses réponses sont visibles des
-  membres de la conversation. Il n'y ajoute ou ne change un rendez-vous que si ce membre l'a aussi permis.
+- **Plusieurs personnes sur un même serveur** (fonction famille) : chaque personne a sa propre installation et ses
+  propres agents, séparés des autres, sauf les agents de la famille et les agents partagés (section 2 bis), qui sont
+  communs par choix. La personne qui administre le serveur en est responsable vis-à-vis des autres.
 
 **Avec l'offre tout compris**, ta place remplace ton serveur, et Kerfy Studio choisit l'hébergeur et le routeur d'IA :
 la section 5 dit qui voit quoi.
+
+## 2 bis. Les agents de la famille et les agents partagés
+
+**L'agent de la famille.** La personne qui le crée choisit qui y participe : toute la famille ou certains membres. Il
+a une seule conversation : chacun y voit les messages des autres, avec leur prénom, et les réponses de l'agent. Sa
+mémoire est commune : ce que tu lui dis peut ressortir dans ses réponses aux autres. Les pages, les audios et les
+routines qu'il fait arrivent dans cette conversation.
+
+- **Où.** L'agent, sa conversation, sa mémoire, ses fichiers et ses photos sont sur le serveur de la personne qui l'a
+  créé, ou sur sa place avec l'offre tout compris, que Kerfy Studio héberge sans y accéder (section 5.1). Les fichiers
+  et photos qu'on lui envoie (photos, PDF, Word, Excel, PowerPoint) sont visibles des membres et gardés selon la durée
+  choisie sur ce serveur, 30 jours par défaut, puis effacés (section 12).
+- **Ce qu'il ne lit jamais** : ton courrier, ta santé et ton Carnet.
+- **Ton agenda**, seulement si tu le lui permets (Réglages › Calendrier, ou la page de l'agent ; éteint au départ) : il
+  demande alors à ton serveur (ou à ta place) les rendez-vous dont il a besoin, au moment de répondre, sans en garder
+  de copie chez la personne qui l'a créé, et ses réponses sont visibles des membres. Ajouter ou changer un rendez-vous
+  demande un second réglage, éteint lui aussi au départ. Ces réglages ne s'allument que par toi, sur ton appareil : ni
+  la personne qui a créé l'agent ni un parent ne peut le faire à ta place, y compris entre 16 et 18 ans. Base légale :
+  ton consentement (article 6.1.a du RGPD), que tu donnes en allumant ces réglages et retires en les éteignant.
+- **Quand un membre part.** Si tu quittes l'agent ou en es retiré, tes messages restent dans la conversation, avec ton
+  prénom, et tes fichiers en sont retirés. Si tu supprimes ton compte, ton prénom y devient « Ancien membre ». Si la
+  personne qui a créé l'agent le supprime, ou supprime son compte ou sa place, l'agent, sa conversation et ses fichiers
+  sont effacés pour tous.
+- **Qui en décide.** La personne qui crée l'agent choisit ses membres et ses outils, et peut retirer un membre. Sur son
+  propre serveur, elle en est responsable vis-à-vis des autres membres.
+
+**Un agent personnel partagé avec tes proches.** Tu peux leur laisser lire tes conversations avec un de tes agents (tes
+messages, ses réponses, les photos, fichiers, pages et cartes), à partir du partage, ou aussi celles d'avant si tu le
+choisis (éteint au départ). Ils ne peuvent ni lui écrire ni lui demander quoi que ce soit, et ne voient pas sa mémoire.
+Ce que l'agent lit ou écrit dans ces conversations avec ses outils (messagerie, agenda, contacts, Carnet…) devient
+visible pour eux, et elles peuvent parler d'autres personnes : l'app te le rappelle avant de partager. Si l'agent peut
+lire ta santé, ces passages ne peuvent pas leur être cachés : le partage ne part qu'avec une case à cocher à part, ton
+consentement explicite (article 9.2.a du RGPD). Tu changes ces choix ou arrêtes le partage quand tu veux ; une fois le
+partage arrêté, ils n'y ont plus accès. Il en va de même pour un agent qu'un proche partage avec toi.
 
 ## 3. Ce que l'app garde sur ton téléphone
 
@@ -260,6 +280,10 @@ et ne lisent que le nom du site. Une notification (Android) ou l'écran « Relai
 avec « Arrêter ». Jamais pour un agent partagé ou familial. Kerfy Studio n'en reçoit rien. **Base légale** : te
 fournir la fonction que tu choisis (article 6.1.b du RGPD).
 
+**Tes choix d'accord.** Les actions que tu as permises avec « Toujours » pour chaque agent, les sites bloqués avec
+« Refuser toujours » et les demandes en attente sont gardés sur ton serveur (ou ta place) ; une demande en attente est
+effacée après 24 heures sans réponse. Kerfy Studio n'en reçoit rien.
+
 ## 4. Ce que Kerfy Studio peut recevoir
 
 ### 4.1 Les notifications, par le relais de Kerfy Studio
@@ -300,7 +324,7 @@ service APNs.
 
 **Sans notifications.** Tu peux refuser ou couper les notifications dans les réglages de ton téléphone : l'app
 fonctionne sans elles. Si tu désinstalles l'app, Apple ou Google signalent le jeton comme invalide et ton serveur
-l'oublie. Si tu compiles l'app toi-même avec ton propre compte Apple, le relais de Kerfy Studio n'est pas utilisé.
+l'oublie.
 
 **Sur Android**, l'app ne demande un jeton à Google qu'au moment où tu actives les notifications.
 
@@ -325,10 +349,21 @@ l'oublie. Si tu compiles l'app toi-même avec ton propre compte Apple, le relais
   appuyé sur « Envoyer ». Le relais voit au passage l'adresse IP de ton téléphone et ne s'en sert que pour limiter
   les abus (section 4.1). Comme le signalement ne contient aucun moyen de te joindre, nous ne pouvons pas y
   répondre : écris au support si tu attends une réponse.
-- **Signaler ce message** (appui long sur le message d'une autre personne, dans la conversation commune d'un agent de la
-  famille ou dans une conversation qu'un proche te partage) suit le même chemin, avec le même contenu, plus **le
-  prénom de cette personne tel qu'il s'affiche et le nom de l'agent**. Elle n'en est pas prévenue. Base légale :
-  l'intérêt légitime de Kerfy Studio à modérer ce que les utilisateurs échangent entre eux.
+- **Signaler ce message** (appui long sur le message d'une autre personne, dans un agent de la famille ou un agent
+  partagé, section 2 bis) envoie le signalement depuis l'app, par le relais de Kerfy Studio, puis par e-mail à Kerfy
+  Studio seulement, par son prestataire de messagerie (Proton AG, Suisse) ; Proton garde le message envoyé le temps
+  que nous l'effacions de la boîte d'envoi. Il contient le motif, tes précisions
+  éventuelles, **le texte du message, le prénom affiché de son auteur et le nom de l'agent**. Ni ton nom ni ton adresse
+  e-mail, sauf si tu l'ajoutes pour recevoir une réponse ou si tu l'envoies par e-mail (ci-dessous). L'auteur n'est
+  pas prévenu de ton signalement. Kerfy Studio ne lit pas la conversation et ne peut pas effacer ce message. Il peut,
+  selon les cas, te conseiller, prévenir la personne qui a créé l'agent si elle a un compte, ou prendre une mesure
+  prévue par les conditions d'utilisation ou la politique d'usage acceptable : la personne visée en est alors
+  informée, avec les motifs (section 5.7). Tu peux aussi quitter l'agent, et la personne qui a créé un agent de la
+  famille peut retirer un membre. Si tu es en danger, appelle d'abord le 112. Ce message est celui d'une autre
+  personne : nous n'utilisons que ce qui sert à traiter le signalement. Base légale : l'intérêt légitime de Kerfy
+  Studio à faire respecter les règles de l'app et à protéger les personnes qui l'utilisent (article 6.1.f du RGPD)
+  et, avec l'offre tout compris, son obligation d'hébergeur de traiter les signalements (article 6.1.c ; règlement
+  (UE) 2022/2065, article 16).
 - **Si le relais ne répond pas**, l'app te propose d'envoyer le même signalement par e-mail : nous recevons alors
   aussi ton adresse e-mail.
 
@@ -339,8 +374,11 @@ dans les précisions que ce qui est utile. Nous effaçons ce qui ne sert pas à 
 **Bases légales.** Répondre à tes messages et traiter tes signalements : intérêt légitime de Kerfy Studio à te
 répondre et à rendre l'app plus sûre (article 6.1.f du RGPD). Répondre à une demande d'exercice de tes droits :
 obligation légale (article 6.1.c ; articles 12 à 22 du RGPD).
-**Durée.** Support : 2 ans après le dernier échange ; code d'aide (offre) : tant que dure l'abonnement. Signalements :
-1 an après leur traitement.
+**Durée.** Support : 2 ans après le dernier échange ; code d'aide (offre) : tant que dure l'abonnement. Signalement
+d'une réponse : 1 an après son traitement. Signalement d'un message d'une autre personne : son contenu, y compris
+l'e-mail reçu chez Proton, est effacé dès qu'il est traité, et au plus tard 6 mois après sa réception ; seule une fiche
+sans le message (date, motif, décision et ses motifs) est ensuite gardée 1 an après le traitement, plus longtemps si un
+litige ou une autorité l'exige.
 **Destinataires.** Kerfy Studio et ses sous-traitants : son prestataire de messagerie (Proton AG, Suisse) et l'hébergeur du relais et du guichet, par lesquels passent les signalements et les messages envoyés depuis l'app.
 
 ### 4.3 Les rapports de plantage
@@ -651,7 +689,7 @@ BipAgents n'y efface rien et Kerfy Studio n'en garde rien.
 | Hébergeurs des modèles, partenaires d'EUrouter | Font tourner le modèle (aujourd'hui GLM-5.3 Flash) | Messages envoyés au modèle, avec les fichiers et les photos qu'il voit | Union européenne, selon EUrouter |
 | Scaleway SAS (Paris, France) | Stockage objet des sauvegardes (région fr-par, Paris) | Sauvegardes chiffrées des places, illisibles pour lui et pour Kerfy Studio ; copies chiffrées de la base du guichet ; une version remplacée ou effacée est gardée 1 jour | Union européenne (France) |
 | OVHcloud (OVH SAS, Roubaix, France) | Héberge le guichet et le relais, sur un VPS en France | Compte, abonnement, données techniques ; jetons scellés et journaux du relais (sections 4.1 et 5.6) | France |
-| Proton AG (Genève, Suisse) | Envoie, depuis une adresse bipagents.com, les codes, les avis de sécurité, les invitations, la confirmation d'achat, l'accusé de rétractation et les avis de suppression ; héberge aussi la boîte du support (section 4.2) | Adresse e-mail, contenu de ces e-mails | Suisse (décision d'adéquation, section 11) |
+| Proton AG (Genève, Suisse) | Envoie, depuis une adresse bipagents.com, les codes, les avis de sécurité, les invitations, la confirmation d'achat, l'accusé de rétractation et les avis de suppression ; héberge aussi la boîte du support (section 4.2) | Adresse e-mail, contenu de ces e-mails ; Proton garde le message envoyé le temps que nous l'effacions de la boîte d'envoi | Suisse (décision d'adéquation, section 11) |
 | Stripe Payments Europe, Ltd. (Dublin, Irlande) | Paiement des achats sur le site bipagents.com, calcul des taxes, contrôles contre la fraude, factures | Adresse e-mail, adresse ou pays de facturation, données de carte, adresse IP | Union européenne ; possiblement hors de l'Union (section 11) |
 
 Ils sont liés à Kerfy Studio par un contrat conforme à l'article 28 du RGPD ; Stripe agit en plus comme responsable
@@ -720,6 +758,22 @@ payé). Avec ton propre serveur, rien de cela ne part.
 ajoutées aux totaux du jour, où personne n'apparaît, gardés 2 ans. Effacées aussitôt quand la place est réinstallée, retirée ou donnée à quelqu'un
 d'autre.
 
+### 5.13 Demander un code bêta sur le site
+
+Sur bipagents.com, « Obtenir un code » te demande ton adresse e-mail et fait faire à ton navigateur un petit calcul
+contre les robots (ALTCHA, servi et vérifié par Kerfy Studio, qui n'écrit rien sur ton appareil : ni cookie, ni
+stockage). Une adresse reçoit un seul code, les adresses jetables sont refusées, et le nombre de codes est limité par
+jour et par réseau. Ton adresse ne sert en clair qu'à t'envoyer le code, par Proton AG (Suisse, section 11), depuis une
+adresse bipagents.com : elle n'est pas gardée, et Proton garde le message envoyé le temps que nous l'effacions de la
+boîte d'envoi. Kerfy Studio garde seulement une empreinte de ton adresse, calculée
+avec une clé secrète, qui permet de reconnaître une adresse déjà servie sans pouvoir la relire. Ton adresse IP n'est
+jamais enregistrée en clair : seule son empreinte sert à la limite par réseau, 2 jours au plus (section 5.3).
+
+**Bases légales.** T'envoyer le code que tu demandes (article 6.1.b du RGPD). Un seul code par adresse, la limite par
+réseau et le calcul contre les robots : intérêt légitime de Kerfy Studio à répartir équitablement les places de la
+bêta (article 6.1.f). **Durée.** L'empreinte de l'adresse, jusqu'à la fin de la bêta, au plus tard le 31 décembre 2026.
+Si tu crées ensuite un compte, la section 5.2 s'applique à ton compte.
+
 ## 6. Ce que Kerfy Studio ne fait pas
 
 - Pas de publicité, pas d'identifiant publicitaire, pas de pistage entre apps ou sites. Pas d'outil de statistiques
@@ -771,12 +825,15 @@ est ensuite responsable de ce qu'il en fait.
 - **Sur Android, la lecture des QR codes** se fait sur le téléphone, avec une bibliothèque intégrée à l'app, sans
   service Google.
 - **Sur Android, le scanner de documents**, et la lecture sur le téléphone du texte d'un papier scanné, sont des
-  fonctions des services Google Play (Google ML Kit). Google indique
+  fonctions des services Google Play (Google ML Kit) : le modèle qui lit le texte est téléchargé par les services
+  Google Play et tourne sur le téléphone. Google indique
   que ML Kit lui envoie des informations sur l'appareil et l'app, des identifiants d'installation et des mesures
   d'usage et de performance, pour le diagnostic et ses statistiques. L'app te le dit et te demande ton accord avant
-  la première utilisation du scanner ; sans cet accord, le scanner ne s'ouvre pas
+  la première utilisation du scanner, et cet accord couvre aussi la lecture du texte ; sans lui, le scanner ne s'ouvre pas
   et le texte d'aucun document n'est lu par Google ML Kit, et tu peux toujours joindre une
   photo ou un fichier. Tu peux changer d'avis à tout moment dans Réglages.
+- **Sur iPhone**, le texte d'un papier scanné est lu sur le téléphone par les outils d'Apple (Vision), sans service en
+  ligne.
 - **Apple et Google** pour les notifications (section 4.1).
 - **Tailscale**, si tu l'utilises : une app distincte, avec son propre compte et sa propre politique de
   confidentialité.
@@ -878,7 +935,9 @@ l'Union. Tu peux nous demander une copie des garanties applicables.
 | Journaux techniques du relais | 6 mois au plus |
 | E-mails de support | 2 ans après le dernier échange |
 | Code d'aide (offre tout compris) | Tant que dure l'abonnement |
-| Signalements | 1 an après leur traitement |
+| Signalement d'une réponse | 1 an après son traitement |
+| Signalement d'un message d'une autre personne | Contenu : jusqu'à son traitement, 6 mois au plus après sa réception ; fiche sans le message : 1 an après le traitement (plus si un litige ou une autorité l'exige) |
+| Demande d'accord en attente, sur ton serveur ou ta place | 24 heures sans réponse, puis effacée |
 | Rapports de plantage | 1 an après réception (côté Kerfy Studio) |
 | Compte de l'offre (identifiants, e-mail, appareils, invitations, crédit gardé) | Tant que le compte existe ; effacé 30 jours après une demande de suppression |
 | Invitation non acceptée | 30 jours |
@@ -892,13 +951,16 @@ l'Union. Tu peux nous demander une copie des garanties applicables.
 | Empreinte de l'appareil Android, hachée avec une clé secrète (semaine gratuite) | 24 mois après le premier marquage du téléphone ; gardée à part du compte, pas effacée avec lui |
 | Invitation d'un lien famille | 7 jours, ou jusqu'à la réponse |
 | Partage en lecture (copie chiffrée, personnes invitées) | Jusqu'à sa date de fin, son arrêt ou l'effacement du compte |
+| Conversation et mémoire d'un agent de la famille | Tant que l'agent existe chez la personne qui l'a créé |
 | Fichiers envoyés à l'agent de la famille | Sur le serveur de la personne qui l'a créé, jusqu'à ce que celui qui les a envoyés les supprime, arrête d'utiliser l'agent, en est retiré ou quitte la famille, ou que l'agent soit supprimé ; au plus tard la durée choisie là-bas pour les fichiers (30 jours par défaut) |
 | Nom de campagne (section 5.11) | 13 mois après son enregistrement, ou avec le compte ou l'abonnement |
 | Adresse IP à la réservation d'une semaine gratuite | Jamais enregistrée en clair ; en mémoire, sous forme d'empreinte, 15 minutes au plus |
-| Empreinte de l'adresse IP (codes bêta, page de résiliation du site, signalements d'agents partagés) | 2 jours au plus ; jusqu'à 30 jours dans les copies chiffrées de la base |
+| Adresse e-mail donnée pour « Obtenir un code » | En clair : seulement le temps d'envoyer le code ; son empreinte : jusqu'à la fin de la bêta, au plus tard le 31 décembre 2026 |
+| Empreinte de l'adresse IP (codes bêta, « Obtenir un code », page de résiliation du site, signalements d'agents partagés) | 2 jours au plus ; jusqu'à 30 jours dans les copies chiffrées de la base |
 | Résiliation sur le site : la déclaration (e-mail, numéro, motif, date de fin, date et heure) | 3 ans |
 | Résiliation sur le site : l'adresse e-mail tapée, pour limiter les essais | 2 jours au plus |
 | Contenu de ta place | Pendant l'abonnement, puis 30 jours (3 jours après une semaine gratuite non poursuivie) |
+| Contenu d'une place bêta | Jusqu'à la fin du mois gratuit qui suit la bêta (31 décembre 2026) ; sans abonnement, la place est ensuite suspendue (sans IA), puis effacée 30 jours après |
 | Sauvegardes | 2 heures (toutes), puis 48 heures (horaires), 21 jours (quotidiennes), rien au-delà ; effacées avec la place ; ce que tu effaces en est parti sous 30 jours, toutes copies comprises |
 | Fichiers de sauvegarde qu'une place efface, mis de côté par le guichet | 5 jours |
 | Versions remplacées ou effacées chez Scaleway (sauvegardes des places, copies chiffrées de la base du guichet) | 1 jour |
@@ -1010,7 +1072,9 @@ qui prépare et supervise son installation, sur son propre ordinateur ou son pro
 ## 17. Modifications
 
 Nous pouvons modifier cette politique, notamment avant de proposer des liens partenaires. La date en haut de page
-change à chaque fois. Un changement important est annoncé dans l'app au moins 30 jours avant de s'appliquer.
+change à chaque fois. Une nouvelle fonction que tu choisis d'utiliser s'applique dès que tu l'actives : l'app te dit
+alors ce qu'elle fait de tes données. Un changement important qui touche ce que tu utilises déjà est annoncé dans l'app
+au moins 30 jours avant de s'appliquer.
 
 ## 18. Contact
 
