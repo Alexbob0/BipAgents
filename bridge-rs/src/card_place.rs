@@ -1039,6 +1039,20 @@ mod tests {
     }
 
     #[test]
+    fn a_routines_late_answer_says_what_the_app_did_and_asks_for_its_report() {
+        let config = Config::with_key("k");
+        // a mail card: the bridge moves the mails itself on « Oui »; never told to do it again
+        let mail = told_words(&config, "bip-mail-x", "Vie veut déplacer 12 e-mails", true);
+        assert!(mail.starts_with("« Vie veut déplacer 12 e-mails »") && mail.contains("don't do it again"), "{mail}");
+        assert_eq!(told_words(&config, "bip-mail-x", "Vie veut déplacer 12 e-mails", false), "Vie veut déplacer 12 e-mails");
+        assert_eq!(told_words(&config, "bip-site-x", "s", true), "s");
+        let note = resume_note_for(&[(mail, true), ("s".into(), false)], Some("Tri de nuit"));
+        assert!(note.contains("- « Vie veut déplacer 12 e-mails » — being done") && note.contains("- « s »: REFUSED"), "{note}");
+        assert!(note.contains("report of your routine « Tri de nuit »"));
+        assert!(!resume_note(&[("s".into(), true)]).contains("routine"));
+    }
+
+    #[test]
     fn a_late_answer_resumes_where_it_was_asked_saying_what_was_decided() {
         let place = |s: Option<&str>, r: Option<&str>| Place {
             agent: "vie".into(),

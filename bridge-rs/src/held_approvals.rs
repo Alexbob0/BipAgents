@@ -347,6 +347,9 @@ async fn held(state: &AppState, agent: &AgentConfig, run_id: &str, session: Opti
     else {
         return;
     };
+    // placed in the turn's conversation first (an answer from then on resumes the agent there)
+    let card_run = format!("{RUN_PREFIX}{}", card.id);
+    crate::card_place::place_for(state, agent, &card_run, Some(run_id)).await;
     // the turn told, then Hermes answered: it ends now, the card waits
     if let Err(err) = state.hermes.steer_run(agent, run_id, HELD_NOTE).await {
         tracing::info!(target: "bipbridge::held_approvals", agent = %agent.name, error = %err, "held note not steered");
@@ -355,8 +358,6 @@ async fn held(state: &AppState, agent: &AgentConfig, run_id: &str, session: Opti
     tracing::info!(target: "bipbridge::held_approvals", agent = %agent.name, run_id, card = %card.id,
         status = ?answered.as_ref().map(|r| r.0).ok(), "Hermes told: the card waits for the person");
     state.hub.forget_approval(&agent.name, run_id, request_id.as_deref());
-    let card_run = format!("{RUN_PREFIX}{}", card.id);
-    crate::card_place::place_for(state, agent, &card_run, Some(run_id)).await;
     if !joined {
         state.push.notify_bridge_card(&agent.name, &card.summary, "mail_request", &card_run).await;
     }
