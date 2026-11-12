@@ -556,7 +556,7 @@ def yes(answer: str) -> bool:
 def install_on_existing(args, runner: hermes.Runner, machine: Machine, existing) -> int:
     """BipAgents on the person's own Hermes: their model, tools, platforms, agents and conversations stay as they are.
     Only the local API and each shown agent's key are added (existing.py), and written down for `uninstall`."""
-    from .existing import RECORD, apply_changes, key_of, plan_changes, profile_label, same_version
+    from .existing import RECORD, apply_changes, bridge_writes, key_of, plan_changes, profile_label, same_version
 
     say(f"\nYou already have Hermes ({existing.version}): I'll plug into it without touching your settings, your model "
            f"({existing.model or 'not set'}), your tools or your agents.")
@@ -618,13 +618,16 @@ def install_on_existing(args, runner: hermes.Runner, machine: Machine, existing)
         say(ui.note("nothing (your local API and your agents' keys are already there)"))
     if patch:
         say(ui.note("the BipAgents fixes, in Hermes' code"))
+    later = bridge_writes([p.name for p in shown])
+    if later:
+        say(ui.note(later))
     restart = bool(changes or patch)
     if restart:
         say(ui.note({"service": "your gateway will be restarted once",
                      "manual": "your gateway runs by hand: you'll restart it at the end",
                      "stopped": "your gateway isn't running: I'll install it as a service, which starts by itself"}
                     [existing.gateway]))
-    say(ui.note("Uninstalling BipAgents undoes all of this."))
+    say(ui.note("Uninstalling BipAgents undoes the rest." if later else "Uninstalling BipAgents undoes all of this."))
     if not yes(ask("\nReady to go? (y/n)", "y")):
         return 1
 

@@ -110,6 +110,11 @@ afficher dans l'app, ton profil principal compris, et te montre avant de commenc
 - un service pour ta gateway si elle ne tourne pas, ou un redémarrage si elle tourne déjà en service (à la main,
   tu la redémarres toi-même).
 
+Une fois lancé, le bridge écrit aussi dans les agents affichés autres que ton profil principal : ses outils et ses
+règles dans leur `config.yaml` et leur `SOUL.md` (plus deux skills), leur niveau de réflexion, et l'outil cron d'Hermes
+coupé pour eux (les routines de l'app à la place). L'installateur le dit avant de commencer ; la désinstallation ne
+l'enlève pas encore. Les tâches planifiées de ton Hermes restent dans ton Hermes.
+
 Tout ça est noté dans `~/.config/bipagents/existing-hermes.json` : la désinstallation remet chaque réglage comme
 avant et retire les correctifs. `--all` ne supprime jamais un Hermes qui était là avant BipAgents. Si les outils de
 tes agents ne tournent pas dans un bac à sable, le bridge ne garde pas de mots de passe (pas de coffre) : il te le

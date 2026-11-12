@@ -109,6 +109,11 @@ your main profile included, and shows everything it will change before it starts
 - a service for your gateway when it is not running, or a restart when it already runs as a service (one you started
   by hand, you restart yourself).
 
+Once running, the bridge also writes in the shown agents other than your main profile: its tools and rules in their
+`config.yaml` and `SOUL.md` (and two skills), their thinking level, and Hermes' cron tool off for them (the app's
+routines instead). The installer says so before it starts; uninstalling doesn't take it out yet. Your Hermes'
+scheduled jobs stay in your Hermes.
+
 All of it is written down in `~/.config/bipagents/existing-hermes.json`: uninstalling puts every setting back and
 takes the patches off. `--all` never removes a Hermes that was there before BipAgents. When your agents' tools do not
 run in a sandbox, the bridge keeps no passwords (no vault): it tells you so, without changing their tools. It needs a

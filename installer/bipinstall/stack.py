@@ -226,11 +226,17 @@ def bridge_service(inst: Install, system: str) -> tuple[str, Path, str]:
 
 def zram_commands(package_manager: str) -> List[str]:
     """Compressed memory for a small rented server (as root): half the memory as a zstd-compressed swap, which lets
-    it hold about 1.5× more before slowing down (systemd's zram-generator)."""
+    it hold about 1.5× more before slowing down (systemd's zram-generator). As the offer's cloud-init does
+    (installer/cloud/user-data.yaml): Ubuntu's cloud kernels keep the module in linux-modules-extra (without it the
+    device never comes and `systemctl start` waited 90 s for nothing, Hetzner Ubuntu 24.04, 12/11), and the swap on
+    the device is its own unit."""
     install = {"apt": "apt-get install -y systemd-zram-generator", "dnf": "dnf install -y zram-generator"}[package_manager]
-    return [install,
-            "printf '[zram0]\\nzram-size = ram / 2\\ncompression-algorithm = zstd\\n' > /etc/systemd/zram-generator.conf",
-            "systemctl daemon-reload", "systemctl start systemd-zram-setup@zram0"]
+    module = ['modprobe zram || apt-get install -y "linux-modules-extra-$(uname -r)"'] if package_manager == "apt" else []
+    return module + ["modprobe zram", install,
+                     "printf '[zram0]\\nzram-size = ram / 2\\ncompression-algorithm = zstd\\nswap-priority = 100\\n' "
+                     "> /etc/systemd/zram-generator.conf",
+                     "systemctl daemon-reload", "systemctl restart systemd-zram-setup@zram0.service",
+                     "systemctl start dev-zram0.swap"]
 
 
 def bip_languages(locale: Optional[str] = None) -> str:
