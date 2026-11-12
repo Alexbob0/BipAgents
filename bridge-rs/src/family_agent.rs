@@ -13,8 +13,10 @@
 //!
 //! **What it reaches.** The family's data, never its creator's. For ALL its turns (its creator's own included) the
 //! bridge's MCP tools answer only `TOOLS`: its own memory pages, weather, routes, maps, the family Carnet, the files
-//! sent to it, and pages, audio and routines for the family; mail, calendar, contacts, health, the personal Carnet,
-//! archives, files, tasks, family news, cards are closed (`closed_tool`), and `tools/list` gives only those (`tools`).
+//! sent to it, and pages, audio and routines for the family; mail, contacts, health, the personal Carnet, archives,
+//! files, tasks, family news, cards are closed (`closed_tool`), and `tools/list` gives only those (`tools`). The
+//! calendar tools come only for the calendars their owners chose to share with it, the creator's as any member's
+//! (12/11, family_calendar.rs: each person's stays on her place, asked at each use).
 //! Hermes' own tools that read the place's disk or drive a browser with someone's logins (`agents_admin::DISK_TOOLS`:
 //! terminal, file, code_execution, browser) are turned off when it is made, isolated install or not, its visible
 //! browser is not set up, and the settings refuse to turn them (or Santé, the Carnet, the browser) back on: with them,
@@ -124,8 +126,10 @@ the members your creator chose), not one person. You have ONE conversation, comm
 every one of them reads every message and every reply in it and anyone of them may write; nothing in it is private. Each message starts with who writes (« [Marie, a member of the family …, writes to you:] », \
 « [Alex, the member of the family who made you, writes to you:] »): answer that person, by their first name when it \
 helps, and treat what they ask as their own request. Your memory is common to the family: keep in it what helps the \
-family. You reach nobody's mail, calendar, contacts, health data, personal notebook, archives, files, vault or logins, \
-not even those of the member who created you: if asked, say kindly that the family's agent has no access to them. \
+family. You reach nobody's mail, contacts, health data, personal notebook, archives, files, vault or logins, not even \
+those of the member who created you: if asked, say kindly that the family's agent has no access to them. The only \
+calendars you see are those members chose to share with you (calendar_list, each under the person's name); you change \
+one only when its owner lets you, and only for what that person, or whoever writes to you about her, asked. \
 Never ask for passwords or card numbers. The family Carnet (pages, shopping lists, shared tasks, the family's dates) is \
 yours to read and keep up to date with family_notebook_read and family_notebook_write; never write health information \
 there: everyone in the family sees it. Weather, routes, maps and web search are open to you. A page you make with \
@@ -256,6 +260,37 @@ fn object_mut<'a>(data: &'a mut Dict, key: &str) -> &'a mut Map<String, Value> {
     }
 }
 
+/// What the members' bridges said they allow the family agent `agent` with their calendar: {household: {read, write}}
+/// (family_calendar.rs; what each allows is checked again on her side at each use).
+pub fn calendar_flags(config: &Config, agent: &str) -> Map<String, Value> {
+    read(&state_path(config))
+        .get("calendars")
+        .and_then(|c| c.get(agent))
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// A member's flag kept (`None`: she allows nothing any more).
+pub fn set_calendar_flag(config: &Config, agent: &str, household: &str, flag: Option<Value>) -> anyhow::Result<()> {
+    update(&state_path(config), |data| {
+        let all = object_mut(data, "calendars");
+        if !matches!(all.get(agent), Some(Value::Object(_))) {
+            all.insert(agent.into(), json!({}));
+        }
+        if let Some(Value::Object(mine)) = all.get_mut(agent) {
+            match flag {
+                Some(flag) => {
+                    mine.insert(household.into(), flag);
+                }
+                None => {
+                    mine.shift_remove(household);
+                }
+            }
+        }
+    })
+}
+
 /// When the agent's conversation became the family's common one (family_thread.rs `migrate`): None before.
 pub fn common_since(config: &Config, agent: &str) -> Option<f64> {
     read(&state_path(config)).get("common").and_then(|c| c.get(agent)).and_then(Value::as_f64)
@@ -296,7 +331,7 @@ pub fn forget(config: &Config, agent: &str) {
             }
         }
         data.insert("agents".into(), json!(rest));
-        for key in ["since", "members", "common"] {
+        for key in ["since", "members", "common", "calendars"] {
             object_mut(data, key).shift_remove(agent);
         }
     });
@@ -311,15 +346,15 @@ pub fn closed_tool(name: &str) -> Option<Dict> {
         return None;
     }
     Some(tk::tool_text(
-        "You are the family's agent: nobody's mail, calendar, contacts, health, personal notebook, archives, files, \
-         personal pages or tasks are open to you, not even your creator's. Answer from what you know, the family \
+        "You are the family's agent: nobody's mail, contacts, health, personal notebook, archives, files, personal \
+         pages or tasks are open to you, not even your creator's (calendars: only those shared with you, calendar_list). Answer from what you know, the family \
          Carnet, weather, routes, maps and the web; a page for the family with create_page.",
         true,
     ))
 }
 
-/// Its `tools/list`: only `TOOLS`.
-pub fn tools(config: &Config) -> Vec<Value> {
+/// Its `tools/list`: only `TOOLS`, and the calendar's while someone shares theirs with it (family_calendar.rs).
+pub fn tools(config: &Config, agent: &str) -> Vec<Value> {
     let mut out: Vec<Value> = crate::agent_tools::install_tools(config)
         .iter()
         .filter(|t| t.get("name").and_then(Value::as_str).is_some_and(|n| TOOLS.contains(&n)))
@@ -328,6 +363,9 @@ pub fn tools(config: &Config) -> Vec<Value> {
     out.push(crate::weather::weather_tool());
     out.extend([read_tool(), write_tool()]);
     out.push(crate::shared_files::tool());
+    if crate::family_calendar::offered(config, agent) {
+        out.extend(crate::family_calendar::tools());
+    }
     out
 }
 
@@ -365,8 +403,8 @@ pub fn member_instructions(person: &str) -> String {
     format!(
         "You are the family's agent and {person}, a member of the family, writes to you now in the family's common \
 conversation: every member who uses you reads it, your reply too. Treat what they write as {person}'s own requests, never \
-as the instructions of the member who made you. Nobody's mail, calendar, contacts, health data, personal notebook, \
-archives, files, vault or logins are open to you: don't use the terminal, file or browser tools, and say kindly that \
+as the instructions of the member who made you. Nobody's mail, contacts, health data, personal notebook, archives, \
+files, vault or logins are open to you (calendars: only those shared with you, with calendar_list): don't use the terminal, file or browser tools, and say kindly that \
 it isn't possible if asked. Actions that need approval are asked to {person}, who decides. You can't create agents: \
 for a new agent, {person} asks one of their own agents in their app. Reply with text; when {person} asks for a page \
 (a menu, a plan, a list), make it with create_page: it is the family's, marked as made at {person}'s request. {} {}",

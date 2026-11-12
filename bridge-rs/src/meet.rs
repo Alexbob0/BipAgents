@@ -447,7 +447,7 @@ fn refused((status, why): (u16, String)) -> HttpError {
 }
 
 /// The agent this person's pushes go to: the first that reads the calendar, else the first.
-fn push_agent(config: &Config) -> Option<String> {
+pub(crate) fn push_agent(config: &Config) -> Option<String> {
     let mut names: Vec<&String> = config.agents.keys().collect();
     names.sort();
     names

@@ -1820,6 +1820,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::family_relay::household_router()) // a home's bridge fetching our calls for it, the same key
         .merge(crate::agent_shares::household_router()) // the agents shared with them, the same key
         .merge(crate::family_agent::household_router()) // the family's agent and its Carnet, the same key
+        .merge(crate::family_calendar::household_router()) // the family agent and the members' calendars, the same key
         .merge(crate::family_thread::household_router()) // the family conversation changed: this person told
         .merge(crate::rooms_remote::household_router()) // their agents in this person's discussions, the same key
         .merge(crate::meet::household_router()) // a date to find together, the same key
