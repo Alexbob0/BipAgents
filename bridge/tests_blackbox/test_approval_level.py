@@ -169,7 +169,7 @@ def test_a_small_background_task_starts_alone_and_a_big_one_is_proposed(bridges,
     assert not small["isError"] and text_of(small).startswith("Started at once"), small
     jobs = bridge.get("/v1/jobs", headers=AUTH).json()["jobs"]
     [task] = [j for j in jobs if j["title"].endswith("Dossier location")]
-    assert task["state"] == "running" and task["budget_eur"] == 0.20
+    assert task["state"] == "running" and task["budget_eur"] == 1.0   # « small » at home
     assert wait_until(lambda: fakes.hermes.seen("/v1/runs"), timeout=10)
     [line] = auto_lines(bridge)
     assert (line["kind"], line["undo"]) == ("task_start", True) and "Dossier location" in line["summary"]

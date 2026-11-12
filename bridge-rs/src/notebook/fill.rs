@@ -57,7 +57,7 @@ background (your memory and past conversations). Say so in one sentence and stop
 /// The task for `agent` (its tool, or one step of the settings' sequence; `by`: who started it).
 pub async fn start(jobs: &Arc<Jobs>, agent: &AgentConfig, by: &str) -> anyhow::Result<Dict> {
     let config = jobs.config.get();
-    let budget = config.jobs.direct_budget_eur;
+    let budget = crate::jobs::direct_budget_eur(&config);
     let prompt = crate::names::localize(PROMPT, &crate::names::agent_language(&config, &agent.name));
     jobs.create_by(agent, title(&config, &agent.name), &prompt, budget, Some(TEMPLATE), by).await
 }

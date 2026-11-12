@@ -82,6 +82,27 @@ pub const KEPT_PER_AGENT: usize = 40;
 pub const REPORT_CHARS: usize = 4000;
 /// The budgets the person picks and an agent proposes, in euros of the month's credit.
 pub const BUDGETS: [(&str, f64); 3] = [("small", 0.20), ("medium", 0.50), ("large", 1.50)];
+/// On a home install (its own model: no credit spent, its tokens shown) the budgets, the direct one and so the
+/// « Continuer (+…) » step (the apps add the small budget) are this many times the offer's (Alex, 2026-11-12: his task
+/// asked « Continuer (+364 k jetons) » again and again). At the `[notebook]` prices: small 1.8 M tokens, medium 4.5 M,
+/// large 13.6 M, a cache read counting a tenth (task_cost.rs): a 40-step task re-reading 30 k tokens takes ≈ 270 k.
+/// Still a ceiling: the run hub stops a run before a call past it (runs.rs `cap`), the loop brake is untouched.
+pub const HOME_BUDGET_SCALE: f64 = 5.0;
+
+/// The budgets' scale on a place of the offer (1) or at home (`HOME_BUDGET_SCALE`).
+pub fn budget_scale(offer: bool) -> f64 {
+    if offer {
+        1.0
+    } else {
+        HOME_BUDGET_SCALE
+    }
+}
+
+/// The budget a task the person asked for may take without their go, in euros at the install's prices:
+/// `[jobs] direct_budget_eur` (≈ 0.20 €), `HOME_BUDGET_SCALE` times that at home.
+pub fn direct_budget_eur(config: &crate::config::Config) -> f64 {
+    config.jobs.direct_budget_eur * budget_scale(crate::handover::on_offer())
+}
 pub const TERMINAL: [&str; 5] = ["completed", "failed", "cancelled", "canceled", "interrupted"];
 pub const TITLE_MARK: &str = "🧩 ";
 pub const INSTRUCTIONS: &str =
@@ -138,17 +159,24 @@ fn job_error(message: &str) -> anyhow::Error {
     JobError(message.into()).into()
 }
 
+/// A named budget's euros here (`HOME_BUDGET_SCALE` times the offer's at home).
 fn budget_of(name: &str) -> Option<f64> {
-    BUDGETS.iter().find(|(n, _)| *n == name).map(|(_, v)| *v)
+    let scale = budget_scale(crate::handover::on_offer());
+    BUDGETS.iter().find(|(n, _)| *n == name).map(|(_, v)| *v * scale)
 }
 
 /// The budgets in euros (`budgets_eur`), and in tokens without the cache at the install's prices (`budgets_tokens`,
 /// a home install's screens).
 pub fn budgets(config: &crate::config::Config) -> (Value, Value) {
-    let prices = task_cost::configured(config);
+    budgets_on(config, crate::handover::on_offer())
+}
+
+/// `budgets`, on a place of the offer or not.
+pub fn budgets_on(config: &crate::config::Config, offer: bool) -> (Value, Value) {
+    let (prices, scale) = (task_cost::configured_on(config, offer), budget_scale(offer));
     (
-        Value::Object(BUDGETS.iter().map(|(k, v)| (k.to_string(), json!(v))).collect()),
-        Value::Object(BUDGETS.iter().map(|(k, v)| (k.to_string(), json!(prices.tokens_for(*v)))).collect()),
+        Value::Object(BUDGETS.iter().map(|(k, v)| (k.to_string(), json!(*v * scale))).collect()),
+        Value::Object(BUDGETS.iter().map(|(k, v)| (k.to_string(), json!(prices.tokens_for(*v * scale)))).collect()),
     )
 }
 
@@ -301,6 +329,28 @@ pub fn scan_view(job: &Dict, running: bool) -> Dict {
 }
 
 pub fn task_view(job: &Dict) -> Dict {
+    task_view_on(job, crate::handover::on_offer())
+}
+
+/// A home task's tokens as its screens count them (Alex, 2026-11-12): a cache read weighs what its price says against
+/// a fresh input token's (a tenth by default, task_cost.rs), so « 270 k jetons utilisés · au plus 1,8 M » compares the
+/// same unit as the budget (`max_tokens`, `budget_eur` at the task's prices) and the bar (`eur`). `input` and `cached`
+/// are the counted ones, `cache_reads` the tokens really read again from the cache. None: nothing to weigh.
+fn counted_tokens(job: &Dict) -> Option<Value> {
+    let prices = Prices::of_job(job).filter(|p| p.input > 0.0 && p.cached < p.input)?;
+    let tokens = job.get("tokens")?.as_object()?;
+    let n = |k: &str| tokens.get(k).and_then(|v| py::py_int(v).ok()).unwrap_or(0).max(0);
+    let (input, output) = (n("input"), n("output"));
+    let cached = n("cached").min(input);
+    if cached == 0 {
+        return None;
+    }
+    let counted = (cached as f64 * prices.cached / prices.input).round() as i64;
+    Some(json!({"input": input - cached + counted, "output": output, "cached": counted, "cache_reads": cached}))
+}
+
+/// `task_view`, on a place of the offer (the tokens as Hermes counts them) or at home (`counted_tokens`).
+pub fn task_view_on(job: &Dict, offer: bool) -> Dict {
     const KEEP: [&str; 20] = [
         "id",
         "kind",
@@ -337,6 +387,9 @@ pub fn task_view(job: &Dict) -> Dict {
             _ => job.get("max_tokens").cloned().unwrap_or(Value::Null),
         };
         view.insert("max_tokens".into(), tokens);
+        if let Some(counted) = counted_tokens(job).filter(|_| !offer) {
+            view.insert("tokens".into(), counted);
+        }
     }
     // its words: the files of the report are in its conversation, never as `MEDIA:` lines here (4/11)
     if let Some(Value::String(report)) = view.get_mut("report") {
@@ -1428,7 +1481,7 @@ pub fn euros_for(config: &crate::config::Config, tokens: i64) -> f64 {
 
 /// The budget a task the person asked for may take without their go (`[jobs] direct_budget_eur`), in tokens.
 pub fn direct_budget(config: &crate::config::Config) -> i64 {
-    tokens_for(config, config.jobs.direct_budget_eur)
+    tokens_for(config, direct_budget_eur(config))
 }
 
 /// « 0.20 € » (two decimals, three under ten cents).
@@ -1473,17 +1526,17 @@ pub async fn start_tool(jobs: Option<&Arc<Jobs>>, agent: &AgentConfig, arguments
         ));
     };
     let config = jobs.config.get();
-    let default = config.jobs.direct_budget_eur;
+    let default = direct_budget_eur(&config);
     let euros = match arguments.get("budget_eur").filter(|v| !v.is_null()).map(|v| py::py_float(v).ok()) {
         None => default,
         Some(None) => return Ok(tool_text("budget_eur must be a number of euros", true)),
-        Some(Some(euros)) if euros > config.jobs.direct_budget_eur * 1.001 => {
+        Some(Some(euros)) if euros > default * 1.001 => {
             return Ok(tool_text(
                 &format!(
                     "That is more than the {} a task may take without your person's go. Propose it with propose_task \
 instead (they start it with one tap) and tell them so in one plain sentence.",
                     if crate::handover::on_offer() {
-                        euros_text(config.jobs.direct_budget_eur)
+                        euros_text(default)
                     } else {
                         budget_text(&config, default, false)
                     }
@@ -1752,7 +1805,9 @@ mod tests {
     fn the_direct_budget_in_tokens() {
         let mut config = crate::config::Config::with_key("k");
         // 0.20 € at 0.95 × 0.50 + 0.05 × 1.50 = 0.55 € per million tokens
-        assert_eq!(direct_budget(&config), 363_636);
+        // at home (as here) five times that: 1.00 €
+        assert_eq!(direct_budget(&config), 1_818_181);
+        assert!((direct_budget_eur(&config) - 1.0).abs() < 1e-12);
         assert!((euros_for(&config, 363_636) - 0.20).abs() < 0.001);
         assert_eq!(euros_text(0.2), "0.20 €");
         assert_eq!(euros_text(0.05), "0.050 €");
@@ -1801,5 +1856,31 @@ mod tests {
         let old = json!({"max_tokens": 363_636}).as_object().cloned().unwrap();
         assert!((task_budget(&config, &old) - 0.20).abs() < 0.001);
         assert!(prices_of(&config, &old) == task_cost::configured(&config));
+    }
+
+    #[test]
+    fn a_home_task_counts_its_cache_reads_lightly_and_asks_less() {
+        // Alex, 2026-11-12, his home install: a long task asked « Continuer (+364 k jetons) » again and again
+        let config = crate::config::Config::with_key("k");
+        let (euros, tokens) = budgets_on(&config, true);
+        assert_eq!(euros, json!({"small": 0.20, "medium": 0.50, "large": 1.50}), "the offer's, unchanged");
+        assert_eq!(tokens["small"], json!(363_636));
+        let (euros, tokens) = budgets_on(&config, false);
+        assert_eq!(euros, json!({"small": 1.0, "medium": 2.5, "large": 7.5}));
+        assert_eq!(tokens, json!({"small": 1_818_181, "medium": 4_545_454, "large": 13_636_363}));
+        // 40 steps re-reading a 30 k conversation (28.5 k from the cache), 1 k written each
+        let home = task_cost::configured_on(&config, false);
+        let job = json!({"budget_eur": 1.0, "prices": home.to_value(),
+                         "tokens": {"input": 1_200_000, "output": 40_000, "cached": 1_140_000}});
+        let job = job.as_object().unwrap();
+        assert!((eur_spent(&config, job) - 0.147).abs() < 1e-9, "{}", eur_spent(&config, job));
+        let view = task_view_on(job, false);
+        assert_eq!(view["tokens"], json!({"input": 174_000, "output": 40_000, "cached": 114_000, "cache_reads": 1_140_000}));
+        assert_eq!(view["max_tokens"], json!(1_818_181));
+        assert_eq!(task_view_on(job, true)["tokens"], job["tokens"], "the offer's view keeps Hermes' tokens");
+        // cache reads at the input price (an old task's prices): nothing to weigh
+        let flat = json!({"budget_eur": 0.2, "prices": task_cost::configured_on(&config, true).to_value(),
+                          "tokens": {"input": 1_200_000, "output": 40_000, "cached": 1_140_000}});
+        assert_eq!(task_view_on(flat.as_object().unwrap(), false)["tokens"], flat["tokens"]);
     }
 }
