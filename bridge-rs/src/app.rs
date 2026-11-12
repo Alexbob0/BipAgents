@@ -1839,6 +1839,8 @@ fn assemble(state: &AppState, config: &Config) -> Router {
     Router::new()
         .fallback_service(inner)
         .layer(middleware::from_fn(method_not_allowed_detail))
+        // a person's action that succeeded: the place is used (used.rs, freed beta places)
+        .layer(middleware::from_fn(crate::used::note))
         .layer(middleware::from_fn_with_state(state.clone(), crate::place_move::guard))
         .layer(middleware::from_fn_with_state(state.clone(), crate::files::upload_size_limit))
         .layer(middleware::from_fn(crate::body_limit::body_limit))

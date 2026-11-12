@@ -229,6 +229,7 @@ pub mod place_cert;
 pub mod proxy_header;
 pub mod place_move;
 pub mod update_drain;
+pub mod used;
 pub mod place_import;
 pub mod vault;
 pub mod vault_contacts;
