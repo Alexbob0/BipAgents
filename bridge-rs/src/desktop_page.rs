@@ -181,13 +181,20 @@ fn holds(state: &AppState, agent: &str) -> bool {
     state.desktop_control.lock().unwrap_or_else(|e| e.into_inner()).get(agent).copied().unwrap_or(false)
 }
 
+/// The token the bridge's own view of the page shows to the container's relay while the person holds the browser:
+/// the card payment's when they took it over during one (card_pay.rs `person_view_token`: the bank asks them in the
+/// page), else their hold's.
+fn view_token(config: &Config, agent: &str) -> Option<String> {
+    crate::card_pay::person_view_token(agent).or_else(|| crate::browsers::hold_token(config, agent))
+}
+
 /// What the agent's own browser container is doing: (state, Chrome runs, the active tab).
 async fn browser_state(config: &Config, agent: &str, port: u16) -> (&'static str, bool, Option<Tab>) {
     let starting = opening(agent) || busy_recently(config, agent);
     if !listening(port).await {
         return (if starting { "starting" } else { "stopped" }, false, None);
     }
-    let token = crate::browsers::hold_token(config, agent);
+    let token = view_token(config, agent);
     match tabs(port, token.as_deref()).await {
         // its screen is up, no Chrome on it yet (or a payment holds it)
         Err(_) => (if starting { "starting" } else { "idle" }, false, None),
@@ -661,7 +668,10 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
         let config = state.config();
         let Some(port) = cdp_port(&config, &agent) else { break };
         let holding = holds(&state, &agent);
-        let token = if holding { crate::browsers::hold_token(&config, &agent) } else { None };
+        let token = if holding { view_token(&config, &agent) } else { None };
+        // Taken over during a card payment: the page as it is (rendering it as a phone reloads it, which would lose
+        // the bank's step and the card typed for it).
+        let paying = crate::card_pay::holding(&agent);
         let list = tabs(port, token.as_deref()).await;
         let Some(tab) = list.as_ref().ok().and_then(|l| l.first().cloned()) else {
             let now = match &list {
@@ -701,7 +711,7 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
             }
         };
         let mut mobile = false;
-        if phone.wanted() && holding {
+        if phone.wanted() && holding && !paying {
             match make_mobile(&mut cdp, &phone, desktop_height).await {
                 Ok(()) => mobile = true,
                 Err(error) => tracing::info!(agent = %agent, error = %error, "page view: not rendered as a phone"),

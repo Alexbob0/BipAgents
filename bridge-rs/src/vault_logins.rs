@@ -543,23 +543,61 @@ async fn sign_up_page(config: &Config, agent: &AgentConfig, origin: &str) -> Res
     }
 }
 
-/// The browser held by the bridge for typing (the person's hold is respected), and given back.
-struct Held<'a> {
-    config: &'a Config,
-    agent: &'a str,
+/// The browser held by the bridge for typing (the person's hold is respected), and given back: by `release`, or, when
+/// the fill is left before it (the call's task aborted when Hermes closed its stream, a panic), by its `Drop` in a
+/// task of its own (fix review 11/11, 3rd check, P1: a payment's hold no longer lapses by itself).
+///
+/// Only its own hold is ever lifted (the flag reading exactly « card <its token> », fix review 11/11, 4th check,
+/// problem 1): the guard runs late, after whoever waited for the lock before it (the sweep, which may have ended this
+/// hold, then a payment that set its own), and must never end theirs.
+struct Held {
+    config: Arc<Config>,
+    agent: String,
+    token: String,
     lease: Option<std::path::PathBuf>,
+    released: bool,
 }
 
-impl Held<'_> {
-    async fn release(self) {
-        crate::browsers::hold_for_payment(self.config, self.agent, None).await;
-        if let Some(folder) = &self.lease {
-            let _ = crate::desktop::set_lease(folder, false, "");
-        }
+impl Held {
+    async fn release(mut self) {
+        lift(&self.config, &self.agent, &self.token, self.lease.as_deref()).await;
+        // only once lifted: cut off during the lift, the guard lifts again (its own hold only)
+        self.released = true;
     }
 }
 
-async fn hold<'a>(config: &'a Config, agent: &'a AgentConfig, token: &str) -> Option<Held<'a>> {
+async fn lift(config: &Config, agent: &str, token: &str, lease: Option<&std::path::Path>) {
+    crate::browsers::lift_payment_hold(config, agent, token).await;
+    if let Some(folder) = lease {
+        let _ = crate::desktop::set_lease(folder, false, "");
+    }
+}
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        if self.released {
+            return;
+        }
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else { return };
+        let (config, agent, token, lease) = (
+            self.config.clone(),
+            std::mem::take(&mut self.agent),
+            std::mem::take(&mut self.token),
+            self.lease.take(),
+        );
+        runtime.spawn(async move {
+            // after the fill's own hold of the lock: the sweep never sees this hold as a leftover meanwhile
+            let _one_at_a_time = crate::card_pay::lock_of(&agent).lock_owned().await;
+            if crate::card_pay::holding(&agent) {
+                return; // a payment holds the browser now: this fill's hold is long gone, and the lease is the payment's
+            }
+            tracing::warn!(agent = %agent, "vault password: fill left before its end, browser given back");
+            lift(&config, &agent, &token, lease.as_deref()).await;
+        });
+    }
+}
+
+async fn hold(config: &Arc<Config>, agent: &AgentConfig, token: &str) -> Option<Held> {
     let mut lease = None;
     if let Some(folder) = crate::desktop::desktop_dir(config, agent).filter(|f| f.is_dir()) {
         if crate::desktop::app_holds(&folder) {
@@ -569,13 +607,13 @@ async fn hold<'a>(config: &'a Config, agent: &'a AgentConfig, token: &str) -> Op
             lease = Some(folder);
         }
     }
-    if !crate::browsers::hold_for_payment(config, &agent.name, Some(token)).await {
+    if !crate::browsers::hold_for_payment(config, &agent.name, token).await {
         if let Some(folder) = &lease {
             let _ = crate::desktop::set_lease(folder, false, "");
         }
         return None;
     }
-    Some(Held { config, agent: &agent.name, lease })
+    Some(Held { config: config.clone(), agent: agent.name.clone(), token: token.to_string(), lease, released: false })
 }
 
 /// Typed and kept, the browser held: the name it is kept under, or what to tell the agent (the fields emptied).
@@ -700,6 +738,9 @@ async fn create(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> anyh
         return Ok(refusal(WAIT));
     }
     let token = py::uuid4_hex();
+    // The browser's hold is shared with the card payments: their lock, from before the hold to after its lift, so
+    // neither a payment nor the sweep of leftover holds (card_pay.rs `end_stale_holds`) meets this fill.
+    let _no_payment_meanwhile = crate::card_pay::lock_of(&agent.name).lock_owned().await;
     let Some(held) = hold(&config, agent, &token).await else { return Ok(refusal(WAIT)) };
     let typing = Typing { port, token: &token, url: &url, origin: &origin, username: &username, rules: &rules };
     let done = type_and_keep(state, agent, typing).await;

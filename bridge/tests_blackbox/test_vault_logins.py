@@ -10,12 +10,13 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import asyncio
+import httpx
 from cryptography.fernet import Fernet
 from websockets.asyncio.server import serve
 
 from bbkit.common import AUTH, answered
 from bbkit.mcp import give_token
-from bbkit.servers import free_port
+from bbkit.servers import free_port, wait_until
 
 TOKEN = "agent-token-for-vie-0123456789abcdef"
 VAULT = "/v1/agent-tools/vault"
@@ -46,6 +47,8 @@ class FakeChrome:
         self.typed = []              # (input name, text)
         self.headers = []            # x-bip-card of each connection
         self.focused = None          # index into self.inputs
+        self.slow_typing = False     # the first keystrokes held up (8 s)
+        self.slowed = False
         self.loop = asyncio.new_event_loop()
         self.ready = threading.Event()
         threading.Thread(target=self._run, daemon=True).start()
@@ -76,6 +79,9 @@ class FakeChrome:
         async for raw in ws:
             message = json.loads(raw)
             method, params, session = message["method"], message.get("params", {}), message.get("sessionId")
+            if self.slow_typing and method == "Input.insertText" and not self.slowed:
+                self.slowed = True
+                await asyncio.sleep(8)   # under the bridge's 10 s for one call
             result = self._answer(method, params)
             await ws.send(json.dumps({"id": message["id"], "result": result, **({"sessionId": session} if session else {})}))
 
@@ -403,5 +409,36 @@ def test_a_page_that_left_the_site_before_typing_gets_nothing(bridges, fakes):
         assert card and result["isError"] is True and "could not be typed" in result["content"][0]["text"]
         assert chrome.typed == [] and chrome.value("password") == "" and chrome.value("confirm") == ""
         assert bridge.get("/v1/vault", headers=AUTH).json()["items"] == []
+    finally:
+        chrome.stop()
+
+
+def test_a_fill_left_half_way_still_gives_the_browser_back(bridges, fakes):
+    # Fix review 11/11, 3rd check, P1: the fill's hold (the payments' « card » flag, which no longer lapses) was lifted
+    # only by an explicit call after typing: Hermes closing its stream mid-fill left the browser held until the bridge
+    # restarted, every browser tool and every payment refused meanwhile.
+    chrome = FakeChrome()
+    try:
+        bridge = login_bridge(bridges, fakes, chrome)
+        chrome.slow_typing = True
+        body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                "params": {"name": "vault_create_login", "arguments": ARGS}}
+        headers = {"Authorization": f"Bearer {TOKEN}", "Accept": "application/json, text/event-stream"}
+        with httpx.Client(timeout=90) as client, client.stream("POST", bridge.url + VAULT, json=body, headers=headers):
+            card = wait_card(bridge)
+            allowed = bridge.post(f"/v1/vault/logins/requests/{card['request_id']}", headers=AUTH, json={"allow": True})
+            assert allowed.status_code == 200, allowed.text
+            assert wait_until(lambda: chrome.slowed, timeout=30), "nothing was typed"
+        # the stream closed in the middle of the typing
+        lifted = lambda: [c for c in bridge.commands.of("podman")
+                          if c[:2] == ["exec", "bipagents-browser-vie"] and c[-1].endswith("rm -f /tmp/bipagents-hold; exit 0")]
+        assert wait_until(lambda: lifted(), timeout=40)
+        time.sleep(10)   # the keystrokes held up have answered meanwhile: nothing more happens
+        assert len(lifted()) == 1
+        assert "fill left before its end" in bridge.log_path.read_text()
+        # 4th check, problem 1: the guard lifts only the fill's own hold (it may run after a payment took the browser).
+        hold = next(c[-1] for c in bridge.commands.of("podman") if "printf 'card %s'" in c[-1])
+        token = re.search(r"printf 'card %s' ([0-9a-f]+) >", hold).group(1)
+        assert f"= 'card {token}' ]" in lifted()[0][-1]
     finally:
         chrome.stop()

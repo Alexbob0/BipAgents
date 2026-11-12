@@ -582,6 +582,45 @@ impl Page {
         self.cdp.call("Target.closeTarget", json!({"targetId": target}), None).await.map(|_| ())
     }
 
+    /// Every tab of the browser left on an empty page, its history forgotten (closed when either can't be done), for
+    /// a payment's hold whose fields and tab nobody knows any more: one a stopped bridge left (card_pay.rs
+    /// `end_stale_holds`). `hold`: the hold's token. The number of tabs left.
+    pub async fn leave_every_tab(port: u16, hold: &str) -> Result<usize, FillError> {
+        let mut cdp = Cdp::connect(port, Some(hold)).await?;
+        let targets = cdp.call("Target.getTargets", json!({}), None).await?;
+        let tabs: Vec<String> = targets
+            .get("targetInfos")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter(|t| t.get("type").and_then(Value::as_str) == Some("page"))
+                    .filter_map(|t| t.get("targetId").and_then(Value::as_str).map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        for target in &tabs {
+            let attached = cdp.call("Target.attachToTarget", json!({"targetId": target, "flatten": true}), None).await;
+            let session = attached
+                .ok()
+                .and_then(|a| a.get("sessionId").and_then(Value::as_str).map(str::to_string))
+                .unwrap_or_default();
+            if session.is_empty() {
+                cdp.call("Target.closeTarget", json!({"targetId": target}), None).await?;
+                continue;
+            }
+            let mut page = Page { cdp, session, target: target.clone(), children: Vec::new(), typed: Vec::new() };
+            // left on an empty page, or closed (`blank`); an error: neither could be done
+            let left = page.blank().await;
+            if left.is_ok() && page.forget_history().await.is_err() {
+                page.close().await?;
+            }
+            cdp = page.cdp;
+            left?;
+        }
+        Ok(tabs.len())
+    }
+
     /// The main frame's id.
     async fn main_frame(&mut self) -> Result<String, FillError> {
         let session = self.session.clone();

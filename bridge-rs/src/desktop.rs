@@ -850,12 +850,29 @@ async fn control(
         // No Hermes lease there: taking over lets the person's input through, and in the agent's own browser
         // container makes its tools wait (browsers.hold) until the person hands it back.
         let take = take_of(&body)?;
+        // Told to the payments first: a payment's release then leaves the hold to the person (card_pay.rs).
+        let paying = crate::card_pay::person_holds(&agent.name, take);
         state.desktop_control.lock().unwrap_or_else(|e| e.into_inner()).insert(agent.name.clone(), take);
         if !take {
             // a tab shown as on the person's phone: back to its desktop rendering before the agent's tools resume
             crate::desktop_page::give_back(&agent.name).await;
         }
-        crate::browsers::hold(&config, &agent.name, take).await;
+        // During a card payment (the bank asks the person in the page): their input goes through, the payment's hold
+        // stays as it is for the agent (security check 11/11, N1); its release ends it, then hands the hold over to
+        // them if they still hold the browser. Handing back never lifts it either (the command leaves a « card »).
+        if !(take && paying)
+            && crate::browsers::hold(&config, &agent.name, take).await == crate::browsers::Hold::Payment
+        {
+            // The bridge holds it for a payment or a vault fill that is starting or ending: not taken.
+            crate::card_pay::person_holds(&agent.name, false);
+            state.desktop_control.lock().unwrap_or_else(|e| e.into_inner()).insert(agent.name.clone(), false);
+            crate::browsers::hold(&config, &agent.name, false).await;
+            tracing::info!(agent = %agent.name, "desktop control refused: a payment holds the browser");
+            return Err(HttpError::json(
+                409,
+                json!({"code": "payment_in_progress", "text": busy_text(&crate::notebook::language(&config))}),
+            ));
+        }
         let holder = if take { "human" } else { "agent" };
         tracing::info!(agent = %agent.name, holder = holder, "desktop control");
         return Ok(web::ok(json!({"holder": holder, "you_hold": take})));
@@ -869,6 +886,16 @@ async fn control(
     let holder = lease.get("holder").cloned().unwrap_or(Value::Null);
     tracing::info!(agent = %agent.name, holder = ?crate::logs::J(&holder), "desktop control");
     Ok(web::ok(json!({"holder": holder, "you_hold": app_holds(&folder)})))
+}
+
+/// Why the browser can't be taken over this very moment (a payment or a vault fill starts or ends in it).
+fn busy_text(lang: &str) -> &'static str {
+    match lang {
+        "fr" => "Un paiement est en cours dans ce navigateur : réessaie dans quelques secondes.",
+        "de" => "In diesem Browser läuft gerade eine Zahlung: versuch es in ein paar Sekunden noch einmal.",
+        "es" => "Hay un pago en curso en este navegador: vuelve a intentarlo en unos segundos.",
+        _ => "A payment is in progress in this browser: try again in a few seconds.",
+    }
 }
 
 /// `POST /v1/agents/{id}/desktop` and `…/desktop/control` (mounted under /v1 with the bridge key).

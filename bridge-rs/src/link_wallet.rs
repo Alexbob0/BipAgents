@@ -669,6 +669,10 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
              then call {PAY} again."
         )));
     }
+    // before the person approves and Link makes a one-time card for it (security check 11/11, N5)
+    if let Some(refused) = crate::card_pay::browser_cannot_pay(&config, &agent.name).await {
+        return Ok(refused);
+    }
     let id = format!("lnk_{}", &py::uuid4_hex()[..12]);
     if !asker.ask(&approval_message(&id, cents, &currency, &host, &items)).await {
         return Ok(refusal("The person did not approve this payment: nothing was asked of Link. Don't pay."));

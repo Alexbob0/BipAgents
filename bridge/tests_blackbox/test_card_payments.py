@@ -11,6 +11,7 @@ Only the payment networks' published test numbers are used."""
 import asyncio
 import json
 import re
+import subprocess
 import threading
 import time
 
@@ -22,7 +23,7 @@ from websockets.asyncio.server import serve
 
 from bbkit.common import AUTH
 from bbkit.mcp import give_token
-from bbkit.servers import free_port
+from bbkit.servers import free_port, wait_until
 
 NUMBER = "4242424242424242"   # Visa's published test number
 CODE = "737"
@@ -31,7 +32,9 @@ CARD = {"kind": "card", "label": "Petits achats", "number": "4242 4242 4242 4242
 TOKEN = "agent-token-for-vie-0123456789abcdef"
 PAY = "/v1/agent-tools/pay"
 # The bridge's look at the browser's MCP gates (browser/hold_gate.py): their tool calls still running, under the hold.
-CALLS_CHECK = ('grep -q bipagents-calls /opt/stealth/hold_gate.py || exit 5; for f in /tmp/bipagents-calls/*; do '
+CALLS_CHECK = ('grep -q bipagents-calls /opt/stealth/hold_gate.py && grep -q \'paying() or\' /opt/stealth/hold_gate.py '
+               '|| exit 5; if [ -n "$1" ]; then [ "$(cat /tmp/bipagents-hold 2>/dev/null)" = "card $1" ] || exit 6; fi; '
+               'for f in /tmp/bipagents-calls/*; do '
                '[ -f "$f" ] || continue; [ -d "/proc/${f##*/}" ] || { rm -f "$f"; continue; }; [ "$(cat "$f")" = 0 ] '
                '|| exit 4; done; exit 0')
 
@@ -63,6 +66,10 @@ class FakeChrome:
         self.reload_delay = 0   # seconds Page.reload takes to answer
         self.reloading = False  # a Page.reload was asked (before its answer)
         self.focus_trap = False  # something of the page keeps the keyboard's focus: DOM.focus moves nothing
+        self.slow = None        # a step held up once (8 s): "reload", "detect" (the card form, after it), "type",
+        #                         "navigate" (leaving the page)
+        self.slowed = False     # that step was reached
+        self.button = "payer 12,50 €"   # the pay button found (None: none)
         self.split = False      # after a reload, the provider's expiry and code appear one look after its number
         self.looks = 0          # the provider frame's card fields looked for since the last reload
         self.others = []        # other tabs (their target ids)
@@ -112,11 +119,26 @@ class FakeChrome:
             if method == "Page.reload":
                 self.reloading = True
                 await asyncio.sleep(self.reload_delay)
+            if self._held_up(method, params):
+                self.slowed = True
+                await asyncio.sleep(8)   # under the bridge's 10 s for one call
             try:
                 result = self._answer(method, params, session)
                 await ws.send(json.dumps({"id": message["id"], "result": result, **({"sessionId": session} if session else {})}))
             except LookupError as exc:
                 await ws.send(json.dumps({"id": message["id"], "error": {"code": -32000, "message": str(exc)}}))
+
+    def _held_up(self, method, params):
+        if self.slowed or not self.slow:
+            return False
+        if self.slow == "reload":
+            return method == "Page.reload"
+        if self.slow == "navigate":
+            return method == "Page.navigate"
+        if self.slow == "detect":
+            return (method == "Runtime.evaluate" and "__bipPay.detect" in params.get("expression", "")
+                    and self.reloads > 0)
+        return method == "Input.insertText" and len(self.typed) == 2   # the name and the number typed
 
     def _events(self, method, session):
         if method == "Target.setAutoAttach" and session == "S-page":
@@ -240,7 +262,7 @@ class FakeChrome:
                 self.values[(frame, first)] = ""
                 value = True
             elif name == "findButton":
-                value = "payer 12,50 €"
+                value = self.button
             elif name == "clickButton":
                 self.clicks.append(self.url)
                 self.url = self.after_click
@@ -256,8 +278,10 @@ class FakeChrome:
         self.loop.call_soon_threadsafe(lambda: self.done.done() or self.done.set_result(None))
 
 
-def pay_bridge(bridges, fakes, chrome=None, change=None, place=None):
+def pay_bridge(bridges, fakes, chrome=None, change=None, place=None, prepare=None):
     bridge = bridges.new(place or "bridge")
+    if prepare:   # before it starts (its fake commands' rules)
+        prepare(bridge)
     if place:   # a place of the all-included offer: its guichet token
         settings = bridge.home / ".config" / "bipagents" / "backup.json"
         settings.parent.mkdir(parents=True, exist_ok=True)
@@ -380,16 +404,24 @@ def test_a_payment_approved_is_typed_on_the_real_site_then_the_bridge_clicks(bri
         listed = tool(bridge, "list_cards")["content"][0]["text"]
         assert "« Petits achats » (ending 4242): shop.example; ready" in listed and NUMBER not in listed
         chrome.others = ["T2"]   # another tab of the agent's
-        # Under the hold, the agent's browser tool calls still running are waited for (busy twice, then none).
+        # The image looked at before asking (N5); under the hold, the agent's browser tool calls still running are
+        # waited for (busy twice, then none).
+        bridge.commands.rule("podman", ["exec", "bipagents-browser-vie", "sh", "-c", CALLS_CHECK], exit=0, times=1)
         bridge.commands.rule("podman", ["exec", "bipagents-browser-vie", "sh", "-c", CALLS_CHECK], exit=4, times=2)
         result, asked = pay(bridge, ARGS)
         assert result["isError"] is False, result
         # Typed into a fresh document: the other tab closed, the site's service workers removed, the page reloaded.
         assert chrome.closed == ["T2"] and chrome.reloads == 1
         assert chrome.cleared == [{"origin": "https://shop.example", "storageTypes": "service_workers"}]
-        podman = [c[-1] for c in bridge.commands.of("podman")]
-        assert [c for c in podman if c == CALLS_CHECK] == [CALLS_CHECK] * 3
-        assert "printf 'card %s'" in podman[podman.index(CALLS_CHECK) - 1]
+        commands = bridge.commands.of("podman")
+        podman = [c[4] if len(c) > 4 else c[-1] for c in commands]   # the script (its token, if any, comes after)
+        assert [c for c in podman if c == CALLS_CHECK] == [CALLS_CHECK] * 4
+        hold_at = next(i for i, c in enumerate(podman) if "printf 'card %s'" in c)
+        assert podman.index(CALLS_CHECK) < hold_at and podman[hold_at + 1:hold_at + 4] == [CALLS_CHECK] * 3
+        # before asking: no token; under the hold: the hold's own, so nothing is typed once the flag is not its own
+        hold_token = re.search(r"printf 'card %s' ([0-9a-f]+) >", podman[hold_at]).group(1)
+        assert commands[podman.index(CALLS_CHECK)][5:] == []
+        assert all(c[5:] == ["sh", hold_token] for c in commands[hold_at + 1:hold_at + 4])
         assert re.fullmatch(r"Card payment pay_[0-9a-f]{12}: 12\.50 EUR on shop\.example with card \"Petits achats\" "
                             r"ending 4242, for \"Billet Paris-Lyon\"\. Approve in the BipAgents app with the card's "
                             r"security code\.", asked)
@@ -501,6 +533,25 @@ def lifted(command):
     return command.endswith(HOLD_LIFTED)
 
 
+def test_no_pay_button_hands_the_payment_over(bridges, fakes):
+    # Security check 11/11, N4: « No pay button found » told the agent to give the text again or cancel: a dead end
+    # (a pay button outside the card's form is never pressed), never a hand-over to the person.
+    chrome = FakeChrome()
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome)
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json=CARD)
+        assert pay(bridge, ARGS)[0]["isError"] is False
+        chrome.button = None
+        refused = tool(bridge, "confirm_payment", {"button": "Payer 12,50 €"})
+        text = refused["content"][0]["text"]
+        assert refused["isError"] is True and "No pay button" in text and "don't try again" in text
+        assert "cancel_payment" in text and "hand_over_payment" in text and "card's numbers" in text
+        assert chrome.clicks == []
+    finally:
+        chrome.stop()
+
+
 def test_cancel_empties_exactly_the_fields_typed_into(bridges, fakes):
     # Fix review 11/11, R4: clear() used to empty the first field of each kind of any frame: with a second card form
     # in a frame of another site found first, that one was « emptied » and the provider's number stayed typed.
@@ -575,13 +626,15 @@ def test_a_browser_image_that_counts_no_calls_is_never_typed_into(bridges, fakes
         bridge.post("/v1/vault", headers=AUTH, json=CARD)
         bridge.commands.rule("podman", ["exec", "bipagents-browser-vie", "sh", "-c", CALLS_CHECK], exit=5)
         result, asked = pay(bridge, ARGS)
-        assert asked and result["isError"] is True
+        # Security check 11/11, N5: found before the person is asked, so nobody approves a payment that can't be typed.
+        assert asked is None and result["isError"] is True
         text = result["content"][0]["text"]
         assert "must be updated" in text and "hand_over_payment" in text and "nothing was typed" in text
         assert chrome.typed == [] and chrome.reloads == 0 and chrome.navigated == []
-        assert lifted(podman_last(bridge))
-        again, _ = pay(bridge, ARGS)
-        assert again["isError"] is True and chrome.typed == []
+        assert not [c for c in bridge.commands.of("podman") if "printf 'card" in c[-1] or lifted(c[-1])]   # no hold
+        assert "asked" not in [e["outcome"] for e in bridge.get("/v1/vault/payments", headers=AUTH).json()["journal"]]
+        again, asked = pay(bridge, ARGS)
+        assert asked is None and again["isError"] is True and chrome.typed == []
         assert bridge.log_path.read_text().count("the browser image must be updated") == 1   # said once
     finally:
         chrome.stop()
@@ -761,5 +814,376 @@ def test_on_a_place_of_the_offer_only_when_switched_on_and_the_number_stays_on_t
         gone = bridge.patch(f"/v1/vault/{made.json()['id']}", headers=AUTH, json={"missing": True})
         assert gone.status_code == 200 and gone.json()["card"]["missing"] is True
         assert "no longer on the person's phone" in tool(bridge, "list_cards")["content"][0]["text"]
+    finally:
+        chrome.stop()
+
+
+# -- the person takes the browser over during a payment (security check 11/11, N1) ------------------------------------
+
+def with_desktop(config):
+    """The agent's browser shown in the app's live view (« Prendre la main »)."""
+    config["agents"]["Vie"]["desktop_vnc"] = f"tcp://127.0.0.1:{free_port()}"
+
+
+def flag_kinds(bridge, tmp_path):
+    """What the hold's flag reads after each command the bridge ran on it, the commands replayed in order by a real
+    shell on a file of their own (the fake podman only records them): « card », « human » or None (no flag)."""
+    flag = tmp_path / "hold"
+    flag.unlink(missing_ok=True)
+    kinds = []
+    for argv in bridge.commands.of("podman"):
+        if (argv[:4] != ["exec", "bipagents-browser-vie", "sh", "-c"] or "/tmp/bipagents-hold" not in argv[4]
+                or argv[4] in (STALE_CHECK, CALLS_CHECK)):   # the looks, which change nothing
+            continue
+        subprocess.run(["sh", "-c", argv[-1].replace("/tmp/bipagents-hold", str(flag))], check=False)
+        kinds.append(flag.read_text().split(" ")[0] if flag.exists() else None)
+    return kinds
+
+
+def control(bridge, take):
+    return bridge.post("/v1/agents/vie/desktop/control", headers=AUTH, json={"take": take})
+
+
+def test_taking_over_during_a_payment_never_lifts_its_hold(bridges, fakes, tmp_path):
+    # The person's take-over used to write « human » over the payment's « card » flag and their hand-back removed it:
+    # the bridge's own clean-up was then refused by the relay and the agent's tools ran in the tab holding the card.
+    # Now the payment's hold stays for the agent while the person answers the bank in the page, and only the
+    # payment's release (fields emptied, page left, history forgotten) removes it.
+    chrome = FakeChrome()
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome, change=with_desktop)
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json=CARD)
+        result, _ = pay(bridge, ARGS)
+        assert result["isError"] is False, result
+        # The bank asks in the page (3-D Secure): the page does not move on after the click.
+        chrome.after_click, chrome.bank_asks = chrome.url, True
+        asked = tool(bridge, "confirm_payment", {"button": "Payer 12,50 €"})["content"][0]["text"]
+        assert "bank asks" in asked and "Prendre la main" in asked
+        taken = control(bridge, True)
+        assert taken.status_code == 200 and taken.json() == {"holder": "human", "you_hold": True}
+        assert flag_kinds(bridge, tmp_path)[-1] == "card"
+        assert not any("printf 'human" in c[-1] for c in bridge.commands.of("podman"))
+        back = control(bridge, False)
+        assert back.status_code == 200 and back.json()["you_hold"] is False
+        # Handed back: still the payment's hold, nothing of the page given back yet.
+        kinds = flag_kinds(bridge, tmp_path)
+        assert kinds[0] == "card" and set(kinds) == {"card"}, kinds
+        assert chrome.navigated == [] and chrome.values[("F-psp", 0)] == NUMBER
+        assert [a["agent"] for a in bridge.get("/v1/vault/payments", headers=AUTH).json()["active"]] == ["vie"]
+        # The payment ends: the card erased and the page left before the hold goes.
+        assert tool(bridge, "cancel_payment")["content"][0]["text"].startswith("The payment is given up")
+        assert chrome.values[("F-psp", 0)] == "" and chrome.navigated == ["about:blank"]
+        assert chrome.resets == ["about:blank"]
+        kinds = flag_kinds(bridge, tmp_path)
+        assert kinds[-1] is None and set(kinds[:-1]) == {"card"}, kinds
+        assert sum(map(lifted, (c[-1] for c in bridge.commands.of("podman")))) == 1
+    finally:
+        chrome.stop()
+
+
+def test_a_payment_that_ends_while_the_person_holds_the_browser_leaves_it_to_them(bridges, fakes, tmp_path):
+    chrome = FakeChrome()
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome, change=with_desktop)
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json=CARD)
+        assert pay(bridge, ARGS)[0]["isError"] is False
+        assert control(bridge, True).status_code == 200
+        # The payment ends while they hold it: cleaned first, then the hold is theirs (the agent still waits).
+        assert tool(bridge, "cancel_payment")["content"][0]["text"].startswith("The payment is given up")
+        assert chrome.navigated == ["about:blank"] and chrome.resets == ["about:blank"]
+        assert flag_kinds(bridge, tmp_path)[-2:] == ["card", "human"]
+        token = (bridge.data / "browsers" / "vie" / "hold.token").read_text()
+        assert f"printf 'human %s' {token}" in bridge.commands.of("podman")[-1][-1]
+        # Handed back: the agent's browser is its own again.
+        assert control(bridge, False).status_code == 200
+        assert flag_kinds(bridge, tmp_path)[-1] is None
+        assert not (bridge.data / "browsers" / "vie" / "hold.token").exists()
+    finally:
+        chrome.stop()
+
+
+def test_a_take_over_while_the_bridge_holds_the_browser_is_refused(bridges, fakes):
+    # A payment or a vault fill starting or ending (its flag set, not known as a payment here): not taken, nothing
+    # written over the bridge's hold, and a line the app can show.
+    chrome = FakeChrome()
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome, change=with_desktop)
+        # (the start-up look for a payment's hold left behind first: none here, so nothing else is done)
+        assert wait_until(lambda: STALE_CHECK in [c[-1] for c in bridge.commands.of("podman")])
+        assert [c[-1] for c in bridge.commands.of("podman") if c[:4] == ["exec", "bipagents-browser-vie", "sh", "-c"]
+                ] == [STALE_CHECK]
+        bridge.commands.rule("podman", ["exec", "bipagents-browser-vie", "sh", "-c"], exit=3, times=1)
+        refused = control(bridge, True)
+        assert refused.status_code == 409, refused.text
+        detail = refused.json()["detail"]
+        assert detail["code"] == "payment_in_progress" and "payment" in detail["text"].lower()
+        assert bridge.get("/v1/agents/vie/desktop/state", headers=AUTH).json()["you_hold"] is False
+        assert bridge.commands.of("podman")[-1][-1].endswith("= card ] || rm -f /tmp/bipagents-hold")
+        assert not (bridge.data / "browsers" / "vie" / "hold.token").exists()
+    finally:
+        chrome.stop()
+
+
+# -- a bridge restarted mid-payment (security check 11/11, N2) ----------------------------------------------------------
+
+STALE_CHECK = '[ "$(head -c 4 /tmp/bipagents-hold 2>/dev/null)" = card ] && exit 7; exit 0'
+
+
+def stale_hold(bridge):
+    """The agent's browser still carries a payment's flag from the bridge's previous run."""
+    bridge.commands.rule("podman", ["exec", "bipagents-browser-vie", "sh", "-c", STALE_CHECK], exit=7)
+
+
+def test_a_payments_hold_left_by_a_stopped_bridge_is_ended_at_start(bridges, fakes):
+    # The held payments are memory only: a bridge restarted mid-payment left the « card » flag and nobody ended it,
+    # with the card maybe still typed in a tab. At start the bridge now leaves every tab (empty page, history
+    # forgotten), then lifts the hold.
+    chrome = FakeChrome()
+    chrome.others = ["T2"]
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome, prepare=stale_hold)
+        assert wait_until(lambda: any(lifted(c[-1]) for c in bridge.commands.of("podman")))
+        podman = [c[-1] for c in bridge.commands.of("podman")]
+        rekey = next(c for c in podman if "printf 'card %s'" in c)
+        assert rekey.startswith('[ "$(head -c 4 /tmp/bipagents-hold 2>/dev/null)" = card ] || exit 1;')
+        token = re.search(r"printf 'card %s' ([0-9a-f]+) >", rekey).group(1)
+        assert token in chrome.headers                              # the page reached through the hold
+        assert chrome.navigated == ["about:blank", "about:blank"]   # every tab: the agent's and the other one
+        assert chrome.resets == ["about:blank", "about:blank"]
+        assert podman.index(STALE_CHECK) < podman.index(rekey) < [i for i, c in enumerate(podman) if lifted(c)][0]
+        assert sum(map(lifted, podman)) == 1
+        assert not [c for c in bridge.commands.of("systemctl") if "restart" in c]
+        assert "a hold nobody ends" in bridge.log_path.read_text()
+    finally:
+        chrome.stop()
+
+
+def test_a_payments_hold_left_in_a_browser_that_cannot_be_reached_restarts_it(bridges, fakes):
+    def prepare(bridge):
+        folder = bridge.data / "browsers" / "vie"
+        folder.mkdir(parents=True)
+        (folder / "ports.json").write_text(json.dumps({"cdp": free_port(), "vnc": free_port()}))   # nothing there
+        stale_hold(bridge)
+
+    bridge = pay_bridge(bridges, fakes, prepare=prepare)
+    assert wait_until(lambda: any(lifted(c[-1]) for c in bridge.commands.of("podman")))
+    assert ["--user", "restart", "bipagents-browser-vie"] in bridge.commands.of("systemctl")
+    entries = [(e["cmd"], e["argv"]) for e in bridge.commands.all() if e["cmd"] in ("podman", "systemctl")]
+    restart = entries.index(("systemctl", ["--user", "restart", "bipagents-browser-vie"]))
+    assert [i for i, (cmd, argv) in enumerate(entries) if cmd == "podman" and lifted(argv[-1])][0] > restart
+
+
+# -- pay_with_card left before its answer (security check 11/11, N3) ---------------------------------------------------
+
+def pay_and_leave(bridge, chrome):
+    """pay_with_card as Hermes calls it, the stream closed (the run stopped, Hermes restarted) once the fake browser
+    is held up at its slow step (`chrome.slow`): the call's task is aborted there."""
+    body = {"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "pay_with_card", "arguments": ARGS}}
+    headers = {"Authorization": f"Bearer {TOKEN}", "Accept": "application/json, text/event-stream"}
+    with httpx.Client(timeout=90) as client, client.stream("POST", bridge.url + PAY, json=body, headers=headers) as resp:
+        for line in resp.iter_lines():
+            if not line.startswith("data: "):
+                continue
+            message = json.loads(line[6:])
+            if message.get("method") == "elicitation/create":
+                payment = re.search(r"Card payment (pay_[0-9a-f]{12}):", message["params"]["message"]).group(1)
+                sent = bridge.post(f"/v1/vault/payments/{payment}/approve", headers=AUTH, json={"code": CODE})
+                assert sent.status_code == 204, sent.text
+                answer = {"jsonrpc": "2.0", "id": message["id"], "result": {"action": "accept", "content": {}}}
+                assert client.post(bridge.url + PAY, json=answer, headers=headers).status_code == 202
+                assert wait_until(lambda: chrome.slowed, timeout=60), "the slow step was never reached"
+                return   # the stream closed here
+            if message.get("id") == 7:
+                raise AssertionError(f"answered before the slow step: {message}")
+
+
+@pytest.mark.parametrize("step", ["reload", "detect", "type"])
+def test_a_payment_left_at_any_step_after_its_hold_is_given_back_once(bridges, fakes, step):
+    # `watch`, the only way back for a typed card, started after the typing and after recording the payment: a call
+    # aborted (Hermes closed its stream) or failing in between left a held entry nobody watched, the card typed.
+    chrome = FakeChrome()
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome)
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json=CARD)
+        chrome.slow = step
+        pay_and_leave(bridge, chrome)
+        assert wait_until(lambda: any(lifted(c[-1]) for c in bridge.commands.of("podman")), timeout=40)
+        time.sleep(10)   # the step held up has answered meanwhile: nothing more happens
+        podman = [c[-1] for c in bridge.commands.of("podman")]
+        assert sum(map(lifted, podman)) == 1
+        assert bridge.get("/v1/vault/payments", headers=AUTH).json()["active"] == []
+        outcomes = [e["outcome"] for e in bridge.get("/v1/vault/payments", headers=AUTH).json()["journal"]]
+        assert outcomes.count("failed") == 1 and "typed" not in outcomes, outcomes
+        assert "ended before its answer" in bridge.log_path.read_text()
+        if step == "type":
+            # Typing began: the document the card went into is gone (empty page), and out of the tab's history.
+            assert ("F-psp", "number", NUMBER) in chrome.typed and len(chrome.typed) <= 3
+            assert chrome.navigated == ["about:blank"] and chrome.resets == ["about:blank"]
+        else:
+            assert chrome.typed == [] and chrome.navigated == []
+        assert bridge.get("/v1/vault", headers=AUTH).json()["items"][0]["card"]["spent"] == {}
+    finally:
+        chrome.stop()
+
+
+# -- third check (fix review 11/11, cards 3) ----------------------------------------------------------------------------
+
+def test_cancel_left_half_way_still_leaves_the_page_and_lifts_once(bridges, fakes):
+    # P1: release removed the payment first, then cleaned up in the request's task: cancel_payment cut off while
+    # leaving the page (Hermes closed its stream) left the hold for nobody, the card typed. It runs on by itself now.
+    chrome = FakeChrome()
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome)
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json=CARD)
+        assert pay(bridge, ARGS)[0]["isError"] is False
+        chrome.slow = "navigate"
+        body = {"jsonrpc": "2.0", "id": 8, "method": "tools/call", "params": {"name": "cancel_payment", "arguments": {}}}
+        headers = {"Authorization": f"Bearer {TOKEN}", "Accept": "application/json, text/event-stream"}
+        with httpx.Client(timeout=90) as client, client.stream("POST", bridge.url + PAY, json=body, headers=headers):
+            assert wait_until(lambda: chrome.slowed, timeout=30), "the page was never left"
+        # the stream closed while the page was being left
+        assert wait_until(lambda: any(lifted(c[-1]) for c in bridge.commands.of("podman")), timeout=40)
+        assert chrome.navigated == ["about:blank"] and chrome.resets == ["about:blank"]
+        assert chrome.values[("F-psp", 0)] == ""
+        assert sum(map(lifted, (c[-1] for c in bridge.commands.of("podman")))) == 1
+        outcomes = [e["outcome"] for e in bridge.get("/v1/vault/payments", headers=AUTH).json()["journal"]]
+        assert outcomes.count("cancelled") == 1
+    finally:
+        chrome.stop()
+
+
+def test_a_take_over_never_given_back_does_not_hold_the_next_payment(bridges, fakes, tmp_path):
+    # P2: the app took the browser over and never handed it back (killed, offline); its flag lapsed or its container
+    # restarted. The next payment got the person's 15 minutes and ended by handing the hold to nobody.
+    chrome = FakeChrome()
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome, change=with_desktop)
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json=CARD)
+        assert control(bridge, True).status_code == 200
+        token_file = bridge.data / "browsers" / "vie" / "hold.token"
+        assert token_file.exists()   # kept, as in real life: a container restart does not remove it
+        bridge.commands.clear()      # its flag gone with its container (the fake podman then lets the hold be set)
+        assert pay(bridge, ARGS)[0]["isError"] is False
+        assert bridge.get("/v1/agents/vie/desktop/state", headers=AUTH).json()["you_hold"] is False
+        assert not token_file.exists()   # 4th check: the old token is never the person's again
+        assert tool(bridge, "cancel_payment")["content"][0]["text"].startswith("The payment is given up")
+        podman = [c[-1] for c in bridge.commands.of("podman")]
+        assert lifted(podman[-1]) and not any("printf 'human" in c for c in podman)
+    finally:
+        chrome.stop()
+
+
+def test_the_sweep_keeps_a_hold_it_could_neither_leave_nor_restart(bridges, fakes):
+    # P3: the sweep lifted the hold whatever happened: Chrome not answering and a restart that failed left the card
+    # maybe typed in a tab with the agent let back in.
+    def prepare(bridge):
+        folder = bridge.data / "browsers" / "vie"
+        folder.mkdir(parents=True)
+        (folder / "ports.json").write_text(json.dumps({"cdp": free_port(), "vnc": free_port()}))   # nothing there
+        stale_hold(bridge)
+        bridge.commands.rule("systemctl", ["--user", "restart", "bipagents-browser-vie"], exit=1)
+
+    bridge = pay_bridge(bridges, fakes, prepare=prepare)
+    assert wait_until(lambda: "its hold kept" in bridge.log_path.read_text(), timeout=30)
+    assert ["--user", "restart", "bipagents-browser-vie"] in bridge.commands.of("systemctl")
+    assert not any(lifted(c[-1]) for c in bridge.commands.of("podman"))
+
+
+def test_a_browser_image_found_old_only_under_the_hold_types_nothing(bridges, fakes):
+    # R3 under the hold (card_pay.rs `fresh_page`): the look before asking passed, the one under the hold does not
+    # (the image changed meanwhile): nothing reloaded nor typed, the payment handed over, the hold lifted once.
+    chrome = FakeChrome()
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome)
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json=CARD)
+        bridge.commands.rule("podman", ["exec", "bipagents-browser-vie", "sh", "-c", CALLS_CHECK], exit=0, times=1)
+        bridge.commands.rule("podman", ["exec", "bipagents-browser-vie", "sh", "-c", CALLS_CHECK], exit=5)
+        result, asked = pay(bridge, ARGS)
+        assert asked and result["isError"] is True
+        text = result["content"][0]["text"]
+        assert "must be updated" in text and "hand_over_payment" in text and "nothing was typed" in text
+        assert chrome.typed == [] and chrome.reloads == 0 and chrome.navigated == []
+        podman = [c[-1] for c in bridge.commands.of("podman")]
+        assert sum(map(lifted, podman)) == 1 and lifted(podman[-1])
+        outcomes = [e["outcome"] for e in bridge.get("/v1/vault/payments", headers=AUTH).json()["journal"]]
+        assert outcomes[:3] == ["failed", "approved", "asked"]
+    finally:
+        chrome.stop()
+
+
+# -- fourth check (fix review 11/11, cards 4) ---------------------------------------------------------------------------
+
+def quick_sweep(bridge):
+    """The sweep of holds nobody ends every second instead of every 3 minutes (a test-only knob)."""
+    bridge.env_extra["BIP_TEST_STALE_SWEEP_SECONDS"] = "1"
+
+
+def test_a_payment_lifts_only_its_own_hold(bridges, fakes, tmp_path):
+    # Problem 1: every lift removed whatever « card » flag was there. Now each compares the whole flag it set: the
+    # payment's own lift names its token, and replayed in a shell over another hold's flag it leaves it.
+    chrome = FakeChrome()
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome)
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json=CARD)
+        assert pay(bridge, ARGS)[0]["isError"] is False
+        assert tool(bridge, "cancel_payment")["content"][0]["text"].startswith("The payment is given up")
+        podman = [c[-1] for c in bridge.commands.of("podman")]
+        token = re.search(r"printf 'card %s' ([0-9a-f]+) >", next(c for c in podman if "printf 'card %s'" in c)).group(1)
+        lift = podman[-1]
+        assert lifted(lift) and f"= 'card {token}' ]" in lift
+        flag = tmp_path / "hold"
+        flag.write_text("card someoneelse0123")
+        subprocess.run(["sh", "-c", lift.replace("/tmp/bipagents-hold", str(flag))], check=True)
+        assert flag.read_text() == "card someoneelse0123"
+        assert flag_kinds(bridge, tmp_path)[-1] is None   # its own: lifted
+    finally:
+        chrome.stop()
+
+
+def test_the_timer_ends_a_hold_cut_off_after_the_start(bridges, fakes):
+    # Problem 3: the 3-minute pass is what ends a hold cut off without a bridge restart (an abort during the hold's
+    # own command, a lift that failed): nothing tested it.
+    chrome = FakeChrome()
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome, prepare=quick_sweep)
+        assert wait_until(lambda: STALE_CHECK in [c[-1] for c in bridge.commands.of("podman")])
+        assert chrome.navigated == []
+        stale_hold_once = ["exec", "bipagents-browser-vie", "sh", "-c", STALE_CHECK]
+        bridge.commands.rule("podman", stale_hold_once, exit=7, times=1)   # a hold appears, nobody's
+        assert wait_until(lambda: any(lifted(c[-1]) for c in bridge.commands.of("podman")), timeout=20)
+        assert chrome.navigated == ["about:blank"] and chrome.resets == ["about:blank"]
+        assert "a hold nobody ends" in bridge.log_path.read_text()
+    finally:
+        chrome.stop()
+
+
+def test_the_timer_leaves_a_payment_in_use_alone(bridges, fakes):
+    # Problem 3: a pass never takes a payment typed and waiting (for the bank, the person, confirm_payment) for a
+    # leftover: no new token, no empty page, no lift.
+    chrome = FakeChrome()
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome, prepare=quick_sweep)
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json=CARD)
+        assert pay(bridge, ARGS)[0]["isError"] is False
+        # its flag, from now on (set before `pay`, a pass landing before it took the lock would end a hold nobody had)
+        bridge.commands.rule("podman", ["exec", "bipagents-browser-vie", "sh", "-c", STALE_CHECK], exit=7)
+        passes = len([c for c in bridge.commands.of("podman") if c[-1] == STALE_CHECK])
+        time.sleep(5)
+        podman = [c[-1] for c in bridge.commands.of("podman")]
+        assert len([c for c in podman if "printf 'card %s'" in c]) == 1   # the payment's own hold only, never re-keyed
+        assert not any(lifted(c) for c in podman) and chrome.navigated == []
+        assert len([c for c in podman if c == STALE_CHECK]) == passes   # not even looked at while it is in use
+        assert [a["agent"] for a in bridge.get("/v1/vault/payments", headers=AUTH).json()["active"]] == ["vie"]
+        bridge.commands.clear_rules()
+        assert tool(bridge, "cancel_payment")["content"][0]["text"].startswith("The payment is given up")
+        assert sum(map(lifted, (c[-1] for c in bridge.commands.of("podman")))) == 1
     finally:
         chrome.stop()
