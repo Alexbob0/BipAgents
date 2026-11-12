@@ -482,7 +482,77 @@ pub fn proxy_command(config: &Config, podman: &str) -> Vec<String> {
     command.extend(args(&["--entrypoint", "python3"]));
     command.push(proxy_image(config));
     command.extend(args(&["-u", "-c", PROXY_SCRIPT]));
+    // what it was started with, on it: the next bridge keeps a running proxy started the same way (proxy_kept)
+    let spec = proxy_spec(&command);
+    let at = command.iter().position(|a| a == "--entrypoint").unwrap_or(command.len());
+    command.splice(at..at, ["--label".to_string(), format!("{SPEC_LABEL}={spec}")]);
     command
+}
+
+/// The label holding what the proxy was started with ([`proxy_spec`]).
+pub const SPEC_LABEL: &str = "bipagents.spec";
+
+/// A short digest of the proxy's `podman run` (its script, image, networks, mounts and settings).
+pub fn proxy_spec(command: &[String]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    for arg in command.iter().skip(1) {
+        hasher.update(arg.as_bytes());
+        hasher.update([0]);
+    }
+    hex::encode(&hasher.finalize()[..8])
+}
+
+/// `podman run` in a systemd scope of its own when the bridge runs as a systemd service. The proxy's monitor (conmon)
+/// otherwise lives in the bridge's unit, and every bridge stop (a wave, a restart) signals it: conmon passes the
+/// SIGTERM on to the proxy, which leaves at once since 11/11 (a83c2c25c), and podman's `--restart=always` then starts
+/// it again inside a unit being torn down; that restart dies half-done (« python3 not found », its root left with
+/// mount points in it) and no `podman rm` takes it away any more: sandboxes without network after the update (lab
+/// 2026-11-12). Out of the bridge's unit, a bridge stop no longer touches the proxy at all (nor waits 15 s for it).
+pub fn in_own_scope(command: Vec<String>, systemd_service: bool, systemd_run: Option<String>) -> Vec<String> {
+    match (systemd_service, systemd_run) {
+        (true, Some(systemd_run)) => {
+            let mut scoped = vec![systemd_run];
+            scoped.extend(args(&["--user", "--scope", "--quiet", "--collect", "--description=BipAgents registries' proxy"]));
+            scoped.extend(command);
+            scoped
+        }
+        _ => command,
+    }
+}
+
+/// The proxy running now was started with `spec` and its monitor is alive (which restarts it if it falls): kept as it
+/// is, so a bridge restart never cuts the sandboxes' connections.
+async fn proxy_kept(run: &Run, podman: &str, spec: &str) -> bool {
+    let format = format!("{{{{.State.Running}}}} {{{{.State.ConmonPid}}}} {{{{index .Config.Labels \"{SPEC_LABEL}\"}}}}");
+    let Ok(out) = run(args(&[podman, "container", "inspect", "--format", &format, PROXY]), BTreeMap::new()).await else {
+        return false;
+    };
+    proxy_state_matches(&out, spec, |pid| {
+        // SAFETY: signal 0 only asks whether the process exists
+        let found = unsafe { libc::kill(pid, 0) == 0 };
+        found || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+    })
+}
+
+/// `podman container inspect`'s « <running> <conmon pid> <spec> »: the proxy started with `spec`, its monitor alive.
+fn proxy_state_matches(out: &str, spec: &str, alive: impl Fn(i32) -> bool) -> bool {
+    match out.split_whitespace().collect::<Vec<_>>().as_slice() {
+        [running, pid, label] => {
+            *running == "true" && !spec.is_empty() && *label == spec && pid.parse::<i32>().is_ok_and(|p| p > 0 && alive(p))
+        }
+        _ => false,
+    }
+}
+
+/// The overlay folder a failed removal names (« removing mount point "<storage>/overlay/<layer>/merged": directory
+/// not empty »): a restart that died half-done left its mount points in it (lab 2026-11-12).
+fn stuck_mount_point(error: &str) -> Option<String> {
+    const MARK: &str = "removing mount point \"";
+    let start = error.find(MARK)? + MARK.len();
+    let path = &error[start..start + error[start..].find('"')?];
+    let layer = path.strip_suffix("/merged")?.rsplit_once("/containers/storage/overlay/")?.1;
+    (layer.len() == 64 && layer.bytes().all(|b| b.is_ascii_hexdigit())).then(|| path.to_string())
 }
 
 async fn set_up_network(config: &Config, run: &Run, podman: &str) -> Result<String, String> {
@@ -514,18 +584,39 @@ async fn set_up_network(config: &Config, run: &Run, podman: &str) -> Result<Stri
     let c = config.clone();
     tokio::spawn(async move { crate::send_guard::refresh_blocklist(&c).await });
     let command = proxy_command(config, podman);
+    let label = format!("{SPEC_LABEL}=");
+    let spec = command.iter().find_map(|a| a.strip_prefix(&label)).unwrap_or_default().to_string();
+    let url = format!("http://{ip}:{PROXY_PORT}");
+    if proxy_kept(run, podman, &spec).await {
+        tracing::info!(target: "bipbridge::sandbox", proxy = PROXY, "registries' proxy kept: running, started the same way");
+        return Ok(url);
+    }
+    let command =
+        in_own_scope(command, std::env::var_os("INVOCATION_ID").is_some(), crate::browsers::pyx::which("systemd-run"));
     if let Err(first) = run(command.clone(), none.clone()).await {
-        // The proxy's monitor (conmon) lives in the bridge's unit: a stop that times out kills it, and the next start
-        // can't `--replace` a container left half-stopped (« could not be stopped… conmon exited prematurely », lab
-        // 2026-10-29: no network for the sandboxes until the retry, 10 minutes later). Removed, then started again.
-        tracing::info!(target: "bipbridge::sandbox", error = %crate::agents_admin::tail(&first.to_string(), 200), "registries' proxy not replaced: removed and started again");
-        let _ = run(args(&[podman, "rm", "-f", "--ignore", PROXY]), none.clone()).await;
+        // A container left half-stopped (« could not be stopped… conmon exited prematurely », lab 2026-10-29) or
+        // half-restarted (« removing mount point … directory not empty », lab 2026-11-12) by an earlier bridge whose
+        // unit held its monitor: removed (its leftover mount points first), then started again.
+        let first = first.to_string();
+        tracing::info!(target: "bipbridge::sandbox", error = %crate::agents_admin::tail(&first, 200), "registries' proxy not replaced: removed and started again");
+        let remove = || run(args(&[podman, "rm", "-f", "--ignore", PROXY]), BTreeMap::new());
+        let mut removed = remove().await.map_err(|e| e.to_string());
+        let stuck = stuck_mount_point(&first).or_else(|| removed.as_ref().err().and_then(|e| stuck_mount_point(e)));
+        if let Some(stuck) = stuck {
+            // in podman's user namespace (the files are the container root's), never into another mount
+            let cleared = run(args(&[podman, "unshare", "rm", "-rf", "--one-file-system", &stuck]), none.clone()).await;
+            tracing::info!(target: "bipbridge::sandbox", folder = %stuck, cleared = cleared.is_ok(), "registries' proxy: the mount points left in its root cleared");
+            removed = remove().await.map_err(|e| e.to_string());
+        }
+        if let Err(e) = removed {
+            tracing::info!(target: "bipbridge::sandbox", error = %crate::agents_admin::tail(&e, 200), "registries' proxy not removed");
+        }
         run(command, none)
             .await
             .map_err(|e| format!("registries' proxy not started: {}", crate::agents_admin::tail(&e.to_string(), 200)))?;
     }
     tracing::info!(target: "bipbridge::sandbox", proxy = PROXY, registries = %config.sandbox.registries.join(","), "registries' proxy started");
-    Ok(format!("http://{ip}:{PROXY_PORT}"))
+    Ok(url)
 }
 
 /// The agents' browsers' network (send_guard.rs). Not `--internal`: podman publishes no port of a container on an
@@ -1696,6 +1787,118 @@ mod tests {
         // none found: no file, podman's default
         write_proxy_resolv(&config, &[dir.path().join("none").to_str().unwrap()]).unwrap();
         assert!(!proxy_resolv(&config).exists() && !proxy_command(&config, "podman").contains(&mount));
+    }
+
+    #[test]
+    fn the_proxy_carries_what_it_was_started_with_and_runs_out_of_the_bridges_unit() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k".repeat(32));
+        config.outbox.db_path = dir.path().join("data/bridge.db").to_string_lossy().into_owned();
+        config.sandbox.subnet = "10.233.80.0/24".into();
+        let command = proxy_command(&config, "podman");
+        let label = command.iter().position(|a| a.starts_with("bipagents.spec=")).unwrap();
+        assert_eq!(command[label - 1], "--label");
+        assert_eq!(command[label + 1], "--entrypoint", "a podman option, before the image");
+        let spec = command[label].strip_prefix("bipagents.spec=").unwrap().to_string();
+        assert_eq!(spec.len(), 16);
+        assert_eq!(proxy_command(&config, "/usr/bin/podman")[label], command[label], "the same whatever podman's path");
+        config.sandbox.registries.push("example.org".into());
+        assert_ne!(proxy_command(&config, "podman")[label], command[label], "a change starts a new one");
+        // a systemd service: a scope of its own; anything else (tests, macOS, by hand) as it was
+        let scoped = in_own_scope(command.clone(), true, Some("/usr/bin/systemd-run".into()));
+        assert_eq!(scoped[..5], args(&["/usr/bin/systemd-run", "--user", "--scope", "--quiet", "--collect"])[..]);
+        assert_eq!(scoped[6..], command[..]);
+        assert_eq!(in_own_scope(command.clone(), false, Some("systemd-run".into())), command);
+        assert_eq!(in_own_scope(command.clone(), true, None), command);
+    }
+
+    #[test]
+    fn a_running_proxy_is_kept_only_when_started_the_same_way_and_watched() {
+        let alive = |pid: i32| pid == 4242;
+        assert!(proxy_state_matches("true 4242 0123456789abcdef\n", "0123456789abcdef", alive));
+        assert!(!proxy_state_matches("false 0 0123456789abcdef", "0123456789abcdef", alive), "stopped");
+        assert!(!proxy_state_matches("true 4242 <no value>", "0123456789abcdef", alive), "an older bridge's");
+        assert!(!proxy_state_matches("true 4242 fedcba9876543210", "0123456789abcdef", alive), "started otherwise");
+        assert!(!proxy_state_matches("true 77 0123456789abcdef", "0123456789abcdef", alive), "its monitor gone");
+        assert!(!proxy_state_matches("true 0 0123456789abcdef", "0123456789abcdef", |_| true));
+        assert!(!proxy_state_matches("", "0123456789abcdef", alive));
+        assert!(!proxy_state_matches("true 4242 ", "", |_| true));
+    }
+
+    #[test]
+    fn the_folder_a_half_done_restart_left_is_read_from_podmans_error() {
+        let layer = "d89618099130c0c8bade81d2ebc540841c787e073c71dabc09facc2350f2ea52";
+        let path = format!("/home/bip/.local/share/containers/storage/overlay/{layer}/merged");
+        let error = format!("[\"podman\", \"run\"] failed: Error: cleaning up storage: removing container 56c00abc6dd69be9f994f9155dff5de70165107456522360638b3cf6aa6203b9 root filesystem: removing mount point \"{path}\": directory not empty");
+        assert_eq!(stuck_mount_point(&error), Some(path.clone()));
+        assert_eq!(stuck_mount_point("Error: image not known"), None);
+        assert_eq!(stuck_mount_point("removing mount point \"/home/bip\": directory not empty"), None, "only a layer's");
+        let other = error.replace(layer, "../../../../home");
+        assert_eq!(stuck_mount_point(&other), None);
+        assert_eq!(stuck_mount_point(&error.replace("/merged", "/diff")), None);
+    }
+
+    #[tokio::test]
+    async fn the_proxy_is_kept_replaced_or_cleared_and_started_again() {
+        use std::sync::{Arc, Mutex};
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k".repeat(32));
+        config.outbox.db_path = dir.path().join("data/bridge.db").to_string_lossy().into_owned();
+        config.sandbox.subnet = "10.233.80.0/24".into();
+        let path = format!("/h/.local/share/containers/storage/overlay/{}/merged", "a".repeat(64));
+        let stuck = format!("Error: removing mount point \"{path}\": directory not empty");
+        // inspect's answer; how many `run`s fail, with the stuck folder's error
+        let fake = |inspect: String, failing_runs: usize| {
+            let seen: Arc<Mutex<Vec<Vec<String>>>> = Arc::default();
+            let left = Arc::new(Mutex::new(failing_runs));
+            let (s, stuck) = (seen.clone(), stuck.clone());
+            let run: Run = Arc::new(move |args: Vec<String>, _env: BTreeMap<String, String>| {
+                // from podman on (a test run inside a systemd service gets the scope's systemd-run first)
+                let args = args[args.iter().position(|a| a == "podman").unwrap_or(0)..].to_vec();
+                s.lock().unwrap().push(args.clone());
+                let (inspect, stuck, left) = (inspect.clone(), stuck.clone(), left.clone());
+                Box::pin(async move {
+                    match args.get(1).map(String::as_str) {
+                        Some("network") if args[2] == "exists" => Ok(String::new()),
+                        Some("container") => Ok(inspect),
+                        Some("run") | Some("rm") => {
+                            let mut left = left.lock().unwrap();
+                            if *left == 0 {
+                                return Ok(String::new());
+                            }
+                            if args[1] == "run" {
+                                *left -= 1;
+                            }
+                            Err(anyhow::anyhow!("{stuck}"))
+                        }
+                        _ => Ok(String::new()),
+                    }
+                })
+            });
+            (run, seen)
+        };
+        let verbs = |seen: &Arc<Mutex<Vec<Vec<String>>>>| -> Vec<String> {
+            seen.lock().unwrap().iter().filter(|a| a[1] != "network").map(|a| a[1..3].join(" ")).collect()
+        };
+        // an older bridge's proxy: replaced
+        let (run, seen) = fake(format!("true {} <no value>\n", std::process::id()), 0);
+        set_up_network(&config, &run, "podman").await.unwrap();
+        assert_eq!(verbs(&seen), vec!["container inspect", "run -d"]);
+        // running, started the same way (the files it mounts now written), watched by a live monitor (this test's
+        // own process): nothing touched
+        let spec = proxy_command(&config, "podman").iter().find_map(|a| a.strip_prefix("bipagents.spec=")).unwrap().to_string();
+        let (run, seen) = fake(format!("true {} {spec}\n", std::process::id()), 0);
+        assert_eq!(set_up_network(&config, &run, "podman").await.unwrap(), "http://10.233.80.2:3128");
+        assert_eq!(verbs(&seen), vec!["container inspect"]);
+        // a restart that died half-done: its folder cleared, removed, started again
+        let (run, seen) = fake(String::new(), 1);
+        assert_eq!(set_up_network(&config, &run, "podman").await.unwrap(), "http://10.233.80.2:3128");
+        assert_eq!(verbs(&seen), vec!["container inspect", "run -d", "rm -f", "unshare rm", "rm -f", "run -d"]);
+        let cleared = seen.lock().unwrap().iter().find(|a| a[1] == "unshare").cloned().unwrap();
+        assert_eq!(cleared, args(&["podman", "unshare", "rm", "-rf", "--one-file-system", &path]));
+        // still failing: why, for the sandboxes' warning
+        let (run, _) = fake(String::new(), 2);
+        assert!(set_up_network(&config, &run, "podman").await.unwrap_err().starts_with("registries' proxy not started"));
     }
 
     #[test]
