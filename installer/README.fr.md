@@ -30,7 +30,7 @@ Ajouter `--dry-run` pour voir chaque étape et chaque commande sans rien modifie
 
    Sur un Mac mini 16 Go avec le modèle ailleurs : environ 1 Go par personne plus les voix, une famille y tient.
 4. **Installe Hermes** avec son installateur officiel, dans la version testée avec BipAgents (v0.23.1, `3b42157858`), y applique
-   les patches de `hermes/patches/` (questions de l'agent dans l'app, photos gardées pour les questions de suivi), en **une gateway par personne** (mode multiplex d'Hermes) :
+   les patches de `hermes/patches/` (l'heure avec chaque message, le coût de chaque message, des prompts répétés moins chers, les agents qui s'écrivent, le coffre dans le navigateur), en **une gateway par personne** (mode multiplex d'Hermes) :
    chaque agent est un profil joint à `/p/<agent>/` avec sa propre clé. Les nouveaux agents sont pris en compte sans
    redémarrage.
 5. **Crée les premiers agents**, que la personne nomme elle-même, à partir de genres (Quotidien, Bien-être, Finances, Maison, Travail, Apprendre,

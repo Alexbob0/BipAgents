@@ -553,6 +553,12 @@ def yes(answer: str) -> bool:
     return answer.strip().lower() in ("y", "yes")
 
 
+# What hermes/patches/ brings, in plain words (asked before applying them, or said when the person's Hermes isn't the
+# tested version). On v0.23.1 messages, approvals and the agent's questions need none (test of 12/11 on upstream main).
+FIXES = ("the time with each message, the cost of each message, cheaper repeated prompts, agents writing to each "
+         "other,\n  the vault in the browser, the task list")
+
+
 def install_on_existing(args, runner: hermes.Runner, machine: Machine, existing) -> int:
     """BipAgents on the person's own Hermes: their model, tools, platforms, agents and conversations stay as they are.
     Only the local API and each shown agent's key are added (existing.py), and written down for `uninstall`."""
@@ -599,13 +605,14 @@ def install_on_existing(args, runner: hermes.Runner, machine: Machine, existing)
     patch = False
     declined: List[str] = []
     if same_version(existing, hermes.HERMES_COMMIT):
-        patch = yes(ask("Apply the BipAgents fixes to your Hermes (the agent's questions in the app, photos kept,\n"
-                           "  vault after a browser restart)? `hermes update` takes them off. (y/n)", "y"))
+        patch = yes(ask(f"Apply the BipAgents fixes to your Hermes ({FIXES})?\n"
+                           "  `hermes update` takes them off. (y/n)", "y"))
         if not patch:   # refused: not offered again by updates (bipagents hermes-update --fixes-only still can)
             declined = [p.name for p in hermes.set_patches(REPO / "hermes" / "patches")]
     else:
         say(ui.note(f"Your Hermes ({existing.commit or 'unknown version'}) isn't the tested version "
-                       f"({hermes.HERMES_COMMIT}): no BipAgents fixes, the app works without these features."))
+                       f"({hermes.HERMES_COMMIT}): no BipAgents fixes. The app works (messages, approvals,\n"
+                       f"    the agent's questions), without these: {FIXES}."))
         say(ui.note("Afterwards: bipagents hermes-update --fixes-only offers those that fit it, and "
                     "bipagents hermes-update --to-bipagents moves it to the tested version with all of them."))
 
