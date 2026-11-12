@@ -122,6 +122,18 @@ def hermes():
     if args[:1] == ["-p"] and len(args) > 1:
         profile, args = args[1], args[2:]
     if args[:2] == ["profile", "create"] and len(args) > 2:
+        # as Hermes' argparse and its id rule (hermes_constants.PROFILE_ID_RE): an option's value that looks like an
+        # option (« --description -budget ») is « expected one argument », an id that isn't one is refused
+        import re
+        rest = args[3:]
+        for i, arg in enumerate(rest):
+            if arg in ("--description", "--clone-from") and (i + 1 >= len(rest) or (
+                    rest[i + 1].startswith("-") and len(rest[i + 1]) > 1 and " " not in rest[i + 1])):
+                sys.stderr.write(f"hermes profile create: error: argument {arg}: expected one argument\n")
+                sys.exit(2)
+        if not re.match(r"^[a-z0-9][a-z0-9_-]{0,63}$", args[2]):
+            sys.stderr.write(f"Error: invalid profile name {args[2]!r}\n")
+            sys.exit(1)
         folder = home / "profiles" / args[2]
         folder.mkdir(parents=True, exist_ok=True)
         hub = home / "config.yaml"

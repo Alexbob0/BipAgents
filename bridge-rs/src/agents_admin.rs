@@ -419,8 +419,30 @@ impl Validate for AgentSettings {
     }
 }
 
+/// The agent id of a Hermes command line (after `-p`/`--profile`, or `profile create|delete|show <id>`) that a CLI
+/// would read as an option: one that starts with « - ». Hermes' ids never do (`^[a-z0-9][a-z0-9_-]{0,63}$`) and
+/// `souls::profile_name` never makes one; refused before anything runs, whatever the id came from (bug 11/11).
+pub fn option_like_agent_id(args: &[String]) -> Option<&str> {
+    args.iter().enumerate().find_map(|(i, arg)| {
+        let id = match arg.as_str() {
+            "-p" | "--profile" => args.get(i + 1),
+            "profile" if matches!(args.get(i + 1).map(String::as_str), Some("create" | "delete" | "show")) => args.get(i + 2),
+            _ => None,
+        }?;
+        id.starts_with('-').then_some(id.as_str())
+    })
+}
+
+fn check_agent_id(args: &[String]) -> anyhow::Result<()> {
+    match option_like_agent_id(args) {
+        Some(id) => Err(AgentError(format!("not an agent id: {id:?}")).into()),
+        None => Ok(()),
+    }
+}
+
 pub async fn run_hermes(args: Vec<String>, env: BTreeMap<String, String>) -> anyhow::Result<String> {
     let Some(program) = args.first() else { anyhow::bail!("no command") };
+    check_agent_id(&args)?;
     let child = tokio::process::Command::new(program)
         .args(&args[1..])
         .envs(&env)
@@ -464,6 +486,7 @@ pub fn why_failed(stdout: &[u8], stderr: &[u8]) -> String {
 pub fn run_hermes_blocking(args: &[String], env: &BTreeMap<String, String>) -> anyhow::Result<String> {
     use std::io::Read;
     let Some(program) = args.first() else { anyhow::bail!("no command") };
+    check_agent_id(args)?;
     let mut child = std::process::Command::new(program)
         .args(&args[1..])
         .envs(env)
@@ -982,18 +1005,10 @@ async fn prepare_profile(
     // The hub's (default profile's) model and settings, never another agent's: cloning the active profile would copy
     // its MCP servers and peer keys. Its own key, its personality.
     if !made {
+        // `--description=…` in one argument: a role typed « -budget » (or « --help ») is never read as an option
+        let description = format!("--description={}", planned.description);
         run(
-            strings(&[
-                &hermes,
-                "profile",
-                "create",
-                &profile,
-                "--clone-from",
-                "default",
-                "--no-alias",
-                "--description",
-                &planned.description,
-            ]),
+            strings(&[&hermes, "profile", "create", &profile, "--clone-from", "default", "--no-alias", &description]),
             env.clone(),
         )
         .await?;
@@ -2857,6 +2872,27 @@ pub fn router() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_agent_id_that_reads_as_an_option_is_never_run() {
+        let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(option_like_agent_id(&a(&["hermes", "-p", "-x", "tools", "disable"])), Some("-x"));
+        assert_eq!(option_like_agent_id(&a(&["hermes", "--profile", "--help", "config"])), Some("--help"));
+        assert_eq!(option_like_agent_id(&a(&["hermes", "profile", "create", "-budget", "--no-alias"])), Some("-budget"));
+        assert_eq!(option_like_agent_id(&a(&["hermes", "profile", "delete", "--yes"])), Some("--yes"));
+        // in a container's command line too
+        assert_eq!(option_like_agent_id(&a(&["podman", "exec", "hub", "hermes", "-p", "-x", "mcp"])), Some("-x"));
+        for fine in [
+            &["hermes", "-p", "budget", "tools", "disable", "--platform", "api_server"][..],
+            &["hermes", "profile", "create", "budget", "--clone-from", "default", "--description=-budget"],
+            &["hermes", "-p", "x", "config", "set", "API_SERVER_KEY", "--", "-pkey"],
+            &["podman", "run", "-p", "8080:80", "image"],
+        ] {
+            assert_eq!(option_like_agent_id(&a(fine)), None, "{fine:?}");
+        }
+        let refused = run_hermes_blocking(&a(&["true", "-p", "-x"]), &BTreeMap::new()).unwrap_err();
+        assert!(refused.downcast_ref::<AgentError>().is_some(), "{refused}");
+    }
 
     #[test]
     fn a_failed_command_says_why() {

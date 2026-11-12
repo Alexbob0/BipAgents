@@ -144,3 +144,25 @@ def test_the_catalogue_lists_eight_and_adopting_one_pauses_its_routines(bridges,
     assert bridge.post("/v1/templates/import", headers=AUTH, json={"catalogue": "nope"}).status_code == 404
     assert bridge.post("/v1/templates/import", headers=AUTH,
                        json={"catalogue": "cuisine", "family": True}).status_code == 400
+
+
+def test_a_name_or_role_that_starts_with_a_dash_makes_the_agent(bridges, fakes):
+    """Bug 11/11: « - Budget ». The guide's « Créer X » card and the catalogue make it as the form does: an id with no
+    dash at either end, and its role (Hermes' description) never read as an option."""
+    bridge, home = place(bridges, fakes, agents=("coach",))
+    bip = bridge.post("/v1/guide/create-agent", headers=AUTH, json={"lang": "fr"}).json()["agent"]["id"]
+    give_token(bridge, bip, GUIDE_TOKEN)
+    made = call(bridge, "propose_agent", {"kind": "finance", "name": "- Budget", "role": "-budget du foyer",
+                                          "for": "me"}, token=GUIDE_TOKEN)
+    assert not made["isError"], text_of(made)
+    card = next(p for p in bridge.get("/v1/guide", headers=AUTH).json()["proposals"] if p["type"] == "agent")
+    accepted = bridge.post(f"/v1/guide/proposals/{card['id']}/accept", headers=AUTH, json={"lang": "fr"})
+    assert accepted.status_code == 201, accepted.text
+    agent = accepted.json()["agent"]
+    assert agent["id"] == "budget" and (home / "profiles" / "budget" / "SOUL.md").is_file()
+    adopted = bridge.post("/v1/templates/import", headers=AUTH, json={"catalogue": "cuisine", "lang": "fr", "name": "-x"})
+    assert adopted.status_code == 201, adopted.text
+    assert adopted.json()["agent"]["id"] == "x" and adopted.json()["agent"]["name"] == "-x"
+    creates = [c for c in bridge.commands.of("hermes") if c[:2] == ["profile", "create"]]
+    assert creates and all(not c[2].startswith("-") and not c[2].endswith("-") for c in creates), creates
+    assert all(c[-1].startswith("--description=") for c in creates), creates

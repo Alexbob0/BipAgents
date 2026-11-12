@@ -123,7 +123,8 @@ def test_hermes_setup_commands(monkeypatch, tmp_path):
     assert "-p default tools enable clarify --platform api_server" in log   # the app's question card (cloned)
     # its question waits an hour, in the two keys Hermes reads (0.23's migration v53 lowers only the first)
     assert "config set agent.clarify_timeout 3600" in log and "config set clarify.timeout 3600" in log
-    assert "profile create finance --clone-from default --no-alias" in log   # the hub's sandbox, as the app's agents
+    # the hub's sandbox, as the app's agents; its description in one argument (« -budget » is never an option)
+    assert "profile create finance --clone-from default --no-alias --description=Budget" in log
     # the keys in the profiles' .env, never on a command line (/proc is world-readable; audit 11/11, BV-6)
     assert f"write {tmp_path}/.hermes/profiles/finance/.env: API_SERVER_KEY" in log and key not in log
     assert f"write {tmp_path}/.hermes/.env: API_SERVER_KEY" in log and "config set API_SERVER_KEY" not in log
@@ -165,6 +166,9 @@ def test_names_are_the_persons():
     assert souls.profile_name("Default") == "default-agent"
     assert souls.profile_name("Test") == "test-agent"   # Hermes refuses its reserved names
     assert souls.profile_name("🙂") == "agent"
+    # never a dash at either end (bug 11/11: « - Budget »)
+    assert souls.profile_name("- Budget") == "budget" and souls.profile_name("-x") == "x"
+    assert souls.profile_name("--") == "agent" and souls.profile_name("a" * 31 + " suite") == "a" * 31
     from bipinstall.__main__ import templates
     assert all("{name}" in t["soul"] and "name" not in t for t in templates() if t["category"] != "custom")
     assert templates()[-1]["category"] == "custom"

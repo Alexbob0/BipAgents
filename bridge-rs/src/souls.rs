@@ -950,7 +950,9 @@ pub fn profile_name(display_name: &str, taken: &[String]) -> String {
     let plain: String = display_name.nfkd().filter(char::is_ascii).collect::<String>().to_lowercase();
     let spaced: String = plain.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { ' ' }).collect();
     let joined = spaced.split_whitespace().collect::<Vec<_>>().join("-");
-    let mut slug: String = joined.chars().take(32).collect();
+    // never a dash at either end (a 32-character cut can leave one): an id that reads as an option on a command line
+    let cut: String = joined.chars().take(32).collect();
+    let mut slug = cut.trim_matches('-').to_string();
     if slug.is_empty() {
         slug = "agent".to_string();
     }
@@ -991,6 +993,29 @@ mod tests {
         assert_eq!(profile_name("Test", &[]), "test-agent");
         assert_eq!(profile_name("Wellness", &["wellness".into()]), "wellness-2");
         assert_eq!(profile_name("🤖", &[]), "agent");
+    }
+
+    /// Never a dash at either end, never empty: Hermes' profile ids (`^[a-z0-9][a-z0-9_-]{0,63}$`), never read as an
+    /// option on a command line (bug 11/11: « - Budget »).
+    #[test]
+    fn names_with_dashes_at_the_ends_become_plain_ids() {
+        assert_eq!(profile_name("- Budget", &[]), "budget");
+        assert_eq!(profile_name("-budget", &[]), "budget");
+        assert_eq!(profile_name("-x", &[]), "x");
+        assert_eq!(profile_name("Budget -", &[]), "budget");
+        assert_eq!(profile_name("--", &[]), "agent");
+        assert_eq!(profile_name("-", &[]), "agent");
+        assert_eq!(profile_name(" - — ", &[]), "agent");
+        assert_eq!(profile_name("-test", &[]), "test-agent");
+        assert_eq!(profile_name("- Budget", &["budget".into()]), "budget-2");
+        // a 32-character cut right after a dash
+        let long = format!("{} suite", "a".repeat(31));
+        assert_eq!(profile_name(&long, &[]), "a".repeat(31));
+        let hermes = regex::Regex::new(r"^[a-z0-9][a-z0-9_-]{0,63}$").unwrap();
+        for name in ["- Budget", "-x", "--help", "-p", "x-", "Ω-x", "ÉCOLE -", &long, "a - b", "-1", "- 2 -"] {
+            let id = profile_name(name, &[]);
+            assert!(hermes.is_match(&id) && !id.ends_with('-'), "{name:?} gave {id:?}");
+        }
     }
 
     #[test]
