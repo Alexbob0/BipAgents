@@ -306,8 +306,12 @@ mod tests {
     #[test]
     fn a_freed_beta_place_is_told_by_the_guichet_only() {
         for text in [PLACE_IDLE_SOON, PLACE_PARKED] {
-            let push = json!({"aps": {"alert": {"title": "BipAgents", "body": text, "loc-key": text}}, "kind": "server"});
-            assert_eq!(scrub(&push, Audience::Guichet).unwrap()["aps"]["alert"], json!({"body": text, "loc-key": text}));
+            let push =
+                json!({"aps": {"alert": {"title": "BipAgents", "body": text, "loc-key": text}}, "kind": "server"});
+            assert_eq!(
+                scrub(&push, Audience::Guichet).unwrap()["aps"]["alert"],
+                json!({"body": text, "loc-key": text})
+            );
             assert_eq!(scrub(&push, Audience::Bridge).unwrap()["aps"]["alert"]["body"], BRIDGE_FALLBACK);
         }
         // the contract's words, apostrophes typeset as the relay's other generic bodies
