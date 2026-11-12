@@ -367,7 +367,8 @@ async fn push(
 }
 
 /// « Report this reply » from the app: the reason, the person's words, the reply's text, the agent's kind, the app's
-/// version and the phone's model; never an address or a name. Passed on to Kerfy Studio as is, kept nowhere here.
+/// version and the phone's model; never a name, nor an address unless the person gave one for an answer (DSA art.
+/// 16.5: then at the head of `text`, « Réponse souhaitée à : … »). Passed on to Kerfy Studio as is, kept nowhere here.
 #[derive(Deserialize, serde::Serialize)]
 struct Report {
     reason: String,
