@@ -68,11 +68,38 @@ def test_the_persons_hold_lets_only_the_bridges_view_through(monkeypatch, tmp_pa
     assert json.loads(hold_gate.refusal({"id": 3}))["result"]["content"][0]["text"] == hold_gate.WAIT
 
 
-def test_an_old_hold_lapses(monkeypatch, tmp_path):
-    flag = use_flag(monkeypatch, tmp_path, b"card 0123abcd")
+def test_an_old_hold_of_the_person_lapses(monkeypatch, tmp_path):
+    flag = use_flag(monkeypatch, tmp_path, b"human 77aa88bb")
     old = time.time() - hold_gate.LIMIT - 5
     os.utime(flag, (old, old))
     assert not hold_gate.held() and devtools_relay.let_through(HEAD + b"\r\n")
+
+
+def test_a_payments_hold_never_lapses(monkeypatch, tmp_path):
+    # Security check 11/11, N2: a bridge restarted mid-payment left the « card » flag, and after 15 minutes the gate
+    # and the relay let the agent back in with the card still typed in the page.
+    flag = use_flag(monkeypatch, tmp_path, b"card 0123abcd")
+    old = time.time() - 20 * 60
+    os.utime(flag, (old, old))
+    assert hold_gate.held() and hold_gate.paying()
+    assert not devtools_relay.let_through(HEAD + b"\r\n")
+    assert devtools_relay.let_through(HEAD + b"X-Bip-Card: 0123abcd\r\n\r\n")   # the bridge, to leave the page
+    assert "card payment" in json.loads(hold_gate.refusal({"id": 4}))["result"]["content"][0]["text"]
+    # The person's hold of the same age, by contrast, has lapsed.
+    flag.write_bytes(b"human 77aa88bb")
+    os.utime(flag, (old, old))
+    assert not hold_gate.held()
+    # The bridge tells an image with this gate by this text (card_pay.rs `calls_done`): no payment is typed in one
+    # whose gate still lets a payment's hold lapse (fix review 11/11, 3rd check, P6).
+    with open(hold_gate.__file__) as source:
+        assert "return paying() or" in source.read()
+
+
+def test_a_refusal_while_held_by_a_leftover_says_to_wait(monkeypatch, tmp_path):
+    # A hold whose payment is gone (the bridge gives it back within minutes): not only « use confirm_payment ».
+    use_flag(monkeypatch, tmp_path, b"card 0123abcd")
+    text = json.loads(hold_gate.refusal({"id": 5}))["result"]["content"][0]["text"]
+    assert "confirm_payment" in text and "wait a few minutes" in text
 
 
 def test_calls_let_through_are_counted_until_answered(monkeypatch, tmp_path):

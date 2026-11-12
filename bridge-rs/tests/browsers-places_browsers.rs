@@ -447,7 +447,7 @@ async fn taking_over_the_browser_makes_the_agents_tools_wait() {
     s.setup_budget(&s.host).await;
     let (exec, ran) = recording_exec(Arc::new(Mutex::new(true)));
     let host = Host { exec, ..s.host.clone() };
-    assert!(browsers::hold_with(&host, &s.config, "budget", true).await);
+    assert_eq!(browsers::hold_with(&host, &s.config, "budget", true).await, browsers::Hold::Done);
     // Never used: its container set up first. Then its screen checked (a browser stopped while unused starts
     // again), then the hold.
     let done = ran.lock().unwrap().clone();
@@ -468,16 +468,43 @@ async fn taking_over_the_browser_makes_the_agents_tools_wait() {
             "bipagents-browser-budget",
             "sh",
             "-c",
-            &format!("umask 077; printf 'human %s' {token} > /tmp/bipagents-hold")
+            // never over a card payment's hold (security check 11/11, N1)
+            &format!(
+                "[ \"$(head -c 4 /tmp/bipagents-hold 2>/dev/null)\" = card ] && exit 3; umask 077; printf 'human %s' \
+                 {token} > /tmp/bipagents-hold"
+            )
         ])
     );
     let kept = s.tmp.join("browsers").join("budget").join("hold.token");
     assert_eq!(std::fs::metadata(&kept).unwrap().permissions().mode() & 0o777, 0o600);
     browsers::hold_with(&host, &s.config, "budget", false).await;
-    assert_eq!(ran.lock().unwrap().last().unwrap().last().unwrap(), "rm -f /tmp/bipagents-hold");
+    assert_eq!(
+        ran.lock().unwrap().last().unwrap().last().unwrap(),
+        "[ -e /tmp/bipagents-hold ] || exit 0; [ \"$(head -c 4 /tmp/bipagents-hold 2>/dev/null)\" = card ] || rm -f \
+         /tmp/bipagents-hold"
+    );
     assert!(browsers::hold_token(&s.config, "budget").is_none());
-    assert!(!browsers::hold_with(&host, &s.config, "nobody", true).await); // no browser of its own
+    // no browser of its own
+    assert_eq!(browsers::hold_with(&host, &s.config, "nobody", true).await, browsers::Hold::NoBrowser);
     assert_eq!(ran.lock().unwrap().len(), 4);
+}
+
+#[tokio::test]
+async fn taking_over_during_a_payment_leaves_its_hold() {
+    // Security check 11/11, N1: the take-over's command finds a payment's flag (exit 3): not taken, no token kept.
+    let s = setup();
+    s.setup_budget(&s.host).await;
+    let seen: Execs = Arc::default();
+    let ran = seen.clone();
+    let exec: Exec = Arc::new(move |args: Vec<String>| {
+        let code = if args.last().is_some_and(|c| c.contains("printf 'human")) { 3 } else { 0 };
+        ran.lock().unwrap().push(args);
+        Box::pin(async move { code })
+    });
+    let host = Host { exec, ..s.host.clone() };
+    assert_eq!(browsers::hold_with(&host, &s.config, "budget", true).await, browsers::Hold::Payment);
+    assert!(browsers::hold_token(&s.config, "budget").is_none());
+    assert!(seen.lock().unwrap().iter().all(|c| !c.last().unwrap().contains("rm -f")));
 }
 
 #[tokio::test]
