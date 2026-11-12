@@ -1202,11 +1202,12 @@ pub fn tools() -> Vec<Value> {
             "name": WRITE,
             "description": format!("Put a file in your shared folder (/partage), for the agents the person allowed \
         (under salons/<discussion>/: for the agents of that group discussion; they only read it). Copy the file right into {OUTBOX} (no folder) and give its path as `from`, or give a short text as \
-        `content`. No approval needed."),
+        `content`; a long text in parts: the first, then each next one with `append`. No approval needed."),
             "inputSchema": {"type": "object", "properties": {
                 "path": {"type": "string", "description": "where in your shared folder, e.g. resume/semaine.md"},
                 "from": {"type": "string", "description": format!("{OUTBOX}/<name>: a file you copied there")},
                 "content": {"type": "string", "description": "or the text itself"},
+                "append": {"type": "boolean", "description": "add `content` at the end of that file (made if missing) instead of replacing it"},
             }, "required": ["path"]},
             "annotations": {"readOnlyHint": true, "destructiveHint": false, "openWorldHint": false},
         }),
@@ -1453,7 +1454,29 @@ shared_files_list shows them)",
                 if content.len() > MAX_CONTENT {
                     return error(&format!("too long: put it in a file under {OUTBOX} and give `from`"));
                 }
-                write_into(&own, &relative, |out| out.write_all(content.as_bytes()))
+                // a long text in parts (reply_cut.rs): what the file has, then this part, written as one new file
+                let mut before = Vec::new();
+                if arguments.get("append").and_then(Value::as_bool).unwrap_or(false) {
+                    let limit = config.limits.upload_max_bytes;
+                    match own.open_file(&relative) {
+                        Ok(file) => {
+                            use std::io::Read;
+                            if let Err(exc) = file.take(limit + 1).read_to_end(&mut before) {
+                                return error(&format!("could not read it to add to it: {exc}"));
+                            }
+                        }
+                        Err(exc) if exc.kind() == std::io::ErrorKind::NotFound => {}
+                        Err(exc) if beneath::refused(&exc) => return error("not a path in your shared folder"),
+                        Err(exc) => return error(&format!("could not read it to add to it: {exc}")),
+                    }
+                    if before.len() as u64 + content.len() as u64 > limit {
+                        return error("this file would be too large to share");
+                    }
+                }
+                write_into(&own, &relative, |out| {
+                    out.write_all(&before)?;
+                    out.write_all(content.as_bytes())
+                })
             } else {
                 return error(&format!("give `from` (a file under {OUTBOX}) or `content`"));
             };
@@ -1759,6 +1782,27 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// A long text written in parts (reply_cut.rs): the first part, then each next one added at the end; never
+    /// through a planted link.
+    #[test]
+    fn a_shared_file_is_written_in_parts_with_append() {
+        let (_dir, config, agent, share, home) = tools_setup();
+        let write = |args: Value| tool(&config, &agent, WRITE, args);
+        let (failed, said) = write(json!({"path": "plan/semaine.md", "content": "# Plan\n", "append": true}));
+        assert!(!failed, "{said}");
+        assert!(!write(json!({"path": "plan/semaine.md", "content": "## Semaine 1\n", "append": true})).0);
+        assert!(!write(json!({"path": "plan/semaine.md", "content": "## Semaine 2\n", "append": true})).0);
+        assert_eq!(std::fs::read_to_string(share.join("plan/semaine.md")).unwrap(), "# Plan\n## Semaine 1\n## Semaine 2\n");
+        // without it, replaced as before
+        assert!(!write(json!({"path": "plan/semaine.md", "content": "new"})).0);
+        assert_eq!(std::fs::read_to_string(share.join("plan/semaine.md")).unwrap(), "new");
+        // a link to home's secret: refused, never read into the shared folder
+        std::os::unix::fs::symlink(home.join("secret.txt"), share.join("s.txt")).unwrap();
+        assert!(write(json!({"path": "s.txt", "content": "more", "append": true})).0);
+        assert!(share.join("s.txt").symlink_metadata().unwrap().file_type().is_symlink());
+        home_untouched(&home);
     }
 
     /// A link the sandbox planted at each place a tool goes through: refused, nothing outside the shared folder read,
