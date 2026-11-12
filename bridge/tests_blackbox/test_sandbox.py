@@ -501,8 +501,9 @@ def test_a_send_cut_asks_the_person_once_and_autoriser_validates_the_site(bridge
     kept = decisions(bridge, "vie")
     assert [(k["command"], k["choice"], k["topic"]) for k in kept] == [
         ("upload.example.net", "always", "site"), ("api.meteo.fr", "deny", "site")]
-    # Refused: the proxy's next cut asks nothing; the agent's own request neither, today. A validated site is never
-    # asked about.
+    # « Refuser » (no turn followed here: the agent's programs still sending after it): the proxy's next cut asks
+    # nothing, the agent's own request neither; nothing kept for later (test_cards_resume.py: a later turn asks again).
+    # A validated site is never asked about.
     send_report(bridge, ("vie", "api.meteo.fr", 80000), ("vie", "upload.example.net", 5 * 1024 * 1024))
     assert wait_until(lambda: not reports.exists(), timeout=10)
     time.sleep(0.5)
@@ -511,8 +512,10 @@ def test_a_send_cut_asks_the_person_once_and_autoriser_validates_the_site(bridge
     # The app's list: the registries always validated, the sites with their date, one added by hand, one removed.
     view = bridge.get("/v1/agents/vie/sandbox/sites", headers=AUTH).json()
     assert "pypi.org" in view["registries"] and view["effective"] is True and view["why"] is None
-    # the refusal listed for the person (« Refuser »: 24 hours)
-    assert [(r["host"], r["always"]) for r in view["refused"]] == [("api.meteo.fr", False)]
+    # a « Refuser » is not listed (that request only); the proxy holds nothing for it
+    assert view["refused"] == []
+    assert "refused" not in json.loads((bridge.state_dir / "sandbox-proxy" / "policy" / "sites.json").read_text())[
+        "agents"]["vie"]
     assert bridge.post("/v1/agents/vie/sandbox/sites", json={"host": "*.ouraring.com"}, headers=AUTH).status_code == 200
     for bad in ("localhost", "*.com", "192.168.1.1", "nas.local"):
         assert bridge.post("/v1/agents/vie/sandbox/sites", json={"host": bad}, headers=AUTH).status_code == 422, bad

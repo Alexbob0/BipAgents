@@ -554,10 +554,11 @@ def test_the_browsers_day_pool(tmp_path, monkeypatch):
 
 
 def test_refuser_holds_autoriser_frees(tmp_path, monkeypatch):
-    """C-1 (11/11 review, owner): the person's « Refuser » (`refused`, 24 hours) and « Refuser toujours »
-    (`refused_always`) reach the proxy as a hold: the site stays readable (requests pass), its sends are cut past
-    16 KB an hour, nothing is reported (no card); past the refusal's end, or on another host, as before. « Autoriser »
-    (the host validated, `reset`): the same upload goes whole."""
+    """C-1 (11/11 review, owner): the person's « Refuser toujours » (`refused_always`) reaches the proxy as a hold:
+    the site stays readable (requests pass), its sends are cut past 16 KB an hour, nothing is reported (no card),
+    still 30 days on. A « Refuser » refuses one request only (owner, 12/11): an older bridge's timed `refused` is not
+    a hold, the host is as any other (cut and reported). « Autoriser » (the host validated, `reset`): the same upload
+    goes whole."""
     import time
     proxy, policy, reports = load(tmp_path, monkeypatch, AGENTS, LIMITS)
     site = Site()
@@ -587,19 +588,21 @@ def test_refuser_holds_autoriser_frees(tmp_path, monkeypatch):
         return out
 
     out = asyncio.run(through(proxy, monkeypatch, site, steps))
-    for host in ("upload.example.net", "forever.example.net"):
-        read, upload, passed = out[host]
-        assert read.startswith("HTTP/1.1 200") and upload.startswith("HTTP/1.1 200"), out[host]
-        assert 522 + 1005 <= passed <= 16 * 1024, out[host]                    # the read, then at most 16 KB
-    assert out["gone.example.net"][0].startswith("HTTP/1.1 200")            # an ended refusal: as any host
+    read, upload, passed = out["forever.example.net"]
+    assert read.startswith("HTTP/1.1 200") and upload.startswith("HTTP/1.1 200"), out["forever.example.net"]
+    assert 522 + 1005 <= passed <= 16 * 1024, out["forever.example.net"]        # the read, then at most 16 KB
+    for host in ("upload.example.net", "gone.example.net"):                  # a timed `refused`: as any host
+        assert out[host][0].startswith("HTTP/1.1 200"), out[host]
     # 30 days on, the « Refuser toujours » still holds, the « Refuser » is over
     rewrite(lambda e: e.update(refused={"upload.example.net": time.time() + 86400},
                                refused_always=["forever.example.net"]), 30)
     with pytest.MonkeyPatch.context() as later:
         later.setattr(proxy.time, "time", lambda real=time.time: real() + 30 * 86400)
         assert proxy.refused("vie", "forever.example.net") and not proxy.refused("vie", "upload.example.net")
+    assert not proxy.refused("vie", "upload.example.net")                  # a timed `refused`: no hold
     assert out["allowed"][0].startswith("HTTP/1.1 200") and out["allowed_bytes"] >= 300 * 1024
-    assert [line["host"] for line in reports_of(reports)] == ["gone.example.net"]   # refused hosts: never a card
+    # the host refused for good: never a card; the others (an old timed `refused` too) cut and reported
+    assert sorted(line["host"] for line in reports_of(reports)) == ["gone.example.net", "upload.example.net"]
 
 def test_one_client_cannot_hold_the_proxys_memory(tmp_path, monkeypatch):
     """R-1 (11/11 review): a client address holds at most MAX_OPEN_PER_CLIENT connections at once (the next ones are

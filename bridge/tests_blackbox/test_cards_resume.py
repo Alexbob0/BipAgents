@@ -24,7 +24,7 @@ from test_cards_inline import page, waiting_in
 from test_connectors import REGISTER, cards as connectors_cards, setup as connectors_setup, tool as connectors_tool
 from test_mail_cards import answer as mail_answer, mail_cards, thread_of
 from test_mailbox import TOKEN as MAIL_TOKEN, add_mailbox, mail_bridge
-from test_sandbox import call as sandbox_call, give_tokens, isolated, site_cards, started
+from test_sandbox import call as sandbox_call, give_tokens, isolated, send_report, site_cards, started
 
 QUIET = 5   # seconds a second turn would have shown up in
 
@@ -139,6 +139,58 @@ def test_refuser_toujours_from_the_boite_tells_the_agent_refused(bridges, fakes)
     gate.set()
     told = once(fakes, "api_da")
     assert "REFUSED" in told and "ALLOWED" not in told, told
+
+
+def test_refuser_refuses_once_in_its_turn_and_a_later_turn_asks_again(bridges, fakes):
+    """Owner, 12/11: « Refuser » refuses that request only, with no timing (a misclick must not block a site). In the
+    turn that asked, the same site asked again (by the agent, or a send the proxy cut) is answered « refused » at once,
+    no second card; a later turn asks again (a card); « Refuser toujours » blocks it in every turn after."""
+    gate = threading.Event()
+    bridge, card = site_in_a_turn(bridges, fakes, "api_once", "run_once", [
+        sse("tool.completed", run_id="run_once", tool=SITES_TOOL), gate,
+        sse("tool.started", run_id="run_once", tool=SITES_TOOL, preview="x"),
+        sse("tool.completed", run_id="run_once", tool=SITES_TOOL),
+        sse("run.completed", run_id="run_once", output="Pas d'envoi.")])
+    refuse_from_the_boite(bridge, card)
+    assert wait_until(lambda: site_cards(bridge, "vie") == [], timeout=5)
+    # the same turn: told at once, no second card (the agent, then the proxy)
+    text, error = sandbox_call(bridge, "vie", "sandbox_sites_request", host="connect.garmin.example", reason="Garmin")
+    assert error and "this time" in text and "today" not in text, text
+    reports = send_report(bridge, ("vie", "connect.garmin.example", 300 * 1024))
+    assert wait_until(lambda: not reports.exists(), timeout=10)
+    time.sleep(1)
+    assert site_cards(bridge, "vie") == []
+    # nothing kept: not in the person's list, nothing held by the proxy
+    view = bridge.get("/v1/agents/vie/sandbox/sites", headers=AUTH).json()
+    assert view["refused"] == [], view["refused"]
+    policy = json.loads((bridge.state_dir / "sandbox-proxy" / "policy" / "sites.json").read_text())
+    assert "connect.garmin.example" not in json.dumps(policy), policy
+    gate.set()
+    time.sleep(2)   # the turn ends (it asked again after the answer: not resumed)
+    # a later turn: asked again, a card
+    later, third = threading.Event(), threading.Event()
+    follow(bridge, fakes, "run_later", "api_once", "vie", [
+        sse("tool.started", run_id="run_later", tool=SITES_TOOL, preview="x"), later,
+        sse("run.completed", run_id="run_later", output="ok")])
+    text, error = sandbox_call(bridge, "vie", "sandbox_sites_request", host="connect.garmin.example", reason="Garmin")
+    assert not error and "sees a card" in text, text
+    [again] = site_cards(bridge, "vie")
+    assert again["request_id"] != card["request_id"]
+    # « Refuser toujours »: blocked in the turns after, listed for the person
+    answered = bridge.post("/v1/approve", headers=AUTH, json={"agent": "vie", "run_id": again["run_id"],
+                                                              "request_id": again["request_id"], "choice": "deny_always"})
+    assert answered.status_code == 200, answered.text
+    later.set()
+    time.sleep(2)
+    follow(bridge, fakes, "run_third", "api_once", "vie", [
+        sse("tool.started", run_id="run_third", tool=SITES_TOOL, preview="x"), third,
+        sse("run.completed", run_id="run_third", output="ok")])
+    text, error = sandbox_call(bridge, "vie", "sandbox_sites_request", host="connect.garmin.example", reason="Garmin")
+    assert error and "for good" in text, text
+    assert site_cards(bridge, "vie") == []
+    view = bridge.get("/v1/agents/vie/sandbox/sites", headers=AUTH).json()
+    assert [(r["host"], r["always"]) for r in view["refused"]] == [("connect.garmin.example", True)]
+    third.set()
 
 
 @pytest.mark.parametrize("route", ["own_route", "boite"])

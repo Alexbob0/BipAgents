@@ -28,8 +28,8 @@ abuse complaint can be traced to an agent.
   person on ONE card per agent). Until the person answers, that host (or, past the day's total, every host not
   validated) is held: it still opens for reading, within small allowances that come back every hour, shared by all
   its tunnels: `held_site` bytes per host and `held_hour` bytes per agent across held hosts; past one, the tunnel is
-  cut and a program's new tunnels to it are refused (403) until the hour turns. A host the person refused (the
-  policy's `refused`, host → until when: « Refuser », 24 hours; `refused_always`: « Refuser toujours ») is held the
+  cut and a program's new tunnels to it are refused (403) until the hour turns. A host the person refused for good (the
+  policy's `refused_always`: « Refuser toujours »; a « Refuser » refuses one request only, nothing here) is held the
   same way, never reported: readable, never refused outright. The policy's `reset` (the person's last « Autoriser »)
   clears an agent's counts.
 - **Worst case with no card**, per agent per UTC day, for its programs and its browser's counted bytes together:
@@ -477,19 +477,14 @@ def registry_take(senders, size):
 
 
 def refused(agent, host):
-    """A host the agent's person refused on its card: « Refuser » (the policy's `refused`, host → until when, 24 hours,
-    sandbox_sites.rs QUIET_AFTER_NO) or « Refuser toujours » (`refused_always`). It stays readable: it is held
-    (`hold_of`), with the hour's small allowance, and never reported."""
+    """A host the agent's person refused for good on its card (« Refuser toujours », the policy's `refused_always`;
+    a « Refuser » refuses that one request only, sandbox_sites.rs). It stays readable: it is held (`hold_of`), with
+    the hour's small allowance, and never reported."""
     entry = policy().get(agent) if agent else None
     if not isinstance(entry, dict):
         return False
-    host = normal(host)
     always = entry.get("refused_always")
-    if isinstance(always, list) and host in always:
-        return True
-    marks = entry.get("refused")
-    until = marks.get(host) if isinstance(marks, dict) else None
-    return isinstance(until, (int, float)) and not isinstance(until, bool) and until > time.time()
+    return isinstance(always, list) and normal(host) in always
 
 
 def hold_of(agent, host, day):
