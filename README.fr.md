@@ -69,16 +69,17 @@ chiffrées après chaque activité, assistance).
   tâche dans le navigateur en utilise plus qu'un simple message). Le crédit non utilisé est reporté d'un mois.
 - **Moins cher sur le site** que sur l'App Store et Google Play ; une semaine offerte peut ouvrir la formule.
 
-**Pas encore en vente** : les apps sont en test (TestFlight, test interne Google Play) et le paiement sur le site est
-fermé. Prix et détails : [**bipagents.com**](https://bipagents.com/fr/) · les conditions de l'offre :
+**Pas encore en vente** : les apps sont en test (TestFlight, Google Play) et le paiement sur le site est fermé. Pendant
+la bêta gratuite, les places sont limitées : demande un code sur [bipagents.com/fr/code](https://bipagents.com/fr/code/)
+(« Je veux une place »). Prix et détails : [**bipagents.com**](https://bipagents.com/fr/) · les conditions de l'offre :
 [kerfystudio.com](https://kerfystudio.com/offer/).
 
 ### 🖥️ Gratuit, sur ton ordinateur ou ton serveur
 
 Si tu fais tourner [Hermes Agent](https://github.com/NousResearch/hermes-agent) — ou si tu veux le faire —, BipAgents
 s'installe à côté, gratuitement, sur un Mac, un PC Linux, un [petit serveur loué](docs/vps.fr.md) (à partir de
-8 € par mois environ) ou Windows 11 (via WSL2). Pas besoin de GPU. Tes agents, leur mémoire et tes fichiers restent
-sur ta machine.
+8 € par mois environ) ou Windows 11 (via WSL2). Pas besoin de GPU ni de code de bêta, et sans limite. Tes agents,
+leur mémoire et tes fichiers restent sur ta machine.
 
 1. **Sur une machine qui reste allumée**, installe [Tailscale](https://tailscale.com/download), puis colle ceci dans
    son terminal et réponds à quelques questions (le nom de tes agents, et le modèle : un modèle sur ton réseau, ou une
@@ -172,7 +173,7 @@ flowchart LR
   téléchargent.
 - **Pocket TTS** ([`pocket/`](pocket/README.fr.md)) donne leur voix aux Bips, sur le processeur du serveur.
 - **Le relais de notifications** ([`relay/`](relay/README.fr.md)) transmet les notifications à Apple et Google sans
-  leur texte : l'app va le chercher sur ton propre bridge.
+  leur texte en clair : il est scellé pour ton téléphone, seul à pouvoir l'ouvrir.
 - À la maison, les apps rejoignent ta machine par **Tailscale** (ou par une porte HTTPS épinglée sur ton réseau
   local) ; rien n'est ouvert sur Internet.
 

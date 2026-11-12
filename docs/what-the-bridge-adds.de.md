@@ -18,7 +18,7 @@ sie bewusst Hermes überlässt.
 |---|---|---|---|
 | Mit ihm sprechen | Terminal, Chat-Gateways, Runs-API | ein Chatfenster (Desktop-App, Telegram…) | Apps für iPhone, iPad und Android, Sprachnachrichten, freihändige Live-Anrufe, eine Web-Konsole |
 | Stimmen | keine | keine oder die der Plattform | eine Stimme pro Agent, Satz für Satz während die Antwort läuft, Text für die Sprache in 5 Sprachen aufbereitet |
-| Außerhalb der App | die Nachrichten des Gateways | die Benachrichtigungen der Plattform | Push, dessen Text von deinem Server kommt, Freigaben und Fragen vom Sperrbildschirm, Live Activities |
+| Außerhalb der App | die Nachrichten des Gateways | die Benachrichtigungen der Plattform | Push, dessen Text für dein Handy versiegelt ist, Freigaben und Fragen vom Sperrbildschirm, Live Activities |
 | Mehrere Agenten | Profile, von Hand eingerichtet | meist ein Agent auf einmal | Agenten in 2 s aus der App erstellt, jeder mit eigener Sandbox, eigenem Browser, eigenen Werkzeugen, eigener Stimme und Gedächtnissprache |
 | Surfen | ein Browser-Werkzeug | dasselbe | das echte Chrome jedes Agenten, live zu sehen und vom Handy aus zu übernehmen |
 | Sicherheit | Freigaben, `approvals.deny`, Docker-Sandbox | dasselbe | Freigaben immer gefragt und klar formuliert, Sandboxen ohne deine Ordner, Senden an unbekannte Seiten gedeckelt, Agenten untereinander begrenzt, Tresor nur zum Schreiben, Schleifenbremse |
@@ -39,11 +39,11 @@ sie bewusst Hermes überlässt.
   `pronounce.rs`, `pronunciations.rs`.
 - **Live-Anrufe.** `live_brief.rs` beginnt einen Anruf mit einer kurzen Zusammenfassung des Gesprächs statt mit 100k
   Token Verlauf; `live_calls.rs` schreibt zurück ins Gespräch, was der Anruf getan hat.
-- **Benachrichtigungen.** `push.rs` (APNs, `apns.rs`; Android, `fcm.rs`) schickt einen allgemeinen Hinweis, und das
-  Handy holt den Text bei der Bridge ab: Apple und Google sehen ihn nie; `relay.rs` und das separate
-  [`relay/`](../relay/) leiten Pushes ohne Inhalt weiter. `runs.rs` macht aus einer Freigabe, die niemand ansieht,
-  eine Benachrichtigung; `agent_notify.rs` regelt das pro Agent; `live_activities.rs` zeigt lange Arbeit auf dem
-  Sperrbildschirm und in der Dynamic Island.
+- **Benachrichtigungen.** `push.rs` (APNs, `apns.rs`; Android, `fcm.rs`) versiegelt den Namen des Agenten und seine
+  Worte für den Schlüssel des Handys (`push_runs/seal.rs`), im Klartext nur eine neutrale Zeile: Apple, Google und das
+  Relais sehen sie nie; `relay.rs` und das separate [`relay/`](../relay/) leiten die Pushes aller Installationen
+  weiter. `runs.rs` macht aus einer Freigabe, die niemand ansieht, eine Benachrichtigung; `agent_notify.rs` regelt das
+  pro Agent; `live_activities.rs` zeigt lange Arbeit auf dem Sperrbildschirm und in der Dynamic Island.
 - **Nachrichten während der Arbeit.** `msg_queue.rs`: Eine Nachricht, die während der Arbeit des Agenten kommt, geht in
   den laufenden Durchgang (Hermes' Steer, nach den aktuellen Werkzeugaufrufen); « Danach » legt sie stattdessen in die
   Warteschlange des Agenten auf der Brücke, auf allen Geräten gleich, als nächster Durchgang gestartet (Reihenfolge,
@@ -75,7 +75,7 @@ sie bewusst Hermes überlässt.
 ## Sicherheit
 
 - **Freigaben.** Die Bridge lässt Hermes' Freigaben im manuellen Modus (`sandbox.rs`), formuliert sie klar, behält
-  beantwortete im Gespräch (`approvals_log.rs`) und folgt dem Anfrageprotokoll von Hermes 0.22.5
+  beantwortete im Gespräch (`approvals_log.rs`) und folgt dem Anfrageprotokoll von Hermes
   (`hermes_prompts.rs`).
 - **Prompt-Injection.** Die Persönlichkeit jedes Agenten sagt, dass Gelesenes (Seiten, Mails, Dateien, andere
   Agenten) Information ist, nie ein Befehl (`souls.rs`). Andere Agenten erreichen nur einen « Bot Chat »
@@ -171,15 +171,14 @@ Guichet, dem Konto- und Abrechnungsdienst von Kerfy Studio (ein privates Reposit
 ## Die Hermes-Patches, die wir mitführen
 
 Einige Änderungen, die die Apps brauchen, sind noch nicht in Hermes. Sie liegen in
-[`hermes/patches/`](../hermes/patches/README.md) auf der festgelegten stabilen Version (`BASE`: v0.22.5), und der
+[`hermes/patches/`](../hermes/patches/README.md) auf der festgelegten stabilen Version (`BASE`: v0.23.1), und der
 Installer wendet sie an.
 
 | Patch | Warum |
 |---|---|
 | 0005 Tresor füllt nach Browser-Neustart | Logins funktionieren weiter, nachdem der Browser des Agenten geschlossen war |
-| 0006 synchrone Antwort eines Peers | ein von einem anderen gefragter Agent antwortet im Gespräch des Fragenden |
 | 0007 `browser.vault_only` | Agenten mit eigenem sichtbarem Browser behalten den Tresor ohne Hermes' Browser |
-| 0008 Zeitzone, Routinen, Uhrzeit | Routinen laufen zur Uhrzeit zu Hause, einmal pro Uhrzeit |
+| 0008 Zeitzone im Terminal, ohne Neustart übernommen | `date` und Skripte nennen die Zeit der Person; eine neue Zeitzone gilt sofort |
 | 0009 Werkzeugsuche `!name`, kompakte Skill-Kategorien | die Token-Diät: manche Werkzeuge bleiben direkt, seltene Skills nur mit Namen |
 | 0010 leere Antworten | Werkzeugaufrufe, die ein Modell als Text schreibt, werden echte Aufrufe; Wiederholungen ändern die Anfrage |
 | 0011 Titel mit GLM | GLM antwortet auf Aufrufe ohne Denken leer, also fragen Titel nach « low » |
@@ -188,16 +187,22 @@ Installer wendet sie an.
 | 0016 ein `message_agent`, der der Bridge | jede Nachricht zwischen Agenten geht durch die Prüfungen der Bridge |
 | 0017 Adresseinträge | Tresor-Adressen tragen Name, Telefon und E-Mail |
 | 0018 Gast-Runden | die Runde eines Angehörigen bekommt nur die Werkzeuge des Gastes und keine USER.md |
-| 0019 Routinen berichten in ihr Gespräch | eine Routine, die in einem Gespräch entstand, antwortet dort |
 | 0020 Verbrauch pro Aufruf in der Runs-API | echte Kosten pro Modellaufruf, für Budgets |
-| 0021 das Hauptgespräch bleibt das der App | das Hauptgespräch jedes Agenten behält Live-Anzeige und Verlauf auf v0.22.5 |
+| 0021 das Hauptgespräch bleibt das der App | das Hauptgespräch jedes Agenten behält Live-Anzeige und Verlauf |
+| 0022 Werkzeuge in einer festen Reihenfolge | Agenten und Routinen teilen den Prompt-Cache des Anbieters |
+| 0023 ein über Gespräche stabiler System-Prompt | der Prompt-Cache wirkt von einem Gespräch zum nächsten |
+| 0024 Werkzeuge für eine Runde gesperrt | im Live-Anruf spricht der Agent, statt Dateien zu machen oder lange Arbeit zu starten |
+| 0025 ein Doppelpunkt mitten im Satz hält die Antwort nicht mehr auf | französische Antworten kommen Wort für Wort |
+| 0026 `todo.updated` in der Runs-API | die App zeigt die Aufgabenliste des Agenten, während er arbeitet |
+| 0027 eine vom Sicherheitsfilter abgelehnte Runde sperrt ihr Gespräch nicht mehr | die nächste Nachricht wird nach einer Ablehnung beantwortet |
 
 **Wie wir sie upstream bringen.** Die Serie ist ein Git-Branch auf Hermes, exportiert mit `scripts/hermes-patches.sh`
 (`branch`, `export`, `check`): ein Commit pro Patch, stabile Namen, jedes Mal dieselben Bytes. Der Wechsel auf ein
 neueres Hermes ist ein Rebase dieses Branches, dann eine neue `BASE`. Ein Patch fällt weg, sobald Hermes dasselbe
 kann: 0001 (Clarify in der Runs-API) und 0004 (Bilder für Folgefragen behalten) gingen, als v0.22.5 eigene Lösungen
-brachte. 0005 ist upstream vorgeschlagen (NousResearch/hermes-agent#136660); kleine, allgemeine Patches (der Fix in
-0008, 0009, 0011, 0013, 0017, die Labels aus 0019) sind die nächsten Kandidaten. Details pro Patch:
+brachte; 0006 und 0019 gingen mit v0.23.1, da die Bridge Nachrichten zwischen Agenten und Routinen selbst trägt. 0005
+ist upstream vorgeschlagen (NousResearch/hermes-agent#136660), der Fix zur Zeitumstellung ebenso (#146444); kleine,
+allgemeine Patches (0027, 0025, 0020, 0026, 0011, 0017, `!name` aus 0009, 0013) sind die nächsten Kandidaten. Details pro Patch:
 [`hermes/patches/README.md`](../hermes/patches/README.md).
 
 ## Was wir bewusst Hermes überlassen

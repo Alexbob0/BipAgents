@@ -16,7 +16,7 @@ Kerfy Studio, bientôt sur [bipagents.com](https://bipagents.com/fr/).
   cloud, chaque message part au fournisseur du modèle pour qu'il y réponde : avec OpenRouter, choisis dans ses réglages
   de confidentialité des fournisseurs qui ne gardent rien (zero data retention).
 - **Les notifications** passent par le [relais de notifications](../relay/README.fr.md) de Kerfy Studio, qui ne
-  transmet aucun texte de message.
+  voit jamais leur texte : il est scellé pour ton téléphone.
 - **Le coût** : le serveur, de ≈ 8 € par mois (2 vCPU, 4 Go) à ≈ 15 € (4 vCPU, 8 Go, avec les navigateurs visibles) ; le
   modèle, payé à l'usage chez OpenRouter.
   Les voix des Bips tournent sur le processeur du serveur, sans frais en plus.

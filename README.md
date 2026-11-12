@@ -63,15 +63,15 @@ own on a server in the European Union**, looked after by Kerfy Studio (updates, 
   messages (a task in the browser uses more than a simple message). Unused credit carries over a month.
 - **Lower prices on the website** than in the App Store and Google Play; a free week may start a plan.
 
-It is **not on sale yet**: the apps are in testing (TestFlight, Google Play internal testing) and the web checkout is
-off. Prices and details: [**bipagents.com**](https://bipagents.com) · the offer's terms:
+It is **not on sale yet**: the apps are in testing (TestFlight, Google Play) and the web checkout is off. During the
+free beta, places are limited: get a code on [bipagents.com/code](https://bipagents.com/code/) (« I want a place »). Prices and details: [**bipagents.com**](https://bipagents.com) · the offer's terms:
 [kerfystudio.com](https://kerfystudio.com/en/offer/).
 
 ### 🖥️ Free, on your own computer or server
 
 If you run [Hermes Agent](https://github.com/NousResearch/hermes-agent) — or want to — BipAgents installs next to it,
 for free, on a Mac, a Linux PC, a [small rented server](docs/vps.md) (from ≈ €8 a month) or Windows 11 (through
-WSL2). No GPU needed. Your agents, their memory and your files stay on your machine.
+WSL2). No GPU, no beta code, no limit. Your agents, their memory and your files stay on your machine.
 
 1. **On a machine that stays on**, install [Tailscale](https://tailscale.com/download), then paste this in its
    terminal and answer a few questions (your agents' names, and the model: one on your network, or an API key):
@@ -156,8 +156,8 @@ flowchart LR
   files, the Notebook, connectors, the agents' browsers and vault, approvals, background tasks, pages, backups, the web
   console. Its binaries are published as GitHub pre-releases `bridge-<key>`, which installs fetch.
 - **Pocket TTS** ([`pocket/`](pocket/README.md)) gives the Bips their voices on the server's CPU.
-- **The push relay** ([`relay/`](relay/README.md)) forwards notifications to Apple and Google without their text: the
-  app fetches it from your own bridge.
+- **The push relay** ([`relay/`](relay/README.md)) forwards notifications to Apple and Google without their text in
+  clear: it is sealed for your phone, which alone opens it.
 - At home, the apps reach your machine through **Tailscale** (or a pinned HTTPS door on your local network); nothing
   is opened on the Internet.
 

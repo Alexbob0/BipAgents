@@ -15,7 +15,8 @@ in place. Rather not look after a server at all? That is Kerfy Studio's all-incl
   **a PC at home** reached through Tailscale (the installer then asks for its address on your tailnet). In the cloud,
   each message goes to the model's provider to be answered: with OpenRouter, pick providers that keep nothing in its
   privacy settings (zero data retention).
-- **Notifications** go through Kerfy Studio's [push relay](../relay/README.md), which forwards no message text.
+- **Notifications** go through Kerfy Studio's [push relay](../relay/README.md), which never sees their text: it is
+  sealed for your phone.
 - **Cost**: the server, from ≈ €8 a month (2 vCPU, 4 GB) to ≈ €15 (4 vCPU, 8 GB, with the visible browsers); the
   model, paid as you use it at OpenRouter. The
   Bips' voices run on the server's CPU, at no extra cost.
