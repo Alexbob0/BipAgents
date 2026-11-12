@@ -18,7 +18,7 @@ domaine, avec les modules (`bridge-rs/src/<nom>.rs`) qui le font, et ce qu'il la
 |---|---|---|---|
 | Lui parler | terminal, passerelles de discussion, API Runs | une fenêtre de discussion (app de bureau, Telegram…) | apps iPhone, iPad et Android, notes vocales, appels Live mains libres, console web |
 | Voix | aucune | aucune, ou celle de la plateforme | une voix par agent, phrase par phrase pendant la réponse, texte préparé pour la parole en 5 langues |
-| Hors de l'app | les messages de la passerelle | les notifications de la plateforme | notifications dont le texte vient de ton serveur, approbations et questions depuis l'écran verrouillé, Live Activities |
+| Hors de l'app | les messages de la passerelle | les notifications de la plateforme | notifications dont le texte est scellé pour ton téléphone, approbations et questions depuis l'écran verrouillé, Live Activities |
 | Plusieurs agents | profils, réglés à la main | souvent un agent à la fois | agents créés en 2 s depuis l'app, chacun avec son bac à sable, son navigateur, ses outils, sa voix et la langue de sa mémoire |
 | Navigation | un outil navigateur | idem | le vrai Chrome de chaque agent, regardé en direct et repris en main depuis le téléphone |
 | Sécurité | approbations, `approvals.deny`, bac à sable docker | idem | approbations toujours demandées et dites simplement, bacs à sable sans tes dossiers, envois vers des sites inconnus plafonnés, échanges entre agents limités, coffre en écriture seule, frein anti-boucle |
@@ -38,11 +38,11 @@ domaine, avec les modules (`bridge-rs/src/<nom>.rs`) qui le font, et ce qu'il la
   `speech_intl.rs` (anglais, espagnol, allemand, néerlandais), `durations.rs`, `pronounce.rs`, `pronunciations.rs`.
 - **Appels Live.** `live_brief.rs` démarre un appel depuis un court résumé de la conversation au lieu de 100k jetons
   d'historique ; `live_calls.rs` remet ce que l'appel a fait dans la conversation.
-- **Notifications.** `push.rs` (APNs, `apns.rs` ; Android, `fcm.rs`) envoie une alerte générique et le téléphone va
-  chercher le texte auprès du bridge : Apple et Google ne le voient jamais ; `relay.rs` et le [`relay/`](../relay/)
-  séparé transmettent les notifications sans contenu. `runs.rs` transforme une approbation que personne ne regarde en
-  notification ; `agent_notify.rs` règle cela par agent ; `live_activities.rs` affiche un long travail sur l'écran
-  verrouillé et la Dynamic Island.
+- **Notifications.** `push.rs` (APNs, `apns.rs` ; Android, `fcm.rs`) scelle le nom de l'agent et ses mots pour la clé
+  du téléphone (`push_runs/seal.rs`), avec seulement une ligne neutre en clair : Apple, Google et le relais ne les
+  voient jamais ; `relay.rs` et le [`relay/`](../relay/) séparé transmettent les notifications de toutes les
+  installations. `runs.rs` transforme une approbation que personne ne regarde en notification ; `agent_notify.rs`
+  règle cela par agent ; `live_activities.rs` affiche un long travail sur l'écran verrouillé et la Dynamic Island.
 - **Messages pendant le travail.** `msg_queue.rs` : un message envoyé pendant que l'agent travaille entre dans le tour en
   cours (le steer de Hermes, après ses appels d'outils du moment) ; « Après » le garde plutôt dans la file de l'agent, sur le
   pont, la même sur tous les appareils, lancée comme tour suivant à la fin du travail (ordre, retrait, envoi immédiat,
@@ -75,7 +75,7 @@ domaine, avec les modules (`bridge-rs/src/<nom>.rs`) qui le font, et ce qu'il la
 
 - **Approbations.** Le bridge laisse les approbations de Hermes en mode manuel (`sandbox.rs`), les formule
   simplement, garde celles déjà répondues dans la conversation (`approvals_log.rs`) et suit le protocole de demandes
-  de Hermes 0.22.5 (`hermes_prompts.rs`).
+  de Hermes (`hermes_prompts.rs`).
 - **Injection de consignes.** La personnalité de chaque agent dit que ce qu'il lit (pages, mails, fichiers, autres
   agents) est une information, jamais un ordre (`souls.rs`). Les autres agents n'atteignent qu'un « Bot Chat »
   (`peers.rs`). Les tours d'invités ont des outils fermés (patch 0018).
@@ -171,15 +171,14 @@ guichet, le service de comptes et de facturation de Kerfy Studio (un dépôt pri
 ## Les patches Hermes que nous portons
 
 Quelques changements dont les apps ont besoin ne sont pas encore dans Hermes. Ils sont dans
-[`hermes/patches/`](../hermes/patches/README.md), au-dessus de la version stable épinglée (`BASE` : v0.22.5), et
+[`hermes/patches/`](../hermes/patches/README.md), au-dessus de la version stable épinglée (`BASE` : v0.23.1), et
 l'installateur les applique.
 
 | Patch | Pourquoi |
 |---|---|
 | 0005 le coffre remplit après un redémarrage du navigateur | les connexions marchent encore après la fermeture du navigateur de l'agent |
-| 0006 réponse synchrone d'un pair | un agent interrogé par un autre répond dans la conversation de celui qui demande |
 | 0007 `browser.vault_only` | les agents avec leur propre navigateur visible gardent le coffre sans le navigateur de Hermes |
-| 0008 fuseau horaire, routines, heure murale | les routines tournent à l'heure de la maison, une fois par heure murale |
+| 0008 fuseau horaire dans le terminal, suivi sans redémarrage | `date` et les scripts donnent l'heure de la personne ; un nouveau fuseau s'applique tout de suite |
 | 0009 recherche d'outils `!nom`, catégories de compétences compactes | le régime de jetons : certains outils gardés en direct, les compétences rares par leur nom seulement |
 | 0010 réponses vides | les appels d'outils écrits en texte par un modèle deviennent de vrais appels ; les nouvelles tentatives changent la requête |
 | 0011 titres avec GLM | GLM répond vide aux appels sans réflexion, donc les titres demandent une réflexion « low » |
@@ -188,17 +187,23 @@ l'installateur les applique.
 | 0016 un seul `message_agent`, celui du bridge | chaque message entre agents passe par les contrôles du bridge |
 | 0017 coordonnées | les adresses du coffre portent un nom, un téléphone et un e-mail |
 | 0018 tours d'invités | le tour d'un proche n'a que les outils de l'invité et pas de USER.md |
-| 0019 les routines répondent dans leur conversation | une routine créée dans une conversation y répond |
 | 0020 consommation par appel dans l'API Runs | le vrai coût de chaque appel au modèle, pour les budgets |
-| 0021 la conversation principale reste celle de l'app | la conversation principale de chaque agent garde son affichage en direct et son historique sur la v0.22.5 |
+| 0021 la conversation principale reste celle de l'app | la conversation principale de chaque agent garde son affichage en direct et son historique |
+| 0022 les outils dans un ordre fixe | les agents et les routines partagent le cache de prompt du fournisseur |
+| 0023 un prompt système stable d'une conversation à l'autre | le cache de prompt sert d'une conversation à la suivante |
+| 0024 des outils refusés le temps d'un tour | en appel Live, l'agent parle au lieu de fabriquer des fichiers ou de lancer un long travail |
+| 0025 un deux-points en pleine phrase ne retient plus la réponse | les réponses en français s'affichent mot à mot |
+| 0026 `todo.updated` dans l'API Runs | l'app montre la liste de tâches de l'agent pendant qu'il travaille |
+| 0027 un tour refusé par le filtre de sécurité ne bloque plus sa conversation | le message suivant reçoit une réponse après un refus |
 
 **Comment nous les proposons en amont.** La série est une branche git au-dessus de Hermes, exportée avec
 `scripts/hermes-patches.sh` (`branch`, `export`, `check`) : un commit par patch, des noms stables, les mêmes octets à
 chaque fois. Passer à un Hermes plus récent, c'est rebaser cette branche, puis une nouvelle `BASE`. Un patch disparaît
 dès que Hermes fait la même chose : 0001 (clarify dans l'API Runs) et 0004 (images gardées pour les questions
-suivantes) sont partis quand la v0.22.5 a eu les siens. 0005 est proposé en amont (NousResearch/hermes-agent#136660) ;
-les petits patches généraux (le correctif de 0008, 0009, 0011, 0013, 0017, les libellés de 0019) sont les
-prochains candidats. Le détail de chaque patch : [`hermes/patches/README.md`](../hermes/patches/README.md).
+suivantes) sont partis quand la v0.22.5 a eu les siens ; 0006 et 0019 sont partis avec la v0.23.1, puisque le
+bridge porte lui-même les messages entre agents et les routines. 0005 est proposé en amont
+(NousResearch/hermes-agent#136660), le correctif du changement d'heure aussi (#146444) ; les petits patches généraux
+(0027, 0025, 0020, 0026, 0011, 0017, le `!nom` de 0009, 0013) sont les prochains candidats. Le détail de chaque patch : [`hermes/patches/README.md`](../hermes/patches/README.md).
 
 ## Ce que nous laissons volontairement à Hermes
 

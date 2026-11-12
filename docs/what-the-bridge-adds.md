@@ -17,7 +17,7 @@ that do it, and what it deliberately leaves to Hermes.
 |---|---|---|---|
 | Talking to it | terminal, chat gateways, Runs API | a chat window (desktop app, Telegram…) | iPhone, iPad and Android apps, voice notes, hands-free Live calls, a web console |
 | Voices | none | none, or the platform's own | a voice per agent, sentence by sentence while the reply streams, text prepared for speech in 5 languages |
-| Away from the app | the gateway's own messages | the platform's notifications | push with the text fetched from your server, approvals and questions answered from the lock screen, Live Activities |
+| Away from the app | the gateway's own messages | the platform's notifications | push whose text is sealed for your phone, approvals and questions answered from the lock screen, Live Activities |
 | Several agents | profiles, configured by hand | usually one agent at a time | agents created in 2 s from the app, each with its own sandbox, browser, tools, voice and memory language |
 | Browsing | a browser tool | same | each agent's own Chrome, watched live and taken over from the phone |
 | Safety | approvals, `approvals.deny`, docker sandbox | same | approvals always asked and worded plainly, sandboxes without your folders, sending to unknown sites capped, peers limited, write-only vault, loop brake |
@@ -37,10 +37,11 @@ that do it, and what it deliberately leaves to Hermes.
   (English, Spanish, German, Dutch), `durations.rs`, `pronounce.rs`, `pronunciations.rs`.
 - **Live calls.** `live_brief.rs` starts a call from a short brief of the conversation instead of 100k tokens of
   history; `live_calls.rs` writes what the call did back into the conversation.
-- **Notifications.** `push.rs` (APNs, `apns.rs`; Android, `fcm.rs`) sends a generic alert and the phone fetches the
-  text from the bridge, so Apple and Google never see it; `relay.rs` and the separate [`relay/`](../relay/) forward
-  pushes without content. `runs.rs` turns an approval nobody is watching into a notification; `agent_notify.rs` sets
-  this per agent; `live_activities.rs` shows long work on the lock screen and Dynamic Island.
+- **Notifications.** `push.rs` (APNs, `apns.rs`; Android, `fcm.rs`) seals the agent's name and words for the phone's
+  own key (`push_runs/seal.rs`), with only a neutral line in clear, so Apple, Google and the relay never see them;
+  `relay.rs` and the separate [`relay/`](../relay/) forward every install's pushes. `runs.rs` turns an approval nobody
+  is watching into a notification; `agent_notify.rs` sets this per agent; `live_activities.rs` shows long work on the
+  lock screen and Dynamic Island.
 - **Messages during the work.** `msg_queue.rs`: a message sent while the agent works goes into the turn going on
   (Hermes' steer, after its current tool calls); « After » keeps it in the agent's queue instead, on the bridge, the same on
   every device, started as the next turn once the work ends (reorder, cancel, send now, pause), one notification at the end.
@@ -67,7 +68,7 @@ that do it, and what it deliberately leaves to Hermes.
 ## Safety
 
 - **Approvals.** The bridge keeps Hermes' approvals in manual mode (`sandbox.rs`), words them plainly, keeps the
-  answered ones in the conversation (`approvals_log.rs`) and follows Hermes 0.22.5's prompt protocol
+  answered ones in the conversation (`approvals_log.rs`) and follows Hermes' prompt protocol
   (`hermes_prompts.rs`).
 - **Prompt injection.** Every agent's personality says that what it reads (pages, mail, files, other agents) is
   information, never orders (`souls.rs`). Peers only reach a « Bot Chat » (`peers.rs`). Guest turns get closed tools
@@ -158,14 +159,13 @@ service (a private repository, not part of this one).
 ## The Hermes patches we carry
 
 A few changes the apps need are not in Hermes yet. They live in [`hermes/patches/`](../hermes/patches/README.md) on
-top of the pinned stable release (`BASE`: v0.22.5), and the installer applies them.
+top of the pinned stable release (`BASE`: v0.23.1), and the installer applies them.
 
 | Patch | Why |
 |---|---|
 | 0005 vault fills after the browser restarted | logins keep working after the agent's browser was closed |
-| 0006 synchronous peer reply | an agent asked by another one answers in the asker's conversation |
 | 0007 `browser.vault_only` | agents with their own visible browser keep the vault without Hermes' browser |
-| 0008 time zone, routines, wall clock | routines run at the person's home time, once per wall-clock time |
+| 0008 time zone in the terminal, followed without a restart | `date` and scripts tell the person's time; a new time zone applies at once |
 | 0009 tool search `!name`, compact skill categories | the token diet: some tools kept direct, rare skills by name only |
 | 0010 empty replies | tool calls a model writes as text become real calls; retries change the request |
 | 0011 titles with GLM | GLM answers thinking-off calls with nothing, so titles ask for « low » thinking |
@@ -174,16 +174,22 @@ top of the pinned stable release (`BASE`: v0.22.5), and the installer applies th
 | 0016 one `message_agent`, the bridge's | every agent-to-agent message goes through the bridge's checks |
 | 0017 address items | vault addresses carry a name, a phone and an e-mail |
 | 0018 guest turns | a relative's turn gets only the guest's tools and no USER.md |
-| 0019 routines report to their conversation | a routine made in a conversation answers there |
 | 0020 per-call usage in the Runs API | real cost per model call, for budgets |
-| 0021 the main conversation stays the app's | each agent's main conversation keeps streaming and its history on v0.22.5 |
+| 0021 the main conversation stays the app's | each agent's main conversation keeps streaming and its history |
+| 0022 tools in one canonical order | agents and routines share the provider's prompt cache |
+| 0023 a system prompt stable across conversations | the prompt cache works from one conversation to the next |
+| 0024 tools refused for one turn | in a Live call the agent speaks instead of making files or starting long work |
+| 0025 a colon mid-sentence no longer holds back a reply | French replies stream word by word |
+| 0026 `todo.updated` in the Runs API | the app shows the agent's task list while it works |
+| 0027 a safety-refused turn no longer locks its conversation | the next message is answered after a refusal |
 
 **How we upstream them.** The series is kept as a git branch on upstream Hermes and exported with
 `scripts/hermes-patches.sh` (`branch`, `export`, `check`): one commit per patch, stable names, the same bytes every
 time. A move to a newer Hermes is a rebase of that branch, then a new `BASE`. Patches are dropped as soon as Hermes has
 the same thing: 0001 (clarify in the Runs API) and 0004 (images kept for follow-up questions) went when v0.22.5
-shipped its own. 0005 is proposed upstream as NousResearch/hermes-agent#136660; small, general ones (0008's fix,
-0009, 0011, 0013, 0017, 0019's labels) are the next candidates. Details per patch:
+shipped its own; 0006 and 0019 went on v0.23.1, since the bridge carries agent messages and routines itself. 0005 is
+proposed upstream as NousResearch/hermes-agent#136660 and the clock-change fix as #146444; small, general ones (0027,
+0025, 0020, 0026, 0011, 0017, 0009's `!name`, 0013) are the next candidates. Details per patch:
 [`hermes/patches/README.md`](../hermes/patches/README.md).
 
 ## What we deliberately leave to Hermes

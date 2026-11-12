@@ -17,7 +17,7 @@ toevoegt, met de modules (`bridge-rs/src/<naam>.rs`) die het doen, en wat hij be
 |---|---|---|---|
 | Ermee praten | terminal, chatgateways, Runs-API | een chatvenster (desktop-app, Telegram…) | apps voor iPhone, iPad en Android, spraakberichten, handsfree Live-gesprekken, een webconsole |
 | Stemmen | geen | geen, of die van het platform | een stem per agent, zin voor zin terwijl het antwoord binnenkomt, tekst voorbereid op spraak in 5 talen |
-| Buiten de app | de berichten van de gateway | de meldingen van het platform | pushmeldingen waarvan de tekst van je eigen server komt, goedkeuringen en vragen vanaf het vergrendelscherm, Live Activities |
+| Buiten de app | de berichten van de gateway | de meldingen van het platform | pushmeldingen waarvan de tekst verzegeld is voor je telefoon, goedkeuringen en vragen vanaf het vergrendelscherm, Live Activities |
 | Meerdere agents | profielen, met de hand ingesteld | meestal één agent tegelijk | agents in 2 s gemaakt vanuit de app, elk met een eigen sandbox, browser, tools, stem en geheugentaal |
 | Browsen | een browsertool | hetzelfde | de echte Chrome van elke agent, live te volgen en over te nemen vanaf de telefoon |
 | Veiligheid | goedkeuringen, `approvals.deny`, docker-sandbox | hetzelfde | goedkeuringen altijd gevraagd en helder verwoord, sandboxen zonder jouw mappen, verzenden naar onbekende sites begrensd, agents onderling beperkt, kluis die alleen schrijft, lusrem |
@@ -37,11 +37,11 @@ toevoegt, met de modules (`bridge-rs/src/<naam>.rs`) die het doen, en wat hij be
   `speech_intl.rs` (Engels, Spaans, Duits, Nederlands), `durations.rs`, `pronounce.rs`, `pronunciations.rs`.
 - **Live-gesprekken.** `live_brief.rs` begint een gesprek met een korte samenvatting van de conversatie in plaats van
   100k tokens geschiedenis; `live_calls.rs` zet terug in de conversatie wat het gesprek heeft gedaan.
-- **Meldingen.** `push.rs` (APNs, `apns.rs`; Android, `fcm.rs`) stuurt een algemene melding en de telefoon haalt de
-  tekst bij de bridge op: Apple en Google zien hem nooit; `relay.rs` en de aparte [`relay/`](../relay/) sturen
-  meldingen door zonder inhoud. `runs.rs` maakt van een goedkeuring waar niemand naar kijkt een melding;
-  `agent_notify.rs` stelt dat per agent in; `live_activities.rs` toont lang werk op het vergrendelscherm en in het
-  Dynamic Island.
+- **Meldingen.** `push.rs` (APNs, `apns.rs`; Android, `fcm.rs`) verzegelt de naam van de agent en zijn woorden voor de
+  sleutel van de telefoon (`push_runs/seal.rs`), met alleen een neutrale regel leesbaar: Apple, Google en de relay
+  zien ze nooit; `relay.rs` en de aparte [`relay/`](../relay/) sturen de meldingen van elke installatie door.
+  `runs.rs` maakt van een goedkeuring waar niemand naar kijkt een melding; `agent_notify.rs` stelt dat per agent in;
+  `live_activities.rs` toont lang werk op het vergrendelscherm en in het Dynamic Island.
 - **Berichten tijdens het werk.** `msg_queue.rs`: een bericht dat je stuurt terwijl de agent werkt, gaat in de lopende
   beurt (Hermes' steer, na de huidige toolaanroepen); « Daarna » zet het in de wachtrij van de agent op de brug, op elk
   apparaat hetzelfde, gestart als volgende beurt (volgorde, weghalen, nu sturen, pauze), één melding aan het eind.
@@ -72,7 +72,7 @@ toevoegt, met de modules (`bridge-rs/src/<naam>.rs`) die het doen, en wat hij be
 ## Veiligheid
 
 - **Goedkeuringen.** De bridge houdt de goedkeuringen van Hermes in handmatige modus (`sandbox.rs`), verwoordt ze
-  helder, bewaart beantwoorde in het gesprek (`approvals_log.rs`) en volgt het vraagprotocol van Hermes 0.22.5
+  helder, bewaart beantwoorde in het gesprek (`approvals_log.rs`) en volgt het vraagprotocol van Hermes
   (`hermes_prompts.rs`).
 - **Prompt-injectie.** De persoonlijkheid van elke agent zegt dat wat hij leest (pagina's, mails, bestanden, andere
   agents) informatie is, nooit een opdracht (`souls.rs`). Andere agents bereiken alleen een « Bot Chat »
@@ -166,15 +166,14 @@ guichet, de account- en factuurdienst van Kerfy Studio (een privé-repository, g
 ## De Hermes-patches die we meedragen
 
 Een paar wijzigingen die de apps nodig hebben, zitten nog niet in Hermes. Ze staan in
-[`hermes/patches/`](../hermes/patches/README.md), bovenop de vastgezette stabiele versie (`BASE`: v0.22.5), en de
+[`hermes/patches/`](../hermes/patches/README.md), bovenop de vastgezette stabiele versie (`BASE`: v0.23.1), en de
 installer past ze toe.
 
 | Patch | Waarom |
 |---|---|
 | 0005 kluis vult in na herstart van de browser | logins blijven werken nadat de browser van de agent dicht was |
-| 0006 synchroon antwoord van een peer | een agent die door een andere iets gevraagd wordt, antwoordt in het gesprek van de vrager |
 | 0007 `browser.vault_only` | agents met een eigen zichtbare browser houden de kluis zonder de browser van Hermes |
-| 0008 tijdzone, routines, kloktijd | routines lopen op de tijd van thuis, één keer per kloktijd |
+| 0008 tijdzone in de terminal, gevolgd zonder herstart | `date` en scripts geven de tijd van de persoon; een nieuwe tijdzone geldt meteen |
 | 0009 toolzoeken `!naam`, compacte skillcategorieën | het tokendieet: sommige tools direct, zeldzame skills alleen bij naam |
 | 0010 lege antwoorden | toolaanroepen die een model als tekst schrijft worden echte aanroepen; nieuwe pogingen veranderen het verzoek |
 | 0011 titels met GLM | GLM antwoordt leeg op aanroepen zonder denken, dus titels vragen om « low » denken |
@@ -183,16 +182,22 @@ installer past ze toe.
 | 0016 één `message_agent`, die van de bridge | elk bericht tussen agents gaat langs de controles van de bridge |
 | 0017 adresitems | kluisadressen hebben een naam, telefoon en e-mail |
 | 0018 gastbeurten | de beurt van een familielid krijgt alleen de tools van de gast en geen USER.md |
-| 0019 routines melden in hun gesprek | een routine die in een gesprek is gemaakt, antwoordt daar |
 | 0020 verbruik per aanroep in de Runs-API | de echte kosten per modelaanroep, voor budgetten |
-| 0021 het hoofdgesprek blijft dat van de app | het hoofdgesprek van elke agent houdt live antwoorden en zijn geschiedenis op v0.22.5 |
+| 0021 het hoofdgesprek blijft dat van de app | het hoofdgesprek van elke agent houdt live antwoorden en zijn geschiedenis |
+| 0022 tools in één vaste volgorde | agents en routines delen de promptcache van de provider |
+| 0023 een systeemprompt die stabiel blijft tussen gesprekken | de promptcache werkt van het ene gesprek naar het volgende |
+| 0024 tools geweigerd voor één beurt | in een Live-gesprek praat de agent in plaats van bestanden te maken of lang werk te starten |
+| 0025 een dubbele punt midden in een zin houdt het antwoord niet meer op | Franse antwoorden komen woord voor woord |
+| 0026 `todo.updated` in de Runs-API | de app toont de takenlijst van de agent terwijl hij werkt |
+| 0027 een beurt die het veiligheidsfilter weigert, blokkeert zijn gesprek niet meer | het volgende bericht krijgt na een weigering antwoord |
 
 **Hoe we ze upstream brengen.** De reeks is een git-branch op Hermes, geëxporteerd met `scripts/hermes-patches.sh`
 (`branch`, `export`, `check`): één commit per patch, vaste namen, elke keer dezelfde bytes. Naar een nieuwere Hermes
 gaan is een rebase van die branch en daarna een nieuwe `BASE`. Een patch verdwijnt zodra Hermes hetzelfde kan: 0001
 (clarify in de Runs-API) en 0004 (afbeeldingen bewaard voor vervolgvragen) vielen weg toen v0.22.5 eigen versies
-kreeg. 0005 is upstream voorgesteld (NousResearch/hermes-agent#136660); kleine, algemene patches (de fix in 0008,
-0009, 0011, 0013, 0017, de labels uit 0019) zijn de volgende kandidaten. Details per patch:
+kreeg; 0006 en 0019 vielen weg met v0.23.1, omdat de bridge berichten tussen agents en routines zelf draagt. 0005 is
+upstream voorgesteld (NousResearch/hermes-agent#136660), de fix voor de klokwissel ook (#146444); kleine, algemene
+patches (0027, 0025, 0020, 0026, 0011, 0017, `!naam` uit 0009, 0013) zijn de volgende kandidaten. Details per patch:
 [`hermes/patches/README.md`](../hermes/patches/README.md).
 
 ## Wat we bewust aan Hermes overlaten

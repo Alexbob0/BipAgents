@@ -239,10 +239,9 @@ mémoire, ses fichiers et ses sessions de navigateur, séparés par le système 
 ceux de l'autre. Toutes les installations tournent en même temps sur la même machine, chacune sur son bloc de dix
 ports (8640 pour la première, puis 9200, 9210…).
 
-Ce qui est partagé : le modèle, les voix (Pocket, et un modèle de voix qui tourne déjà sur la machine ou le réseau, voir
-plus haut) et les notifications : elles passent par Apple avec la
-clé de l'administrateur, qui ne quitte jamais son installation ; son bridge relaie celles des autres (une clé de
-relais par installation).
+Ce qui est partagé : le modèle et les voix (Pocket, et un modèle de voix qui tourne déjà sur la machine ou le réseau, voir
+plus haut). Chaque installation envoie ses propres notifications par le relais de notifications de Kerfy Studio
+(`[push] service_url`).
 
 ### Qui lance quoi, depuis quel compte
 

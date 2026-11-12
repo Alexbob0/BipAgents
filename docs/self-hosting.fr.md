@@ -136,7 +136,9 @@ root), le bridge le garde isolé : Hermes y fait alors le travail sans risque (`
   dossiers (tu approuves les suppressions depuis l'app).
 - **Pas d'internet, sauf les dépôts de paquets** : le bac à sable est sur `bipagents-sandbox`, un réseau podman sans
   route vers l'extérieur, et n'atteint que PyPI, npm, les crates Rust, Go et Debian, par un petit conteneur proxy
-  (`bipagents-egress` ; `podman logs bipagents-egress` montre ce qu'il a laissé passer ou bloqué). La recherche web et
+  (`bipagents-egress` ; `podman logs bipagents-egress` montre ce qu'il a laissé passer ou bloqué). Quand le bridge
+  tourne en service systemd utilisateur, ce proxy tourne dans son propre scope (`systemd-run --user --scope`) :
+  redémarrer ou mettre à jour le bridge le laisse en marche. La recherche web et
   le navigateur visible de l'agent sont d'autres outils et marchent toujours. Chaque agent peut aussi avoir **ses
   propres sites** (HTTPS seulement) : chaque bac à sable a ses propres identifiants sur le proxy, qui sait donc quel
   agent demande. Quand le proxy refuse un site aux programmes d'un agent, ou quand l'agent le demande d'avance
@@ -160,6 +162,11 @@ téléchargement envoyé dans un shell…), les paiements, la suppression de fic
 services que tu as ajoutés et les nouveaux sites demandent toujours (`approvals.mode` reste `manual`).
 `bipagents sandbox adopt <agent>` déplace ces dossiers faits à la main dans des volumes. `bipagents approvals [agent]
 [--last N]` liste ce que les agents ont demandé, avec ta réponse (depuis les journaux du bridge, en lecture seule).
+Sur une carte qui n'est pas critique (trier le courrier, écrire dans un service que tu as connecté, des fichiers dans
+l'espace de l'agent), « Toujours autoriser » est gardé pour cet agent et ce type ; les réglages de l'agent les listent
+et les retirent. Une carte demandée quand personne ne regarde (une routine la nuit, une tâche de fond) ne bloque plus
+le tour : elle attend dans la Boîte 24 heures au plus (ou jusqu'au prochain passage de la routine), et l'agent fait
+exactement cette étape après ton « Oui ».
 
 ### Le Carnet (le carnet des agents)
 
@@ -172,8 +179,11 @@ le modèle des agents, chez leur fournisseur), `base_url` et `key` pour une autr
 passage écrit `notebook pass` dans le journal avec ses tokens et son coût ; les réglages du Carnet montrent la dépense du mois.
 
 Les travaux longs passent en tâche de fond, jamais dans la conversation. Un agent en lance une de lui-même seulement
-quand la personne l'a demandé, dans la limite de `[jobs] direct_budget_eur` (€, 0,20 par défaut, compté aux prix de
-`[notebook]`) ; au-delà, il propose la tâche et la personne la lance d'un geste. Un tour de conversation qui dépasse
+quand la personne l'a demandé, dans la limite de `[jobs] direct_budget_eur` (€, 0,20 par défaut) ; au-delà, il propose
+la tâche et la personne la lance d'un geste. Sur ta propre installation, ce budget, ceux des tâches et donc le pas de
+« Continuer » valent cinq fois ceux de l'offre (1 € par défaut), comptés aux prix `[jobs] price_in` / `price_cached` /
+`price_out` s'ils sont donnés, sinon à ceux de `[notebook]` ; un jeton relu dans le cache du modèle compte pour un
+dixième d'un jeton neuf, sauf si `price_cached` dit autre chose. Un tour de conversation qui dépasse
 `handoff_tool_calls` (15 par défaut) appels d'outils ou `handoff_seconds` (180 par défaut) reçoit une fois la consigne
 de passer la suite en tâche de fond (`handoff = false` le coupe) ; le pont écrit
 `long run: handing over to a background task (steer)` dans le journal. Jamais pendant qu'un sous-agent
@@ -283,13 +293,15 @@ reste local, seul le bridge l'appelle.
 (port 8650, à n'ouvrir que sur le réseau local) et le QR code contient son adresse et l'empreinte de son certificat.
 Quand le tailnet ne répond pas, l'app passe par cette porte, en n'acceptant que ce certificat, et affiche « En ligne ·
 réseau local ». Elle apprend seule une nouvelle adresse locale tant que le tailnet marche ; si l'adresse a changé
-pendant une coupure, elle propose de scanner un nouveau QR code. Les notifications demandent toujours Internet (Apple).
+pendant une coupure, elle propose de scanner un nouveau QR code. Les notifications demandent toujours Internet (le relais de notifications).
 
 **Notifications** (réponses écran verrouillé, accords, Boîte) : l'app de l'éditeur ne se joint par les services
-d'Apple et de Google qu'avec les clés de l'éditeur, donc ton bridge les envoie par le
-[relais de notifications](../relay/README.fr.md) de Kerfy Studio (`[push] service_url`), qui ne transmet aucun texte de
-message ; l'installateur le règle dès que le relais est en ligne. Sans lui, tout le reste fonctionne, sans les
-notifications.
+d'Apple et de Google qu'avec les clés de l'éditeur, donc chaque installation les envoie par le
+[relais de notifications](../relay/README.fr.md) de Kerfy Studio : `[push] service_url = "https://push.bipagents.com"`,
+réglé par l'installateur (et par la mise à jour du 12/11/2026 sur les installations plus anciennes). Le nom de l'agent
+et le début de son message sont scellés pour la clé de ton téléphone ; le relais, Apple et Google ne voient qu'une
+ligne neutre (« Nouveau message »…). Avec `service_url`, le bridge n'envoie plus lui-même à Apple : une section
+`[apns]` peut être retirée. Sans lui, tout le reste fonctionne, sans les notifications.
 
 ## Bonus : ton propre modèle de voix (GPU)
 

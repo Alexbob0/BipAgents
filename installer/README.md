@@ -226,10 +226,8 @@ the **reading** of messages and reports. The Bips speak for the rest, and stand 
 files and browser sessions, separated by the system: one person's agents cannot read the other's. All installs run
 at the same time on the same machine, each on its own block of ten ports (8640 for the first, then 9200, 9210…).
 
-What they share: the model, the voices (Pocket, and a voice model already running on the machine or the network, see
-above) and the notifications: they go through Apple with
-the administrator's key, which never leaves the administrator's install; their bridge relays the others' (one relay
-key per install).
+What they share: the model and the voices (Pocket, and a voice model already running on the machine or the network, see
+above). Each install sends its own notifications through Kerfy Studio's push relay (`[push] service_url`).
 
 ### Who runs what, from which account
 

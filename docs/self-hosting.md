@@ -135,7 +135,9 @@ you each time:
   `<agent>.before-volume`. The `shared_files_*` tools reach the same folders (you approve deletes from the app);
 - **no internet but the package registries**: the sandbox sits on `bipagents-sandbox`, a podman network without a
   route out, and reaches PyPI, npm, Rust crates, Go and Debian only, through a small proxy container
-  (`bipagents-egress`, `podman logs bipagents-egress` shows what it let through or blocked). Web search and the
+  (`bipagents-egress`, `podman logs bipagents-egress` shows what it let through or blocked). When the bridge runs as a
+  systemd user service, that proxy runs in its own scope (`systemd-run --user --scope`): restarting or updating the
+  bridge leaves it running. Web search and the
   agent's own visible browser are separate tools and keep working. Each agent can also have **sites of its own**
   (HTTPS only): each sandbox gets its own proxy credentials, so the proxy knows which agent asks. When the proxy
   refuses a site to an agent's programs, or when the agent asks first (`sandbox_sites_request`), you get one card in
@@ -155,7 +157,11 @@ before every script. Where the bridge isolates the network, it also puts Hermes'
 own space without asking, while risky commands (deleting, credential files, a download piped into a shell…), payments,
 deleting shared files, the write tools of services you added and new sites still ask (`approvals.mode` stays
 `manual`). `bipagents sandbox adopt <agent>` moves such hand-made folders into volumes. `bipagents approvals [agent]
-[--last N]` lists what the agents asked, with your answer (from the bridge's own logs, read only).
+[--last N]` lists what the agents asked, with your answer (from the bridge's own logs, read only). On a card that is
+not critical (sorting mail, writing in a service you connected, files in the agent's own space), « Toujours autoriser »
+is kept for that agent and that kind; the agent's settings list them and take them back. A card asked while nobody
+watches (a routine at night, a background task) no longer blocks the turn: it waits in the Boîte for up to 24 hours (or
+until the routine's next run), and the agent does that exact step after your « Oui ».
 
 ### The Carnet (the agents' notebook)
 
@@ -167,8 +173,11 @@ OpenAI-compatible API, `price_in`/`price_out` (€ per million tokens), `monthly
 (default 3). Each run logs `notebook pass` with its tokens and cost; the Carnet's settings show the month's spend.
 
 Long work goes to background tasks, never inline in a conversation. An agent starts one by itself only when the person
-asked for it, within `[jobs] direct_budget_eur` (€, default 0.20, counted at the `[notebook]` prices); above that it
-proposes the task and the person starts it with one tap. A conversation's run that goes past `handoff_tool_calls`
+asked for it, within `[jobs] direct_budget_eur` (€, default 0.20); above that it proposes the task and the person
+starts it with one tap. On your own install that budget, the task budgets and so the « Continuer » step are five times
+the offer's (1 € by default), counted at `[jobs] price_in` / `price_cached` / `price_out` when set, else at the
+`[notebook]` prices; a token read again from the model's cache counts a tenth of a fresh one unless `price_cached`
+says otherwise. A conversation's run that goes past `handoff_tool_calls`
 (default 15) tool calls or `handoff_seconds` (default 180) is told once to hand the rest over (`handoff = false` turns
 this off); the bridge logs `long run: handing over to a background task (steer)`. Never while a sub-agent
 (`delegate_task`) works for that run, and the calls and time spent in one don't count. A run browsing with the agent's
@@ -273,12 +282,15 @@ stays local, only the bridge calls it.
 network (port 8650, open it on the LAN only) and the QR code carries its address and certificate fingerprint. When
 the tailnet does not answer, the app goes through that door, accepting only that certificate; it shows « Online ·
 local network ». It learns a new local address on its own while the tailnet works; if the address changed while the
-tailnet was down, it asks you to scan a new QR code. Notifications still need the Internet (Apple).
+tailnet was down, it asks you to scan a new QR code. Notifications still need the Internet (the push relay).
 
 **Notifications** (replies on the lock screen, approvals, Inbox): the publisher's app can only be reached through
-Apple's and Google's services with the publisher's keys, so your bridge sends them through Kerfy Studio's
-[push relay](../relay/README.md) (`[push] service_url`), which forwards no message text; the installer sets it once the
-relay is online. Without it, everything else works, just without notifications.
+Apple's and Google's services with the publisher's keys, so every install sends them through Kerfy Studio's
+[push relay](../relay/README.md): `[push] service_url = "https://push.bipagents.com"`, set by the installer (and by
+the 2026-11-12 update on older installs). The agent's name and the start of its message are sealed for your phone's
+own key; the relay, Apple and Google see only a neutral line (« New message »…). With `service_url` set, the bridge no
+longer sends to Apple itself: an `[apns]` section can be removed. Without it, everything else works, just without
+notifications.
 
 ## Bonus: your own voice model (GPU)
 
