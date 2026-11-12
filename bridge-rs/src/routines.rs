@@ -120,6 +120,11 @@ pub struct Routine {
     /// Changed or turned back on by its agent (`update`, `resume`): off until the person answers this change's card.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub change: Option<Change>,
+    /// A family agent's routine a member asked for (family_thread.rs, 12/11): her household. Its cards are hers
+    /// (answered from her bridge, never in the creator's Boîte), its reports land in the family's conversation for
+    /// everyone, its runs are counted to her.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -466,6 +471,7 @@ pub fn create(
         suggested_silent: None,
         change: None,
         awaits_start: proposed,
+        by: None,
     };
     change(config, |b| b.routines.push(routine.clone()));
     Ok(routine)
@@ -622,10 +628,41 @@ pub fn card_item(config: &Config, r: &Routine, card: &Card) -> Dict {
     item.as_object().cloned().unwrap_or_default()
 }
 
-/// The cards waiting (the question of a routine its agent made, the changes its agent asks), oldest first.
+/// The cards waiting for this place's person (the question of a routine its agent made, the changes its agent asks),
+/// oldest first; a family member's routines' are hers (`member_items`).
 pub fn pending_items(config: &Config, agent: Option<&str>) -> Vec<Dict> {
+    items_of(config, agent, |r| r.by.is_none())
+}
+
+/// The cards of the routines `household` asked a family agent for (family_thread.rs): hers to answer.
+pub fn member_items(config: &Config, agent: &str, household: &str) -> Vec<Dict> {
+    items_of(config, Some(agent), |r| r.by.as_deref() == Some(household))
+}
+
+/// The household whose card `card_id` (a routine's start or change) is, if a family member's.
+pub fn card_by(config: &Config, agent: &str, card_id: &str) -> Option<String> {
+    all(config, Some(agent))
+        .into_iter()
+        .find(|r| {
+            r.card.as_ref().is_some_and(|c| c.id == card_id) || r.change.as_ref().is_some_and(|c| c.card.id == card_id)
+        })
+        .and_then(|r| r.by)
+}
+
+/// The routine of card `card_id` (its start or a change) is `household`'s: a family member asked for it.
+pub fn set_card_by(config: &Config, agent: &str, card_id: &str, household: &str) {
+    change(config, |b| {
+        for r in b.routines.iter_mut().filter(|r| r.agent == agent) {
+            if r.card.as_ref().is_some_and(|c| c.id == card_id) || r.change.as_ref().is_some_and(|c| c.card.id == card_id) {
+                r.by = Some(household.to_string());
+            }
+        }
+    });
+}
+
+fn items_of(config: &Config, agent: Option<&str>, keep: impl Fn(&Routine) -> bool) -> Vec<Dict> {
     let mut items: Vec<(f64, Dict)> = Vec::new();
-    for r in all(config, agent) {
+    for r in all(config, agent).into_iter().filter(|r| keep(r)) {
         if let Some(c) = &r.card {
             items.push((c.at, card_item(config, &r, c)));
         }
@@ -1097,7 +1134,12 @@ pub async fn fire(state: &AppState, id: &str) {
             let thread = crate::threads::threads_of(state).adopt(&agent, &session, &title, "routine", origin).await;
             let mut turn = Turn::new(&agent, Kind::Routine, thread.as_deref().unwrap_or(&session), note(&r));
             turn.max_seconds = TURN_MAX_SECONDS;
-            match pipeline.run(&turn).await {
+            let result = pipeline.run(&turn).await;
+            if let (Ok(ran), Some(household)) = (&result, &r.by) {
+                // a family member's routine: its runs are counted to her (the family's credit, per member)
+                crate::family_thread::routine_counted(state, &agent, household, &ran.run_id, ran.tokens).await;
+            }
+            match result {
                 // the month's credit: its own note (credit.rs); muted: the person asked to hear nothing
                 Err(why @ crate::background_turn::NotRun::Credit) => why.to_string(),
                 Err(why) if r.muted => why.to_string(),
@@ -1291,6 +1333,8 @@ async fn deliver(state: &AppState, pipeline: &Pipeline, agent: &AgentConfig, r: 
     if !pipeline.deliver(&delivery).await {
         return "not delivered".into();
     }
+    // a family agent's report lands in the family's conversation: every member told (family_thread.rs)
+    crate::family_thread::routine_reported(state, agent, &r.name, &ran.text, &ran.run_id);
     if let Some(origin) = origin {
         let recap = crate::handback::routine_recap(&r.name, &ran.text);
         let _ = state.briefs.keep_recap(&agent.name, &origin, &recap);
@@ -1373,6 +1417,7 @@ pub async fn migrate(state: &AppState, agent: &AgentConfig) {
             suggested_silent: None,
             awaits_start: false,
             change: None,
+            by: None,
         });
     }
     let ids: Vec<String> = kept.iter().map(|r| r.id.clone()).collect();
@@ -1913,6 +1958,7 @@ Pour la relancer tout de suite : « Lancer maintenant » sur sa page."
             suggested_silent: None,
             awaits_start: false,
             change: None,
+            by: None,
         };
         let n = note(&r);
         assert!(n.starts_with("Dis-moi la météo.\n\n<!--bip:routine\n") && n.contains(SILENT) && n.ends_with("-->"));

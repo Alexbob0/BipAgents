@@ -78,15 +78,17 @@ Con tu propio ordenador o tu propio servidor:
   la tarjeta se queda en tu teléfono (sección 5.10).
 - **Varias personas en un mismo servidor** (función familia): cada persona tiene su propia instalación, separada de
   las demás. Quien administra el servidor es responsable frente a las demás.
-- **Los agentes compartidos** (un agente que un familiar comparte contigo o que tú compartes con tus familiares,
-  incluido el agente de la familia) funcionan en casa de la persona que los creó. Los archivos y fotos que se les envían
-  se guardan en su servidor (o su plaza) y son visibles para todos los que usan el agente, esa persona incluida, con el
-  nombre de quien los envió; el agente puede usarlos cuando cualquiera de ellos le escribe. Los mensajes se quedan en la
-  conversación de cada uno. Para un documento escaneado sin texto, tu teléfono reconoce su texto (en el dispositivo) y
-  lo envía con el archivo. Tu propio servidor solo guarda un archivo el tiempo de enviarlo. Los archivos se borran
-  cuando quien los envió los elimina, deja de usar el agente o su hogar deja la familia, cuando el agente deja de estar
-  compartido o se elimina y, como muy tarde, al final del plazo elegido en ese servidor para los archivos (30 días por
-  defecto). Como con todo lo que pasa por ese servidor, la persona que lo administra puede acceder a ellos técnicamente.
+- **Un agente personal que compartes con tus familiares**: pueden leer tus conversaciones con él (tus mensajes, sus
+  respuestas, las fotos, los archivos, las páginas y los mapas), desde el momento en que lo compartes, o también las
+  anteriores si así lo eliges. No pueden escribirle ni pedirle nada, y no ven su memoria. Lo que el agente lee o escribe
+  en esas conversaciones con sus herramientas (correo, calendario, salud, contactos, Cuaderno…) pasa a ser visible para
+  ellos: la app te lo recuerda antes de compartir. Puedes cambiar esta elección o dejar de compartir cuando quieras; una
+  vez que dejas de compartir, ya no tienen acceso. Lo mismo vale para un agente que un familiar comparte contigo.
+- **El agente de la familia** tiene una sola conversación, común a los miembros que eligió quien lo creó (toda la
+  familia o algunos miembros): lo que cada uno escribe ahí y sus respuestas son visibles para esos miembros, y recuerda
+  lo que cada uno le dice. Los archivos y fotos que se le envían son visibles para esos miembros y se guardan 30 días
+  en casa de quien lo creó. Puede hacer páginas, audios y rutinas: sus resultados llegan a la conversación común.
+  Nunca accede al correo, al calendario, a la salud ni al Cuaderno personal de nadie.
 
 **Con la oferta todo incluido**, tu plaza ocupa el lugar de tu servidor, y Kerfy Studio elige el proveedor de
 alojamiento y el enrutador de IA: la sección 5 dice quién ve qué.
@@ -856,7 +858,7 @@ Scaleway, en Francia, sin transferencia fuera de la Unión. Puedes pedirnos una 
 | Huella del dispositivo Android, calculada con una clave secreta (semana gratis) | 24 meses desde la primera marca del teléfono; guardada aparte de la cuenta, no se borra con ella |
 | Invitación de un vínculo familiar | 7 días, o hasta la respuesta |
 | Compartir en lectura (copia cifrada, personas invitadas) | Hasta su fecha de fin, hasta que se detiene o hasta que se borra la cuenta |
-| Archivos enviados a un agente compartido | En el servidor de la persona que lo creó, hasta que quien los envió los elimina, deja de usar el agente o deja la familia, o el agente deja de estar compartido; como muy tarde, el plazo elegido allí para los archivos (30 días por defecto) |
+| Archivos enviados al agente de la familia | En el servidor de la persona que lo creó, hasta que quien los envió los elimina, deja de usar el agente o deja la familia, o el agente se elimina; como muy tarde, el plazo elegido allí para los archivos (30 días por defecto) |
 | Nombre de campaña (sección 5.11) | 13 meses después de su registro, o con la cuenta o la suscripción |
 | Dirección IP al reservar una semana gratis | Nunca se guarda en claro; en memoria, como huella, 15 minutos como máximo |
 | Huella de la dirección IP (códigos beta, página de baja del sitio, denuncias de agentes compartidos) | 2 días como máximo; hasta 30 días en las copias cifradas de la base |

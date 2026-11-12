@@ -462,6 +462,24 @@ impl Threads {
         Ok(thread)
     }
 
+    /// Every conversation of the agent let go (its Hermes sessions deleted by the caller): their segments, messages sent,
+    /// notifications and threads; its main thread keeps its id and starts again empty (family_thread.rs `migrate`).
+    pub async fn forget_agent(&self, agent: &str) -> anyhow::Result<()> {
+        let _guard = self.registry.lock().await;
+        let rows = self.store.run("SELECT * FROM threads WHERE agent = ?", vec![text(agent)]).await?;
+        for thread in rows.iter().map(Thread::of) {
+            self.store.run("DELETE FROM thread_segments WHERE thread_id = ?", vec![text(&thread.id)]).await?;
+            self.store.run("DELETE FROM notifications WHERE thread_id = ?", vec![text(&thread.id)]).await?;
+            self.store.run("DELETE FROM thread_sends WHERE thread_id = ?", vec![text(&thread.id)]).await?;
+            if thread.kind != "main" {
+                self.store.run("DELETE FROM threads WHERE id = ?", vec![text(&thread.id)]).await?;
+            }
+            self.publish(agent, "thread", json!({"thread": thread.id, "agent": agent, "reason": "deleted"}));
+        }
+        self.cache.forget_agent(agent);
+        Ok(())
+    }
+
     /// The thread holding a Hermes session (a segment, a continuation of one, or a new thread for a root session).
     pub async fn resolve(&self, agent: &AgentConfig, session_id: &str) -> anyhow::Result<Option<Thread>> {
         let main = self.main(agent).await?;
@@ -692,7 +710,10 @@ impl Threads {
         let mut extra = self.boite(agent, thread, segments).await?;
         extra.extend(self.kept(agent, segments).await?);
         let mut items = timeline::merge(items, extra);
-        let queued: Vec<String> = self.queued.get().and_then(Weak::upgrade).map_or_else(Vec::new, |q| {
+        // a family agent's common conversation shows the messages waiting there among its items too (each with who
+        // wrote it), besides the queue (family_thread.rs)
+        let common = crate::family_thread::is_common(&self.config.get(), &agent.name);
+        let queued: Vec<String> = self.queued.get().and_then(Weak::upgrade).filter(|_| !common).map_or_else(Vec::new, |q| {
             q.get(&agent.name).items.into_iter().filter_map(|i| i.client_id).collect()
         });
         self.with_sends(agent, thread, &mut items, &queued).await?;
@@ -961,9 +982,22 @@ async fn list(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response>
         return relayed;
     }
     let agent = agent_param(&state, &q)?.ok_or_else(|| HttpError::new(422, "agent is required"))?;
-    let threads = threads_of(&state);
     let include_hidden = q.get("include_hidden").is_some_and(|v| v == "1" || v == "true");
+    Ok(web::ok(json!({"threads": listed(&state, &agent, include_hidden).await?})))
+}
+
+/// The agent's conversations as `GET /v1/threads` lists them (the main one first, then the last active), each with
+/// its tip, `last_active` and `unread`; also what a relative reads of a personal shared agent (agent_feed.rs).
+pub async fn listed(state: &AppState, agent: &AgentConfig, include_hidden: bool) -> ApiResult<Vec<Value>> {
+    let agent = agent.clone();
+    let threads = threads_of(state);
     let main = threads.main(&agent).await.map_err(unavailable)?;
+    if crate::family_thread::is_common(&state.config(), &agent.name) {
+        // a family agent: its one conversation, the family's (family_thread.rs)
+        let mut v = served(&threads, &agent, &main, false).await.map_err(unavailable)?;
+        v["kind"] = json!("family");
+        return Ok(vec![v]);
+    }
     // every session Hermes keeps (not only the last 200): each root one is a thread (adopted at first sight)
     let sessions = threads.source(&agent).all_sessions().await.map_err(unavailable)?;
     let mut last_active: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
@@ -998,7 +1032,7 @@ async fn list(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response>
         v["unread"] = json!(crate::notifications::unread_in(&threads.store, &t.id).await.unwrap_or(0));
         out.push(v);
     }
-    Ok(web::ok(json!({"threads": out})))
+    Ok(out)
 }
 
 async fn one(State(state): State<AppState>, UrlPath(id): UrlPath<String>, q: QueryMap) -> ApiResult<Response> {
@@ -1120,6 +1154,9 @@ async fn delete_thread(
     }
     let threads = threads_of(&state);
     let (agent, thread) = threads.named(agent_param(&state, &q)?.as_ref(), &id).await?;
+    if thread.kind == "main" && crate::family_thread::is_common(&state.config(), &agent.name) {
+        return Err(HttpError::new(409, "the family's conversation is everyone's: it can't be deleted"));
+    }
     let _guard = threads.registry.lock().await;
     for segment in threads.segments(&thread.id).await? {
         match threads.hermes.delete_session(&agent, &segment.session_id).await {
@@ -1173,7 +1210,11 @@ async fn timeline_route(
     let want = want_of(&q)?;
     let segments = threads.line(&agent, &thread).await.map_err(unavailable)?;
     let thread = threads.get(&thread.id).await?.unwrap_or(thread);
-    let items = threads.items(&agent, &thread, &segments).await.map_err(unavailable)?;
+    let mut items = threads.items(&agent, &thread, &segments).await.map_err(unavailable)?;
+    if thread.kind == "main" && crate::family_thread::is_common(&state.config(), &agent.name) {
+        // who wrote each message of the family's conversation, the frames taken off (family_thread.rs)
+        crate::family_thread::with_by(&mut items, crate::family_thread::CREATOR, &state.households.name());
+    }
     // the day dividers where the phone is (`tz`, its IANA zone), else where the person said they live
     let zone =
         q.get("tz").and_then(crate::dates::parse_zone).unwrap_or_else(|| crate::dates::load(&state.config()).zone());
@@ -1188,9 +1229,56 @@ async fn timeline_route(
     let run = run.map(|(r, started)| json!({"run_id": r, "status": "running", "started": started}));
     let pending = json!({"run": run, "queue": queue,
                          "approvals": approvals, "questions": questions});
+    let config = state.config();
+    let common = crate::family_thread::is_common(&config, &agent.name) && thread.kind == "main";
+    let mut pending = pending;
+    if common {
+        // the family's conversation: whose turn goes on, whose cards (only their writer answers, family_thread.rs)
+        out_thread["kind"] = json!("family");
+        crate::family_thread::pending_by(&config, &agent.name, &state.households.name(), crate::family_thread::CREATOR, &mut pending);
+    }
     let mut answer = page.answer(out_thread, thread.version, pending, q.get("debug").is_some_and(|d| d == "1"));
     answer["layout"] = json!({"open": open});
+    if common {
+        crate::family_thread::own_urls(&agent.name, &mut answer);
+    }
     Ok(web::ok(answer))
+}
+
+/// The page a relative reads of a personal agent shared with her (agent_feed.rs): the conversation's items `keep`
+/// takes (the owner's words and the agent's replies since the share), laid out as `timeline_route` does, no card,
+/// the reply being written as `pending.run` (`status` "writing"), `thread.read_only`.
+pub async fn read_only_page(
+    state: &AppState,
+    agent: &AgentConfig,
+    thread: &Thread,
+    want: &Want,
+    keep: impl Fn(&Item) -> bool,
+) -> ApiResult<Value> {
+    let threads = threads_of(state);
+    let segments = threads.line(agent, thread).await.map_err(unavailable)?;
+    let thread = threads.get(&thread.id).await?.unwrap_or_else(|| thread.clone());
+    let items: Vec<Item> =
+        threads.items(agent, &thread, &segments).await.map_err(unavailable)?.into_iter().filter(|i| keep(i)).collect();
+    let days = timeline::days(&items, crate::dates::load(&state.config()).zone());
+    let tip = segments.last().map(|s| s.session_id.clone());
+    let run = tip.as_deref().and_then(|t| state.hub.session_run_since(&agent.name, t));
+    let (page, open) = conversation_page(items, want, &days, run.is_some());
+    let mut out_thread = thread.to_json();
+    out_thread["tip"] = json!(tip);
+    out_thread["read_only"] = json!(true);
+    let run = run.map(|(r, started)| json!({"run_id": r, "status": "writing", "started": started}));
+    let pending = json!({"run": run, "approvals": [], "questions": []});
+    let mut answer = page.answer(out_thread, thread.version, pending, false);
+    answer["layout"] = json!({"open": open});
+    Ok(answer)
+}
+
+/// Every item of a conversation (agent_feed.rs: the attachment a relative opens is looked for among them).
+pub async fn items_of(state: &AppState, agent: &AgentConfig, thread: &Thread) -> ApiResult<Vec<Item>> {
+    let threads = threads_of(state);
+    let segments = threads.line(agent, thread).await.map_err(unavailable)?;
+    threads.items(agent, thread, &segments).await.map_err(unavailable)
 }
 
 /// A conversation's page as `timeline_route` serves it, and its `layout.open`: the items `want` asks for among the
@@ -1579,7 +1667,20 @@ async fn attachment_route(
     }
     // a photo of the message: the n-th image part of its row, decoded (a room's files all have a path)
     let agent = agent.ok_or_else(HttpError::not_found)?;
-    let content = threads_of(&state).source(&agent).content_with_images(&item.segment, item.row).await.map_err(unavailable)?;
+    let (mime, bytes) = photo_of(&state, &agent, item, n).await?;
+    let mut response = Response::new(Body::from(bytes));
+    response
+        .headers_mut()
+        .insert("content-type", axum::http::HeaderValue::from_str(&mime).map_err(anyhow::Error::from)?);
+    response
+        .headers_mut()
+        .insert("cache-control", axum::http::HeaderValue::from_static("private, max-age=31536000, immutable"));
+    Ok(response)
+}
+
+/// The n-th photo of a message (its image parts, else the file Hermes saved it in): (mime, bytes).
+pub async fn photo_of(state: &AppState, agent: &AgentConfig, item: &Item, n: usize) -> ApiResult<(String, Vec<u8>)> {
+    let content = threads_of(state).source(agent).content_with_images(&item.segment, item.row).await.map_err(unavailable)?;
     let images: Vec<String> = match &content {
         Some(Value::Array(parts)) => parts
             .iter()
@@ -1602,16 +1703,9 @@ async fn attachment_route(
             (mime, base64::engine::general_purpose::STANDARD.decode(b64.trim()).map_err(|_| HttpError::not_found())?)
         }
         // Hermes v0.22.5 keeps a sent photo in a file of the agent's profile: `[Image attached at: <path>]`
-        None => saved_photo(&state, &agent, &content, n).await.ok_or_else(HttpError::not_found)?,
+        None => saved_photo(state, agent, &content, n).await.ok_or_else(HttpError::not_found)?,
     };
-    let mut response = Response::new(Body::from(bytes));
-    response
-        .headers_mut()
-        .insert("content-type", axum::http::HeaderValue::from_str(&mime).map_err(anyhow::Error::from)?);
-    response
-        .headers_mut()
-        .insert("cache-control", axum::http::HeaderValue::from_static("private, max-age=31536000, immutable"));
-    Ok(response)
+    Ok((mime, bytes))
 }
 
 /// The n-th photo a message names by its saved file (`[Image attached at: <path>]`): (mime, bytes), read only inside
@@ -1721,6 +1815,10 @@ async fn send_route(
     let threads = threads_of(&state);
     let agent = crate::app::agent_or_404(&state.config(), body.agent.as_deref())?;
     let thread = match id.as_str() {
+        // a family agent has no other conversation than the family's (family_thread.rs)
+        "new" if crate::family_thread::is_common(&state.config(), &agent.name) => {
+            Some(threads.main(&agent).await.map_err(unavailable)?)
+        }
         "new" => None,
         _ => Some(threads.named(Some(&agent), &id).await?.1),
     };

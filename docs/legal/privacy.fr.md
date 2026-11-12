@@ -80,16 +80,18 @@ Avec ton propre ordinateur ou ton propre serveur :
   tout compris, la carte reste sur ton téléphone (section 5.10).
 - **Plusieurs personnes sur un même serveur** (fonction famille) : chaque personne a sa propre installation, séparée
   des autres. La personne qui administre le serveur en est responsable vis-à-vis des autres.
-- **Les agents partagés** (un agent qu'un proche partage avec toi ou que tu partages avec tes proches, dont l'agent de
-  la famille) fonctionnent chez la personne qui les a créés. Les fichiers et photos qu'on leur envoie sont gardés sur
-  son serveur (ou sa place) et visibles de tous ceux qui utilisent l'agent, elle comprise, avec le prénom de qui les a
-  envoyés ; l'agent peut s'en servir quand n'importe lequel d'entre eux lui écrit. Les messages, eux, restent dans la
-  conversation de chacun. Pour un document scanné sans texte, ton téléphone en reconnaît le texte (sur l'appareil) et
-  l'envoie avec le fichier. Ton propre serveur ne garde un fichier que le temps de l'envoyer. Les fichiers sont effacés
-  quand celui qui les a envoyés les supprime, quand il arrête d'utiliser l'agent ou que son foyer quitte la famille,
-  quand l'agent n'est plus partagé ou est supprimé, et au plus tard au bout de la durée choisie sur ce serveur pour les
-  fichiers (30 jours par défaut). Comme pour tout ce qui passe par ce serveur, la personne qui l'administre peut
-  techniquement y accéder.
+- **Un agent personnel que tu partages avec tes proches** : ils peuvent lire tes conversations avec lui (tes
+  messages, ses réponses, les photos, fichiers, pages et cartes), à partir du moment où tu le partages, ou aussi celles
+  d'avant si tu le choisis. Ils ne peuvent ni lui écrire ni lui demander quoi que ce soit, et ne voient pas sa mémoire.
+  Ce que l'agent lit ou écrit dans ces conversations avec ses outils (messagerie, agenda, santé, contacts, Carnet…)
+  devient visible pour eux : l'app te le rappelle avant de partager. Tu changes ce choix ou arrêtes le partage quand tu
+  veux ; une fois le partage arrêté, ils n'y ont plus accès. Il en va de même pour un agent qu'un proche partage avec
+  toi.
+- **L'agent de la famille** a une seule conversation, commune aux membres choisis par celui qui l'a créé (toute la
+  famille ou certains membres) : ce que chacun y écrit et ses réponses sont visibles de ces membres, et il se souvient
+  de ce que chacun lui dit. Les fichiers et photos qu'on lui envoie sont visibles de ces membres et gardés 30 jours chez
+  celui qui l'a créé. Il peut faire des pages, des audios et des routines : leurs résultats arrivent dans la
+  conversation commune. Il n'accède jamais au courrier, à l'agenda, à la santé ni au Carnet personnel de personne.
 
 **Avec l'offre tout compris**, ta place remplace ton serveur, et Kerfy Studio choisit l'hébergeur et le routeur d'IA :
 la section 5 dit qui voit quoi.
@@ -882,7 +884,7 @@ l'Union. Tu peux nous demander une copie des garanties applicables.
 | Empreinte de l'appareil Android, hachée avec une clé secrète (semaine gratuite) | 24 mois après le premier marquage du téléphone ; gardée à part du compte, pas effacée avec lui |
 | Invitation d'un lien famille | 7 jours, ou jusqu'à la réponse |
 | Partage en lecture (copie chiffrée, personnes invitées) | Jusqu'à sa date de fin, son arrêt ou l'effacement du compte |
-| Fichiers envoyés à un agent partagé | Sur le serveur de la personne qui l'a créé, jusqu'à ce que celui qui les a envoyés les supprime, arrête d'utiliser l'agent ou quitte la famille, ou que l'agent ne soit plus partagé ; au plus tard la durée choisie là-bas pour les fichiers (30 jours par défaut) |
+| Fichiers envoyés à l'agent de la famille | Sur le serveur de la personne qui l'a créé, jusqu'à ce que celui qui les a envoyés les supprime, arrête d'utiliser l'agent ou quitte la famille, ou que l'agent soit supprimé ; au plus tard la durée choisie là-bas pour les fichiers (30 jours par défaut) |
 | Nom de campagne (section 5.11) | 13 mois après son enregistrement, ou avec le compte ou l'abonnement |
 | Adresse IP à la réservation d'une semaine gratuite | Jamais enregistrée en clair ; en mémoire, sous forme d'empreinte, 15 minutes au plus |
 | Empreinte de l'adresse IP (codes bêta, page de résiliation du site, signalements d'agents partagés) | 2 jours au plus ; jusqu'à 30 jours dans les copies chiffrées de la base |

@@ -24,6 +24,8 @@ pub struct HttpError {
     pub status: StatusCode,
     pub detail: Value,
     pub headers: Vec<(HeaderName, HeaderValue)>,
+    /// `code` beside `detail` in the answer (`{detail, code}`): what an app may say in its own words.
+    pub code: Option<&'static str>,
 }
 
 pub type ApiResult<T> = Result<T, HttpError>;
@@ -35,7 +37,13 @@ impl HttpError {
             status: StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
             detail: Value::String(detail.into()),
             headers: Vec::new(),
+            code: None,
         }
+    }
+
+    /// `{detail, code}`.
+    pub fn with_code(status: u16, detail: impl Into<String>, code: &'static str) -> Self {
+        HttpError { code: Some(code), ..Self::new(status, detail) }
     }
 
     /// `HTTPException(status_code=status, detail={...})` (a dict or list detail).
@@ -44,6 +52,7 @@ impl HttpError {
             status: StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
             detail,
             headers: Vec::new(),
+            code: None,
         }
     }
 
@@ -60,7 +69,7 @@ impl HttpError {
 
     /// An uncaught exception in a Python route: Starlette's plain-text 500.
     pub fn internal() -> Self {
-        HttpError { status: StatusCode::INTERNAL_SERVER_ERROR, detail: Value::Null, headers: Vec::new() }
+        HttpError { status: StatusCode::INTERNAL_SERVER_ERROR, detail: Value::Null, headers: Vec::new(), code: None }
     }
 
     /// FastAPI's request validation error (422) with pydantic's error list.
@@ -87,7 +96,11 @@ impl IntoResponse for HttpError {
             )
                 .into_response();
         }
-        let mut response = json_response(self.status.as_u16(), &json!({"detail": self.detail}));
+        let body = match self.code {
+            Some(code) => json!({"detail": self.detail, "code": code}),
+            None => json!({"detail": self.detail}),
+        };
+        let mut response = json_response(self.status.as_u16(), &body);
         for (name, value) in self.headers {
             response.headers_mut().insert(name, value);
         }

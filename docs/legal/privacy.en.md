@@ -77,15 +77,17 @@ With your own computer or your own server:
   Kerfy Studio receives none of it. With the all-included offer, the card stays on your phone (section 5.10).
 - **Several people on one server** (the family feature): each person has their own install, separate from the
   others. Whoever administers the server is responsible towards the others.
-- **Shared agents** (an agent a relative shares with you or that you share with your relatives, the family agent
-  included) run at the person who created them. The files and photos sent to them are kept on that person's server (or
-  place) and are visible to everyone who uses the agent, that person included, with the first name of whoever sent them;
-  the agent can use them whenever any of them writes to it. Messages stay in each person's own conversation. For a
-  scanned document with no text, your phone recognises its text (on the device) and sends it with the file. Your own
-  server only holds a file while it is being sent. Files are deleted when the person who sent them deletes them, stops
-  using the agent or their household leaves the family, when the agent is no longer shared or is deleted, and at the
-  latest after the time chosen on that server for files (30 days by default). As with anything on that server, the
-  person who runs it can technically reach them.
+- **A personal agent you share with your relatives**: they can read your conversations with it (your messages, its
+  replies, the photos, files, pages and maps), from the moment you share it, or the earlier ones too if you choose so.
+  They can't write to it or ask it anything, and don't see its memory. Whatever the agent reads or writes in those
+  conversations with its tools (mail, calendar, health, contacts, Notebook…) becomes visible to them: the app reminds
+  you before you share. You can change this choice or stop sharing at any time; once you stop, they no longer have
+  access. The same goes for an agent a relative shares with you.
+- **The family agent** has a single conversation, shared by the members its creator chose (the whole family or some
+  of them): what each of them writes there and its replies are visible to those members, and it remembers what each
+  person tells it. Files and photos sent to it are visible to those members and kept for 30 days with its creator. It
+  can make pages, audio and routines; their results arrive in the shared conversation. It never reaches anyone's mail,
+  calendar, health data or personal Carnet.
 
 **With the all-included offer**, your place takes the place of your server, and Kerfy Studio chooses the hosting
 provider and the AI router: section 5 says who sees what.
@@ -838,7 +840,7 @@ of the applicable safeguards.
 | Keyed fingerprint of the Android device (free week) | 24 months after the phone was first marked; kept apart from the account, not erased with it |
 | Family-link invitation | 7 days, or until answered |
 | Read-only share (encrypted copy, people invited) | Until its end date, until it is stopped, or until the account is erased |
-| Files sent to a shared agent | On the server of the person who created it, until the person who sent them deletes them, stops using the agent or leaves the family, or the agent is no longer shared; at the latest the time chosen there for files (30 days by default) |
+| Files sent to the family agent | On the server of the person who created it, until the person who sent them deletes them, stops using the agent or leaves the family, or the agent is deleted; at the latest the time chosen there for files (30 days by default) |
 | Campaign name (section 5.11) | 13 months after it was recorded, or with the account or the subscription |
 | IP address when a free week is reserved | Never stored in clear; in memory, as a fingerprint, 15 minutes at most |
 | Fingerprint of the IP address (beta codes, the website's cancellation page, reports of shared agents) | 2 days at most; up to 30 days in the encrypted copies of the database |

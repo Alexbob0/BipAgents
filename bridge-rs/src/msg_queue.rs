@@ -110,6 +110,10 @@ pub struct Item {
     /// apps say so on its row (« Part dès la fin de l'étape en cours »).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pushed: bool,
+    /// Who wrote it in a family agent's common conversation (family_thread.rs): `{household, name}`, `household` ""
+    /// for the creator; kept across a restart, so its turn is still its writer's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<Value>,
 }
 
 /// A message the sending route hands to the queue: its app id and Hermes' input.
@@ -124,6 +128,8 @@ pub struct Sent {
     pub phone: Option<String>,
     /// The phone's decision for its turn's thinking (turn_thinking.rs), when it sent one.
     pub thinking: Option<bool>,
+    /// Its writer in a family agent's common conversation (family_thread.rs).
+    pub by: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -283,6 +289,7 @@ fn new_item(session_id: &str, text: &str, late: bool, sent: Sent) -> Item {
         phone: sent.phone,
         thinking: sent.thinking,
         pushed: false,
+        by: sent.by,
     }
 }
 
@@ -657,10 +664,16 @@ impl Queues {
 
     /// Starts an item as a turn of its conversation (taken out of the list once Hermes has it).
     async fn start(&self, agent: &AgentConfig, item: &Item) -> Option<String> {
-        let input = item.input.clone().unwrap_or_else(|| Value::String(item.text.clone()));
-        let options = crate::turn_thinking::turn_options(&self.config.get(), agent, &item.text, item.thinking);
+        let config = self.config.get();
+        // a family agent's common conversation (family_thread.rs): its writer's frame (the input lost by a restart: the
+        // words framed again) and a member's instructions
+        let again = crate::family_thread::input_again(&config, &agent.name, item.by.as_ref(), &item.text);
+        let instructions = again.as_ref().and_then(|(_, i)| i.clone());
+        let input = item.input.clone().or_else(|| again.map(|(i, _)| i)).unwrap_or_else(|| Value::String(item.text.clone()));
+        let options = crate::turn_thinking::turn_options(&config, agent, &item.text, item.thinking);
         let thinks = crate::turn_thinking::thought(options.as_ref());
-        let run_id = match self.hermes.start_run_input(agent, input, &item.session_id, None, options).await {
+        let started = self.hermes.start_run_input(agent, input, &item.session_id, instructions.as_deref(), options).await;
+        let run_id = match started {
             Ok(run_id) => run_id,
             Err(exc) => {
                 tracing::warn!(agent = %agent.name, error = %exc, "queue: the next message did not start (tried again soon)");
@@ -670,6 +683,8 @@ impl Queues {
         if thinks {
             crate::turn_thinking::thinking_run(&run_id);
         }
+        // whose turn it is in a family agent's common conversation, noted before the hub reads it (family_thread.rs)
+        crate::family_thread::started_queued(agent, &run_id, item.by.as_ref(), &item.session_id);
         // watched: kept across a restart, « reply ready » pushed at the end if nobody looks (and nothing follows)
         self.hub.watch(agent, &run_id, Some(&item.session_id), true);
         self.hub.keep(agent, &run_id, Some(&item.session_id));
@@ -898,6 +913,7 @@ mod tests {
             phone: None,
             thinking: None,
             pushed: false,
+            by: None,
         }
     }
 
@@ -940,7 +956,7 @@ mod tests {
     fn a_message_of_files_alone_says_its_files() {
         // 6/11: a photo sent alone waited as an empty row (« En attente (1) », nothing to read)
         let photo = json!({"kind": "image", "name": "photo.jpg", "mime": "image/jpeg", "size": 1234, "path": "/u/2026-11/a-photo.jpg"});
-        let sent = Sent { client_id: Some("c1".into()), input: None, attachments: vec![photo.clone()], voice: false, phone: None, thinking: None };
+        let sent = Sent { client_id: Some("c1".into()), input: None, attachments: vec![photo.clone()], voice: false, phone: None, thinking: None, by: None };
         let mut q = queue_of(&[]);
         q.items.push(new_item("s1", "", false, sent));
         let shown = q.snapshot("maison");

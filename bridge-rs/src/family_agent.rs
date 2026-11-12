@@ -1,36 +1,35 @@
-//! « L'agent de la famille » (decided by Alex on 2026-10-27): one agent common to every member of a family, not only
-//! rooms where each member's own agents talk together.
+//! « L'agent de la famille » (decided by Alex on 2026-10-27): an agent common to the members of a family, not only
+//! rooms where each member's own agents talk together. Several since 12/11 (one per topic), each for the whole family
+//! or only some members, chosen by its creator.
 //!
 //! **Where it lives.** A member creates it (the Famille screen, or « + Créer un agent » → « Pour toute la famille »);
-//! it is a Hermes profile on that member's place, marked in `<data>/family-agent.json`. Every linked household
-//! (households.rs: one install per person) gets it at once: it is shared with all of them, always, through the
-//! machinery of the agents shared with relatives (agent_shares.rs: `shared_with` lists every linked household for it,
-//! new ones included), and their bridges keep it already « added » (`family: true`, no « Ajouter » step; `new` until
-//! the person opened it, for the app's « Nouveau : l'agent de la famille » card). A member's bridge also asks its
-//! linked households (`GET /family/fa`, at most every `REFRESH_SECONDS`) so a member who joins later, or missed the
-//! news, finds it. At most one per family to start: creating one is refused while a linked household has one.
+//! it is a Hermes profile on that member's place, marked in `<data>/family-agent.json` (`owns`). Its members get it
+//! at once: every linked household (new ones included), or only those its creator chose (`members`), through the
+//! machinery of the agents shared with relatives (agent_shares.rs: `shared_with`); their bridges keep it already
+//! « added » (`family: true`, no « Ajouter » step; `new` until the person opened it, for the app's « Nouveau » card).
+//! A member's bridge also asks its linked households (`GET /family/fa`, at most every `REFRESH_SECONDS`) so a member
+//! who joins later, or missed the news, finds them. All of a family's agents live on one place (its Carnet is one):
+//! creating one is refused while another linked household holds them.
 //!
-//! **What it reaches.** The family's data, never its creator's. For ALL its turns (its creator's own conversations
-//! included) the bridge's MCP tools answer only `TOOLS`: its own memory pages, weather, routes, maps and the family
-//! Carnet; mail, calendar, contacts, health, the personal Carnet, archives, files, pages, tasks, family news, cards are
-//! closed (`closed_tool`), and `tools/list` gives only those (`tools`). Hermes' own tools that read the place's disk or
-//! drive a browser with someone's logins (`agents_admin::DISK_TOOLS`: terminal, file, code_execution, browser) are
-//! turned off when it is made, isolated install or not, its visible browser is not set up, and the settings refuse to
-//! turn them (or Santé, the Carnet, the browser) back on: with them, the agent could read its creator's files on a
-//! shared machine. A member's turn is moreover marked for Hermes (patch 0018, agent_shares.rs Safety): only `TOOLS`
-//! and web search, no `session_search` over the creator's own conversations with it, no memory writes, no USER.md.
-//! Web search stays (it reads nothing of anyone). Its personality carries a block saying all this (`souls`-style,
-//! `with_family`).
+//! **What it reaches.** The family's data, never its creator's. For ALL its turns (its creator's own included) the
+//! bridge's MCP tools answer only `TOOLS`: its own memory pages, weather, routes, maps, the family Carnet, the files
+//! sent to it, and pages, audio and routines for the family; mail, calendar, contacts, health, the personal Carnet,
+//! archives, files, tasks, family news, cards are closed (`closed_tool`), and `tools/list` gives only those (`tools`).
+//! Hermes' own tools that read the place's disk or drive a browser with someone's logins (`agents_admin::DISK_TOOLS`:
+//! terminal, file, code_execution, browser) are turned off when it is made, isolated install or not, its visible
+//! browser is not set up, and the settings refuse to turn them (or Santé, the Carnet, the browser) back on: with them,
+//! the agent could read its creator's files on a shared machine. It is out of every person's shared USER.md
+//! (shared_memory.rs). Web search stays (it reads nothing of anyone). Its personality carries a block saying all this
+//! (`with_family`).
 //!
 //! **The family Carnet** (`<data>/family-notebook.json` on the creator's place): pages, lists (« Courses »), shared
 //! tasks and the family's dates (members add the ones they choose to share), readable and editable from every member's
 //! app (`/v1/family-agent/notebook`, relayed to the creator's place by the members' bridges) and by the agent
 //! (`family_notebook_read`, `family_notebook_write`). Health never goes there (the agent's rule, the app's footer).
 //!
-//! **Conversations and credit.** The creator talks to it as to any of their agents; the other members through the
-//! shared-agent routes (`/v1/shared-agents/{agent}__{household}/…`), each their own conversations, private to them.
-//! Its memory is common (the apps say it). The turns run on the creator's place, its model and key: with a Famille
-//! plan that key draws from the family's pool. Tokens are counted per member (`/v1/family-agent/usage`).
+//! **Its conversation and credit.** ONE conversation, common to its members (family_thread.rs): everyone reads and
+//! writes in it, its memory is common. The turns run on the creator's place, its model and key: with a Famille plan
+//! that key draws from the family's pool. Tokens are counted per member (`/v1/family-agent/usage`).
 //!
 //! **Its creator leaves.** When the creator's bridge unlinks a household while it holds the family agent, it hands
 //! that household a copy of what is the family's (`POST /family/fa/handover`: the agent's name, personality and the
@@ -38,20 +37,24 @@
 //! offers « Le reprendre » (`POST /v1/family-agent {take_over: true}`): a new family agent on their place, with the same
 //! name, personality and Carnet. Nothing is lost silently; the first member who takes it over owns it.
 //!
-//! Routes for the apps (under /v1, bridge key):
+//! Routes for the apps (under /v1, bridge key; internal/notes/family-common-thread.md):
 //!
-//!     GET  /v1/family-agent              {agent: view|null, can_create, handover: {from, name, at}|null}
-//!     POST /v1/family-agent              {name, lang?, tone?, take_over?}  → 201 view   (409: the family has one)
-//!     POST /v1/family-agent/seen         {ok}
+//!     GET  /v1/family-agent              {agent: view|null, agents: [view], can_create, handover: {from, name, at}|null,
+//!                                         members: [{id, name, in}]}   (`members`: the linked households, a picker's)
+//!     POST /v1/family-agent              {name, lang?, tone?, members?: [household], take_over?}  → 201 view
+//!                                        (409 {code: "family_agents_elsewhere", owner}: another household holds them)
+//!     PUT  /v1/family-agent/{agent}/members   {members: [household] | null}  → view   (null: the whole family)
+//!     POST /v1/family-agent/seen         {agent?}  → {ok}
 //!     GET  /v1/family-agent/notebook     notebook view
 //!     POST /v1/family-agent/notebook     {op, …} → notebook view
 //!     GET  /v1/family-agent/usage        {members: [{id, name, input, output, conversations}]}
 //!
-//!     view {id, agent, name, category, color, mine, owner, new, since}
+//!     view {id, agent, name, category, color, mine, owner, new, since, everyone}; the creator's adds {members}
 //!
 //! Between the bridges (the household key):
 //!
-//!     GET  /family/fa                    {agent, name, category, color, owner}   404: none here
+//!     GET  /family/fa                    {agent, name, category, color, owner, agents: [{agent, name, category, color}]}
+//!                                        the family agents the caller is in; 404: none for it here
 //!     GET  /family/fa/notebook           notebook view
 //!     POST /family/fa/notebook           {op, …, person?} → notebook view
 //!     GET  /family/fa/usage              usage
@@ -64,10 +67,10 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use axum::body::Bytes;
-use axum::extract::State;
+use axum::extract::{Path as UrlPath, State};
 use axum::http::HeaderMap;
 use axum::response::Response;
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::Router;
 use serde_json::{json, Map, Value};
 
@@ -82,7 +85,7 @@ pub const NOTEBOOK_READ: &str = "family_notebook_read";
 pub const NOTEBOOK_WRITE: &str = "family_notebook_write";
 pub const TOOL_NAMES: [&str; 2] = [NOTEBOOK_READ, NOTEBOOK_WRITE];
 /// The bridge's MCP tools the family's agent may use, in every turn (its creator's too).
-pub const TOOLS: [&str; 9] = [
+pub const TOOLS: [&str; 14] = [
     crate::agent_tools::KNOWLEDGE_READ,
     crate::agent_tools::KNOWLEDGE_SEARCH,
     crate::weather::TOOL_NAME,
@@ -91,8 +94,16 @@ pub const TOOLS: [&str; 9] = [
     NOTEBOOK_READ,
     NOTEBOOK_WRITE,
     crate::give_file::TOOL_NAME,
-    // a file a member sent, read in that member's own turns only (shared_files.rs)
+    // the files everyone sent it, read in anyone's turn (shared_files.rs)
     crate::shared_files::TOOL_NAME,
+    // a page for the family (12/11): every member sees it, « Faite à la demande de … », never in a personal Carnet
+    crate::agent_tools::CREATE_PAGE,
+    // an audio, a podcast for the family (12/11): into its pool, every member's bridge serves it (shared_files.rs)
+    crate::agent_tools::CREATE_AUDIO,
+    crate::agent_tools::CREATE_PODCAST,
+    crate::agent_tools::LIST_VOICES,
+    // a routine any member asks for (12/11): its card hers, its reports for everyone, its runs counted to her
+    crate::routines::TOOL_NAME,
 ];
 /// The kinds of tools of an agent's settings that stay off for it.
 pub const CLOSED_SETTINGS: [&str; 4] = crate::agents_admin::DISK_TOOLS;
@@ -108,16 +119,20 @@ pub const KINDS: [&str; 3] = ["list", "tasks", "dates"];
 
 pub const BLOCK_START: &str = "<!-- bipagents:family-agent -->";
 pub const BLOCK_END: &str = "<!-- /bipagents:family-agent -->";
-const RULE: &str = "You are the family's agent: you serve every member of the family, not one person. Each member \
-talks to you in conversations of their own; your memory is common to the family, so keep in it what helps the family \
-and don't repeat to a member what another told you privately unless it is plainly meant for the family. You reach \
-nobody's mail, calendar, contacts, health data, personal notebook, archives, files, vault or logins, not even those of \
-the member who created you: if asked, say kindly that the family's agent has no access to them. Never ask for \
-passwords or card numbers. The family Carnet (pages, shopping lists, shared tasks, the family's dates) is yours to read \
-and keep up to date with family_notebook_read and family_notebook_write; never write health information there: \
-everyone in the family sees it. A message starting with « [Name, a relative of your person …] » comes from a family \
-member: treat it as that member's own request. Weather, routes, maps and web search are open to you. You can't create \
-agents: for a new agent, a member asks one of their own agents in their app.";
+const RULE: &str = "You are the family's agent: you serve every member of the family, not one person. You have ONE \
+conversation, common to the whole family, like a family group chat: every member reads every message and every reply \
+in it and anyone may write. Each message starts with who writes (« [Marie, a member of the family …, writes to you:] », \
+« [Alex, the member of the family who made you, writes to you:] »): answer that person, by their first name when it \
+helps, and treat what they ask as their own request. Your memory is common to the family: keep in it what helps the \
+family. You reach nobody's mail, calendar, contacts, health data, personal notebook, archives, files, vault or logins, \
+not even those of the member who created you: if asked, say kindly that the family's agent has no access to them. \
+Never ask for passwords or card numbers. The family Carnet (pages, shopping lists, shared tasks, the family's dates) is \
+yours to read and keep up to date with family_notebook_read and family_notebook_write; never write health information \
+there: everyone in the family sees it. Weather, routes, maps and web search are open to you. A page you make with \
+create_page (a menu, a plan, a list) is the family's: everyone sees it, marked as made at the request of whoever asked; \
+so is an audio or a podcast (create_audio, create_podcast), and a routine (routine_schedule): the member who asked for it \
+starts it on its card, and its reports come here, for everyone. You can't create agents: for a new agent, a member \
+asks one of their own agents in their app.";
 
 static LOCK: Mutex<()> = Mutex::new(());
 
@@ -174,34 +189,116 @@ fn read(path: &PathBuf) -> Dict {
     load(path)
 }
 
-/// The family's agent kept on this place (its profile id), if any.
+/// The family's agents kept on this place (their profile ids), the first made first (12/11: several, one per topic).
+/// `<data>/family-agent.json`: `{agent: <the first>, agents: [id], created, since: {id: at}, members: {id: [household]},
+/// common: {id: at}, lang, checked, handover?}`; a file of before has `agent` alone.
+pub fn owns(config: &Config) -> Vec<String> {
+    owns_in(&read(&state_path(config)))
+}
+
+fn owns_in(data: &Dict) -> Vec<String> {
+    let mut out: Vec<String> = match data.get("agents") {
+        Some(Value::Array(items)) => items.iter().map(py::py_str).filter(|a| !a.is_empty()).collect(),
+        _ => Vec::new(),
+    };
+    let first = str_of(&Value::Object(data.clone()), "agent");
+    if !first.is_empty() && !out.contains(&first) {
+        out.insert(0, first);
+    }
+    out
+}
+
+/// The first family agent of this place, if any (the family Carnet's, the handover's).
 pub fn own(config: &Config) -> Option<String> {
-    Some(str_of(&Value::Object(read(&state_path(config))), "agent")).filter(|a| !a.is_empty())
+    owns(config).into_iter().next()
 }
 
-/// Whether `agent` (an agent of this place) is the family's agent.
+/// Whether `agent` (an agent of this place) is one of the family's agents.
 pub fn is_family(config: &Config, agent: &str) -> bool {
-    !agent.is_empty() && own(config).as_deref() == Some(agent)
+    !agent.is_empty() && owns(config).iter().any(|a| a == agent)
 }
 
-/// Its creation starts: the profile is marked before it is made (its tools are set up from the start).
-fn mark(config: &Config, agent: &str, lang: &str) -> anyhow::Result<()> {
+/// Its creation starts: the profile is marked before it is made (its tools are set up from the start). `members`:
+/// only those households (the creator always in), none for the whole family. A new one has a common conversation
+/// from its start (`common`: never cleared by `family_thread::migrate`).
+fn mark(config: &Config, agent: &str, lang: &str, members: Option<&[String]>) -> anyhow::Result<()> {
     update(&state_path(config), |data| {
-        data.insert("agent".into(), json!(agent));
-        data.insert("created".into(), json!(now()));
-        data.insert("lang".into(), json!(lang));
+        let mut all = owns_in(data);
+        if !all.iter().any(|a| a == agent) {
+            all.push(agent.to_string());
+        }
+        if !data.contains_key("agent") || str_of(&Value::Object(data.clone()), "agent").is_empty() {
+            data.insert("agent".into(), json!(agent));
+            data.insert("created".into(), json!(now()));
+            data.insert("lang".into(), json!(lang));
+        }
+        data.insert("agents".into(), json!(all));
+        object_mut(data, "since").insert(agent.into(), json!(now()));
+        object_mut(data, "common").insert(agent.into(), json!(now()));
+        match members {
+            Some(list) => {
+                object_mut(data, "members").insert(agent.into(), json!(list));
+            }
+            None => {
+                object_mut(data, "members").shift_remove(agent);
+            }
+        }
     })
 }
 
-/// The agent deleted (or its creation failed): no family agent here any more. The family Carnet is kept (a new
+fn object_mut<'a>(data: &'a mut Dict, key: &str) -> &'a mut Map<String, Value> {
+    if !matches!(data.get(key), Some(Value::Object(_))) {
+        data.insert(key.into(), json!({}));
+    }
+    match data.get_mut(key) {
+        Some(Value::Object(map)) => map,
+        _ => unreachable!("an object was just put there"),
+    }
+}
+
+/// When the agent's conversation became the family's common one (family_thread.rs `migrate`): None before.
+pub fn common_since(config: &Config, agent: &str) -> Option<f64> {
+    read(&state_path(config)).get("common").and_then(|c| c.get(agent)).and_then(Value::as_f64)
+}
+
+pub fn mark_common(config: &Config, agent: &str) -> anyhow::Result<()> {
+    update(&state_path(config), |data| {
+        object_mut(data, "common").insert(agent.into(), json!(now()));
+    })
+}
+
+/// The households a family agent is for: None for the whole family (the linked households, new ones included), else
+/// only those (Alex 12/11: « pour toute la famille ou seulement certains membres », chosen by its creator).
+pub fn members(config: &Config, agent: &str) -> Option<Vec<String>> {
+    match read(&state_path(config)).get("members").and_then(|m| m.get(agent)) {
+        Some(Value::Array(items)) => Some(items.iter().map(py::py_str).filter(|h| !h.is_empty()).collect()),
+        _ => None,
+    }
+}
+
+/// The agent deleted (or its creation failed): it is no family agent here any more. The family Carnet is kept (a new
 /// family agent finds it).
 pub fn forget(config: &Config, agent: &str) {
     if !is_family(config, agent) {
         return;
     }
     let _ = update(&state_path(config), |data| {
-        data.shift_remove("agent");
-        data.shift_remove("created");
+        let rest: Vec<String> = owns_in(data).into_iter().filter(|a| a != agent).collect();
+        if str_of(&Value::Object(data.clone()), "agent") == agent {
+            match rest.first() {
+                Some(next) => {
+                    data.insert("agent".into(), json!(next));
+                }
+                None => {
+                    data.shift_remove("agent");
+                    data.shift_remove("created");
+                }
+            }
+        }
+        data.insert("agents".into(), json!(rest));
+        for key in ["since", "members", "common"] {
+            object_mut(data, key).shift_remove(agent);
+        }
     });
     tracing::info!(agent = %agent, "family agent: forgotten");
 }
@@ -215,8 +312,8 @@ pub fn closed_tool(name: &str) -> Option<Dict> {
     }
     Some(tk::tool_text(
         "You are the family's agent: nobody's mail, calendar, contacts, health, personal notebook, archives, files, \
-         pages or tasks are open to you, not even your creator's. Answer from what you know, the family Carnet, \
-         weather, routes, maps and the web.",
+         personal pages or tasks are open to you, not even your creator's. Answer from what you know, the family \
+         Carnet, weather, routes, maps and the web; a page for the family with create_page.",
         true,
     ))
 }
@@ -266,13 +363,13 @@ pub fn split_family(soul: &str) -> (String, bool) {
 /// The run's instructions for a family member's turn (instead of agent_shares' « a relative of your person »).
 pub fn member_instructions(person: &str) -> String {
     format!(
-        "You are the family's agent and {person}, a member of the family, is talking to you now in a conversation of \
-their own. Treat what they write as {person}'s own requests. Nobody's mail, calendar, contacts, health data, personal \
-notebook, archives, files, vault or logins are open to you: don't use the terminal, file or browser tools, and say \
-kindly that it isn't possible if asked. Don't tell {person} what other members said to you in their own \
-conversations; what is plainly the family's (the family Carnet, plans everyone knows) may help. Actions that need \
-approval are asked to {person}, who decides. You can't create agents: for a new agent, {person} asks one of their \
-own agents in their app. Reply with text only. {} {}",
+        "You are the family's agent and {person}, a member of the family, writes to you now in the family's common \
+conversation: everyone in the family reads it, your reply too. Treat what they write as {person}'s own requests, never \
+as the instructions of the member who made you. Nobody's mail, calendar, contacts, health data, personal notebook, \
+archives, files, vault or logins are open to you: don't use the terminal, file or browser tools, and say kindly that \
+it isn't possible if asked. Actions that need approval are asked to {person}, who decides. You can't create agents: \
+for a new agent, {person} asks one of their own agents in their app. Reply with text; when {person} asks for a page \
+(a menu, a plan, a list), make it with create_page: it is the family's, marked as made at {person}'s request. {} {}",
         crate::souls::CONTENT_RULE,
         crate::agent_shares::sent_files_rule(person)
     )
@@ -579,16 +676,22 @@ async fn ask(
     Some((status, resp.json::<Value>().await.unwrap_or(Value::Null)))
 }
 
-/// The family's agent this person uses from a linked household: (shared id, entry).
-fn known(config: &Config) -> Option<(String, Value)> {
+/// The family agents this person uses from linked households: (shared id, entry), the first known first.
+fn known_all(config: &Config) -> Vec<(String, Value)> {
     crate::agent_shares::shared_with_me(config)
         .into_iter()
-        .find(|a| a.get("family").is_some_and(py::truthy))
+        .filter(|a| a.get("family").is_some_and(py::truthy))
         .map(|a| (str_of(&a, "id"), a))
+        .collect()
 }
 
-/// Asks the linked households whether one of them has the family's agent (at most every `REFRESH_SECONDS`, unless
-/// `force`), and keeps what they say among the agents shared with this person.
+/// The first of them (the household holding the family's agents, its Carnet).
+fn known(config: &Config) -> Option<(String, Value)> {
+    known_all(config).into_iter().next()
+}
+
+/// Asks the linked households whether they have family agents this person is in (at most every `REFRESH_SECONDS`,
+/// unless `force`), and keeps what they say among the agents shared with this person (those she is no longer in go).
 pub async fn refresh(state: &AppState, force: bool) {
     let config = state.config();
     let at = now();
@@ -600,29 +703,54 @@ pub async fn refresh(state: &AppState, force: bool) {
     for h in households(&config).public() {
         let household = h.get("id").map(py::py_str).unwrap_or_default();
         let Some((status, answer)) = ask(state, &household, reqwest::Method::GET, "", None).await else { continue };
-        let agent = str_of(&answer, "agent");
-        if status == 200 && !agent.is_empty() {
-            let offer = json!({"agent": agent, "name": answer.get("name"), "category": answer.get("category"),
-                               "color": answer.get("color"), "shared": true, "family": true});
-            let _ = crate::agent_shares::receive_offer(&config, &household, offer.as_object().unwrap_or(&Map::new()));
-        } else if status == 404 {
-            crate::agent_shares::drop_family_offers(&config, &household);
+        if status == 404 {
+            crate::agent_shares::drop_family_offers(&config, &household, &[]);
+            continue;
         }
+        if status != 200 {
+            continue;
+        }
+        // `agents`: every one she is in (a bridge of before: `agent` alone)
+        let listed: Vec<Value> = match answer.get("agents") {
+            Some(Value::Array(items)) => items.clone(),
+            _ if !str_of(&answer, "agent").is_empty() => vec![answer.clone()],
+            _ => Vec::new(),
+        };
+        let mut kept = Vec::new();
+        for a in &listed {
+            let agent = str_of(a, "agent");
+            if agent.is_empty() {
+                continue;
+            }
+            let offer = json!({"agent": agent, "name": a.get("name"), "category": a.get("category"),
+                               "color": a.get("color"), "shared": true, "family": true,
+                               "everyone": a.get("everyone").is_none_or(py::truthy)});
+            if crate::agent_shares::receive_offer(&config, &household, offer.as_object().unwrap_or(&Map::new())).is_ok() {
+                kept.push(agent);
+            }
+        }
+        crate::agent_shares::drop_family_offers(&config, &household, &kept);
     }
 }
 
 // -- the views --------------------------------------------------------------------------------------------------------
 
 fn own_view(config: &Config, agent: &AgentConfig) -> Value {
-    let created = read(&state_path(config)).get("created").cloned().unwrap_or(json!(0));
+    let data = read(&state_path(config));
+    let since = data.get("since").and_then(|s| s.get(&agent.name)).cloned();
+    let created = since.or_else(|| data.get("created").cloned()).unwrap_or(json!(0));
+    let chosen = members(config, &agent.name);
+    let linked = linked_members(config, chosen.as_deref());
     json!({"id": agent.name, "agent": agent.name, "name": agent.display_name, "category": agent.category,
-           "color": agent.color, "mine": true, "owner": "", "new": false, "since": created})
+           "color": agent.color, "mine": true, "owner": "", "new": false, "since": created,
+           "everyone": chosen.is_none(), "members": linked})
 }
 
 fn member_view(id: &str, entry: &Value) -> Value {
     json!({"id": id, "agent": entry.get("agent"), "name": entry.get("name"), "category": entry.get("category"),
            "color": entry.get("color"), "mine": false, "owner": entry.get("owner"),
-           "new": entry.get("new").is_some_and(py::truthy), "since": entry.get("since")})
+           "new": entry.get("new").is_some_and(py::truthy), "since": entry.get("since"),
+           "everyone": entry.get("everyone").is_none_or(py::truthy)})
 }
 
 fn handover_view(config: &Config) -> Value {
@@ -636,20 +764,46 @@ fn own_agent(config: &Config) -> Option<AgentConfig> {
     own(config).and_then(|id| config.agent(Some(&id)).cloned())
 }
 
+fn own_agents(config: &Config) -> Vec<AgentConfig> {
+    owns(config).iter().filter_map(|id| config.agent(Some(id)).cloned()).collect()
+}
+
+/// `GET /v1/family-agent`: `agent` the first (apps of before), `agents` every family agent of the family this person
+/// has (their own, then the other households'); `can_create` while the family's agents live here or nowhere yet.
 async fn get_view(State(state): State<AppState>) -> ApiResult<Response> {
     let config = state.config();
-    if let Some(agent) = own_agent(&config) {
-        return Ok(web::ok(json!({"agent": own_view(&config, &agent), "can_create": false, "handover": null})));
+    let mine = own_agents(&config);
+    // the creation's picker: every linked household (this person's own is never one), a new agent for all by default
+    let picker = linked_members(&config, None);
+    if !mine.is_empty() {
+        let views: Vec<Value> = mine.iter().map(|a| own_view(&config, a)).collect();
+        return Ok(web::ok(json!({"agent": views[0], "agents": views, "can_create": config.hermes.enabled(),
+                                 "handover": null, "members": picker})));
     }
     refresh(&state, false).await;
     let config = state.config();
-    match known(&config) {
-        Some((id, entry)) => {
-            Ok(web::ok(json!({"agent": member_view(&id, &entry), "can_create": false, "handover": null})))
-        }
-        None => Ok(web::ok(json!({"agent": null, "can_create": config.hermes.enabled(),
-                                  "handover": handover_view(&config)}))),
+    let theirs: Vec<Value> = known_all(&config).iter().map(|(id, entry)| member_view(id, entry)).collect();
+    match theirs.first() {
+        Some(first) => Ok(web::ok(json!({"agent": first, "agents": theirs, "can_create": false, "handover": null,
+                                         "members": picker}))),
+        None => Ok(web::ok(json!({"agent": null, "agents": [], "can_create": config.hermes.enabled(),
+                                  "handover": handover_view(&config), "members": picker}))),
     }
+}
+
+/// Every linked household (`GET /v1/family`'s: this person's own is never among them) as `{id, name, in}`, `in`
+/// whether it has the agent (`chosen` None: the whole family, everyone in).
+fn linked_members(config: &Config, chosen: Option<&[String]>) -> Vec<Value> {
+    households(config)
+        .public()
+        .iter()
+        .map(|h| {
+            let id = h.get("id").map(py::py_str).unwrap_or_default();
+            let name = h.get("name").map(py::py_str).filter(|n| !n.is_empty()).unwrap_or_else(|| id.clone());
+            let inside = chosen.is_none_or(|c| c.contains(&id));
+            json!({"id": id, "name": name, "in": inside})
+        })
+        .collect()
 }
 
 fn body_json(bytes: &[u8]) -> ApiResult<Dict> {
@@ -681,16 +835,20 @@ pub fn deleted(state: &AppState, agent: &AgentConfig) {
     state.spawn(async move { tell_all(&state_c, &agent, false).await });
 }
 
-/// Tells the linked households the family's agent is there (their apps show it at once).
+/// Tells the linked households the family's agent is there (their apps show it at once), or gone: its members that
+/// it is there, the others (left out by its creator) that it is not, or no longer.
 async fn tell_all(state: &AppState, agent: &AgentConfig, shared: bool) {
     let config = state.config();
+    let inside = crate::agent_shares::shared_with(&config, &agent.name);
     for h in households(&config).public() {
         let household = h.get("id").map(py::py_str).unwrap_or_default();
+        let shared = shared && inside.contains(&household);
         let Some(entry) = state.households.get(&household) else { continue };
         let url = crate::family_relay::reach_url(&entry);
         let key = entry.get("key_out").map(py::py_str).unwrap_or_default();
         let body = json!({"agent": agent.name, "name": agent.display_name, "category": agent.category,
-                          "color": agent.color, "shared": shared, "family": true});
+                          "color": agent.color, "shared": shared, "family": true,
+                          "everyone": members(&config, &agent.name).is_none()});
         let told = crate::door_tls::household_client(&state.http, &entry)
             .post(format!("{url}/family/shared"))
             .timeout(Duration::from_secs(10))
@@ -734,13 +892,16 @@ async fn create(State(state): State<AppState>, body: Bytes) -> ApiResult<Respons
         .or_else(|| handover.as_ref().map(|h| tk::str_or_empty(h.get("lang"))).filter(|l| !l.is_empty()))
         .unwrap_or_else(|| crate::notebook::place_language(&config).unwrap_or_else(|| "fr".into()));
     let tone: String = tk::str_or_empty(body.get("tone")).chars().take(200).collect();
+    let chosen = chosen_members(&config, body.get("members"))?;
     let _guard = crate::agents_admin::LOCK.lock().await;
-    if own_agent(&config).is_some() {
-        return Err(HttpError::new(409, "the family already has its agent"));
-    }
-    refresh(&state, true).await;
-    if known(&state.config()).is_some() {
-        return Err(HttpError::new(409, "the family already has its agent"));
+    // several family agents (12/11, one per topic), all on one place: the family Carnet is one, theirs
+    if own_agent(&config).is_none() {
+        refresh(&state, true).await;
+        if let Some((_, entry)) = known(&state.config()) {
+            let at = str_of(&entry, "owner");
+            return Err(HttpError::json(409, json!({"code": "family_agents_elsewhere", "owner": at,
+                                                   "message": format!("the family's agents live at {at}'s: {at} makes them")})));
+        }
     }
     let request = crate::agents_admin::NewAgent {
         name: name.clone(),
@@ -756,7 +917,7 @@ async fn create(State(state): State<AppState>, body: Bytes) -> ApiResult<Respons
     };
     crate::agents_admin::check_room(&config)?;
     let planned = crate::agents_admin::plan_agent(&config, &request).map_err(|e| HttpError::new(400, e.to_string()))?;
-    mark(&config, &planned.profile, &lang)?;
+    mark(&config, &planned.profile, &lang, chosen.as_deref())?;
     let made =
         crate::agents_admin::create_agent(&state.config, &request, &state.http, &crate::agents_admin::default_run())
             .await;
@@ -764,7 +925,7 @@ async fn create(State(state): State<AppState>, body: Bytes) -> ApiResult<Respons
         Ok(agent) if agent.name == planned.profile => agent,
         Ok(agent) => {
             // another name was taken meanwhile: the mark follows the agent made
-            mark(&state.config(), &agent.name, &lang)?;
+            mark(&state.config(), &agent.name, &lang, chosen.as_deref())?;
             agent
         }
         Err(exc) => {
@@ -814,12 +975,75 @@ async fn create(State(state): State<AppState>, body: Bytes) -> ApiResult<Respons
     Ok(web::json_response(201, &own_view(&config, &agent)))
 }
 
-async fn seen(State(state): State<AppState>) -> ApiResult<Response> {
+/// `POST /v1/family-agent/seen {agent?}`: the person opened that family agent (its id, `<agent>__<household>`): no
+/// « Nouveau » card for it any more; no `agent` (apps of before): every one.
+async fn seen(State(state): State<AppState>, body: Bytes) -> ApiResult<Response> {
     let config = state.config();
-    if let Some((id, _)) = known(&config) {
-        crate::agent_shares::family_seen(&config, &id)?;
+    let body = body_json(&body)?;
+    let which = tk::str_or_empty(body.get("agent"));
+    for (id, _) in known_all(&config) {
+        if which.is_empty() || which == id {
+            crate::agent_shares::family_seen(&config, &id)?;
+        }
     }
     Ok(web::ok(json!({"ok": true})))
+}
+
+/// `members` as a request gives it: None (absent or null) for the whole family, else linked households only.
+fn chosen_members(config: &Config, given: Option<&Value>) -> ApiResult<Option<Vec<String>>> {
+    let list = match given {
+        None | Some(Value::Null) => return Ok(None),
+        Some(Value::Array(items)) => items,
+        Some(_) => return Err(HttpError::new(422, "members: a list of household ids, or null for the whole family")),
+    };
+    let linked = households(config);
+    let mut out: Vec<String> = Vec::new();
+    for item in list {
+        let id = py::py_str(item);
+        if linked.get(&id).is_none() {
+            return Err(HttpError::new(422, format!("members: {id} is not a linked household")));
+        }
+        if !out.contains(&id) {
+            out.push(id);
+        }
+    }
+    Ok(Some(out))
+}
+
+/// `PUT /v1/family-agent/{agent}/members {members: [household] | null}`: who a family agent of this place is for (null:
+/// the whole family, new members included) → its view. A member taken out loses it at once (her bridge told, as an
+/// ended share); her files in its pool go with her (shared_files.rs, as when one stops using a shared agent); what she
+/// wrote stays in the family conversation, written to the family.
+async fn put_members(
+    State(state): State<AppState>,
+    UrlPath(agent): UrlPath<String>,
+    body: Bytes,
+) -> ApiResult<Response> {
+    let config = state.config();
+    let agent = config.agent(Some(&agent)).cloned().filter(|a| is_family(&config, &a.name)).ok_or_else(|| HttpError::new(404, "no such family agent"))?;
+    let body = body_json(&body)?;
+    if !body.contains_key("members") {
+        return Err(HttpError::new(422, "members: a list of household ids, or null for the whole family"));
+    }
+    let chosen = chosen_members(&config, body.get("members"))?;
+    let before = crate::agent_shares::shared_with(&config, &agent.name);
+    update(&state_path(&config), |data| match &chosen {
+        Some(list) => {
+            object_mut(data, "members").insert(agent.name.clone(), json!(list));
+        }
+        None => {
+            object_mut(data, "members").shift_remove(&agent.name);
+        }
+    })?;
+    let config = state.config();
+    let after = crate::agent_shares::shared_with(&config, &agent.name);
+    let gone: Vec<String> = before.iter().filter(|h| !after.contains(h)).cloned().collect();
+    if !gone.is_empty() {
+        crate::shared_files::forget_households(&config, &agent.name, &gone);
+    }
+    tell_all(&state, &agent, true).await;
+    tracing::info!(agent = %agent.name, everyone = chosen.is_none(), members = after.len(), "family agent: its members changed");
+    Ok(web::ok(own_view(&config, &agent)))
 }
 
 /// The household holding the family's agent this person uses (None: it is this place's own).
@@ -876,27 +1100,52 @@ async fn post_notebook(State(state): State<AppState>, body: Bytes) -> ApiResult<
 
 /// Tokens per member: the creator's own conversations (Hermes' sessions not opened for someone else) and each
 /// household's (agent_shares.rs counts them).
-async fn usage_of(state: &AppState, agent: &AgentConfig) -> Value {
+/// Tokens per member, the family agents of this place together: each member's turns (agent_shares.rs counts them,
+/// the common conversation's too: family_thread.rs) and the creator's, its sessions' counters less the members' turns
+/// of the common conversation (they are in its sessions too since 12/11).
+async fn usage_of(state: &AppState, agents: &[AgentConfig]) -> Value {
     let config = state.config();
-    let shares = crate::agent_shares::share_view(&config, agent);
-    let mut members = Vec::new();
-    let sessions = state.hermes.list_sessions(agent, 200).await.unwrap_or_default();
-    let mine: Vec<&Dict> =
-        sessions.iter().filter(|s| !tk::str_or_empty(s.get("title")).starts_with("BipAgents · ")).collect();
-    let (mut input, mut output) = (0i64, 0i64);
-    for s in &mine {
-        let c = crate::jobs::counters(s);
-        input += c.get("input").and_then(Value::as_i64).unwrap_or(0);
-        output += c.get("output").and_then(Value::as_i64).unwrap_or(0);
+    let (mut input, mut output, mut count) = (0i64, 0i64, 0usize);
+    let mut theirs: indexmap::IndexMap<String, (Value, i64, i64, usize)> = indexmap::IndexMap::new();
+    let n = |v: &Value, k: &str| v.get(k).and_then(Value::as_i64).unwrap_or(0);
+    for agent in agents {
+        let shares = crate::agent_shares::share_view(&config, agent);
+        let sessions = state.hermes.list_sessions(agent, 200).await.unwrap_or_default();
+        let mine: Vec<&Dict> =
+            sessions.iter().filter(|s| !tk::str_or_empty(s.get("title")).starts_with("BipAgents · ")).collect();
+        let (mut i, mut o) = (0i64, 0i64);
+        for s in &mine {
+            let c = crate::jobs::counters(s);
+            i += c.get("input").and_then(Value::as_i64).unwrap_or(0);
+            o += c.get("output").and_then(Value::as_i64).unwrap_or(0);
+        }
+        // the members' turns in the common conversation, counted for them
+        let data = crate::agent_shares::read(&crate::agent_shares::owner_path(&config));
+        for c in crate::agent_shares::object(&data, "conversations").into_iter().flat_map(|all| all.values()) {
+            if str_of(c, "agent") == agent.name && c.get("family").is_some_and(py::truthy) {
+                let t = c.get("tokens").cloned().unwrap_or(json!({}));
+                i -= n(&t, "input");
+                o -= n(&t, "output");
+            }
+        }
+        input += i.max(0);
+        output += o.max(0);
+        count += mine.len().min(1);
+        let conversations = shares["conversations"].as_array().cloned().unwrap_or_default();
+        for t in shares["tokens"].as_array().into_iter().flatten() {
+            let household = str_of(t, "household");
+            let seen = conversations.iter().filter(|c| str_of(c, "household") == household).count();
+            let entry = theirs.entry(household).or_insert((t.get("household_name").cloned().unwrap_or(Value::Null), 0, 0, 0));
+            entry.1 += n(t, "input");
+            entry.2 += n(t, "output");
+            entry.3 += seen;
+        }
     }
     let name = state.households.name();
-    members.push(json!({"id": "self", "name": name, "input": input, "output": output, "conversations": mine.len()}));
-    let conversations = shares["conversations"].as_array().cloned().unwrap_or_default();
-    for t in shares["tokens"].as_array().into_iter().flatten() {
-        let household = str_of(t, "household");
-        let count = conversations.iter().filter(|c| str_of(c, "household") == household).count();
-        members.push(json!({"id": household, "name": t.get("household_name"), "input": t.get("input"),
-                            "output": t.get("output"), "conversations": count}));
+    let mut members =
+        vec![json!({"id": "self", "name": name, "input": input, "output": output, "conversations": count})];
+    for (household, (name, input, output, conversations)) in theirs {
+        members.push(json!({"id": household, "name": name, "input": input, "output": output, "conversations": conversations}));
     }
     json!({"members": members})
 }
@@ -905,8 +1154,11 @@ async fn usage(State(state): State<AppState>) -> ApiResult<Response> {
     let config = state.config();
     match holder(&config)? {
         None => {
-            let agent = own_agent(&config).ok_or_else(|| HttpError::new(404, "no family agent"))?;
-            Ok(web::ok(usage_of(&state, &agent).await))
+            let agents = own_agents(&config);
+            if agents.is_empty() {
+                return Err(HttpError::new(404, "no family agent"));
+            }
+            Ok(web::ok(usage_of(&state, &agents).await))
         }
         Some(household) => relayed(&state, &household, reqwest::Method::GET, "/usage", None).await,
     }
@@ -917,6 +1169,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/family-agent", get(get_view).post(create))
         .route("/family-agent/seen", post(seen))
+        .route("/family-agent/{agent}/members", put(put_members))
         .route("/family-agent/notebook", get(get_notebook).post(post_notebook))
         .route("/family-agent/usage", get(usage))
 }
@@ -936,10 +1189,20 @@ fn served(state: &AppState, headers: &HeaderMap) -> ApiResult<(String, AgentConf
     Ok((household, agent))
 }
 
+/// `GET /family/fa`: the family agents of this place the calling household is in (`agents`; the first's fields too,
+/// for bridges of before); 404 when it is in none.
 async fn served_view(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
-    let (_, agent) = served(&state, &headers)?;
-    Ok(web::ok(json!({"agent": agent.name, "name": agent.display_name, "category": agent.category,
-                      "color": agent.color, "owner": state.households.name()})))
+    let (household, _) = served(&state, &headers)?;
+    let config = state.config();
+    let agents: Vec<Value> = own_agents(&config)
+        .iter()
+        .filter(|a| crate::agent_shares::shared_with(&config, &a.name).contains(&household))
+        .map(|a| json!({"agent": a.name, "name": a.display_name, "category": a.category, "color": a.color,
+                        "everyone": members(&config, &a.name).is_none()}))
+        .collect();
+    let first = agents.first().cloned().ok_or_else(|| HttpError::new(404, "no family agent for this household"))?;
+    Ok(web::ok(json!({"agent": first["agent"], "name": first["name"], "category": first["category"],
+                      "color": first["color"], "owner": state.households.name(), "agents": agents})))
 }
 
 async fn served_notebook(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
@@ -966,8 +1229,8 @@ async fn served_change(State(state): State<AppState>, headers: HeaderMap, body: 
 }
 
 async fn served_usage(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
-    let (_, agent) = served(&state, &headers)?;
-    Ok(web::ok(usage_of(&state, &agent).await))
+    served(&state, &headers)?;
+    Ok(web::ok(usage_of(&state, &own_agents(&state.config())).await))
 }
 
 /// The creator left: what is the family's, kept here until this person takes it over.
@@ -986,7 +1249,7 @@ async fn handed_over(State(state): State<AppState>, headers: HeaderMap, body: By
                        "lang": tk::str_or_empty(body.get("lang")).chars().take(10).collect::<String>(),
                        "notebook": notebook, "at": now()});
     update(&state_path(&config), |data| data.insert("handover".into(), entry))?;
-    crate::agent_shares::drop_family_offers(&config, &household);
+    crate::agent_shares::drop_family_offers(&config, &household, &[]);
     tracing::info!(household = %household, "family agent: handed over to this place");
     Ok(web::ok(json!({"ok": true, "kept": true})))
 }
@@ -1028,7 +1291,7 @@ pub fn after_unlink(state: &AppState, household: &str, entry: Option<Dict>) {
 
 /// `agent__household` is the family's agent of that linked household (rooms: no link needed for it).
 pub fn is_family_of_household(config: &Config, id: &str) -> bool {
-    id.contains(SEPARATOR) && known(config).is_some_and(|(known_id, _)| known_id == id)
+    id.contains(SEPARATOR) && known_all(config).iter().any(|(known_id, _)| known_id == id)
 }
 
 #[cfg(test)]
@@ -1083,7 +1346,9 @@ mod tests {
 
     #[test]
     fn only_the_familys_tools_answer() {
-        for open in ["weather", "family_notebook_read", "family_notebook_write", "knowledge_read"] {
+        // pages, audio and routines for the family since 12/11 (family_thread.rs: everyone's)
+        for open in ["weather", "family_notebook_read", "family_notebook_write", "knowledge_read", "create_page",
+                     "create_audio", "create_podcast", "routine_schedule"] {
             assert!(closed_tool(open).is_none(), "{open}");
         }
         for name in [
@@ -1092,7 +1357,9 @@ mod tests {
             "calendar_events",
             "contacts_search",
             "notebook_read",
-            "create_page",
+            "read_page",
+            "list_pages",
+            "routine_trigger",
             "propose_task",
             "tell_family",
             "archives_search",

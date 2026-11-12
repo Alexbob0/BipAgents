@@ -11,7 +11,10 @@ with the family's agent « Maison » (J54). Writes:
 
     {"url", "door", "key", "agent": "vie", "thread", "pairing", "log",
      "guichet": "http://127.0.0.1:<port>", "project": {"agent", "thread", "share"},
-     "family": {"agent": "maison__marie", "name", "owner"}}
+     "family": {"agent": "maison__marie", "name", "owner", "other", "other_file", "other_said"}}
+
+(`other_said`: Paul's message, already in the family's common conversation when the apps open it, from « Paul »:
+family_thread.rs.)
 
 then serves until `JOURNEYS_OUT + ".done"` appears (or `JOURNEYS_MINUTES`, default 60). A friend's journey makes its own
 link (`POST /v1/read-shares/<share>/invites`, the bridge's key): a link opens once."""
@@ -58,7 +61,8 @@ def family_agent(bridges, fakes, journey):
     assert bridge.post("/v1/agent-tools/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
                        headers={"Authorization": f"Bearer {journey.token}", "Accept": "application/json"}).status_code == 200
     family_files(bridges, fakes, journey, marie)
-    return {"agent": "maison__marie", "name": "Maison", "owner": "Marie", "other": "Paul", "other_file": "menu-de-noel.pdf"}
+    return {"agent": "maison__marie", "name": "Maison", "owner": "Marie", "other": "Paul", "other_file": "menu-de-noel.pdf",
+            "other_said": "Le menu de Noël"}
 
 
 def family_files(bridges, fakes, journey, marie):
@@ -66,7 +70,7 @@ def family_files(bridges, fakes, journey, marie):
     everyone's who uses it); `#fichiers` makes the agent list its files with `read_sent_file` (as Maison, Marie's
     place's token), in whoever's turn."""
     from test_households_and_peers import household
-    from test_shared_agent_files import tiny_pdf
+    from test_family_agent_files import tiny_pdf
     paul = household(bridges, fakes, "paul", ["jardin"])
     assert paul.put("/v1/family/name", headers=AUTH, json={"name": "Paul"}).status_code == 200
     invitation = marie.post("/v1/family/invite", headers=AUTH).json()
@@ -83,6 +87,14 @@ def family_files(bridges, fakes, journey, marie):
                            "attachments": [{"kind": "document", "name": "menu-de-noel.pdf", "mime": "application/pdf",
                                             "path": stored.json()["path"]}]})
     assert sent.status_code == 200, sent.text
+    # his turn over before the apps come (the family's one conversation, family_thread.rs): their first message starts a
+    # turn of their own, it never waits behind his
+    end = time.time() + 60
+    while time.time() < end:
+        page = paul.get("/v1/threads/main/timeline", headers=AUTH, params={"agent": "maison__marie"}).json()
+        if page.get("pending", {}).get("run") is None:
+            break
+        time.sleep(0.2)
     token = "maison-token-for-the-journeys-0123456789"
     give_agent_token(marie, "maison", token)
     journey.model.calls["files"] = lambda run: mcp_as(marie, token, "/v1/agent-tools/mcp", "read_sent_file", {})

@@ -263,9 +263,10 @@ pub fn forget_households(config: &Config, agent: &str, gone: &[String]) {
     }
 }
 
-/// Whether `agent` keeps a pool: shared with at least one household (the family's agent always).
+/// Whether `agent` keeps a pool: the family's agent only. A personal agent shared with relatives is read-only for
+/// them (agent_feed.rs): its files are in its owner's conversations, which they read.
 pub fn pooled(config: &Config, agent: &str) -> bool {
-    !shares::shared_with(config, agent).is_empty()
+    crate::family_agent::is_family(config, agent)
 }
 
 // -- writing ------------------------------------------------------------------------------------------------------
@@ -329,9 +330,18 @@ async fn served_upload(
     q: web::QueryMap,
     body: Body,
 ) -> ApiResult<Response> {
-    let (household, agent) = shares::shared_agent(&state, &headers, &agent)?;
+    let (household, agent) = shares::talking_agent(&state, &headers, &agent)?; // the family's agent only
     let config = state.config();
-    let c = shares::conversation(&config, &household, &agent.name, &cid)?;
+    let c = if crate::family_thread::is_common(&config, &agent.name) {
+        // a family agent's one conversation (family_thread.rs): her entry made with her first file if need be
+        let key = crate::family_thread::entry(&config, &agent.name, &household, None)?;
+        shares::object(&shares::read(&shares::owner_path(&config)), "conversations")
+            .and_then(|all| all.get(&key))
+            .cloned()
+            .unwrap_or(Value::Null)
+    } else {
+        shares::conversation(&config, &household, &agent.name, &cid)?
+    };
     if let Err(full) = crate::place_backup::refuse_when_full().await {
         // the host's place full: as for a file to its own agents (storage_watch.rs), its person told
         let c = config.clone();
@@ -484,6 +494,52 @@ pub fn share_own_files(config: &Config, agent: &AgentConfig, attachments: &[Atta
         if update(config, &agent.name, |files| files.insert(key.clone(), entry)).is_ok() && kind == "document" {
             keep_ocr(config, &agent.name, &key, a.text.as_deref());
         }
+    }
+}
+
+/// A file a family agent made (an audio, a podcast: `/bipagents/audio/<agent>/<file>`) into its pool, a hard link
+/// (else a copy): the family's, so every member's bridge serves it from the common conversation (family_thread.rs)
+/// and it shows in its « Fichiers », sent by the agent (household `OWNER`, its name). Kept the pool's time, as any.
+pub fn share_made(config: &Config, agent: &str, path: &str, title: Option<&str>) {
+    let prefix = format!("{}/{agent}/", crate::agent_tools::MEDIA_PREFIX);
+    let Some(file_name) = path.strip_prefix(&prefix).filter(|f| !f.is_empty() && !f.contains('/') && !f.starts_with('.'))
+    else {
+        return;
+    };
+    let source = crate::agent_tools::audio_root(config).join(agent).join(file_name);
+    if !std::fs::symlink_metadata(&source).is_ok_and(|m| m.file_type().is_file()) {
+        return;
+    }
+    let dir = pool_dir(config, agent);
+    if make_dir(&dir).is_err() {
+        return;
+    }
+    let ext = file_name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
+    let name = crate::files::sanitize_filename(&match title.map(str::trim).filter(|t| !t.is_empty()) {
+        Some(t) => format!("{t}.{ext}"),
+        None => file_name.to_string(),
+    });
+    let key: String = py::uuid4_hex().chars().take(12).collect();
+    let file = format!("{key}-{name}");
+    let target = dir.join(&file);
+    if std::fs::hard_link(&source, &target).is_err() && std::fs::copy(&source, &target).is_err() {
+        tracing::warn!(agent = %agent, "family agent: a made file not put in its pool");
+        return;
+    }
+    let _ = std::fs::set_permissions(&target, std::os::unix::fs::PermissionsExt::from_mode(FILE_MODE));
+    let size = std::fs::metadata(&target).map(|m| m.len()).unwrap_or(0);
+    let mime = match ext.as_str() {
+        "mp3" => "audio/mpeg",
+        "m4a" => "audio/mp4",
+        "wav" => "audio/wav",
+        "ogg" | "opus" => "audio/ogg",
+        _ => "application/octet-stream",
+    };
+    let shown = config.agent(Some(agent)).map(|a| a.display_name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| agent.to_string());
+    let entry = json!({"file": file, "name": name, "mime": mime, "size": size, "kind": "document", "at": now(),
+                       "sent": true, "household": OWNER, "person": shown, "own_copy": path, "made": true});
+    if update(config, agent, |files| files.insert(key, entry)).is_err() {
+        tracing::warn!(agent = %agent, "family agent: a made file not noted in its pool");
     }
 }
 

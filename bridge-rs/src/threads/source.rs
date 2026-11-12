@@ -226,6 +226,11 @@ impl ApiCache {
         self.rows.lock().unwrap_or_else(|e| e.into_inner()).remove(&(agent.to_string(), session.to_string()));
     }
 
+    /// Every session of the agent read again next time (its conversations cleared, family_thread.rs).
+    pub fn forget_agent(&self, agent: &str) {
+        self.rows.lock().unwrap_or_else(|e| e.into_inner()).retain(|(a, _), _| a != agent);
+    }
+
     fn get(&self, agent: &str, session: &str, tip: bool) -> Option<Arc<Vec<Row>>> {
         let rows = self.rows.lock().unwrap_or_else(|e| e.into_inner());
         let (at, kept) = rows.get(&(agent.to_string(), session.to_string()))?;

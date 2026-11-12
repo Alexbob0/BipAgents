@@ -54,8 +54,9 @@ def test_every_member_gets_the_familys_agent(bridges, fakes):
     # its tools: only the family's, whoever talks (here: no member's turn going on, Alex's own)
     give_token(a, "famille", TOKEN)
     names = {t["name"] for t in rpc(a, "tools/list", token=TOKEN).json()["result"]["tools"]}
-    assert {"family_notebook_read", "family_notebook_write", "weather"} <= names
-    assert not names & {"mail_search", "create_page", "propose_task", "notebook_read", "upcoming_dates"}
+    # a page for the family since 12/11 (its pages are everyone's, never in a personal Carnet)
+    assert {"family_notebook_read", "family_notebook_write", "weather", "create_page"} <= names
+    assert not names & {"mail_search", "propose_task", "notebook_read", "upcoming_dates", "list_pages", "read_page"}
     closed = call(a, "mail_search", {"query": "x"}, token=TOKEN)
     assert closed["isError"] is True and "family's agent" in closed["content"][0]["text"]
     read = call(a, "family_notebook_read", {}, token=TOKEN)
@@ -67,7 +68,7 @@ def test_every_member_gets_the_familys_agent(bridges, fakes):
     # its settings never open the disk, the browser, Santé (the profile isn't managed here: refused either way)
     assert a.patch("/v1/agents/famille/settings", headers=AUTH, json={"toolsets": {"terminal": True}}).status_code >= 400
 
-    # Marie talks to it in her own conversation, as a family member
+    # Marie talks to it in the family's common conversation, as a family member
     fakes.hermes.runs["r1"] = [sse("run.completed", output="Des crêpes !")]
     sent = b.post("/v1/threads/new/messages", headers=AUTH,
                   json={"agent": "famille__alex", "client_id": "C0FFEE00-0000-4000-8000-0000000000F1",
@@ -76,12 +77,9 @@ def test_every_member_gets_the_familys_agent(bridges, fakes):
     timeline = f"/v1/threads/{sent.json()['thread']}/timeline"
     run = fakes.hermes.started["r1"]
     assert run["agent"] == "famille" and "You are the family's agent" in run["instructions"]
-    # a member's run is marked for Hermes: the family's tools and web search only (patch 0018)
-    assert run["guest_turn"] == {"tools": [
-        "mcp__bipagents__knowledge_read", "mcp__bipagents__knowledge_search", "mcp__bipagents__weather",
-        "mcp__bipagents__route", "mcp__bipagents__map_image", "mcp__bipagents__family_notebook_read",
-        "mcp__bipagents__family_notebook_write", "mcp__bipagents__give_file", "mcp__bipagents__read_sent_file",
-        "web_search"]}
+    # the family's common conversation since 12/11 (test_family_thread.py): a normal run, its memory written from
+    # anyone; the family's tools are the bridge's in every turn
+    assert run["guest_turn"] is None and sent.json()["thread"] == "family"
     fakes.hermes.started["r1"]["status"] = "completed"
     assert wait(lambda: b.get(timeline, headers=AUTH, params={"agent": "famille__alex"}).json()["pending"]["run"] is None)
 
@@ -105,12 +103,13 @@ def test_every_member_gets_the_familys_agent(bridges, fakes):
 
 def test_creating_the_familys_agent(bridges, fakes):
     """Made from the app on an install that manages its Hermes, isolated or not: its disk and browser tools off from
-    the start, its personality with the family's block, the Carnet's three lists; one per family; deleted, it can be
-    made again."""
+    the start, its personality with the family's block, the Carnet's three lists; several, each for the whole family
+    or some members; deleted, it can be made again."""
     from test_agents_admin import hermes_args, managed
 
     bridge, home = managed(bridges, fakes, isolated=True)
-    assert bridge.get("/v1/family-agent", headers=AUTH).json() == {"agent": None, "can_create": True, "handover": None}
+    assert bridge.get("/v1/family-agent", headers=AUTH).json() == {"agent": None, "agents": [], "can_create": True,
+                                                                   "handover": None, "members": []}
     made = bridge.post("/v1/family-agent", headers=AUTH, json={"name": "Famille", "lang": "fr"})
     assert made.status_code == 201, made.text
     assert made.json()["id"] == "famille" and made.json()["mine"] is True
@@ -121,8 +120,15 @@ def test_creating_the_familys_agent(bridges, fakes):
     assert "bipagents:notebook" not in soul and "bipagents:payments" not in soul
     lists = bridge.get("/v1/family-agent/notebook", headers=AUTH).json()["lists"]
     assert [(x["title"], x["kind"]) for x in lists] == [("Courses", "list"), ("Tâches", "tasks"), ("Dates", "dates")]
-    again = bridge.post("/v1/family-agent", headers=AUTH, json={"name": "Maison"})
-    assert again.status_code == 409
+    # another one (12/11: one per topic), for some members only (none linked here: a list of no one)
+    again = bridge.post("/v1/family-agent", headers=AUTH, json={"name": "Maison", "members": []})
+    assert again.status_code == 201, again.text
+    assert again.json()["id"] == "maison" and again.json()["everyone"] is False
+    assert bridge.post("/v1/family-agent", headers=AUTH, json={"name": "X", "members": ["ghost"]}).status_code == 422
+    views = bridge.get("/v1/family-agent", headers=AUTH).json()
+    assert [x["id"] for x in views["agents"]] == ["famille", "maison"] and views["agent"]["id"] == "famille"
+    # a common conversation from their start: never cleared at a restart (family_thread.rs `migrate`)
+    assert json.loads((bridge.state_dir / "family-agent.json").read_text())["common"].keys() == {"famille", "maison"}
     refused = bridge.patch("/v1/agents/famille/settings", headers=AUTH, json={"toolsets": {"terminal": True}})
     assert refused.status_code == 400 and "private" in refused.json()["detail"]
     assert bridge.patch("/v1/agents/famille/settings", headers=AUTH, json={"health": True}).status_code == 400

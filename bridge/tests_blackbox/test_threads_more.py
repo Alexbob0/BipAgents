@@ -1,5 +1,5 @@
 """More of the bridge-owned conversations (docs/conversations.md): presence from the thread's event stream, rename
-and delete, the read sync's one form, a shared agent's conversation through the owner's bridge, renames in items."""
+and delete, the read sync's one form, renames in items (a shared agent's: test_shared_agents.py)."""
 import threading
 import time
 
@@ -7,8 +7,6 @@ import httpx
 
 from bbkit.common import AUTH, sse
 from bbkit.servers import wait_until
-from test_households_and_peers import household
-from test_shared_agents import link
 
 NOW = "2026-11-02T20:00:00.000Z"
 
@@ -99,48 +97,6 @@ def test_an_agent_rename_reaches_the_app_through_its_item(bridges, fakes):
     bridge = bridges.new().start()
     item = get(bridge, "/v1/threads/main/timeline", agent="wellness")["items"][1]
     assert item["text"] == "D'accord !" and item["renamed"] == [{"agent": "wellness", "name": "Léon"}]
-
-
-def test_a_shared_agents_conversation_through_the_owners_bridge(bridges, fakes):
-    fakes.hermes.v0225 = True
-    a = household(bridges, fakes, "alex", ["cuisine"])
-    b = household(bridges, fakes, "marie", ["vie"])
-    link(a, b)
-    assert a.put("/v1/agents/cuisine/shares", headers=AUTH, json={"households": ["marie"]}).status_code == 200
-    assert b.post("/v1/shared-agents/cuisine__alex/add", headers=AUTH).status_code == 200
-    # her first message opens the conversation (its words its title)
-    fakes.hermes.runs["r1"] = [sse("run.completed", output="Une fondue !")]
-    first = b.post("/v1/threads/new/messages", headers=AUTH,
-                   json={"agent": "cuisine__alex", "client_id": "C0FFEE00-0000-4000-8000-000000000010", "text": "Dîner"})
-    assert first.status_code == 200, first.text
-    cid = first.json()["thread"]
-    session = fakes.hermes.started["r1"]["session_id"]
-    fakes.hermes.messages[("cuisine", session)] = [
-        {"role": "user", "content": "[Marie, a relative of your person (household « Marie »), writes to you:]\nDîner"},
-        {"role": "assistant", "content": "Une fondue !\nMEDIA:/bipagents/pages/cuisine/fondue.html"},
-    ]
-    assert wait_until(lambda: get(b, f"/v1/threads/{cid}/timeline", agent="cuisine__alex")["pending"]["run"] is None)
-    listed = get(b, "/v1/threads", agent="cuisine__alex")["threads"]
-    assert [(t["id"], t["kind"], t["title"]) for t in listed] == [(cid, "shared", "Dîner")]
-    page = get(b, f"/v1/threads/{cid}/timeline", agent="cuisine__alex")
-    assert page["thread"]["id"] == cid and [i["text"] for i in page["items"]] == ["Dîner", "Une fondue !"]
-    assert page["items"][0]["client_id"] == "C0FFEE00-0000-4000-8000-000000000010"
-    assert page["pending"] == {"run": None, "approvals": [], "questions": []}
-    # a turn going on: its state and start, for the shared screen
-    gate = threading.Event()
-    fakes.hermes.runs["r2"] = [gate, sse("run.completed", output="Une tarte.")]
-    sent = b.post(f"/v1/threads/{cid}/messages", headers=AUTH,
-                  json={"agent": "cuisine__alex", "client_id": "C0FFEE00-0000-4000-8000-000000000011", "text": "Et le dessert ?"})
-    assert sent.status_code == 200, sent.text
-    running = get(b, f"/v1/threads/{cid}/timeline", agent="cuisine__alex")["pending"]["run"]
-    assert running["status"] == "writing" and running["run_id"] == sent.json()["run_id"]
-    assert isinstance(running["started"], (int, float))
-    gate.set()
-    assert all("attachments" not in i for i in page["items"])   # only text crosses
-    assert page["items"][-1]["id"].startswith("m_")
-    # another household's key reaches nothing
-    assert a.get(f"/family/s/cuisine/conversations/{cid}/timeline",
-                 headers={"Authorization": "Bearer nope"}).status_code == 401
 
 
 def test_a_live_call_put_in_a_conversation_tells_its_open_screens(bridges, fakes):

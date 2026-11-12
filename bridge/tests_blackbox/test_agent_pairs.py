@@ -85,7 +85,7 @@ def test_a_relative_never_sees_the_pair_conversation(bridges, fakes):
     a = household(bridges, fakes, "alex", ["quotidien", "coach"])
     b = household(bridges, fakes, "marie", ["vie"])
     link(a, b)
-    assert a.put("/v1/agents/coach/shares", headers=AUTH, json={"households": ["marie"]}).status_code == 200
+    assert a.put("/v1/agents/coach/shares", headers=AUTH, json={"households": ["marie"], "confirmed": True}).status_code == 200
     assert b.post("/v1/shared-agents/coach__alex/add", headers=AUTH).status_code == 200
     assert a.put("/v1/agent-links", headers=AUTH, json={"links": [{"from": "quotidien", "to": "coach"}]}).status_code == 200
     give_tokens(a, TOKENS)
@@ -93,7 +93,7 @@ def test_a_relative_never_sees_the_pair_conversation(bridges, fakes):
     text, failed = ask(a, "quotidien", target="bip/coach", message="Combien d'heures ?")
     assert not failed and "Sept heures." in text
     assert len(a.get("/v1/agent-pairs", params={"agent": "coach"}, headers=AUTH).json()["pairs"]) == 1
-    # Marie's view of Coach: her own conversations only, never the pair's
+    # Marie's view of Coach: Alex's own conversations with it (read-only, none since the share), never the pair's
     mine = b.get("/v1/threads", params={"agent": "coach__alex"}, headers=AUTH)
     assert mine.status_code == 200, mine.text
     assert mine.json()["threads"] == []
