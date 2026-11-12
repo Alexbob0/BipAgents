@@ -2,7 +2,7 @@ English · [Français](privacy.fr.md) · [Deutsch](privacy.de.md) · [Español](
 
 # BipAgents privacy policy
 
-> Last updated: 11 November 2026.
+> Last updated: 12 November 2026.
 
 ## In short
 

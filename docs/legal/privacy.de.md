@@ -2,7 +2,7 @@
 
 # Datenschutzerklärung von BipAgents
 
-> Zuletzt aktualisiert: 11. November 2026.
+> Zuletzt aktualisiert: 12. November 2026.
 
 ## Kurz gesagt
 

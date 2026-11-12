@@ -2,7 +2,7 @@
 
 # Politique de confidentialité de BipAgents
 
-> Dernière mise à jour : 11 novembre 2026.
+> Dernière mise à jour : 12 novembre 2026.
 
 ## En bref
 
