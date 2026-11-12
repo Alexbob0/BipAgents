@@ -306,10 +306,33 @@ pub fn households_of(linked: &[Dict], names: &[String]) -> Option<Vec<String>> {
     Some(ids)
 }
 
+/// The first names of `names` that match none of the linked households.
+pub fn unmatched(linked: &[Dict], names: &[String]) -> Vec<String> {
+    names.iter().filter(|n| households_of(linked, std::slice::from_ref(*n)).is_none_or(|ids| ids.is_empty())).cloned().collect()
+}
+
 /// The family's agent made from a card, through the family route exactly as the apps call it (`POST /v1/family-agent
 /// {name, lang, tone, members?}`), then its role line added. Err: the route's own answer (409 one already…).
 pub async fn family_from_card(state: &AppState, card: &FamilyCard<'_>) -> ApiResult<AgentConfig> {
-    let members = card.people.clone().or_else(|| households_of(&state.households.public(), card.first_names));
+    let members = match card.people.clone() {
+        Some(people) => Some(people),
+        None => {
+            let linked = state.households.public();
+            let missing = unmatched(&linked, card.first_names);
+            if !missing.is_empty() {
+                // a name on the card that isn't (or no longer is) in the family: said, nothing made
+                let who = missing.join(", ");
+                let detail = match crate::souls::language(Some(card.lang)) {
+                    "fr" => format!("{who} n'est pas dans ta famille sur BipAgents"),
+                    "de" => format!("{who} ist nicht in deiner Familie auf BipAgents"),
+                    "es" => format!("{who} no está en tu familia en BipAgents"),
+                    _ => format!("{who} is not in your family on BipAgents"),
+                };
+                return Err(HttpError::new(409, detail));
+            }
+            households_of(&linked, card.first_names)
+        }
+    };
     let mut body = json!({"name": card.name, "lang": card.lang, "tone": card.tone});
     if let Some(members) = members.filter(|m| !m.is_empty()) {
         body["members"] = json!(members);
@@ -474,5 +497,7 @@ mod tests {
         assert_eq!(households_of(&linked, &[]), None);
         assert_eq!(households_of(&linked, &["léa".into(), "TOM".into()]), Some(vec!["h1".into(), "h2".into()]));
         assert_eq!(households_of(&linked, &["Zoé".into()]), Some(vec![]));
+        assert_eq!(unmatched(&linked, &["Léa".into(), "Zoé".into()]), ["Zoé"]);
+        assert!(unmatched(&linked, &[]).is_empty());
     }
 }

@@ -1325,7 +1325,7 @@ pub(crate) fn creation_failed(exc: anyhow::Error) -> HttpError {
 
 pub(crate) fn created_json(config: &Config, agent: &AgentConfig) -> Value {
     json!({"id": agent.name, "name": agent.display_name, "url": agent.public_url,
-           "group": crate::agent_groups::group_of(config, &agent.name)})
+           "group": crate::agent_groups::group_of(config, &agent.name), "category": agent.category})
 }
 
 /// `agent` becomes the guide (the previous one stops), its first conversation asking the person's needs when `intro`.
