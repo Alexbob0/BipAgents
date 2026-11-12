@@ -756,9 +756,8 @@ have an account (section 5.2).
 reset and nothing stays on it (OVHcloud's daily image that held it is replaced within about a day, section 5.5). Only
 the encrypted copy of the place's backups, 21 days of history at most, is kept for 30 days at Scaleway, in Paris, so
 you can come back, then erased for good. It may contain data from your Notebook, your health and, if your place hosts
-a family agent, its members' messages: it is personal data. Its key stays on your phone (and in the copy your recovery
-code opens, section 5.2).
-<!-- TODO (Kerfy Studio, 12/11): ne pas écrire ici « nous ne pouvons pas la lire » tant que ce n'est pas confirmé. -->
+a family agent, its members' messages: it is personal data. The key to this copy is then only on your phone and in a
+sealed vault that only your recovery code opens (section 5.2): Kerfy Studio cannot read the copy.
 If nobody writes, the shared conversation of a family agent hosted by this place and the read-only shares of its
 agents stop when the place is freed (section 2 bis). After the freeing, export is no longer possible.
 
