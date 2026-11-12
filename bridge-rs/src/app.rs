@@ -1450,7 +1450,7 @@ async fn health(State(state): State<AppState>) -> ApiResult<Response> {
         // The space encrypted at rest (space.rs): « on » or « off » (a locked bridge answers « locked » itself).
         "space": crate::space::health_state(),
         // What this bridge offers that the Python one doesn't (the apps hide the rest).
-        "features": ["agent_groups", "files_kept", "calendar", "health_categories", "contacts", "time_zone", "message_search", "agent_templates", "agent_notify", "agent_queue", "threads", "notifications", "push_seal"],
+        "features": ["agent_groups", "files_kept", "calendar", "health_categories", "contacts", "time_zone", "message_search", "agent_templates", "agent_create_bip", "agent_catalogue", "agent_notify", "agent_queue", "threads", "notifications", "push_seal"],
     });
     // The config was broken at start and its last good copy put back (config.rs): {at, broken}, for the app and the
     // seat agent to tell.
@@ -1635,6 +1635,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::notes_import::router())
         .merge(crate::assistant_import::router())
         .merge(crate::guide::router())
+        .merge(crate::agent_create::router())
         .merge(crate::rooms::router())
         .merge(crate::agent_pairs::router())
         .merge(crate::meet::router())

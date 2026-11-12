@@ -11,7 +11,8 @@
 //!   and schedule checked again). Its connectors land « à approuver » with a card each, their files in the bridge's
 //!   own copy folder (the approval pins them from there); its routines land paused until the person turns them on
 //!   (`/v1/agents/{agent}/template-routines`); its skills are marked « importé ». Health stays off.
-//! - `find_template`: the guide agent's search of Kerfy's ready-made models at the guichet (empty for now).
+//! - `find_template`: the guide agent's search of Kerfy's ready-made agents, inside the bridge since 2026-11-12
+//!   (templates_catalogue.rs: `GET /v1/templates/catalogue`, adopted with `POST /v1/templates/import {catalogue}`).
 //!
 //! `<data>/templates/routines.json` (0600): per agent, the routines an import paused (only those are switched here).
 //!
@@ -19,8 +20,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, Mutex};
-use std::time::Duration;
+use std::sync::Mutex;
 
 use axum::body::Bytes;
 use axum::extract::{Path as UrlPath, State};
@@ -1004,6 +1004,10 @@ async fn import_route(State(state): State<AppState>, body: Bytes) -> ApiResult<R
         return Err(HttpError::new(413, "ce modèle est trop lourd"));
     }
     let body: Value = serde_json::from_slice(&body).map_err(|_| bad("a JSON body"))?;
+    if body.get("catalogue").is_some() {
+        // one of Kerfy's ready-made agents (templates_catalogue.rs)
+        return Ok(web::json_response(201, &crate::templates_catalogue::adopt(&state, &body).await?));
+    }
     Ok(web::json_response(201, &import(&state, &body).await?))
 }
 
@@ -1064,6 +1068,7 @@ pub fn router() -> Router<AppState> {
         .route("/agents/{agent_id}/template-routines", get(routines_route))
         .route("/agents/{agent_id}/template-routines/{job}", put(routine_switch))
         .route("/templates/import", post(import_route))
+        .route("/templates/catalogue", get(crate::templates_catalogue::catalogue_route))
 }
 
 // -- the guide's search of ready-made models -------------------------------------------------------------------------------
@@ -1075,8 +1080,8 @@ pub fn tools(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     }
     vec![json!({
         "name": FIND_TOOL,
-        "description": "Search Kerfy's ready-made agent models for what your person needs; each result has a link \
-    they open to see it and add it (nothing is added otherwise).",
+        "description": "Search Kerfy's ready-made agents for what your person needs; they adopt one themselves in \
+    the app (nothing is added otherwise).",
         "inputSchema": {"type": "object", "properties": {
             "need": {"type": "string", "description": "what they need, in a few words"}},
             "required": ["need"]},
@@ -1096,28 +1101,21 @@ pub(crate) fn guichet_url(config: &Config) -> String {
         .unwrap_or_else(|| DEFAULT_GUICHET.to_string())
 }
 
-static HTTP: LazyLock<reqwest::Client> =
-    LazyLock::new(|| reqwest::Client::builder().timeout(Duration::from_secs(10)).build().unwrap_or_default());
-
 /// An id the guichet makes: url-safe base64, 16 to 64 signs.
 pub fn id_ok(id: &str) -> bool {
     (16..=64).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
-/// The catalogue's answer in a few lines for the agent.
-pub fn catalogue_text(answer: &Value) -> String {
-    let items = answer.get("templates").and_then(Value::as_array).cloned().unwrap_or_default();
+/// The catalogue's matches (templates_catalogue.rs) in a few lines for the agent.
+pub fn catalogue_text(items: &[Value]) -> String {
     if items.is_empty() {
-        return "No ready-made model fits yet: propose making the agent yourself (propose_agent).".into();
+        return "No ready-made agent fits: propose making it yourself (propose_agent).".into();
     }
-    let lines: Vec<String> = items
-        .iter()
-        .take(5)
-        .filter(|t| id_ok(&s(t, "id")))
-        .map(|t| format!("- {} — {} — {LINK_BASE}{}", head(&s(t, "name"), 40), head(&s(t, "intro"), 160), s(t, "id")))
-        .collect();
+    let lines: Vec<String> =
+        items.iter().take(5).map(|t| format!("- {} — {}", head(&s(t, "name"), 40), head(&s(t, "pitch"), 160))).collect();
     format!(
-        "Ready-made models (give the person the link of the one that fits; they see it and add it themselves):\n{}",
+        "Ready-made agents (they adopt one themselves in « + Créer un agent » › « Adopter un agent »; nothing is \
+         added otherwise):\n{}",
         lines.join("\n")
     )
 }
@@ -1127,13 +1125,8 @@ pub async fn find_call(config: &Config, agent: &AgentConfig, arguments: &Dict) -
         return tool_text("This tool is the guide's.", true);
     }
     let need = arguments.get("need").and_then(Value::as_str).map(|n| head(n.trim(), 200)).unwrap_or_default();
-    let url = format!("{}/v1/templates/catalogue", guichet_url(config));
-    let answer = HTTP.get(url).query(&[("q", need.as_str())]).send().await;
-    let answer = match answer {
-        Ok(resp) if resp.status().is_success() => resp.json::<Value>().await.unwrap_or(json!({})),
-        _ => return tool_text("The models' catalogue doesn't answer now: propose making the agent yourself.", false),
-    };
-    tool_text(&catalogue_text(&answer), false)
+    let lang = crate::guide::language_of(config, agent);
+    tool_text(&catalogue_text(&crate::templates_catalogue::search(&need, &lang, 5)), false)
 }
 
 #[cfg(test)]
@@ -1225,11 +1218,9 @@ mod tests {
     }
 
     #[test]
-    fn the_catalogue_reads_as_links() {
-        assert!(catalogue_text(&json!({"templates": []})).starts_with("No ready-made model"));
-        let text = catalogue_text(
-            &json!({"templates": [{"id": "AbCdEfGhIjKlMnOpQrStUv", "name": "Coach", "intro": "Court"}]}),
-        );
-        assert!(text.contains("https://bipagents.com/m/AbCdEfGhIjKlMnOpQrStUv"), "{text}");
+    fn the_catalogue_reads_as_lines_and_says_where_to_adopt() {
+        assert!(catalogue_text(&[]).starts_with("No ready-made agent"));
+        let text = catalogue_text(&crate::templates_catalogue::search("recettes", "fr", 5));
+        assert!(text.contains("- Cuisine — ") && text.contains("Adopter un agent"), "{text}");
     }
 }

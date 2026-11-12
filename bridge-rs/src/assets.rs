@@ -20,6 +20,8 @@ pub static CONSOLE: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/assets/cons
 pub static STATIC: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/assets/static");
 /// `assets/skills/` (visible-browser/SKILL.md, shared-data/SKILL.md).
 pub static SKILLS: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/assets/skills");
+/// `assets/catalogue/` (Kerfy's ready-made agents, templates_catalogue.rs).
+pub static CATALOGUE: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/assets/catalogue");
 /// `assets/agent_templates.yaml` (souls.rs; the installer reads it too).
 pub const AGENT_TEMPLATES_YAML: &str = include_str!("../assets/agent_templates.yaml");
 /// `assets/tool_catalog.yaml` (services.rs).
