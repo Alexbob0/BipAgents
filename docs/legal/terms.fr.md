@@ -178,8 +178,9 @@ Avec l'offre tout compris, la [politique d'usage acceptable](acceptable-use.fr.m
 ## 11. Signaler une réponse ou un message
 
 - Dans l'app : **appui long sur une réponse › Signaler cette réponse**. Le signalement part depuis l'app, par le
-  relais de Kerfy Studio, à Kerfy Studio seulement, avec le texte de la réponse ; si le relais ne répond pas, l'app te
-  propose de l'envoyer par e-mail. Dis-le aussi à ton agent pour qu'il ne recommence pas.
+  relais de Kerfy Studio, à Kerfy Studio seulement, avec le texte de la réponse ; tu peux ajouter ton e-mail si tu veux
+  une réponse. Si le relais ne répond pas, l'app te propose de l'envoyer par e-mail. Dis-le aussi à ton agent pour qu'il
+  ne recommence pas.
 - Un message d'une autre personne (agent de la famille, agent partagé) : **appui long › Signaler ce message**. Le
   signalement part à Kerfy Studio seulement, avec le texte du message, le prénom affiché de son auteur et le nom de
   l'agent, sans ton nom ; tu peux ajouter ton e-mail si tu veux une réponse. L'auteur n'en est pas prévenu. Kerfy

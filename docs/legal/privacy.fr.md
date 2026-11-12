@@ -347,16 +347,17 @@ l'oublie.
 - **Signaler cette réponse** (appui long sur une réponse) envoie le signalement **depuis l'app**, par le relais de
   Kerfy Studio, à Kerfy Studio seulement : ni à ton serveur, ni au fournisseur du modèle. Il contient le motif, tes
   précisions éventuelles, **le texte de la réponse signalée**, la catégorie de l'agent, la version de l'app et le
-  modèle du téléphone. **Ni ton adresse e-mail, ni ton nom, ni celui de l'agent.** Rien ne part tant que tu n'as pas
-  appuyé sur « Envoyer ». Le relais voit au passage l'adresse IP de ton téléphone et ne s'en sert que pour limiter
-  les abus (section 4.1). Comme le signalement ne contient aucun moyen de te joindre, nous ne pouvons pas y
-  répondre : écris au support si tu attends une réponse.
+  modèle du téléphone. **Ni ton nom, ni celui de l'agent.** Le champ « Ton e-mail, si tu veux une réponse » est
+  facultatif : si tu le remplis, ton adresse part avec le signalement, ne sert qu'à te répondre et est gardée avec lui
+  (durée ci-dessous) ; sinon, nous ne pouvons pas te répondre. Rien ne part tant que tu n'as pas appuyé sur
+  « Envoyer ». Le relais voit au passage l'adresse IP de ton téléphone et ne s'en sert que pour limiter les abus
+  (section 4.1).
 - **Signaler ce message** (appui long sur le message d'une autre personne, dans un agent de la famille ou un agent
   partagé, section 2 bis) envoie le signalement depuis l'app, par le relais de Kerfy Studio, puis par e-mail à Kerfy
   Studio seulement, par son prestataire de messagerie (Proton AG, Suisse) ; Proton garde le message envoyé le temps
   que nous l'effacions de la boîte d'envoi. Il contient le motif, tes précisions
-  éventuelles, **le texte du message, le prénom affiché de son auteur et le nom de l'agent**. Ni ton nom ni ton adresse
-  e-mail, sauf si tu l'ajoutes pour recevoir une réponse ou si tu l'envoies par e-mail (ci-dessous). L'auteur n'est
+  éventuelles, **le texte du message, le prénom affiché de son auteur et le nom de l'agent**. Ni ton nom ; ton adresse
+  e-mail seulement si tu remplis le même champ facultatif ou si tu l'envoies par e-mail (ci-dessous). L'auteur n'est
   pas prévenu de ton signalement. Kerfy Studio ne lit pas la conversation et ne peut pas effacer ce message. Il peut,
   selon les cas, te conseiller, prévenir la personne qui a créé l'agent si elle a un compte, ou prendre une mesure
   prévue par les conditions d'utilisation ou la politique d'usage acceptable : la personne visée en est alors
@@ -777,6 +778,20 @@ réseau et le calcul contre les robots : intérêt légitime de Kerfy Studio à 
 équitablement les places de la bêta (article 6.1.f). **Durée.** L'empreinte de l'adresse, jusqu'à la fin de la bêta, au plus tard le 31 décembre 2026.
 Si tu crées ensuite un compte, la section 5.2 s'applique à ton compte.
 
+### 5.14 Les places bêta inutilisées
+
+Pendant la bêta et le mois offert, ta place note l'heure de ta dernière action, jamais son contenu : un message, une
+note vocale, une photo ou un fichier envoyé à un agent, un appel Live, une carte à laquelle tu réponds. Les routines et
+les veilles qui tournent seules ne comptent pas. Elle l'envoie au guichet avec la surveillance technique
+(section 5.6). Le guichet s'en sert seulement pour libérer une place bêta dont personne ne se sert depuis 7 jours : il
+te prévient le 5e jour par une notification et un e-mail, envoyé par Proton AG (section 5.9) ; Proton garde le message
+envoyé le temps que nous l'effacions de la boîte d'envoi. Une place libérée, comme une place bêta dont le mois offert
+finit sans abonnement, passe à quelqu'un d'autre : seule la dernière copie chiffrée de ses sauvegardes, illisible sans
+sa clé (section 5.5), est gardée 30 jours, puis effacée.
+
+**Base légale.** Exécution des conditions de la bêta (article 6.1.b du RGPD). **Durée.** L'heure de la dernière action :
+remplacée à chaque action, effacée avec la place ; la copie chiffrée : 30 jours après la libération de la place.
+
 ## 6. Ce que Kerfy Studio ne fait pas
 
 - Pas de publicité, pas d'identifiant publicitaire, pas de pistage entre apps ou sites. Pas d'outil de statistiques
@@ -962,7 +977,9 @@ l'Union. Tu peux nous demander une copie des garanties applicables.
 | Empreinte de l'adresse IP (codes bêta, « Obtenir un code », page de résiliation du site, signalements d'agents partagés) | 2 jours au plus ; jusqu'à 30 jours dans les copies chiffrées de la base |
 | Résiliation sur le site : la déclaration (e-mail, numéro, motif, date de fin, date et heure) | 3 ans |
 | Résiliation sur le site : l'adresse e-mail tapée, pour limiter les essais | 2 jours au plus |
-| Contenu de ta place | Pendant l'abonnement (place bêta : jusqu'à la fin du mois offert, le 31 décembre 2026) ; quand l'abonnement ou le mois offert prend fin, la place est suspendue, puis effacée 30 jours après sa suspension (3 jours après une semaine gratuite non poursuivie) |
+| Contenu de ta place | Pendant l'abonnement, puis 30 jours (3 jours après une semaine gratuite non poursuivie) |
+| Place bêta libérée (7 jours sans usage, ou fin du mois offert le 31 décembre 2026 sans abonnement) | Seule sa copie chiffrée est gardée, 30 jours après la libération, puis effacée |
+| Heure de ta dernière action sur une place bêta | Remplacée à chaque action ; effacée avec la place |
 | Sauvegardes | 2 heures (toutes), puis 48 heures (horaires), 21 jours (quotidiennes), rien au-delà ; effacées avec la place ; ce que tu effaces en est parti sous 30 jours, toutes copies comprises |
 | Fichiers de sauvegarde qu'une place efface, mis de côté par le guichet | 5 jours |
 | Versions remplacées ou effacées chez Scaleway (sauvegardes des places, copies chiffrées de la base du guichet) | 1 jour |
