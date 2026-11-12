@@ -17,7 +17,7 @@
     "formTitle": "Ton code arrive par e-mail",
     "email": "Ton e-mail",
     "send": "Recevoir mon code",
-    "fine": "Un code par adresse.",
+    "fine": "Un code par adresse. Ton adresse est lue un instant, seulement pour t’envoyer ton code, par Proton AG (Suisse). Nous ne la gardons pas : nous gardons seulement une empreinte calculée avec une clé secrète (une donnée pseudonyme), pour vérifier qu’une adresse ne reçoit qu’un code, jusqu’au 31 décembre 2026 au plus tard. Proton garde le message envoyé le temps que nous l’effacions de la boîte d’envoi. Les adresses jetables sont refusées, et l’anti-robot ne dépose rien sur ton appareil. Bases : l’envoi que tu demandes (art. 6.1.b RGPD) et la prévention des abus (art. 6.1.f).",
     "privacy": "Confidentialité",
     "js": {
       "sending": "Envoi…",

@@ -17,7 +17,7 @@
     "formTitle": "Your code comes by e-mail",
     "email": "Your e-mail",
     "send": "Get my code",
-    "fine": "One code per address.",
+    "fine": "One code per address. Your address is read for a moment, only to send you your code, through Proton AG (Switzerland). We don’t keep it: we only keep a fingerprint computed with a secret key (pseudonymous data), to check that an address gets only one code, until 31 December 2026 at the latest. Proton keeps the sent message until we delete it from the outbox. Disposable addresses are refused, and the anti-bot check stores nothing on your device. Legal bases: sending what you ask for (GDPR art. 6(1)(b)) and preventing abuse (art. 6(1)(f)).",
     "privacy": "Privacy",
     "js": {
       "sending": "Sending…",

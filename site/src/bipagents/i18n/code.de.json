@@ -17,7 +17,7 @@
     "formTitle": "Dein Code kommt per E-Mail",
     "email": "Deine E-Mail",
     "send": "Meinen Code bekommen",
-    "fine": "Ein Code pro Adresse.",
+    "fine": "Ein Code pro Adresse. Deine Adresse wird nur kurz gelesen, nur um dir deinen Code über Proton AG (Schweiz) zu senden. Wir speichern sie nicht: Wir behalten nur einen mit einem geheimen Schlüssel berechneten Fingerabdruck (pseudonyme Daten), um zu prüfen, dass eine Adresse nur einen Code bekommt, längstens bis zum 31. Dezember 2026. Proton bewahrt die gesendete Nachricht auf, bis wir sie aus dem Postausgang löschen. Wegwerfadressen werden abgelehnt, und die Robotersperre legt nichts auf deinem Gerät ab. Rechtsgrundlagen: der Versand, um den du bittest (Art. 6 Abs. 1 lit. b DSGVO), und die Verhinderung von Missbrauch (Art. 6 Abs. 1 lit. f).",
     "privacy": "Datenschutz",
     "js": {
       "sending": "Wird gesendet…",
