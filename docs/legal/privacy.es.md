@@ -88,7 +88,10 @@ Con tu propio ordenador o tu propio servidor:
   familia o algunos miembros): lo que cada uno escribe ahí y sus respuestas son visibles para esos miembros, y recuerda
   lo que cada uno le dice. Los archivos y fotos que se le envían son visibles para esos miembros y se guardan 30 días
   en casa de quien lo creó. Puede hacer páginas, audios y rutinas: sus resultados llegan a la conversación común.
-  Nunca accede al correo, al calendario, a la salud ni al Cuaderno personal de nadie.
+  Nunca accede al correo, a la salud ni al Cuaderno personal de nadie. Solo lee el calendario de un miembro si este se
+  lo ha permitido (Ajustes › Calendario, o la página del agente): entonces lo pide al servidor de ese miembro en el
+  momento de responder, sin guardar copia en casa de quien lo creó, y sus respuestas son visibles para los miembros
+  de la conversación. Solo añade o cambia una cita si ese miembro también lo ha permitido.
 
 **Con la oferta todo incluido**, tu plaza ocupa el lugar de tu servidor, y Kerfy Studio elige el proveedor de
 alojamiento y el enrutador de IA: la sección 5 dice quién ve qué.

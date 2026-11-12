@@ -87,7 +87,10 @@ With your own computer or your own server:
   of them): what each of them writes there and its replies are visible to those members, and it remembers what each
   person tells it. Files and photos sent to it are visible to those members and kept for 30 days with its creator. It
   can make pages, audio and routines; their results arrive in the shared conversation. It never reaches anyone's mail,
-  calendar, health data or personal Carnet.
+  health data or personal Carnet. It reads a member's calendar only if that member allowed it (Settings › Calendar,
+  or the agent's page): it then asks that member's server at the moment it answers, keeps no copy with its creator,
+  and its replies are visible to the members of the conversation. It adds or changes an appointment only if that
+  member allowed that too.
 
 **With the all-included offer**, your place takes the place of your server, and Kerfy Studio chooses the hosting
 provider and the AI router: section 5 says who sees what.

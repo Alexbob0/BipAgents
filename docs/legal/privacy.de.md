@@ -92,8 +92,11 @@ Mit deinem eigenen Computer oder deinem eigenen Server:
   (die ganze Familie oder einige Mitglieder): Was jeder dort schreibt, und seine Antworten sind für diese Mitglieder
   sichtbar, und er merkt sich, was jeder ihm sagt. Dateien und Fotos, die man ihm schickt, sind für diese Mitglieder
   sichtbar und werden 30 Tage beim Ersteller aufbewahrt. Er kann Seiten, Audios und Routinen erstellen: Ihre Ergebnisse
-  erscheinen in der gemeinsamen Unterhaltung. Er greift nie auf die E-Mails, den Kalender, die Gesundheitsdaten oder
-  das persönliche Notizbuch von irgendjemandem zu.
+  erscheinen in der gemeinsamen Unterhaltung. Er greift nie auf die E-Mails, die Gesundheitsdaten oder das
+  persönliche Notizbuch von irgendjemandem zu. Den Kalender eines Mitglieds liest er nur, wenn dieses es ihm erlaubt
+  hat (Einstellungen › Kalender oder die Seite des Agenten): Er fragt dann im Moment der Antwort beim Server dieses
+  Mitglieds an, behält beim Ersteller keine Kopie, und seine Antworten sind für die Mitglieder der Unterhaltung
+  sichtbar. Einen Termin fügt er nur hinzu oder ändert ihn, wenn dieses Mitglied auch das erlaubt hat.
 
 **Mit dem Alles-inklusive-Angebot** tritt dein Platz an die Stelle deines Servers, und Kerfy Studio wählt den Hoster
 und den KI-Router: Abschnitt 5 sagt, wer was sieht.

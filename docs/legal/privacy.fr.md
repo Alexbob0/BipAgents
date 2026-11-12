@@ -91,7 +91,10 @@ Avec ton propre ordinateur ou ton propre serveur :
   famille ou certains membres) : ce que chacun y écrit et ses réponses sont visibles de ces membres, et il se souvient
   de ce que chacun lui dit. Les fichiers et photos qu'on lui envoie sont visibles de ces membres et gardés 30 jours chez
   celui qui l'a créé. Il peut faire des pages, des audios et des routines : leurs résultats arrivent dans la
-  conversation commune. Il n'accède jamais au courrier, à l'agenda, à la santé ni au Carnet personnel de personne.
+  conversation commune. Il n'accède jamais au courrier, à la santé ni au Carnet personnel de personne. Il ne lit l'agenda d'un membre
+  que si celui-ci le lui a permis (Réglages › Calendrier, ou la page de l'agent) : il le demande alors au serveur de
+  ce membre au moment de répondre, sans en garder de copie chez celui qui l'a créé, et ses réponses sont visibles des
+  membres de la conversation. Il n'y ajoute ou ne change un rendez-vous que si ce membre l'a aussi permis.
 
 **Avec l'offre tout compris**, ta place remplace ton serveur, et Kerfy Studio choisit l'hébergeur et le routeur d'IA :
 la section 5 dit qui voit quoi.
