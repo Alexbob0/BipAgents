@@ -62,16 +62,16 @@ const GUICHET_BODIES: &[&str] = &[
     "Ton mois offert finit bientôt : abonne-toi pour garder tes agents. Réglages › Offre tout compris.",
     // a conversation someone shows this person read-only (the guichet's read_shares.rs); the app names it itself
     "Nouveau message dans une conversation partagée",
-    // freed beta places (BipAgents-reprise/release-1112/place-idle-contract.md): `place_idle_soon` on day 5 without
-    // use, `place_parked` when the place is freed on day 7 (the apps translate them, fr/en/de/es/nl)
+    // freed beta places (BipAgents-reprise/release-1112/place-idle-contract-v2.md: « écrit », routines keep running):
+    // `place_idle_soon` on day 5 without use, `place_parked` when the place is freed on day 7 (the apps translate them)
     PLACE_IDLE_SOON,
     PLACE_PARKED,
 ];
 /// `place_idle_soon`: nobody used the place for 5 days.
 pub const PLACE_IDLE_SOON: &str =
-    "Tu n’as pas utilisé tes agents depuis 5 jours : ta place sera libérée dans 2 jours. Écris-leur pour la garder.";
+    "Tu n’as pas écrit à tes agents depuis 5 jours : ta place sera libérée dans 2 jours. Écris-leur, ou touche « Garder ma place ».";
 /// `place_parked`: the place was freed on day 7, its copy kept 30 days.
-pub const PLACE_PARKED: &str = "Ta place a été libérée : personne ne s’en est servi pendant 7 jours. Tes données sont gardées 30 jours : ouvre l’app pour la reprendre.";
+pub const PLACE_PARKED: &str = "Ta place a été libérée : personne n’a écrit à tes agents pendant 7 jours. Tes données sont gardées 30 jours : ouvre l’app pour la reprendre.";
 pub const MAX_PAYLOAD_BYTES: usize = 4096;
 /// The values the apps use; anything else is dropped (no « time-sensitive », no custom sound).
 const CATEGORIES: &[&str] = &["MESSAGE", "APPROVAL"];
@@ -311,7 +311,9 @@ mod tests {
             assert_eq!(scrub(&push, Audience::Bridge).unwrap()["aps"]["alert"]["body"], BRIDGE_FALLBACK);
         }
         // the contract's words, apostrophes typeset as the relay's other generic bodies
-        assert!(PLACE_IDLE_SOON.starts_with("Tu n’as pas utilisé tes agents depuis 5 jours"));
+        assert!(PLACE_IDLE_SOON.starts_with("Tu n’as pas écrit à tes agents depuis 5 jours"));
+        assert!(PLACE_IDLE_SOON.ends_with("Écris-leur, ou touche « Garder ma place »."));
+        assert!(PLACE_PARKED.starts_with("Ta place a été libérée : personne n’a écrit à tes agents pendant 7 jours."));
         assert!(PLACE_PARKED.ends_with("Tes données sont gardées 30 jours : ouvre l’app pour la reprendre."));
     }
 

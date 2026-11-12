@@ -104,6 +104,19 @@ def test_a_message_marks_the_place_used_reads_do_not(bridges, fakes):
     assert before <= int(used.read_text()) <= int(time.time())
 
 
+def test_keep_my_place_marks_the_place_used(bridges, fakes):
+    """« Garder ma place » (place-idle contract v2): 204, the use written at once, only with the bridge key."""
+    bridge, _thread = setup(bridges, fakes)
+    used = bridge.home / ".local/state/bipagents/used"
+    assert bridge.post("/v1/place/keep").status_code == 401
+    assert not used.exists()
+    before = int(time.time())
+    answer = bridge.post("/v1/place/keep", headers=AUTH)
+    assert answer.status_code == 204 and answer.content == b""
+    assert wait_until(used.exists)
+    assert before <= int(used.read_text()) <= int(time.time())
+
+
 def test_photos_and_documents_go_with_their_message(bridges, fakes):
     bridge, thread = setup(bridges, fakes)
     fakes.hermes.runs["r1"] = [sse("run.completed", run_id="r1", output="Vu.")]
