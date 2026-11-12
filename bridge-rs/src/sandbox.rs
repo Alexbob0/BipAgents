@@ -250,11 +250,17 @@ const CONTAINER_LABEL: &str = "container_file_t";
 /// there without a label: tools/environments/docker.py, `container_persistent`), made the containers' where SELinux
 /// enforces. Without it the sandbox can't write its own /workspace (« bash: …/workspace/.hermes-tmp.19: Permission
 /// denied », lab on aibox 11/11, the same podman as Alex's place). The folder itself and what is in it, once:
-/// what Hermes makes in it afterwards takes its label. Never fails the start: a refusal is logged.
+/// what Hermes makes in it afterwards takes its label. Never fails the start: a refusal is logged. Nothing at all
+/// (no folder made, no command run) where SELinux doesn't enforce: Debian, Ubuntu, macOS, a permissive host.
 pub async fn label_hermes_folders(profile: &Path, run: &Run) {
-    if std::fs::read_to_string(SELINUX_ENFORCE).map(|t| t.trim() == "1").unwrap_or(false) {
+    if enforcing(Path::new(SELINUX_ENFORCE)) {
         label_for_containers(&profile.join("sandboxes"), run).await;
     }
+}
+
+/// Whether the kernel's file says SELinux enforces (`1`); a missing file (no SELinux) or `0` (permissive): no.
+fn enforcing(file: &Path) -> bool {
+    std::fs::read_to_string(file).map(|t| t.trim() == "1").unwrap_or(false)
 }
 
 async fn label_for_containers(dir: &Path, run: &Run) {
@@ -1582,6 +1588,37 @@ pub fn tools_url(config: &Config) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn hermes_folders_are_labelled_only_where_selinux_enforces_and_once() {
+        use std::sync::{Arc, Mutex};
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("enforce");
+        assert!(!enforcing(&file), "no SELinux (Debian, Ubuntu, macOS)");
+        std::fs::write(&file, "0\n").unwrap();
+        assert!(!enforcing(&file), "permissive");
+        std::fs::write(&file, "1\n").unwrap();
+        assert!(enforcing(&file));
+        // the folder's label as `stat` gives it; each command the step runs
+        let seen: Arc<Mutex<Vec<Vec<String>>>> = Arc::default();
+        let label = Arc::new(Mutex::new("unconfined_u:object_r:user_home_t:s0\n".to_string()));
+        let (s, l) = (seen.clone(), label.clone());
+        let run: Run = Arc::new(move |args: Vec<String>, _env: BTreeMap<String, String>| {
+            s.lock().unwrap().push(args.clone());
+            let label = l.lock().unwrap().clone();
+            Box::pin(async move { Ok(if args[0] == "stat" { label } else { String::new() }) })
+        });
+        let sandboxes = dir.path().join("profiles/wellness/sandboxes");
+        label_for_containers(&sandboxes, &run).await;
+        let shown = sandboxes.to_string_lossy().to_string();
+        assert!(sandboxes.is_dir());
+        assert_eq!(seen.lock().unwrap().last().unwrap(), &args(&["chcon", "-R", "-t", "container_file_t", &shown]));
+        // labelled already: nothing more
+        *label.lock().unwrap() = "unconfined_u:object_r:container_file_t:s0\n".into();
+        seen.lock().unwrap().clear();
+        label_for_containers(&sandboxes, &run).await;
+        assert_eq!(*seen.lock().unwrap(), vec![args(&["stat", "-c", "%C", &shown])]);
+    }
 
     #[test]
     fn code_keys_join_and_leave_the_persons_own_approvals() {

@@ -1425,8 +1425,10 @@ fn section_lines(text: &str, name: &str) -> Vec<String> {
 /// never gives a profile the hub's backend (shares::terminal_backend), so such an agent ran its tools on this machine,
 /// as this account, while the bridge treated it as sandboxed. Wellness on Alex's place (moved in by hand on 13/10):
 /// « Failed to write file: Permission denied: /workspace » on 11/11, the bridge having sent it to /workspace/brouillons.
+/// Once: a profile that sets a backend of its own (docker, local, ssh…) is never touched, nor an existing Hermes the
+/// person brought (installer/bipinstall/existing.py: « no terminal is touched »).
 async fn sandbox_of_its_own(config: &Config, agent: &AgentConfig, folder: &Path, run: &Run) -> anyhow::Result<()> {
-    if crate::shares::own_terminal_backend(folder).is_some() {
+    if crate::shares::own_terminal_backend(folder).is_some() || crate::agent_restart::existing_hermes(config) {
         return Ok(());
     }
     let home = folder.parent().and_then(Path::parent).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
@@ -1459,7 +1461,9 @@ pub async fn mount_uploads(
         return Ok(agent.clone());
     }
     sandbox_of_its_own(&config, agent, &folder, run).await?;
-    crate::sandbox::label_hermes_folders(&folder, run).await;
+    if !crate::agent_restart::existing_hermes(&config) {
+        crate::sandbox::label_hermes_folders(&folder, run).await;
+    }
     if host.is_empty() {
         return Ok(agent.clone());
     }
