@@ -310,3 +310,38 @@ def test_the_familys_pages_audio_and_routines_are_everyones(bridges, fakes):
 
 def page_of(bridge, agent):
     return page(bridge, agent)
+
+
+def test_a_members_name_stays_until_her_household_is_unlinked(bridges, fakes):
+    """Taken out of the agent: her messages and first name stay. Her household unlinked from the family (what deleting
+    her account comes to on the creator's place): her messages stay, shown as « Ancien membre »."""
+    a, b, c = family(bridges, fakes)
+    make_family_agent(a)
+    discover(b, c)
+    fakes.hermes.rounds = 1000
+    fakes.hermes.runs["r1"] = [sse("run.started", run_id="r1"), sse("run.completed", run_id="r1", output="Noté.")]
+    fakes.hermes.runs["r2"] = [sse("run.started", run_id="r2"), sse("run.completed", run_id="r2", output="Bien sûr.")]
+    sent = b.post("/v1/threads/main/messages", headers=AUTH,
+                  json={"agent": "famille__alex", "client_id": "C0FFEE00-0000-4000-8000-0000000000E1", "text": "Du pain"})
+    assert sent.status_code == 200, sent.text
+    assert wait(lambda: "r1" in fakes.hermes.started and page(a, "famille")["pending"]["run"] is None, 20)
+    sent = c.post("/v1/threads/main/messages", headers=AUTH,
+                  json={"agent": "famille__alex", "client_id": "C0FFEE00-0000-4000-8000-0000000000E2", "text": "Du lait"})
+    assert sent.status_code == 200, sent.text
+    assert wait(lambda: "r2" in fakes.hermes.started and page(a, "famille")["pending"]["run"] is None, 20)
+    assert wait(lambda: people(page(a, "famille")).get("Du lait") is not None, 10), page(a, "famille")["items"]
+
+    # Marie taken out of the agent only: still linked, her name stays
+    only = a.put("/v1/family-agent/famille/members", headers=AUTH, json={"members": ["paul"]})
+    assert only.status_code == 200, only.text
+    shown = people(page(a, "famille"))
+    assert shown["Du pain"] == {"name": "Marie", "mine": False}
+    assert shown["Du lait"] == {"name": "Paul", "mine": False}
+
+    # Paul's household unlinked: his words stay, his name goes
+    assert a.delete("/v1/family/paul", headers=AUTH).status_code == 204
+    shown = people(page(a, "famille"))
+    # in the agent's language (this one's personality says none: English)
+    assert shown["Du lait"]["mine"] is False
+    assert shown["Du lait"]["name"] in ("Ancien membre", "Former member"), shown
+    assert shown["Du pain"] == {"name": "Marie", "mine": False}

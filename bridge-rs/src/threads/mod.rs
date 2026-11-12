@@ -1213,7 +1213,8 @@ async fn timeline_route(
     let mut items = threads.items(&agent, &thread, &segments).await.map_err(unavailable)?;
     if thread.kind == "main" && crate::family_thread::is_common(&state.config(), &agent.name) {
         // who wrote each message of the family's conversation, the frames taken off (family_thread.rs)
-        crate::family_thread::with_by(&mut items, crate::family_thread::CREATOR, &state.households.name());
+        let former = crate::family_thread::Former::of(&state.config(), &agent.name);
+        crate::family_thread::with_by(&mut items, crate::family_thread::CREATOR, &state.households.name(), &former);
     }
     // the day dividers where the phone is (`tz`, its IANA zone), else where the person said they live
     let zone =

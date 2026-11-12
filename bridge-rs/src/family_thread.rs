@@ -209,15 +209,59 @@ pub fn instructions_for(config: &Config, agent: &str, author: &Author) -> Option
 
 // -- the timelines ------------------------------------------------------------------------------------------------------
 
+/// Whose household is no longer linked to this place at all (unlinked: what deleting one's account comes to here, no
+/// other signal reaching this bridge): their messages stay, their first name shows as « Ancien membre ». A member
+/// only taken out of the agent is still linked: her name stays.
+pub struct Former {
+    /// The linked households (None: everyone counts as linked).
+    linked: Option<std::collections::HashSet<String>>,
+    label: &'static str,
+}
+
+impl Former {
+    pub fn of(config: &Config, agent: &str) -> Former {
+        let linked = crate::households::Households::new(&crate::households::path_for(config))
+            .public()
+            .iter()
+            .filter_map(|h| h.get("id").map(py::py_str))
+            .collect();
+        Former { linked: Some(linked), label: former_label(&crate::names::agent_language(config, agent)) }
+    }
+
+    /// Nobody gone (tests).
+    pub fn none() -> Former {
+        Former { linked: None, label: former_label("fr") }
+    }
+
+    /// The author as shown: a member whose household is unlinked becomes « Ancien membre »; the creator never.
+    pub fn shown(&self, mut author: Author) -> Author {
+        let gone = !author.is_creator() && self.linked.as_ref().is_some_and(|l| !l.contains(&author.household));
+        if gone {
+            author.name = self.label.to_string();
+        }
+        author
+    }
+}
+
+/// « Ancien membre » in the agent's language.
+pub fn former_label(lang: &str) -> &'static str {
+    match lang {
+        "en" => "Former member",
+        "de" => "Ehemaliges Mitglied",
+        "es" => "Antiguo miembro",
+        _ => "Ancien membre",
+    }
+}
+
 /// The person items' frames taken off, `by` relative to `viewer` (a household, `CREATOR` for the creator); words
-/// without a frame are the creator's (written before 12/11, or a Live call's).
-pub fn with_by(items: &mut [Item], viewer: &str, creator: &str) {
+/// without a frame are the creator's (written before 12/11, or a Live call's). `former`: who no longer is linked.
+pub fn with_by(items: &mut [Item], viewer: &str, creator: &str, former: &Former) {
     for item in items.iter_mut() {
         if item.kind() != "message" || item.body.get("role") != Some(&json!("person")) {
             continue;
         }
         let (author, words) = match unframe(item.text()) {
-            Some((author, words)) => (author, words),
+            Some((author, words)) => (former.shown(author), words),
             None => (Author::creator(creator), item.text().to_string()),
         };
         item.body.insert("text".into(), json!(words.trim()));
@@ -268,7 +312,8 @@ pub fn own_urls(agent: &str, answer: &mut Value) {
 
 /// `by` on what waits in a timeline answer: the turn going on, its approvals and questions (only its writer answers).
 pub fn pending_by(config: &Config, agent: &str, creator: &str, viewer: &str, pending: &mut Value) {
-    let by = |run: &str| author_of(config, agent, run, creator).by_of(viewer);
+    let former = Former::of(config, agent);
+    let by = |run: &str| former.shown(author_of(config, agent, run, creator)).by_of(viewer);
     if let Some(run) = pending.get_mut("run").filter(|r| r.is_object()) {
         let id = str_of(run, "run_id");
         run["by"] = by(&id);
@@ -303,7 +348,7 @@ pub async fn member_timeline(state: &AppState, agent: &AgentConfig, household: &
         // its routines' reports too (Boîte messages delivered here, routines.rs): everyone's
         .filter(|i| matches!(i.kind(), "message" | "notice" | "call" | "boite"))
         .collect();
-    with_by(&mut items, household, &creator);
+    with_by(&mut items, household, &creator, &Former::of(&config, &agent.name));
     for item in items.iter_mut() {
         let files = pooled_attachments(&config, &agent.name, item.body.remove("attachments"));
         if !files.is_empty() {
@@ -709,14 +754,31 @@ mod tests {
     fn each_person_item_says_who_wrote_it_mine_for_the_viewer() {
         let marie = Author { household: "marie".into(), name: "Marie".into() };
         let mut items = vec![person(&framed(&marie, "Coucou")), person("Avant le 12/11"), person(&framed(&Author::creator("Alex"), "Salut"))];
-        with_by(&mut items, "marie", "Alex");
+        with_by(&mut items, "marie", "Alex", &Former::none());
         assert_eq!(items[0].body["by"], json!({"name": "Marie", "mine": true}));
         assert_eq!(items[0].body["text"], "Coucou");
         assert_eq!(items[1].body["by"], json!({"name": "Alex", "mine": false}));
         assert_eq!(items[2].body["by"], json!({"name": "Alex", "mine": false}));
         let mut items = vec![person(&framed(&marie, "Coucou")), person("Avant")];
-        with_by(&mut items, CREATOR, "Alex");
+        with_by(&mut items, CREATOR, "Alex", &Former::none());
         assert_eq!(items[0].body["by"]["mine"], false);
         assert_eq!(items[1].body["by"]["mine"], true);
+    }
+
+    #[test]
+    fn an_unlinked_members_messages_stay_under_former_member() {
+        let marie = Author { household: "marie".into(), name: "Marie".into() };
+        let lea = Author { household: "lea".into(), name: "Léa".into() };
+        let former = Former { linked: Some(["lea".to_string()].into()), label: former_label("fr") };
+        let mut items = vec![person(&framed(&marie, "Coucou")), person(&framed(&lea, "Salut")),
+                             person(&framed(&Author::creator("Alex"), "Bonjour"))];
+        with_by(&mut items, CREATOR, "Alex", &former);
+        assert_eq!(items[0].body["by"], json!({"name": "Ancien membre", "mine": false}));
+        assert_eq!(items[0].body["text"], "Coucou", "her words stay");
+        assert_eq!(items[1].body["by"]["name"], "Léa");
+        assert_eq!(items[2].body["by"]["name"], "Alex");
+        assert_eq!(former_label("en"), "Former member");
+        assert_eq!(former_label("de"), "Ehemaliges Mitglied");
+        assert_eq!(former_label("es"), "Antiguo miembro");
     }
 }
