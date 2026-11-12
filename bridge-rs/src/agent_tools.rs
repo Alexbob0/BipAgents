@@ -416,7 +416,7 @@ pub fn tools_for_at(config: &Config, agent: &AgentConfig, offer: bool) -> Vec<Va
 
 fn own_tools(config: &Config, agent: &AgentConfig, offer: bool) -> Vec<Value> {
     if crate::family_agent::is_family(config, &agent.name) {
-        return crate::family_agent::tools(config); // nobody's private data (family_agent.rs)
+        return crate::family_agent::tools(config, &agent.name); // nobody's private data (family_agent.rs)
     }
     if crate::project_agent::is_project(config, &agent.name) {
         return crate::project_agent::tools(config); // shown to friends: nobody's private data (project_agent.rs)
@@ -2009,7 +2009,9 @@ async fn mcp(
     let name = crate::tool_diet::reroute(&state.config(), &agent, &name, &arguments);
     if crate::family_agent::is_family(&state.config(), &agent.name) {
         // the family's agent: only the family's tools, in every turn, its creator's too (family_agent.rs)
-        if let Some(closed) = crate::family_agent::closed_tool(&name) {
+        // the calendars family members share with it are answered below, once whose turn it is is known
+        let calendar = crate::calendar::TOOL_NAMES.contains(&name.as_str());
+        if let Some(closed) = crate::family_agent::closed_tool(&name).filter(|_| !calendar) {
             tracing::info!(agent = %agent.name, tool = %name, "tool closed for the family's agent");
             return Ok(answer(closed));
         }
@@ -2199,6 +2201,13 @@ async fn mcp(
                 crate::loop_brake::add_note(&mut result, &crate::approval_level::told(&auto));
             }
         }
+        wrote(&agent.name, &name, &arguments, &mut result);
+        return Ok(answer(result));
+    }
+    if family && crate::calendar::TOOL_NAMES.contains(&name.as_str()) {
+        // the calendars its members chose to share with it, each asked on her own place (family_calendar.rs); `who`
+        // defaults to the person writing in this turn (the creator's, a routine's: None)
+        let mut result = crate::family_calendar::call(&state, &agent, &name, &arguments, member.as_ref()).await?;
         wrote(&agent.name, &name, &arguments, &mut result);
         return Ok(answer(result));
     }
@@ -2452,7 +2461,7 @@ mod tests {
         tools.push(crate::skill_library::tool());
         tools.extend(crate::heavy_work::tools());
         tools.push(crate::phone_exit::agent::tool());
-        tools.extend(crate::family_agent::tools(&config));
+        tools.extend(crate::family_agent::tools(&config, &agent.name));
         tools.extend(crate::project_agent::tools(&config));
         tools.extend(crate::sandbox::tools());
         tools.extend(crate::card_pay::tools());

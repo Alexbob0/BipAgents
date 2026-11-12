@@ -16,6 +16,9 @@
 //! source, and written there directly when `calendar_add` names one of them.
 //! The tools are listed only for the agents allowed (as `health`): the tools' entry of an agent changes when it is
 //! allowed or not, so its Hermes fetches the list again.
+//! The family agents the person is in (`<agent>__<household>`, living on their creator's place) may be allowed too,
+//! with the same rights: their creator's bridge asks this one at each use, and gets only what these tools would show
+//! them (family_calendar.rs).
 //!
 //! App routes (the bridge key):
 //!
@@ -147,6 +150,22 @@ pub fn reads(config: &Config, agent: &str) -> bool {
     let data = read(config);
     tk::py_in(agent, data.get("agents").unwrap_or(&json!([])))
         && crate::phone_rights::allows(&data, agent, crate::phone_rights::READ)
+}
+
+/// Whether `agent` may add, change or delete the phone's events (allowed, and the person didn't take it back).
+pub fn writes(config: &Config, agent: &str) -> bool {
+    let data = read(config);
+    tk::py_in(agent, data.get("agents").unwrap_or(&json!([])))
+        && crate::phone_rights::allows(&data, agent, crate::phone_rights::WRITE)
+}
+
+/// An agent the person may offer the calendar to: one of this place's (its name), or a family agent she is in
+/// (`<agent>__<household>`, family_calendar.rs).
+fn chosen(config: &Config, given: &str) -> Option<String> {
+    match config.agent(Some(given)) {
+        Some(agent) => Some(agent.name.clone()),
+        None => crate::family_calendar::is_member_agent(config, given).then(|| given.to_string()),
+    }
 }
 
 /// « 12 min », « 3 h », « 2 days ».
@@ -865,10 +884,10 @@ async fn set_agents(State(state): State<AppState>, Json(body): Json<Agents>) -> 
     let config = state.config();
     let mut names: Vec<String> = Vec::new();
     for a in &body.agents {
-        match config.agent(Some(a)) {
-            Some(agent) => {
-                if !names.contains(&agent.name) {
-                    names.push(agent.name.clone())
+        match chosen(&config, a) {
+            Some(name) => {
+                if !names.contains(&name) {
+                    names.push(name)
                 }
             }
             None => return Err(HttpError::new(400, "unknown agent")),
@@ -883,13 +902,26 @@ async fn set_agents(State(state): State<AppState>, Json(body): Json<Agents>) -> 
             _ => Vec::<String>::new(),
         };
         set_agents_in(&mut data, &names);
+        // a family agent picked for the first time reads only: changing her events is a choice of its own (others in
+        // the family may ask it), given in her picker (family_calendar.rs)
+        let family = |n: &String| n.contains(crate::households::SEPARATOR) || crate::family_agent::is_family(&config_c, n);
+        for name in names.iter().filter(|n| family(n) && !before.contains(n)) {
+            if data.get("rights").and_then(|r| r.get(name)).is_none() {
+                let only_read: std::collections::BTreeMap<String, bool> = [(phone_rights::WRITE.to_string(), false)].into();
+                phone_rights::set(&mut data, name, &phone_rights::CALENDAR, &only_read);
+            }
+        }
         write(&config_c, &data)?;
         Ok((before, names))
     })
     .await?;
     // The agents allowed or no longer: their tools' entry changes (the calendar's tools listed or not).
     let run = crate::agents_admin::default_run();
-    for name in agents.iter().filter(|a| !before.contains(a)).chain(before.iter().filter(|a| !agents.contains(a))) {
+    let changed: Vec<String> =
+        agents.iter().filter(|a| !before.contains(a)).chain(before.iter().filter(|a| !agents.contains(a))).cloned().collect();
+    // a family agent's creator told at once what this person allows it now (family_calendar.rs)
+    crate::family_calendar::tell_owners(&state, &changed);
+    for name in &changed {
         if let Some(agent) = config.agent(Some(name)) {
             if let Err(exc) = crate::agent_tools::register(&config, agent, &run).await {
                 tracing::warn!(agent = %agent.name, error = %exc, "agent tools not registered");
@@ -903,25 +935,33 @@ async fn set_agents(State(state): State<AppState>, Json(body): Json<Agents>) -> 
 /// no longer change it, and its tools' entry follows (meet.rs's tool needs reading).
 async fn set_rights(State(state): State<AppState>, Json(body): Json<Rights>) -> ApiResult<Response> {
     let config = state.config();
-    let Some(agent) = config.agent(Some(&body.agent)).cloned() else {
+    let Some(name) = chosen(&config, &body.agent) else {
         return Err(HttpError::new(400, "unknown agent"));
     };
-    let (config_c, name) = (config.clone(), agent.name.clone());
+    let agent = config.agent(Some(&name)).cloned();
+    let config_c = config.clone();
+    let name_c = name.clone();
     let rights = blocking(move || {
         let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut data = read(&config_c);
-        let (rights, stopped) = phone_rights::set(&mut data, &name, &phone_rights::CALENDAR, &body.rights);
+        let (rights, stopped) = phone_rights::set(&mut data, &name_c, &phone_rights::CALENDAR, &body.rights);
         if stopped {
-            crate::phone_rights::cancel_requests(&mut data, &name);
+            crate::phone_rights::cancel_requests(&mut data, &name_c);
         }
         write(&config_c, &data)?;
         Ok(rights)
     })
     .await?;
-    if let Err(exc) = crate::agent_tools::register(&config, &agent, &crate::agents_admin::default_run()).await {
-        tracing::warn!(agent = %agent.name, error = %exc, "agent tools not registered");
+    match &agent {
+        Some(agent) => {
+            if let Err(exc) = crate::agent_tools::register(&config, agent, &crate::agents_admin::default_run()).await {
+                tracing::warn!(agent = %agent.name, error = %exc, "agent tools not registered");
+            }
+        }
+        // a family agent: its creator's bridge told (family_calendar.rs)
+        None => crate::family_calendar::tell_owners(&state, std::slice::from_ref(&name)),
     }
-    Ok(web::ok(json!({"agent": agent.name, "rights": rights})))
+    Ok(web::ok(json!({"agent": name, "rights": rights})))
 }
 
 async fn queue(State(state): State<AppState>) -> ApiResult<Response> {

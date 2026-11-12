@@ -102,6 +102,8 @@ pub mod dates;
 pub mod device_keys;
 pub mod door_tls;
 pub mod family_agent;
+/// The family agent and its members' calendars, each on her own place (no Python counterpart).
+pub mod family_calendar;
 /// « L'agent de projet »: an agent for one occasion whose thread friends follow (no Python counterpart).
 pub mod friends_cards; // friends tap a shared project's votes and checklists
 pub mod shared_expenses; // a shared project's account: who paid what, balances, the fewest transfers

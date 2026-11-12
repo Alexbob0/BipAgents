@@ -1200,14 +1200,26 @@ pub fn receive_offer(config: &Config, household: &str, body: &Dict) -> ApiResult
 /// The family's agent of `household` is gone (it answered it has none, or handed it over).
 /// The family agents of `household` this person is in are only `kept` now (none: it has none for her, or handed it
 /// over): the others go.
+/// Her calendar isn't offered to those any more (family_calendar.rs; their creator's place stops at once).
 pub fn drop_family_offers(config: &Config, household: &str, kept: &[String]) {
-    let _ = update(&mine_path(config), |data| {
-        object_mut(data, "agents").retain(|_, a| {
-            !(str_of(a, "household") == household
-                && a.get("family").is_some_and(py::truthy)
-                && !kept.contains(&str_of(a, "agent")))
-        });
-    });
+    let gone = update(&mine_path(config), |data| {
+        let agents = object_mut(data, "agents");
+        let gone: Vec<String> = agents
+            .iter()
+            .filter(|(_, a)| {
+                str_of(a, "household") == household
+                    && a.get("family").is_some_and(py::truthy)
+                    && !kept.contains(&str_of(a, "agent"))
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        agents.retain(|id, _| !gone.contains(id));
+        gone
+    })
+    .unwrap_or_default();
+    for id in gone {
+        crate::calendar::forget(config, &id);
+    }
 }
 
 /// The person opened the family's agent: no « Nouveau » card any more.
@@ -1411,6 +1423,8 @@ async fn drop_mine(State(state): State<AppState>, UrlPath(id): UrlPath<String>) 
     mine(&config, &id, false)?;
     // the files she sent it go with her (shared_files.rs): asked of its owner's bridge while she still may
     crate::shared_files::forget_mine(&state, &id).await;
+    // a family agent: her calendar isn't offered to it any more, its creator's place told (family_calendar.rs)
+    crate::family_calendar::left(&state, &id);
     update(&mine_path(&config), |data| {
         object_mut(data, "agents").shift_remove(&id);
     })?;
