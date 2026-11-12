@@ -444,11 +444,6 @@ fn own_tools(config: &Config, agent: &AgentConfig, offer: bool) -> Vec<Value> {
     if crate::agent_files::offered(config, &agent.name) {
         tools.push(crate::agent_files::tool());
     }
-    // shared with a relative: the files she sends, read in her own turns (shared_files.rs; behind the tool search in
-    // the owner's, in view in hers: patch 0018)
-    if !crate::agent_shares::shared_with(config, &agent.name).is_empty() {
-        tools.push(crate::shared_files::tool());
-    }
     if crate::agent_messages::offered(config, &agent.name) {
         tools.push(crate::agent_messages::tool()); // in any conversation, not only its Bot Chat (agent_messages.rs)
     }

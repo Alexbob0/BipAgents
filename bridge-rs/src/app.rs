@@ -318,6 +318,7 @@ impl AppState {
         // an agent's Hermes restarted when there is a reason, once idle (agent_restart.rs)
         self.spawn(crate::agent_restart::run_forever(self.clone()));
         self.spawn(crate::own_space::tidy_at_start(self.clone())); // others-facing agents left in the hub: out, once
+        self.spawn(crate::agent_shares::drop_relative_conversations(self.clone())); // personal shares read-only (12/11)
         self.spawn(crate::phone_exit::serve(self.clone())); // the phone exit's socket for the agents' proxy (off by default)
         if self.sleep.enabled() {
             // a server of the offer: the guichet's seat agent reads whether a run goes on (runs.rs BUSY_MARKER)
@@ -872,10 +873,13 @@ async fn get_outbox_audio(
 async fn get_media(State(state): State<AppState>, q: QueryMap, headers: HeaderMap) -> ApiResult<Response> {
     let path = web::query_str(&q, "path", true, Some(1024))?.unwrap_or_default();
     let agent = web::query_str(&q, "agent", false, Some(64))?.filter(|a| !a.is_empty());
-    // a page a relative's shared agent made at this person's request: from its owner's bridge (agent_shares.rs)
-    if let Some(answer) = crate::agent_shares::relay_page(&state, &path).await {
-        return answer;
-    }
+    media_file(&state, &path, agent, &headers).await
+}
+
+/// The file `/v1/media` serves for `path` (of agent `agent`): also what a relative opens of a personal agent shared
+/// with her, once agent_feed.rs found it in a message she may read.
+pub async fn media_file(state: &AppState, path: &str, agent: Option<String>, headers: &HeaderMap) -> ApiResult<Response> {
+    let path = path.to_string();
     let config = state.config();
     let host = match crate::agent_tools::served_media(&config, &path) {
         Some(host) => host,
@@ -929,7 +933,7 @@ async fn get_media(State(state): State<AppState>, q: QueryMap, headers: HeaderMa
         extra.push(("content-security-policy", "sandbox; default-src 'none'".into()));
     }
     let media_type = crate::media::content_type(&host);
-    Ok(web::file_response(&host, &media_type, Some(&py::basename(&host)), &extra, &headers).await)
+    Ok(web::file_response(&host, &media_type, Some(&py::basename(&host)), &extra, headers).await)
 }
 
 /// The pages an agent made (each one's `path` is for `/v1/media`), the last changed first.

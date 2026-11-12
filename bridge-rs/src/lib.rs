@@ -85,6 +85,7 @@ pub mod voices;
 pub mod agent_groups;
 pub mod agent_notify;
 pub mod msg_queue;
+pub mod agent_feed;
 pub mod agent_shares;
 pub mod read_shares;
 pub mod templates;

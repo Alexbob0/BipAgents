@@ -115,13 +115,16 @@ def test_j34_two_households_linked_see_each_other(homes):
     assert names.get("cuisine__alex") == "Cuisine (Alex)" and names.get("vie__alex") == "Vie (Alex)", names
 
 
-def test_j35_an_agent_shared_with_a_relative_each_their_own_conversation(homes):
-    """Alex shares Cuisine with Marie: « Alex partage Cuisine avec toi » on her side, « Ajouter », then her own
-    conversation with it (her words, its reply, word by word through her bridge); on Alex's side only how many
-    messages she wrote, never her words."""
+def test_j35_an_agent_shared_with_a_relative_she_reads_it(homes):
+    """Alex shares Cuisine with Marie, once he confirmed what she will read (« Tes proches pourront lire… »): « Alex
+    partage Cuisine avec toi » on her side, « Ajouter », then she reads Alex's conversation with it from then on (his
+    words, its reply, through her bridge), « Nouveau » until she opened it, and can't write to it (Alex 12/11)."""
     a, b = homes.alex, homes.marie
+    asked = a.put("/v1/agents/cuisine/shares", headers=AUTH, json={"households": ["marie"]})
+    assert asked.status_code == 409 and "pourront lire" in asked.json()["detail"], asked.text
     shared = a.put("/v1/agents/cuisine/shares", headers=AUTH, json={"households": ["marie"], "confirmed": True})
     assert shared.status_code == 200, shared.text
+    assert shared.json()["households"][0]["history"] == "from_now", shared.json()
     offered = b.get("/v1/shared-agents", headers=AUTH).json()["agents"]
     assert not shown.shared_agent_problems(offered, "Alex", "Cuisine", "offered"), offered
     assert b.post("/v1/shared-agents/cuisine__alex/add", headers=AUTH).status_code == 200
@@ -129,30 +132,21 @@ def test_j35_an_agent_shared_with_a_relative_each_their_own_conversation(homes):
     assert not shown.shared_agent_problems(added, "Alex", "Cuisine", "added"), added
 
     words = "Une idée de dîner pour ce soir ?"
-    sent = send(b, "new", "cuisine__alex", words, client_id="C0FFEE00-0000-4000-8000-000000000035")
-    assert sent.status_code == 200 and sent.json()["state"] == "started", sent.text
-    thread = sent.json()["thread"]
-    first = thread_page(b, thread, "cuisine__alex")
-    assert [i["text"] for i in first["items"] if i.get("role") == "person"] == [words], first["items"]
-    page = reply_in(b, thread, "cuisine__alex", "Bien reçu")
-    displayable.check(b, page, "cuisine__alex")
-    mine = [i for i in page["items"] if i.get("role") == "person"]
-    assert [i["text"] for i in mine] == [words] and mine[0].get("client_id") == "C0FFEE00-0000-4000-8000-000000000035"
-    assert [i for i in page["items"] if i.get("role") == "agent" and "Bien reçu" in i["text"]]
-
-    # Alex: Cuisine's page says Marie has her conversations, how many messages, never what she wrote
-    view = a.get("/v1/agents/cuisine/shares", headers=AUTH).json()
-    assert view["households"] == [{"id": "marie", "name": "Marie", "shared": True}], view
-    assert wait_until(lambda: (a.get("/v1/agents/cuisine/shares", headers=AUTH).json()["conversations"] or [{}])[0]
-                      .get("messages", 0) >= 1, timeout=15), a.get("/v1/agents/cuisine/shares", headers=AUTH).json()
-    # what Alex's app draws: « avec Marie · N messages » (AgentFamilyShareView.swift, FamilyShares.kt); the view has
-    # no `title` (her conversation's is her first words): who, when and how many only (agent_shares.rs)
-    seen = a.get("/v1/agents/cuisine/shares", headers=AUTH).json()
-    [row] = seen["conversations"]
-    assert row["household_name"] == "Marie" and isinstance(row["messages"], int) and row["messages"] >= 1, row
-    assert "title" not in row and words not in str(seen) and "Une idée" not in str(seen), seen
     main = a.get("/v1/threads/main", headers=AUTH, params={"agent": "cuisine"}).json()["id"]
-    assert words not in str(thread_page(a, main, "cuisine")["items"]), "Marie's words show in Alex's conversation"
+    sent = send(a, main, "cuisine", words, client_id="C0FFEE00-0000-4000-8000-000000000035")
+    assert sent.status_code == 200 and sent.json()["state"] == "started", sent.text
+    reply_in(a, main, "cuisine", "Bien reçu")
+    [listed] = b.get("/v1/threads", headers=AUTH, params={"agent": "cuisine__alex"}).json()["threads"]
+    assert listed["id"] == main and listed["new"] is True, listed
+    assert [x["new"] for x in b.get("/v1/shared-agents", headers=AUTH).json()["agents"]] == [True]
+    page = reply_in(b, "main", "cuisine__alex", "Bien reçu")
+    displayable.check(b, page, "cuisine__alex")
+    assert page["thread"]["read_only"] is True and page["thread"]["id"] == main
+    assert [i["text"] for i in page["items"] if i.get("role") == "person"] == [words], page["items"]
+    assert not any(i.get("client_id") for i in page["items"]), "Alex's app ids stay on his side"
+    refused = send(b, "main", "cuisine__alex", "Moi aussi !")
+    assert refused.status_code == 403 and refused.json()["code"] == "shared_read_only", refused.text
+    assert b.get("/v1/threads", headers=AUTH, params={"agent": "cuisine__alex"}).json()["threads"][0]["new"] is False
 
 
 def test_j36_telling_the_family_waits_for_the_persons_send(homes):

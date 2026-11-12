@@ -263,9 +263,10 @@ pub fn forget_households(config: &Config, agent: &str, gone: &[String]) {
     }
 }
 
-/// Whether `agent` keeps a pool: shared with at least one household (the family's agent always).
+/// Whether `agent` keeps a pool: the family's agent only. A personal agent shared with relatives is read-only for
+/// them (agent_feed.rs): its files are in its owner's conversations, which they read.
 pub fn pooled(config: &Config, agent: &str) -> bool {
-    !shares::shared_with(config, agent).is_empty()
+    crate::family_agent::is_family(config, agent)
 }
 
 // -- writing ------------------------------------------------------------------------------------------------------
@@ -329,7 +330,7 @@ async fn served_upload(
     q: web::QueryMap,
     body: Body,
 ) -> ApiResult<Response> {
-    let (household, agent) = shares::shared_agent(&state, &headers, &agent)?;
+    let (household, agent) = shares::talking_agent(&state, &headers, &agent)?; // the family's agent only
     let config = state.config();
     let c = shares::conversation(&config, &household, &agent.name, &cid)?;
     if let Err(full) = crate::place_backup::refuse_when_full().await {

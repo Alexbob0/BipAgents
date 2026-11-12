@@ -81,14 +81,20 @@ Mit deinem eigenen Computer oder deinem eigenen Server:
   (Abschnitt 5.10).
 - **Mehrere Personen auf einem Server** (Familienfunktion): Jede Person hat ihre eigene Installation, getrennt von den
   anderen. Wer den Server verwaltet, ist den anderen gegenüber dafür verantwortlich.
-- **Geteilte Agenten** (ein Agent, den ein Angehöriger mit dir teilt oder den du mit deinen Angehörigen teilst, auch der
-  Familienagent) laufen bei der Person, die sie erstellt hat. Die Dateien und Fotos, die man ihnen schickt, werden auf
-  ihrem Server (oder ihrem Platz) aufbewahrt und sind für alle sichtbar, die den Agenten nutzen, sie selbst
+- **Ein persönlicher Agent, den du mit deinen Angehörigen teilst**: Sie können deine Unterhaltungen mit ihm lesen
+  (deine Nachrichten, seine Antworten, die Fotos, Dateien, Seiten und Karten), ab dem Moment, in dem du ihn teilst,
+  oder auf Wunsch auch die früheren. Sie können ihm weder schreiben noch etwas fragen und sehen sein Gedächtnis nicht.
+  Was der Agent in diesen Unterhaltungen mit seinen Werkzeugen (E-Mail, Kalender, Gesundheit, Kontakte, Notizbuch…)
+  liest oder schreibt, wird für sie sichtbar: Die App erinnert dich vor dem Teilen daran. Du kannst diese Wahl ändern
+  oder das Teilen jederzeit beenden; danach haben sie keinen Zugriff mehr. Dasselbe gilt für einen Agenten, den ein
+  Angehöriger mit dir teilt.
+- **Der Familienagent** läuft bei der Person, die ihn erstellt hat. Die Dateien und Fotos, die man ihm schickt, werden
+  auf ihrem Server (oder ihrem Platz) aufbewahrt und sind für alle sichtbar, die den Agenten nutzen, sie selbst
   eingeschlossen, mit dem Vornamen dessen, der sie geschickt hat; der Agent kann sie nutzen, wann immer einer von ihnen
   ihm schreibt. Die Nachrichten bleiben in der Unterhaltung jedes Einzelnen. Bei einem gescannten Dokument ohne Text
   erkennt dein Telefon den Text (auf dem Gerät) und schickt ihn mit der Datei. Dein eigener Server behält eine Datei
   nur, solange sie gesendet wird. Die Dateien werden gelöscht, wenn der Absender sie löscht, den Agenten nicht mehr
-  nutzt oder sein Haushalt die Familie verlässt, wenn der Agent nicht mehr geteilt oder gelöscht wird, und spätestens
+  nutzt oder sein Haushalt die Familie verlässt, wenn der Agent gelöscht wird, und spätestens
   nach der Frist, die auf diesem Server für Dateien gewählt ist (standardmäßig 30 Tage). Wie bei allem, was über diesen
   Server läuft, kann die Person, die ihn verwaltet, technisch darauf zugreifen.
 
@@ -908,7 +914,7 @@ des Guichets und des Relays: OVHcloud, in Frankreich. Hoster der Sicherungen: Sc
 | Fingerabdruck des Android-Geräts, mit einem geheimen Schlüssel gehasht (kostenlose Woche) | 24 Monate nach der ersten Markierung des Telefons; getrennt vom Konto aufbewahrt, nicht mit ihm gelöscht |
 | Einladung einer Familienverbindung | 7 Tage oder bis zur Antwort |
 | Teilen zum Lesen (verschlüsselte Kopie, eingeladene Personen) | Bis zum Enddatum, bis zum Beenden oder bis zur Löschung des Kontos |
-| Dateien, die an einen geteilten Agenten gesendet werden | Auf dem Server der Person, die ihn erstellt hat, bis der Absender sie löscht, den Agenten nicht mehr nutzt oder die Familie verlässt, oder der Agent nicht mehr geteilt wird; spätestens die dort für Dateien gewählte Frist (standardmäßig 30 Tage) |
+| Dateien, die an den Familienagenten gesendet werden | Auf dem Server der Person, die ihn erstellt hat, bis der Absender sie löscht, den Agenten nicht mehr nutzt oder die Familie verlässt, oder der Agent gelöscht wird; spätestens die dort für Dateien gewählte Frist (standardmäßig 30 Tage) |
 | Kampagnenname (Abschnitt 5.11) | 13 Monate nach der Aufzeichnung, oder mit dem Konto oder dem Abo |
 | IP-Adresse bei der Reservierung einer kostenlosen Woche | Nie im Klartext gespeichert; im Arbeitsspeicher, als Fingerabdruck, höchstens 15 Minuten |
 | Fingerabdruck der IP-Adresse (Beta-Codes, Kündigungsseite der Website, Meldungen geteilter Agenten) | Höchstens 2 Tage; bis zu 30 Tage in den verschlüsselten Kopien der Datenbank |

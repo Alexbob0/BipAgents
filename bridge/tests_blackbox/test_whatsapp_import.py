@@ -164,7 +164,8 @@ def test_an_agent_shared_with_a_relative_never_takes_a_chat(bridges, fakes):
     a = household(bridges, fakes, "alex", ["cuisine"])
     b = household(bridges, fakes, "marie", ["vie"])
     link(a, b)
-    assert a.put("/v1/agents/cuisine/shares", headers=AUTH, json={"households": ["marie"]}).status_code == 200
+    shared = a.put("/v1/agents/cuisine/shares", headers=AUTH, json={"households": ["marie"], "confirmed": True})
+    assert shared.status_code == 200, shared.text
     refused = parse(a, FIRST, agent="cuisine")
     assert refused.status_code == 409 and refused.json()["reason"] == "shared"
     applied = a.post("/v1/import/whatsapp/apply", headers=AUTH, json={"agent": "cuisine", "upload": "0" * 24})

@@ -12,9 +12,16 @@ import threading
 import zipfile
 from io import BytesIO
 
+import pytest
+
 from bbkit.common import AUTH, sse
 from bbkit.mcp import TOKEN, call, give_token, rpc, text_of
 from test_shared_agents import link, wait
+
+# A personal agent shared with relatives is read-only since 12/11 (agent_feed.rs): relatives send it no file, and the
+# pool is the family agent's only. These journeys move to the family agent with its common conversation
+# (family-common-thread); `tiny_pdf` stays for serve_journeys_people.py.
+pytestmark = pytest.mark.skip(reason="personal shares read-only (12/11): to port to the family agent")
 
 PHOTO = base64.b64decode("/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP////////////////////////////////////////////////////////////"
                          "//////////////////////////2wBDAf//////////////////////////////////////////////////////////////"

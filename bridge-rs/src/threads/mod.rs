@@ -961,8 +961,15 @@ async fn list(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response>
         return relayed;
     }
     let agent = agent_param(&state, &q)?.ok_or_else(|| HttpError::new(422, "agent is required"))?;
-    let threads = threads_of(&state);
     let include_hidden = q.get("include_hidden").is_some_and(|v| v == "1" || v == "true");
+    Ok(web::ok(json!({"threads": listed(&state, &agent, include_hidden).await?})))
+}
+
+/// The agent's conversations as `GET /v1/threads` lists them (the main one first, then the last active), each with
+/// its tip, `last_active` and `unread`; also what a relative reads of a personal shared agent (agent_feed.rs).
+pub async fn listed(state: &AppState, agent: &AgentConfig, include_hidden: bool) -> ApiResult<Vec<Value>> {
+    let agent = agent.clone();
+    let threads = threads_of(state);
     let main = threads.main(&agent).await.map_err(unavailable)?;
     // every session Hermes keeps (not only the last 200): each root one is a thread (adopted at first sight)
     let sessions = threads.source(&agent).all_sessions().await.map_err(unavailable)?;
@@ -998,7 +1005,7 @@ async fn list(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response>
         v["unread"] = json!(crate::notifications::unread_in(&threads.store, &t.id).await.unwrap_or(0));
         out.push(v);
     }
-    Ok(web::ok(json!({"threads": out})))
+    Ok(out)
 }
 
 async fn one(State(state): State<AppState>, UrlPath(id): UrlPath<String>, q: QueryMap) -> ApiResult<Response> {
@@ -1191,6 +1198,42 @@ async fn timeline_route(
     let mut answer = page.answer(out_thread, thread.version, pending, q.get("debug").is_some_and(|d| d == "1"));
     answer["layout"] = json!({"open": open});
     Ok(web::ok(answer))
+}
+
+/// The page a relative reads of a personal agent shared with her (agent_feed.rs): the conversation's items `keep`
+/// takes (the owner's words and the agent's replies since the share), laid out as `timeline_route` does, no card,
+/// the reply being written as `pending.run` (`status` "writing"), `thread.read_only`.
+pub async fn read_only_page(
+    state: &AppState,
+    agent: &AgentConfig,
+    thread: &Thread,
+    want: &Want,
+    keep: impl Fn(&Item) -> bool,
+) -> ApiResult<Value> {
+    let threads = threads_of(state);
+    let segments = threads.line(agent, thread).await.map_err(unavailable)?;
+    let thread = threads.get(&thread.id).await?.unwrap_or_else(|| thread.clone());
+    let items: Vec<Item> =
+        threads.items(agent, &thread, &segments).await.map_err(unavailable)?.into_iter().filter(|i| keep(i)).collect();
+    let days = timeline::days(&items, crate::dates::load(&state.config()).zone());
+    let tip = segments.last().map(|s| s.session_id.clone());
+    let run = tip.as_deref().and_then(|t| state.hub.session_run_since(&agent.name, t));
+    let (page, open) = conversation_page(items, want, &days, run.is_some());
+    let mut out_thread = thread.to_json();
+    out_thread["tip"] = json!(tip);
+    out_thread["read_only"] = json!(true);
+    let run = run.map(|(r, started)| json!({"run_id": r, "status": "writing", "started": started}));
+    let pending = json!({"run": run, "approvals": [], "questions": []});
+    let mut answer = page.answer(out_thread, thread.version, pending, false);
+    answer["layout"] = json!({"open": open});
+    Ok(answer)
+}
+
+/// Every item of a conversation (agent_feed.rs: the attachment a relative opens is looked for among them).
+pub async fn items_of(state: &AppState, agent: &AgentConfig, thread: &Thread) -> ApiResult<Vec<Item>> {
+    let threads = threads_of(state);
+    let segments = threads.line(agent, thread).await.map_err(unavailable)?;
+    threads.items(agent, thread, &segments).await.map_err(unavailable)
 }
 
 /// A conversation's page as `timeline_route` serves it, and its `layout.open`: the items `want` asks for among the
@@ -1579,7 +1622,20 @@ async fn attachment_route(
     }
     // a photo of the message: the n-th image part of its row, decoded (a room's files all have a path)
     let agent = agent.ok_or_else(HttpError::not_found)?;
-    let content = threads_of(&state).source(&agent).content_with_images(&item.segment, item.row).await.map_err(unavailable)?;
+    let (mime, bytes) = photo_of(&state, &agent, item, n).await?;
+    let mut response = Response::new(Body::from(bytes));
+    response
+        .headers_mut()
+        .insert("content-type", axum::http::HeaderValue::from_str(&mime).map_err(anyhow::Error::from)?);
+    response
+        .headers_mut()
+        .insert("cache-control", axum::http::HeaderValue::from_static("private, max-age=31536000, immutable"));
+    Ok(response)
+}
+
+/// The n-th photo of a message (its image parts, else the file Hermes saved it in): (mime, bytes).
+pub async fn photo_of(state: &AppState, agent: &AgentConfig, item: &Item, n: usize) -> ApiResult<(String, Vec<u8>)> {
+    let content = threads_of(state).source(agent).content_with_images(&item.segment, item.row).await.map_err(unavailable)?;
     let images: Vec<String> = match &content {
         Some(Value::Array(parts)) => parts
             .iter()
@@ -1602,16 +1658,9 @@ async fn attachment_route(
             (mime, base64::engine::general_purpose::STANDARD.decode(b64.trim()).map_err(|_| HttpError::not_found())?)
         }
         // Hermes v0.22.5 keeps a sent photo in a file of the agent's profile: `[Image attached at: <path>]`
-        None => saved_photo(&state, &agent, &content, n).await.ok_or_else(HttpError::not_found)?,
+        None => saved_photo(state, agent, &content, n).await.ok_or_else(HttpError::not_found)?,
     };
-    let mut response = Response::new(Body::from(bytes));
-    response
-        .headers_mut()
-        .insert("content-type", axum::http::HeaderValue::from_str(&mime).map_err(anyhow::Error::from)?);
-    response
-        .headers_mut()
-        .insert("cache-control", axum::http::HeaderValue::from_static("private, max-age=31536000, immutable"));
-    Ok(response)
+    Ok((mime, bytes))
 }
 
 /// The n-th photo a message names by its saved file (`[Image attached at: <path>]`): (mime, bytes), read only inside

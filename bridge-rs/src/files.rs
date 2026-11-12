@@ -326,7 +326,10 @@ pub async fn handle_upload(state: AppState, request: Request) -> ApiResult<Value
     };
     let shared = agent_name.filter(|a| config.agent(Some(a)).is_none() && crate::agent_shares::is_shared_with_me(&config, a));
     if let Some(id) = shared.map(str::to_string) {
-        // an agent a relative shares with this person: held here until her message takes it to its owner's bridge
+        if crate::agent_shares::read_only(&config, &id) {
+            return Err(crate::agent_shares::read_only_refused()); // a personal agent shared with her: she only reads
+        }
+        // the family's agent of a relative: held here until her message takes it to its owner's bridge
         let Some(FormItem::File { filename, content_type, spooled }) = last("file") else {
             return Err(HttpError::new(400, "missing 'file' part"));
         };
