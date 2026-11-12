@@ -287,6 +287,11 @@ impl AppState {
             self.spawn(Arc::new(watcher).run());
         }
         self.spawn(purge_loop(self.clone()));
+        // the family agents' one common conversation (family_thread.rs): the queue's turns reach it; the conversations
+        // of before (one per member) cleared once
+        crate::family_thread::init(self);
+        let me = self.clone();
+        self.spawn(async move { crate::family_thread::migrate(&me).await });
         // what takes the place's space, measured; the 80/95 % cards, the pause when full (storage_watch.rs)
         self.spawn(crate::storage_watch::run_forever(self.clone()));
         // the agents' drafts, finished tasks' folders, old downloads and package caches removed by themselves
@@ -1059,12 +1064,23 @@ async fn run_events(State(state): State<AppState>, Path(run_id): Path<String>, q
     if let Some(s) = session_id.filter(|s| !s.is_empty()) {
         listener.sub.set_session_id(Some(s));
     }
-    Ok(listener_events(listener))
+    // a family agent's common conversation: its cards say whose turn they are (family_thread.rs)
+    let config = state.config();
+    let by = crate::family_thread::is_common(&config, &agent_cfg.name).then(|| {
+        crate::family_thread::author_of(&config, &agent_cfg.name, &run_id, &state.households.name())
+            .by_of(crate::family_thread::CREATOR)
+    });
+    Ok(listener_events_with(listener, by))
 }
 
 /// A listener of the run hub as the SSE the app reads (`event: <type>`, `data: <json>`, a keepalive comment every
 /// 10 s): the bridge's `GET /v1/runs/{id}/events`, and the door's relay of Hermes' own (lan.rs).
-pub fn listener_events(mut listener: crate::runs::Listener) -> Response {
+pub fn listener_events(listener: crate::runs::Listener) -> Response {
+    listener_events_with(listener, None)
+}
+
+/// `listener_events`, with `by` on its cards (`approval.request`, `clarify.request`): whose turn it is.
+pub fn listener_events_with(mut listener: crate::runs::Listener, by: Option<Value>) -> Response {
     let events = async_stream::stream! {
         loop {
             match tokio::time::timeout(Duration::from_secs_f64(SSE_KEEPALIVE_SECONDS), listener.queue.recv()).await {
@@ -1073,7 +1089,16 @@ pub fn listener_events(mut listener: crate::runs::Listener) -> Response {
                 }
                 Ok(None) | Ok(Some(None)) => break,
                 Ok(Some(Some(event))) => {
-                    let data = if event.raw.is_empty() { py::Dumps::new().unicode().dumps(&Value::Object(event.data.clone())) } else { event.raw.clone() };
+                    let card = ["approval.request", "clarify.request"].contains(&event.r#type.as_str());
+                    let data = match (&by, card) {
+                        (Some(by), true) => {
+                            let mut data = event.data.clone();
+                            data.insert("by".into(), by.clone());
+                            py::Dumps::new().unicode().dumps(&Value::Object(data))
+                        }
+                        _ if event.raw.is_empty() => py::Dumps::new().unicode().dumps(&Value::Object(event.data.clone())),
+                        _ => event.raw.clone(),
+                    };
                     let data = data.replace('\n', "\ndata: ");
                     yield Ok(bytes::Bytes::from(format!("event: {}\ndata: {}\n\n", event.r#type, data)));
                 }
@@ -1224,22 +1249,11 @@ async fn bridge_card(
     // the cards of a routine its agent made or wants changed (routines.rs `answer`): only a « Oui » starts it or applies
     // the change; only a « Non » deletes one that never started or drops the change; any other answer changes nothing
     if let Some(id) = run_id.strip_prefix(crate::routines::RUN_PREFIX) {
-        let choice = body.choice.trim().to_lowercase();
-        if !crate::routines::known_choice(&choice) {
-            return Err(HttpError::new(422, "choice: once or deny"));
+        if crate::routines::card_by(&state.config(), &agent.name, id).is_some() {
+            // a family member asked for it: hers to answer, from her bridge (family_thread.rs)
+            return Err(HttpError::new(403, "this card is a family member's: they answer it"));
         }
-        let (config, name, id, given) = (state.config(), agent.name.clone(), id.to_string(), choice.clone());
-        let answered = tokio::task::spawn_blocking(move || crate::routines::answer(&config, &name, &id, &given))
-            .await
-            .map_err(anyhow::Error::from)?;
-        if let Some(r) = answered.as_ref().filter(|r| crate::routines::lapsed(r)) {
-            // a one-time routine started after its time: not run, one line in the Boîte (O-5)
-            crate::routines::tell_done(state, agent, r, crate::routines::Done::Lapsed, None).await;
-        }
-        return Ok(Some(match answered {
-            Some(r) => Ok(web::ok(json!({"ok": true, "choice": choice, "muted": r.muted}))),
-            None => Err(HttpError::new(404, "no such request (answered already?)")),
-        }?));
+        return Ok(Some(routine_card(state, agent, id, &body.choice).await?));
     }
     // agents at their cap of messages between them (agent_hops.rs): « Oui » is « Continuer », the chain starts over
     if let Some(id) = run_id.strip_prefix(crate::agent_hops::RUN_PREFIX) {
@@ -1258,6 +1272,27 @@ async fn bridge_card(
         return Ok(Some(crate::storage_watch::approve(state, agent, id, &body.choice).await?));
     }
     Ok(None)
+}
+
+/// The card of a routine its agent made or wants changed (`bip-rout-<id>`), answered by whoever it is for: this place's
+/// person (`/v1/approve`), or the family member who asked for it (agent_shares.rs, family_thread.rs).
+pub(crate) async fn routine_card(state: &AppState, agent: &AgentConfig, id: &str, choice: &str) -> ApiResult<Response> {
+    let choice = choice.trim().to_lowercase();
+    if !crate::routines::known_choice(&choice) {
+        return Err(HttpError::new(422, "choice: once or deny"));
+    }
+    let (config, name, id, given) = (state.config(), agent.name.clone(), id.to_string(), choice.clone());
+    let answered = tokio::task::spawn_blocking(move || crate::routines::answer(&config, &name, &id, &given))
+        .await
+        .map_err(anyhow::Error::from)?;
+    if let Some(r) = answered.as_ref().filter(|r| crate::routines::lapsed(r)) {
+        // a one-time routine started after its time: not run, one line in the Boîte (O-5)
+        crate::routines::tell_done(state, agent, r, crate::routines::Done::Lapsed, None).await;
+    }
+    match answered {
+        Some(r) => Ok(web::ok(json!({"ok": true, "choice": choice, "muted": r.muted}))),
+        None => Err(HttpError::new(404, "no such request (answered already?)")),
+    }
 }
 
 /// A card of the bridge's own answered by the bridge itself, as `/v1/approve` would (approval_level.rs: a
@@ -1701,6 +1736,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::family_relay::household_router()) // a home's bridge fetching our calls for it, the same key
         .merge(crate::agent_shares::household_router()) // the agents shared with them, the same key
         .merge(crate::family_agent::household_router()) // the family's agent and its Carnet, the same key
+        .merge(crate::family_thread::household_router()) // the family conversation changed: this person told
         .merge(crate::rooms_remote::household_router()) // their agents in this person's discussions, the same key
         .merge(crate::meet::household_router()) // a date to find together, the same key
         .nest("/desktop/static/novnc", crate::desktop::static_files())

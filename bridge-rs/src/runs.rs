@@ -1119,8 +1119,17 @@ impl RunHub {
     /// The app stopped showing the run (left the conversation, screen locked) while an approval or a
     /// question was waiting: it was on screen, so never pushed. Push it now, or the run waits unseen until
     /// Hermes' timeout.
+    /// A relative's turn (a member's in a family agent's common conversation, family_thread.rs): its cards are hers,
+    /// answered from her bridge, never by this person's level nor pushed to this person's devices.
+    fn someone_elses(&self, run_id: &str) -> bool {
+        self.config.as_ref().is_some_and(|c| crate::agent_shares::relative_run(&c.get(), run_id))
+    }
+
     fn push_unseen(&self, inner: &HubInner, sub: &RunSubscription, st: &mut SubscriptionState) {
         let Some(push) = self.push.clone() else { return };
+        if self.someone_elses(&sub.run_id) {
+            return;
+        }
         for ((agent, run_id, dedupe), item) in &inner.pending {
             if *agent == sub.agent.name && *run_id == sub.run_id && !st.pushed.contains(dedupe) {
                 st.pushed.insert(dedupe.clone());
@@ -2299,7 +2308,7 @@ touche « Démarrer » pour reprendre."
         let dedupe =
             format!("clarify:{}", request_id.clone().filter(|r| !r.is_empty()).unwrap_or_else(|| sha16(&event.raw)));
         let Some(push) = self.push.clone() else { return };
-        if !st.watched || st.followers() > 0 || st.pushed.contains(&dedupe) {
+        if !st.watched || st.followers() > 0 || st.pushed.contains(&dedupe) || self.someone_elses(&sub.run_id) {
             return;
         }
         let questions = match data.get("questions") {
@@ -2438,7 +2447,8 @@ touche « Démarrer » pour reprendre."
         }
         // not critical, and the person validates only what is: answered « once » at once, nothing pushed, a line in the
         // Boîte (approval_level.rs); kept waiting until Hermes settles it, so a failed answer still shows in the Boîte
-        let auto = self.config.as_ref().map(|c| c.get()).and_then(|config| {
+        let elsewhere = self.someone_elses(&sub.run_id);
+        let auto = self.config.as_ref().map(|c| c.get()).filter(|_| !elsewhere).and_then(|config| {
             crate::approval_level::auto_hermes(&config, &sub.agent.name, &sub.run_id, data).map(|kind| (config, kind))
         });
         let answering = auto.map(|(config, kind)| (config, kind, item.clone()));
@@ -2467,7 +2477,7 @@ touche « Démarrer » pour reprendre."
         }
         let followers = st.followers();
         let push = match self.push.clone() {
-            Some(push) if st.watched && followers == 0 && !st.pushed.contains(&dedupe) => push,
+            Some(push) if st.watched && followers == 0 && !st.pushed.contains(&dedupe) && !elsewhere => push,
             _ => {
                 tracing::info!(agent = %sub.agent.name, run_id = %sub.run_id, watched = st.watched, followers = followers, "approval seen, no push");
                 return;

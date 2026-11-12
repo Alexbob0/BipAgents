@@ -216,7 +216,7 @@ pub fn in_hub(config: &Config, agent: &AgentConfig) -> bool {
 /// end, peers.rs; rooms_remote.rs uses the same links). Each file read once.
 pub fn others_facing_agents(config: &Config) -> std::collections::HashSet<String> {
     let mut out = std::collections::HashSet::new();
-    if let Some(family) = crate::family_agent::own(config) {
+    for family in crate::family_agent::owns(config) {
         out.insert(family);
     }
     let links = crate::peers::links_of(&crate::peers::Links::new(&crate::py::join(&config.data_dir(), "peers.json")).load());

@@ -94,6 +94,10 @@ pub struct NewMessage {
     /// none, the bridge's rule (turn_thinking.rs). Followed only for an agent whose level the person never chose.
     #[serde(default)]
     pub thinking: Option<bool>,
+    /// Who writes in a family agent's common conversation (family_thread.rs): a member's message relayed by her
+    /// bridge; none, the creator's own. Never from an app.
+    #[serde(skip)]
+    pub by: Option<crate::family_thread::Author>,
 }
 
 impl Validate for NewMessage {
@@ -527,6 +531,22 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
     };
     let words = body.text.trim().to_string();
     let phone = body.phone.as_deref().and_then(crate::reminders::phone_named);
+    // a family agent's one conversation (family_thread.rs): each message framed with who writes, the creator's too
+    let config = state.config();
+    let creator = state.households.name();
+    let author = crate::family_thread::is_common(&config, &agent.name)
+        .then(|| body.by.clone().unwrap_or_else(|| crate::family_thread::Author::creator(&creator)));
+    let said = match &author {
+        Some(a) => crate::family_thread::framed(a, &words),
+        None => words.clone(),
+    };
+    let client_id = body.client_id.clone();
+    // the message taken (a turn started, queued, or steered): the others told (family_thread.rs)
+    let told = |tip: &str| {
+        if let Some(a) = &author {
+            crate::family_thread::said(state, agent, a, &words, &client_id, tip);
+        }
+    };
     let mut body = body;
     body.attachments = keep_photos(state, agent, std::mem::take(&mut body.attachments)).await;
     if !body.attachments.is_empty() {
@@ -540,14 +560,26 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
     let answer = |state: &str, run: Option<&str>| {
         json!({"client_id": body.client_id, "thread": thread.id, "state": state, "run_id": run, "tip": tip})
     };
-    keep(&threads, &agent.name, &thread.id, &body.client_id, &words, &body.attachments).await?;
+    keep(&threads, &agent.name, &thread.id, &body.client_id, &said, &body.attachments).await?;
     let queues = queues_of(state);
     let running = state.hub.session_run(&agent.name, tip);
     let waits = queues.get(&agent.name).items.iter().any(|i| i.session_id == tip);
-    if let Some(run) = running.as_deref().filter(|_| !body.after && !waits && body.attachments.is_empty()) {
+    // in the family conversation, words steer only their writer's own turn: else they wait behind it; the others'
+    // messages waiting there don't hold hers back (only her own do: they keep her order)
+    let own_turn = |run: &str| {
+        author.as_ref().is_none_or(|a| crate::family_thread::author_of(&config, &agent.name, run, &creator).household == a.household)
+    };
+    let held = match &author {
+        Some(a) => queues.get(&agent.name).items.iter().any(|i| {
+            i.session_id == tip
+                && i.by.as_ref().and_then(crate::family_thread::Author::of_value).is_none_or(|b| b.household == a.household)
+        }),
+        None => waits,
+    };
+    if let Some(run) = running.as_deref().filter(|r| !body.after && !held && body.attachments.is_empty() && own_turn(r)) {
         // words into the turn going on (Hermes takes them at its next step)
         let steered = queues
-            .steer(agent, tip, Some(run), &words, Some(&body.client_id))
+            .steer(agent, tip, Some(run), &said, Some(&body.client_id))
             .await
             .map_err(|_| HttpError::new(502, "your agent isn't answering right now: try again in a moment"))?;
         if let Some(run) = steered {
@@ -555,15 +587,17 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
             state.hub.set_phone(&agent.name, &run, phone);
             threads.bump(&thread, "sent").await?;
             tell_if_lost(state, agent, &thread, tip, &body.client_id);
+            told(tip);
             return Ok(answer("steered", Some(&run)));
         }
     }
     // what waited for this message (a Live call's recap, the time, the family's news, a feature to propose…)
     let waited = crate::live_brief::message_notes(state, agent, tip, &words, &body.kinds).await;
     let notes = [waited, body.notes.clone()].into_iter().flatten().collect::<Vec<_>>().join("\n");
-    let input = input_of(Some(&notes), &words, &body.attachments);
+    let input = input_of(Some(&notes), &said, &body.attachments);
+    let by = crate::family_thread::by_value(author.as_ref());
     if running.is_some() || waits || body.after {
-        // first in line when the turn just stopped taking words, else after what waits
+        // first in line when the turn just stopped taking words, else after what waits (someone else's turn too)
         let front = running.is_some() && !body.after && !waits;
         let sent = Sent {
             client_id: Some(body.client_id.clone()),
@@ -572,6 +606,7 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
             voice: body.kinds.iter().any(|k| k == "voice"),
             phone: phone.map(str::to_string),
             thinking: body.thinking,
+            by: by.clone(),
         };
         let shown = sent.attachments.clone();
         queues
@@ -586,6 +621,7 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
             }
         }
         threads.bump(&thread, "sent").await?;
+        told(tip);
         return Ok(answer("queued", None));
     }
     crate::cloud_setup::READINESS.wait(&agent.name, crate::cloud_setup::READY_WAIT).await;
@@ -609,12 +645,14 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
                     voice: body.kinds.iter().any(|k| k == "voice"),
                     phone: phone.map(str::to_string),
                     thinking: body.thinking,
+                    by,
                 };
                 queues
                     .add(agent, tip, &words, None, false, sent)
                     .map_err(|_| HttpError::new(409, "too many messages waiting"))?;
                 tracing::info!(agent = %agent.name, "message sent while its gateway restarts: it waits in line");
                 threads.bump(&thread, "sent").await?;
+                told(tip);
                 return Ok(answer("queued", None));
             }
             _ => return Err(HttpError::new(502, "your agent isn't answering right now: try again in a moment")),
@@ -624,12 +662,17 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
         crate::turn_thinking::thinking_run(&run);
     }
     crate::welcome::done(&state.config(), &agent.name, Some(tip));
+    if let Some(a) = &author {
+        // whose turn it is, noted before the hub reads it (a member's cards are hers, family_thread.rs)
+        crate::family_thread::started(state, agent, &run, a, tip, false);
+    }
     // followed by the hub whoever looks (the brake, « reply ready »), and the queue waits for it
     state.hub.watch(agent, &run, Some(tip), true);
     state.hub.keep(agent, &run, Some(tip));
     state.hub.set_phone(&agent.name, &run, phone);
     tracing::info!(agent = %agent.name, run_id = %run, "message sent: a turn started");
     threads.bump(&thread, "sent").await?;
+    told(tip);
     Ok(answer("started", Some(&run)))
 }
 
