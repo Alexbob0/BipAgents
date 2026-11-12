@@ -338,15 +338,15 @@ sin ellas. Si desinstalas la app, Apple o Google marcan el token como inválido 
 - **Denunciar esta respuesta** (mantener pulsada una respuesta) envía la denuncia **desde la app**, a través del relé
   de Kerfy Studio, solo a Kerfy Studio: ni a tu servidor ni al proveedor del modelo. Contiene el motivo, tus
   precisiones opcionales, **el texto de la respuesta denunciada**, la categoría del agente, la versión de la app y el
-  modelo del teléfono. **Ni tu dirección de correo, ni tu nombre, ni el del agente.** No se envía nada hasta que
-  pulsas «Enviar». El relé ve de paso la dirección IP de tu teléfono y solo la usa para limitar abusos (sección 4.1).
-  Como la denuncia no contiene ningún medio para contactarte, no podemos responderla: escribe al soporte si esperas
-  una respuesta.
+  modelo del teléfono. **Ni tu nombre, ni el del agente.** El campo «Tu correo, si quieres una respuesta» es
+  opcional: si lo rellenas, tu dirección sale con la denuncia, solo sirve para responderte y se guarda con ella (plazo
+  más abajo); si no, no podemos responderte. No se envía nada hasta que pulsas «Enviar». El relé ve de paso la
+  dirección IP de tu teléfono y solo la usa para limitar abusos (sección 4.1).
 - **Denunciar este mensaje** (mantener pulsado el mensaje de otra persona, en un agente de la familia o un agente
   compartido, sección 2 bis) envía la denuncia desde la app, a través del relé de Kerfy Studio, y después por correo
   solo a Kerfy Studio, a través de su proveedor de correo (Proton AG, Suiza); Proton guarda el mensaje enviado hasta que lo borramos de la bandeja de salida. Contiene el motivo, tus
   precisiones opcionales, **el texto del mensaje, el nombre de pila que se muestra de su autor y el nombre del agente**.
-  Ni tu nombre ni tu dirección de correo, salvo si la añades para recibir una respuesta o si la envías por correo (más
+  Ni tu nombre; tu dirección de correo solo si rellenas el mismo campo opcional o si la envías por correo (más
   abajo). Al autor no se le avisa de tu denuncia. Kerfy Studio no lee la conversación y no puede borrar ese mensaje.
   Puede, según el caso, aconsejarte, avisar a la persona que creó el agente si tiene cuenta, o tomar una medida prevista
   por las condiciones de uso o la política de uso aceptable: la persona afectada recibe entonces un aviso, con los
@@ -761,6 +761,20 @@ red y el cálculo contra los robots: interés legítimo de Kerfy Studio en preve
 plazas de la beta (artículo 6.1.f). **Plazo.** La huella de la dirección, hasta el final de la beta, como muy tarde el 31 de diciembre de
 2026. Si después creas una cuenta, la sección 5.2 se aplica a tu cuenta.
 
+### 5.14 Las plazas beta sin usar
+
+Durante la beta y el mes de regalo, tu plaza anota la hora de tu última acción, nunca su contenido: un mensaje, una
+nota de voz, una foto o un archivo enviado a un agente, una llamada Live, una tarjeta a la que respondes. Las rutinas y
+los vigilantes que funcionan solos no cuentan. La envía al guichet con la supervisión técnica (sección 5.6). El guichet
+solo la usa para liberar una plaza beta que nadie usa desde hace 7 días: te avisa el 5.º día con una notificación y un
+correo, enviado a través de Proton AG (sección 5.9); Proton guarda el mensaje enviado hasta que lo borramos de la bandeja de salida. Una plaza liberada, como una plaza beta cuyo mes de
+regalo termina sin suscripción, pasa a otra persona: solo se guarda la última copia cifrada de sus copias de
+seguridad, ilegible sin su clave (sección 5.5), durante 30 días, y después se borra.
+
+**Base jurídica.** Ejecución de las condiciones de la beta (artículo 6.1.b del RGPD). **Plazo.** La hora de la última
+acción: se sustituye con cada acción y se borra con la plaza; la copia cifrada: 30 días después de la liberación de la
+plaza.
+
 ## 6. Lo que Kerfy Studio no hace
 
 - Sin publicidad, sin identificador publicitario, sin rastreo entre apps o sitios. Ninguna herramienta de estadísticas
@@ -933,7 +947,9 @@ Scaleway, en Francia, sin transferencia fuera de la Unión. Puedes pedirnos una 
 | Huella de la dirección IP (códigos beta, «Obtener un código», página de baja del sitio, denuncias de agentes compartidos) | 2 días como máximo; hasta 30 días en las copias cifradas de la base |
 | Baja en el sitio: la declaración (correo, número, motivo, fecha de fin, fecha y hora) | 3 años |
 | Baja en el sitio: la dirección de correo escrita, para limitar los intentos | 2 días como máximo |
-| Contenido de tu plaza | Durante la suscripción (plaza beta: hasta el final del mes de regalo, el 31 de diciembre de 2026); cuando la suscripción o el mes de regalo termina, la plaza se suspende y se borra 30 días después de su suspensión (3 días después de una semana gratis que no continuó) |
+| Contenido de tu plaza | Durante la suscripción y después 30 días (3 días después de una semana gratis que no continuó) |
+| Plaza beta liberada (7 días sin uso, o final del mes de regalo el 31 de diciembre de 2026 sin suscripción) | Solo se guarda su copia cifrada, 30 días después de la liberación, y después se borra |
+| Hora de tu última acción en una plaza beta | Se sustituye con cada acción; se borra con la plaza |
 | Copias de seguridad | 2 horas (todas), luego 48 horas (por hora), 21 días (diarias), nada más antiguo; se borran con la plaza; lo que borras ha salido de ellas en 30 días, todas las copias incluidas |
 | Archivos de copia que una plaza borra, apartados por el guichet | 5 días |
 | Versiones sustituidas o borradas en Scaleway (copias de seguridad de las plazas, copias cifradas de la base de datos del guichet) | 1 día |

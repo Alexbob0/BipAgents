@@ -179,8 +179,8 @@ Con la oferta todo incluido, la [política de uso aceptable](acceptable-use.es.m
 ## 11. Denunciar una respuesta o un mensaje
 
 - En la app: **mantén pulsada una respuesta › Denunciar esta respuesta**. La denuncia sale desde la app, a través del
-  relé de Kerfy Studio, solo a Kerfy Studio, con el texto de la respuesta; si el relé no responde, la app te propone
-  enviarla por correo. Díselo también a tu agente para que no vuelva a hacerlo.
+  relé de Kerfy Studio, solo a Kerfy Studio, con el texto de la respuesta; puedes añadir tu correo si quieres una
+  respuesta. Si el relé no responde, la app te propone enviarla por correo. Díselo también a tu agente para que no vuelva a hacerlo.
 - Un mensaje de otra persona (agente de la familia, agente compartido): **mantén pulsado › Denunciar este mensaje**. La
   denuncia sale solo a Kerfy Studio, con el texto del mensaje, el nombre de pila que se muestra de su autor y el nombre
   del agente, sin tu nombre; puedes añadir tu correo si quieres una respuesta. El autor no recibe ningún aviso. Kerfy

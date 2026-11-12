@@ -187,8 +187,8 @@ für deinen Platz (Spam, Angriffe, Kryptomining, Weiterverkauf …) und sagt, wi
 ## 11. Eine Antwort oder eine Nachricht melden
 
 - In der App: **lange auf eine Antwort drücken › Diese Antwort melden**. Die Meldung geht aus der App, über das Relay
-  von Kerfy Studio, nur an Kerfy Studio, mit dem Text der Antwort; wenn das Relay nicht antwortet, bietet dir die App
-  an, sie per E-Mail zu schicken. Sag es auch deinem Agenten, damit er es nicht wieder tut.
+  von Kerfy Studio, nur an Kerfy Studio, mit dem Text der Antwort; du kannst deine E-Mail-Adresse hinzufügen, wenn du
+  eine Antwort möchtest. Wenn das Relay nicht antwortet, bietet dir die App an, sie per E-Mail zu schicken. Sag es auch deinem Agenten, damit er es nicht wieder tut.
 - Eine Nachricht einer anderen Person (Familienagent, geteilter Agent): **lange drücken › Diese Nachricht melden**. Die
   Meldung geht nur an Kerfy Studio, mit dem Text der Nachricht, dem angezeigten Vornamen ihres Verfassers und dem Namen
   des Agenten, ohne deinen Namen; du kannst deine E-Mail-Adresse hinzufügen, wenn du eine Antwort möchtest. Der

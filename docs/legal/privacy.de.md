@@ -360,16 +360,17 @@ ungültig, und dein Server vergisst es.
 - **Diese Antwort melden** (lange auf eine Antwort drücken) schickt die Meldung **aus der App**, über das Relay von
   Kerfy Studio, nur an Kerfy Studio: weder an deinen Server noch an den Modellanbieter. Sie enthält den Grund, deine
   optionalen Angaben, **den Text der gemeldeten Antwort**, die Kategorie des Agenten, die Version der App und das
-  Modell des Telefons. **Weder deine E-Mail-Adresse noch deinen Namen noch den des Agenten.** Nichts wird gesendet,
-  bevor du auf „Senden“ tippst. Das Relay sieht dabei die IP-Adresse deines Telefons und nutzt sie nur, um Missbrauch
-  zu begrenzen (Abschnitt 4.1). Da die Meldung keine Möglichkeit enthält, dich zu erreichen, können wir nicht darauf
-  antworten: Schreib dem Support, wenn du eine Antwort erwartest.
+  Modell des Telefons. **Weder deinen Namen noch den des Agenten.** Das Feld „Deine E-Mail, wenn du eine Antwort möchtest“ ist
+  freiwillig: Wenn du es ausfüllst, geht deine Adresse mit der Meldung mit, dient nur dazu, dir zu antworten, und wird
+  mit ihr aufbewahrt (Dauer unten); sonst können wir dir nicht antworten. Nichts wird gesendet, bevor du auf „Senden“
+  tippst. Das Relay sieht dabei die IP-Adresse deines Telefons und nutzt sie nur, um Missbrauch zu begrenzen
+  (Abschnitt 4.1).
 - **Diese Nachricht melden** (lange auf die Nachricht einer anderen Person drücken, in einem Familienagenten oder einem
   geteilten Agenten, Abschnitt 2 bis) schickt die Meldung aus der App, über das Relay von Kerfy Studio, dann per E-Mail
   nur an Kerfy Studio, über seinen E-Mail-Anbieter (Proton AG, Schweiz); Proton bewahrt die gesendete Nachricht auf,
   bis wir sie aus dem Postausgang löschen. Sie enthält den Grund, deine optionalen Angaben, **den Text der Nachricht,
-  den angezeigten Vornamen ihres Verfassers und den Namen des Agenten**. Weder deinen Namen noch deine E-Mail-Adresse,
-  außer wenn du sie hinzufügst, um eine Antwort zu erhalten, oder die Meldung per E-Mail schickst (siehe unten). Der
+  den angezeigten Vornamen ihres Verfassers und den Namen des Agenten**. Nicht deinen Namen; deine E-Mail-Adresse nur,
+  wenn du dasselbe freiwillige Feld ausfüllst oder die Meldung per E-Mail schickst (siehe unten). Der
   Verfasser wird über deine Meldung nicht benachrichtigt. Kerfy Studio liest die Unterhaltung nicht und kann diese
   Nachricht nicht löschen. Je nach Fall kann es dich beraten, die Person, die den Agenten erstellt hat, benachrichtigen,
   wenn sie ein Konto hat, oder eine Maßnahme nach den Nutzungsbedingungen oder der Richtlinie zur zulässigen Nutzung
@@ -815,6 +816,22 @@ Grenze pro Netz und die Rechenaufgabe gegen Roboter: berechtigtes Interesse von 
 Plätze der Beta fair zu verteilen (Art. 6 Abs. 1 lit. f). **Dauer.** Der Fingerabdruck der Adresse bis zum Ende der Beta, spätestens bis
 zum 31. Dezember 2026. Wenn du danach ein Konto erstellst, gilt für dein Konto Abschnitt 5.2.
 
+### 5.14 Ungenutzte Beta-Plätze
+
+Während der Beta und des geschenkten Monats vermerkt dein Platz die Uhrzeit deiner letzten Aktion, nie ihren Inhalt:
+eine Nachricht, eine Sprachnachricht, ein Foto oder eine Datei, die du einem Agenten schickst, ein Live-Anruf, eine
+Karte, auf die du antwortest. Routinen und Überwachungen, die von selbst laufen, zählen nicht. Er schickt sie mit der
+technischen Überwachung an den Guichet (Abschnitt 5.6). Der Guichet nutzt sie nur, um einen Beta-Platz freizugeben,
+den seit 7 Tagen niemand nutzt: Er sagt dir am 5. Tag mit einer Benachrichtigung und einer E-Mail Bescheid, verschickt
+über Proton AG (Abschnitt 5.9); Proton bewahrt die gesendete Nachricht auf, bis wir sie aus dem Postausgang löschen.
+Ein freigegebener Platz geht, wie ein Beta-Platz, dessen geschenkter Monat ohne Abo endet, an jemand anderen: Nur die
+letzte verschlüsselte Kopie seiner Sicherungen, ohne ihren Schlüssel unlesbar (Abschnitt 5.5), wird 30 Tage
+aufbewahrt und dann gelöscht.
+
+**Rechtsgrundlage.** Erfüllung der Beta-Bedingungen (Art. 6 Abs. 1 lit. b DSGVO). **Dauer.** Die Uhrzeit der letzten
+Aktion: bei jeder Aktion ersetzt, mit dem Platz gelöscht; die verschlüsselte Kopie: 30 Tage nach der Freigabe des
+Platzes.
+
 ## 6. Was Kerfy Studio nicht tut
 
 - Keine Werbung, keine Werbe-ID, kein Tracking über Apps oder Websites hinweg. Kein Statistik-Tool in der App: nur die
@@ -991,7 +1008,9 @@ des Guichets und des Relays: OVHcloud, in Frankreich. Hoster der Sicherungen: Sc
 | Fingerabdruck der IP-Adresse (Beta-Codes, „Einen Code holen“, Kündigungsseite der Website, Meldungen geteilter Agenten) | Höchstens 2 Tage; bis zu 30 Tage in den verschlüsselten Kopien der Datenbank |
 | Kündigung auf der Website: die Erklärung (E-Mail, Nummer, Grund, gewünschtes Ende, Datum und Uhrzeit) | 3 Jahre |
 | Kündigung auf der Website: die eingegebene E-Mail-Adresse, um die Versuche zu begrenzen | Höchstens 2 Tage |
-| Inhalt deines Platzes | Während des Abos (Beta-Platz: bis zum Ende des geschenkten Monats, am 31. Dezember 2026); wenn das Abo oder der geschenkte Monat endet, wird der Platz angehalten und 30 Tage nach dem Anhalten gelöscht (3 Tage nach einer nicht fortgesetzten kostenlosen Woche) |
+| Inhalt deines Platzes | Während des Abos, dann 30 Tage (3 Tage nach einer nicht fortgesetzten kostenlosen Woche) |
+| Freigegebener Beta-Platz (7 Tage ohne Nutzung oder Ende des geschenkten Monats am 31. Dezember 2026 ohne Abo) | Nur seine verschlüsselte Kopie wird aufbewahrt, 30 Tage nach der Freigabe, dann gelöscht |
+| Uhrzeit deiner letzten Aktion auf einem Beta-Platz | Bei jeder Aktion ersetzt; mit dem Platz gelöscht |
 | Sicherungen | 2 Stunden (alle), dann 48 Stunden (stündlich), 21 Tage (täglich), nichts Älteres; mit dem Platz gelöscht; was du löschst, ist innerhalb von 30 Tagen daraus verschwunden, alle Kopien eingeschlossen |
 | Sicherungsdateien, die ein Platz löscht, vom Guichet beiseitegelegt | 5 Tage |
 | Ersetzte oder gelöschte Versionen bei Scaleway (Sicherungen der Plätze, verschlüsselte Kopien der Datenbank des Guichets) | 1 Tag |
