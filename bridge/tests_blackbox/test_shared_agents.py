@@ -169,6 +169,48 @@ def test_a_relative_reads_the_owners_conversations_from_the_share_on(bridges, fa
     assert b.get("/v1/shared-agents", headers=AUTH).json()["agents"] == []
 
 
+def test_every_file_of_a_message_she_reads_opens_by_its_url(bridges, fakes, tmp_path):
+    """The owner's document (his upload), the agent's page and its map picture: each with a url on her bridge, each
+    opening there with its own bytes (the iPhone's read-only screen, 12/11)."""
+    fakes.hermes.v0225 = True
+
+    def uploads(c):
+        c["agents"] = {"Cuisine": {"hermes_url": f"{fakes.hermes.url}/p/cuisine", "hermes_key": "cuisine-key-" + "x" * 24,
+                                   "upload_dir_host": str(tmp_path / "uploads"),
+                                   "upload_dir_container": "/home/hermes/.hermes/profiles/cuisine/uploads"}}
+    a = bridges.new("alex", change=uploads)
+    a.config["public_url"] = a.url
+    a = a.start()
+    b = household(bridges, fakes, "marie", ["vie"])
+    link(a, b)
+    pdf = b"%PDF-1.4\n% devis\n" + b"0" * 3210
+    up = a.post("/v1/files", headers=AUTH, data={"agent": "cuisine"}, files={"file": ("devis.pdf", pdf, "application/pdf")})
+    assert up.status_code == 200, up.text
+    path = up.json()["path"]
+    pages, maps = a.state_dir / "agent-pages" / "cuisine", a.state_dir / "agent-maps" / "cuisine"
+    pages.mkdir(parents=True, exist_ok=True)
+    maps.mkdir(parents=True, exist_ok=True)
+    (pages / "menu.html").write_text("<h1>Menu de samedi</h1>")
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+    (maps / "m-0123456789.png").write_bytes(png)
+    later = time.time() + 3600
+    fakes.hermes.add_session(SESSION, [
+        {"id": 1, "role": "user", "content": f"Le devis\n\n[Pièce jointe : devis.pdf (application/pdf, 3 Ko) → {path}]",
+         "timestamp": later},
+        {"id": 2, "role": "assistant", "timestamp": later + 1, "content":
+            "Voici.\nMEDIA:/bipagents/pages/cuisine/menu.html\nMEDIA:/bipagents/maps/cuisine/m-0123456789.png"},
+    ], title="Bot Chat", agent="cuisine", last_active=later + 1, started_at=later)
+    share(a, b)
+    assert b.post("/v1/shared-agents/cuisine__alex/add", headers=AUTH).status_code == 200
+    page = b.get("/v1/threads/main/timeline", headers=AUTH, params=SHARED).json()
+    atts = {a["kind"]: a for i in page["items"] for a in i.get("attachments", [])}
+    assert sorted(atts) == ["document", "map", "page"], page["items"]
+    for kind, body in (("document", pdf), ("page", b"Menu de samedi"), ("map", png)):
+        assert "url" in atts[kind] and "path" not in atts[kind], atts[kind]
+        got = b.get(atts[kind]["url"], headers=AUTH)
+        assert got.status_code == 200 and body in got.content, (kind, got.status_code, got.text[:200])
+
+
 def test_the_owner_may_show_the_conversations_of_before_too(bridges, fakes):
     a, b = alex_and_marie(bridges, fakes)
     share(a, b)
