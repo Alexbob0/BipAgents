@@ -207,5 +207,17 @@ def same_version(existing: Existing, wanted: str) -> bool:
     return bool(existing.commit and wanted and (existing.commit.startswith(wanted) or wanted.startswith(existing.commit)))
 
 
+def bridge_writes(shown: List[str]) -> Optional[str]:
+    """What the bridge itself writes, once it runs, in the shown profiles other than the main one (it serves those at
+    /p/<profile>/ as its own agents: profile_files.rs reconcile, tool_diet.rs, agent_tools.rs): said before « Ready
+    to go? », since uninstalling does not take it out yet (test of 12/11 on a fresh Hermes v0.23.1)."""
+    others = [profile_label(p) for p in shown if p != HUB_PROFILE]
+    if not others:
+        return None
+    return (f"{', '.join(others)}: the app's tools and rules added to their profile (config.yaml, SOUL.md, two skills), "
+            "their thinking level\n    set by the app, and Hermes' cron tool off for them (the app's routines "
+            "instead). Uninstalling leaves these.")
+
+
 def profile_label(name: str) -> str:
     return re.sub(r"[-_]+", " ", name).strip().title() if name != HUB_PROFILE else "Hermes"

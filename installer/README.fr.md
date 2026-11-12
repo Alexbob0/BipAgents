@@ -30,7 +30,7 @@ Ajouter `--dry-run` pour voir chaque étape et chaque commande sans rien modifie
 
    Sur un Mac mini 16 Go avec le modèle ailleurs : environ 1 Go par personne plus les voix, une famille y tient.
 4. **Installe Hermes** avec son installateur officiel, dans la version testée avec BipAgents (v0.23.1, `3b42157858`), y applique
-   les patches de `hermes/patches/` (questions de l'agent dans l'app, photos gardées pour les questions de suivi), en **une gateway par personne** (mode multiplex d'Hermes) :
+   les patches de `hermes/patches/` (l'heure avec chaque message, le coût de chaque message, des prompts répétés moins chers, les agents qui s'écrivent, le coffre dans le navigateur), en **une gateway par personne** (mode multiplex d'Hermes) :
    chaque agent est un profil joint à `/p/<agent>/` avec sa propre clé. Les nouveaux agents sont pris en compte sans
    redémarrage.
 5. **Crée les premiers agents**, que la personne nomme elle-même, à partir de genres (Quotidien, Bien-être, Finances, Maison, Travail, Apprendre,
@@ -109,6 +109,11 @@ afficher dans l'app, ton profil principal compris, et te montre avant de commenc
 - les correctifs BipAgents dans le code d'Hermes, si tu les veux et si ta version est celle testée ;
 - un service pour ta gateway si elle ne tourne pas, ou un redémarrage si elle tourne déjà en service (à la main,
   tu la redémarres toi-même).
+
+Une fois lancé, le bridge écrit aussi dans les agents affichés autres que ton profil principal : ses outils et ses
+règles dans leur `config.yaml` et leur `SOUL.md` (plus deux skills), leur niveau de réflexion, et l'outil cron d'Hermes
+coupé pour eux (les routines de l'app à la place). L'installateur le dit avant de commencer ; la désinstallation ne
+l'enlève pas encore. Les tâches planifiées de ton Hermes restent dans ton Hermes.
 
 Tout ça est noté dans `~/.config/bipagents/existing-hermes.json` : la désinstallation remet chaque réglage comme
 avant et retire les correctifs. `--all` ne supprime jamais un Hermes qui était là avant BipAgents. Si les outils de

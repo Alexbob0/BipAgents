@@ -28,7 +28,10 @@
 //!                                                 notify false = muted
 //!
 //! Migration: the first time the bridge sees an agent's Hermes, its jobs are read once (`GET /api/jobs`), kept here
-//! with their schedule, state, conversation and mute, and deleted from Hermes.
+//! with their schedule, state, conversation and mute, and deleted from Hermes. Never on an existing Hermes the person
+//! brought (installer/bipinstall/existing.py): their jobs keep running in their Hermes as they made them (delivered to
+//! Telegram, a script, a model of their own…), and `bipinstall uninstall` could not give back jobs deleted here (test
+//! of 12/11: `hermes cron list` came out empty right after the install).
 //!
 //!     <data>/routines.json (0600)   {routines: [...], migrated: [agent...]}
 //!
@@ -1051,7 +1054,8 @@ like a background task's report (what you did, what you found or made). If there
 pub async fn scheduler(state: AppState) {
     loop {
         let config = state.config();
-        let migrated = load(&config).migrated;
+        let migrated: Vec<String> =
+            if migrates_jobs(&config) { load(&config).migrated } else { config.agents.keys().cloned().collect() };
         for agent in config.agents.values().filter(|a| !migrated.contains(&a.name)) {
             // a Hermes that doesn't answer is asked again every few minutes, not at every tick
             let last = TRIED.lock().unwrap_or_else(|e| e.into_inner()).insert(agent.name.clone(), py::time_time());
@@ -1368,6 +1372,11 @@ pub async fn deliver_resumed(
         return "muted".into();
     }
     deliver(state, pipeline, agent, r, ran).await
+}
+
+/// Whether the agents' Hermes jobs move here: never on an existing Hermes the person brought (the module's « Migration »).
+fn migrates_jobs(config: &crate::config::Config) -> bool {
+    !crate::agent_restart::existing_hermes(config)
 }
 
 /// The agent's Hermes jobs, read once, kept here, and deleted from Hermes (it no longer runs them). An unreachable
@@ -1905,6 +1914,16 @@ pub fn router() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_existing_hermes_keeps_its_jobs() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = crate::config::Config::with_key("k");
+        config.source_path = Some(dir.path().join("bridge.toml").to_string_lossy().into_owned());
+        assert!(migrates_jobs(&config));
+        std::fs::write(dir.path().join("existing-hermes.json"), r#"{"preexisting": true}"#).unwrap();
+        assert!(!migrates_jobs(&config));
+    }
 
     #[test]
     fn a_run_without_its_report_says_why_and_when_it_tries_again() {

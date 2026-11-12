@@ -553,10 +553,16 @@ def yes(answer: str) -> bool:
     return answer.strip().lower() in ("y", "yes")
 
 
+# What hermes/patches/ brings, in plain words (asked before applying them, or said when the person's Hermes isn't the
+# tested version). On v0.23.1 messages, approvals and the agent's questions need none (test of 12/11 on upstream main).
+FIXES = ("the time with each message, the cost of each message, cheaper repeated prompts, agents writing to each "
+         "other,\n  the vault in the browser, the task list")
+
+
 def install_on_existing(args, runner: hermes.Runner, machine: Machine, existing) -> int:
     """BipAgents on the person's own Hermes: their model, tools, platforms, agents and conversations stay as they are.
     Only the local API and each shown agent's key are added (existing.py), and written down for `uninstall`."""
-    from .existing import RECORD, apply_changes, key_of, plan_changes, profile_label, same_version
+    from .existing import RECORD, apply_changes, bridge_writes, key_of, plan_changes, profile_label, same_version
 
     say(f"\nYou already have Hermes ({existing.version}): I'll plug into it without touching your settings, your model "
            f"({existing.model or 'not set'}), your tools or your agents.")
@@ -599,13 +605,14 @@ def install_on_existing(args, runner: hermes.Runner, machine: Machine, existing)
     patch = False
     declined: List[str] = []
     if same_version(existing, hermes.HERMES_COMMIT):
-        patch = yes(ask("Apply the BipAgents fixes to your Hermes (the agent's questions in the app, photos kept,\n"
-                           "  vault after a browser restart)? `hermes update` takes them off. (y/n)", "y"))
+        patch = yes(ask(f"Apply the BipAgents fixes to your Hermes ({FIXES})?\n"
+                           "  `hermes update` takes them off. (y/n)", "y"))
         if not patch:   # refused: not offered again by updates (bipagents hermes-update --fixes-only still can)
             declined = [p.name for p in hermes.set_patches(REPO / "hermes" / "patches")]
     else:
         say(ui.note(f"Your Hermes ({existing.commit or 'unknown version'}) isn't the tested version "
-                       f"({hermes.HERMES_COMMIT}): no BipAgents fixes, the app works without these features."))
+                       f"({hermes.HERMES_COMMIT}): no BipAgents fixes. The app works (messages, approvals,\n"
+                       f"    the agent's questions), without these: {FIXES}."))
         say(ui.note("Afterwards: bipagents hermes-update --fixes-only offers those that fit it, and "
                     "bipagents hermes-update --to-bipagents moves it to the tested version with all of them."))
 
@@ -618,13 +625,16 @@ def install_on_existing(args, runner: hermes.Runner, machine: Machine, existing)
         say(ui.note("nothing (your local API and your agents' keys are already there)"))
     if patch:
         say(ui.note("the BipAgents fixes, in Hermes' code"))
+    later = bridge_writes([p.name for p in shown])
+    if later:
+        say(ui.note(later))
     restart = bool(changes or patch)
     if restart:
         say(ui.note({"service": "your gateway will be restarted once",
                      "manual": "your gateway runs by hand: you'll restart it at the end",
                      "stopped": "your gateway isn't running: I'll install it as a service, which starts by itself"}
                     [existing.gateway]))
-    say(ui.note("Uninstalling BipAgents undoes all of this."))
+    say(ui.note("Uninstalling BipAgents undoes the rest." if later else "Uninstalling BipAgents undoes all of this."))
     if not yes(ask("\nReady to go? (y/n)", "y")):
         return 1
 

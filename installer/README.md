@@ -30,7 +30,7 @@ Add `--dry-run` to see every step and command without changing anything.
 
    On a 16 GB Mac mini with the model elsewhere: about 1 GB per person plus the voices — a family fits.
 4. **Installs Hermes** with its official installer, at the version tested with BipAgents (v0.23.1, `3b42157858`), applies the
-   patches of `hermes/patches/` (the agent's questions in the app, photos kept for follow-up questions), as **one gateway per person** (Hermes' multiplex mode): every
+   patches of `hermes/patches/` (the time with each message, the cost of each message, cheaper repeated prompts, agents writing to each other, the vault in the browser), as **one gateway per person** (Hermes' multiplex mode): every
    agent is a profile reached at `/p/<agent>/` with its own key. New agents are picked up without a restart.
    On Linux with podman, each agent's tools run in a sandbox the bridge keeps isolated: no folder of the machine
    inside (the files sent to the agent are copied into a podman volume of its own; shared folders between agents are
@@ -108,6 +108,11 @@ your main profile included, and shows everything it will change before it starts
 - BipAgents' patches in Hermes' code, if you want them and your version is the tested one;
 - a service for your gateway when it is not running, or a restart when it already runs as a service (one you started
   by hand, you restart yourself).
+
+Once running, the bridge also writes in the shown agents other than your main profile: its tools and rules in their
+`config.yaml` and `SOUL.md` (and two skills), their thinking level, and Hermes' cron tool off for them (the app's
+routines instead). The installer says so before it starts; uninstalling doesn't take it out yet. Your Hermes'
+scheduled jobs stay in your Hermes.
 
 All of it is written down in `~/.config/bipagents/existing-hermes.json`: uninstalling puts every setting back and
 takes the patches off. `--all` never removes a Hermes that was there before BipAgents. When your agents' tools do not

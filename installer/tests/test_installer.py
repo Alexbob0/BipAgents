@@ -458,6 +458,16 @@ def test_an_existing_hermes_with_its_api_on_keeps_its_port_and_key(tmp_path, mon
     assert existing.key_of(found, changes, "default") == "main-key"
 
 
+def test_an_existing_hermes_is_told_what_the_bridge_writes_in_its_profiles():
+    """Seen on a fresh Hermes v0.23.1 (12/11): the bridge rewrote the shown profiles' config.yaml and SOUL.md, not the
+    main one's, and uninstalling left it: said before « Ready to go? »."""
+    from bipinstall.existing import bridge_writes
+    assert bridge_writes(["default"]) is None
+    said = bridge_writes(["default", "dev", "jardin_potager"])
+    assert said.startswith("Dev, Jardin Potager: ") and "Hermes" not in said.split(":")[0]
+    assert "SOUL.md" in said and "cron" in said and "Uninstalling leaves these." in said
+
+
 def test_uninstall_puts_an_existing_hermes_back(tmp_path, monkeypatch):
     from bipinstall import existing
     from bipinstall.uninstall import uninstall
@@ -888,8 +898,14 @@ def test_zram_for_small_rented_servers(tmp_path):
     assert zram_active(str(swaps))
     assert not zram_active(str(tmp_path / "missing"))
     commands = zram_commands("apt")
-    assert commands[0] == "apt-get install -y systemd-zram-generator" and zram_commands("dnf")[0].startswith("dnf ")
-    assert "zram-size = ram / 2" in commands[1] and commands[1].endswith("> /etc/systemd/zram-generator.conf")
+    # Ubuntu's cloud kernels: the module from linux-modules-extra first (Hetzner Ubuntu 24.04 has none, 12/11)
+    assert commands[0].startswith("modprobe zram || apt-get install -y ") and "linux-modules-extra" in commands[0]
+    assert commands[1] == "modprobe zram" and commands[2] == "apt-get install -y systemd-zram-generator"
+    dnf = zram_commands("dnf")
+    assert dnf[0] == "modprobe zram" and dnf[1].startswith("dnf ") and not any("modules-extra" in c for c in dnf)
+    conf = next(c for c in commands if "zram-generator.conf" in c)
+    assert "zram-size = ram / 2" in conf and "swap-priority = 100" in conf
+    assert commands[-2:] == ["systemctl restart systemd-zram-setup@zram0.service", "systemctl start dev-zram0.swap"]
 
 
 def _cloud_file(tmp_path, **values):
