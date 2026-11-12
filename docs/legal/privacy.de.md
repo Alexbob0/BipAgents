@@ -114,9 +114,10 @@ Seiten, Audios und Routinen, die er erstellt, erscheinen in dieser Unterhaltung.
   Unterhaltung und seine Dateien für alle gelöscht.
 - **Wer entscheidet.** Die Person, die den Agenten erstellt, wählt seine Mitglieder und seine Werkzeuge und kann ein
   Mitglied entfernen. Auf ihrem eigenen Server ist sie den anderen Mitgliedern gegenüber dafür verantwortlich.
-- **Während der Beta**: Wenn der Platz der Person, die den Agenten erstellt hat, freigegeben wird (Abschnitt 5.14),
-  verschwindet die gemeinsame Unterhaltung für alle Mitglieder, bis sie ihren Platz zurückholt; dasselbe gilt für das
-  Teilen ihrer Agenten zum Lesen.
+- **Während der Beta** zählt, was die Mitglieder dem Agenten schreiben, als Nutzung des Platzes, der ihn hostet. Wird
+  dieser Platz trotzdem freigegeben (Abschnitt 5.14), endet die gemeinsame Unterhaltung, die bei der Person liegt, die
+  den Agenten erstellt hat, für alle Mitglieder, bis sie ihren Platz zurückholt; dasselbe gilt für das Teilen ihrer
+  Agenten zum Lesen.
 
 **Ein persönlicher Agent, den du mit deinen Angehörigen teilst.** Du kannst sie deine Unterhaltungen mit einem deiner
 Agenten lesen lassen (deine Nachrichten, seine Antworten, die Fotos, Dateien, Seiten und Karten), ab dem Teilen, oder
@@ -483,7 +484,8 @@ Foto, nie die Schlüssel zu deinem Platz.
 
 **Zwecke.** Dich anmelden, dein Abo und deine Plätze verbinden, deine Geräte freigeben, dein Konto wiederherstellen, dir
 Anmeldecodes, Sicherheitshinweise (neues Gerät, laufende Wiederherstellung), die Bestätigung deines Kaufs, die
-Eingangsbestätigung eines Widerrufs und die Hinweise zur Löschung schicken, die Einladungen verwalten. Keine
+Eingangsbestätigung eines Widerrufs, die Hinweise zur Löschung, den Hinweis am 5. Tag für einen Beta-Platz, dem
+niemand schreibt (Abschnitt 5.14), und den Hinweis zum Ende der Beta schicken, die Einladungen verwalten. Keine
 Werbe-E-Mails: Eine kommerzielle Nachricht würde nur verschickt, wenn du dein Einverständnis angekreuzt hast.
 **Rechtsgrundlage.** Erfüllung des Vertrags (Art. 6 Abs. 1 lit. b DSGVO).
 **Dauer.** Solange dein Konto besteht. Wenn du seine Löschung beantragst, wird es **30 Tage** danach gelöscht (deine
@@ -728,7 +730,7 @@ dieses Anbieters, BipAgents löscht darin nichts, und Kerfy Studio bewahrt nicht
 | Hoster der Modelle, Partner von EUrouter | Betreiben das Modell (heute GLM-5.3 Flash) | An das Modell geschickte Nachrichten, mit den Dateien und Fotos, die es sieht | Europäische Union, laut EUrouter |
 | Scaleway SAS (Paris, Frankreich) | Objektspeicher für die Sicherungen (Region fr-par, Paris) | Verschlüsselte Sicherungen der Plätze, für ihn und für Kerfy Studio unlesbar; verschlüsselte Kopien der Datenbank des Guichets; eine ersetzte oder gelöschte Version wird 1 Tag aufbewahrt | Europäische Union (Frankreich) |
 | OVHcloud (OVH SAS, Roubaix, Frankreich) | Hostet den Guichet und das Relay, auf einem VPS in Frankreich | Konto, Abo, technische Daten; versiegelte Tokens und die Protokolle des Relays (Abschnitte 4.1 und 5.6) | Frankreich |
-| Proton AG (Genf, Schweiz) | Verschickt von einer bipagents.com-Adresse die Codes, die Sicherheitshinweise, die Einladungen, die Kaufbestätigung, die Eingangsbestätigung eines Widerrufs und die Hinweise zur Löschung; hostet auch das Support-Postfach (Abschnitt 4.2) | E-Mail-Adresse, Inhalt dieser E-Mails; Proton bewahrt die gesendete Nachricht auf, bis wir sie aus dem Postausgang löschen | Schweiz (Angemessenheitsbeschluss, Abschnitt 11) |
+| Proton AG (Genf, Schweiz) | Verschickt von einer bipagents.com-Adresse die Codes, die Sicherheitshinweise, die Einladungen, die Kaufbestätigung, die Eingangsbestätigung eines Widerrufs, die Hinweise zur Löschung, den Hinweis am 5. Tag für einen ungenutzten Beta-Platz und den Hinweis zum Ende der Beta; hostet auch das Support-Postfach (Abschnitt 4.2) | E-Mail-Adresse, Inhalt dieser E-Mails; Proton bewahrt die gesendete Nachricht auf, bis wir sie aus dem Postausgang löschen | Schweiz (Angemessenheitsbeschluss, Abschnitt 11) |
 | Stripe Payments Europe, Ltd. (Dublin, Irland) | Zahlung der Käufe auf der Website bipagents.com, Steuerberechnung, Betrugsprüfung, Rechnungen | E-Mail-Adresse, Rechnungsadresse oder -land, Kartendaten, IP-Adresse | Europäische Union; möglicherweise außerhalb der Union (Abschnitt 11) |
 
 Sie sind mit Kerfy Studio durch einen Vertrag nach Art. 28 DSGVO verbunden; Stripe handelt außerdem für seine eigenen
@@ -821,28 +823,28 @@ zum 31. Dezember 2026. Wenn du danach ein Konto erstellst, gilt für dein Konto 
 
 ### 5.14 Ungenutzte Beta-Plätze
 
-Während der Beta und des geschenkten Monats vermerkt dein Platz die Uhrzeit, zu der du deinen Agenten zuletzt
-geschrieben hast, nie, was du geschrieben hast: eine Nachricht, eine Sprachnachricht, ein Foto oder eine Datei, die du
-einem Agenten schickst, ein Live-Anruf, eine Karte, auf die du antwortest, oder „Platz behalten“. Routinen und
-Überwachungen laufen weiter, zählen aber nicht. Er schickt diese Uhrzeit mit der technischen Überwachung an den
-Guichet (Abschnitt 5.6). Der Guichet nutzt sie nur, um einen Beta-Platz freizugeben, dem seit 7 Tagen niemand
-geschrieben hat. Er sagt dir am 5. Tag mit einer Benachrichtigung, einem Banner in der App und einer E-Mail Bescheid,
-verschickt über Proton AG (Abschnitt 5.9); Proton bewahrt die gesendete Nachricht auf, bis wir sie aus dem
-Postausgang löschen.
+Für die 7-Tage-Regel (Beta-Bedingungen) schickt dein Server dem Guichet nur die Uhrzeit, zu der jemand deinen Agenten
+zuletzt geschrieben hat, nie den Inhalt: eine Nachricht, eine Sprachnachricht, ein Foto oder eine Datei, die einem
+Agenten geschickt wird, ein Live-Anruf, eine Karte, auf die man antwortet, oder „Platz behalten“. Was die Mitglieder
+eines Familienagenten schreiben, zählt für den Platz, der ihn hostet; Routinen, die von selbst laufen, zählen nicht.
+Diese Uhrzeit geht mit der technischen Überwachung mit (Abschnitt 5.6) und dient nur dazu, einen Beta-Platz
+freizugeben, dem seit 7 Tagen niemand geschrieben hat. Am 5. Tag sagt dir der Guichet mit einer Benachrichtigung, in
+der App und per E-Mail, wenn du ein Konto hast (Abschnitt 5.2), Bescheid.
 
-**Bei der Freigabe** (7 Tage ohne Nachricht oder Ende des geschenkten Monats ohne Abo) wird der Server des Platzes für
-jemand anderen zurückgesetzt, und es bleibt dort keine Kopie deiner Daten (das tägliche Abbild von OVHcloud, das ihn
-enthielt, wird innerhalb von etwa einem Tag ersetzt, Abschnitt 5.5). Nur die verschlüsselte Kopie der Sicherungen
-deines Platzes wird aufbewahrt, bei Scaleway, in Frankreich (Abschnitt 5.5), und nach 30 Tagen endgültig gelöscht.
-Diese Kopie bleibt ein personenbezogenes Datum: Sie kann Gesundheitsdaten und die Nachrichten deiner Angehörigen
-enthalten. Ihr Schlüssel bleibt auf deinem Telefon (und in der Kopie, die dein Wiederherstellungscode öffnet,
-Abschnitt 5.2).
+**Bei der Freigabe** (7 Tage ohne Nachricht oder Ende des geschenkten Monats ohne Abo) wird der Server des Platzes
+zurückgesetzt, und nichts bleibt dort (das tägliche Abbild von OVHcloud, das ihn enthielt, wird innerhalb von etwa
+einem Tag ersetzt, Abschnitt 5.5). Nur die verschlüsselte Kopie der Sicherungen des Platzes, höchstens 21 Tage Verlauf,
+wird 30 Tage bei Scaleway in Paris aufbewahrt, damit du zurückkommen kannst, und dann endgültig gelöscht. Sie kann
+Daten aus deinem Notizbuch, zu deiner Gesundheit und, wenn dein Platz einen Familienagenten hostet, die Nachrichten
+seiner Mitglieder enthalten: Sie ist ein personenbezogenes Datum. Ihr Schlüssel bleibt auf deinem Telefon (und in der
+Kopie, die dein Wiederherstellungscode öffnet, Abschnitt 5.2).
 <!-- TODO (Kerfy Studio, 12/11): ne pas écrire ici « nous ne pouvons pas la lire » tant que ce n'est pas confirmé. -->
-Wenn du einen Familienagenten erstellt hast, verschwindet seine gemeinsame Unterhaltung für alle seine Mitglieder, bis
-du deinen Platz zurückholst, und das Teilen deiner Agenten zum Lesen endet ebenfalls (Abschnitt 2 bis).
+Wenn niemand schreibt, enden mit der Freigabe die gemeinsame Unterhaltung eines Familienagenten, den dieser Platz
+hostet, und das Teilen seiner Agenten zum Lesen (Abschnitt 2 bis). Nach der Freigabe ist kein Export mehr möglich.
 
-**Rechtsgrundlage.** Erfüllung der Beta-Bedingungen (Art. 6 Abs. 1 lit. b DSGVO). **Dauer.** Die Uhrzeit: bei jedem
-Schreiben ersetzt, mit dem Platz gelöscht; die verschlüsselte Kopie: 30 Tage nach der Freigabe des Platzes.
+**Rechtsgrundlage.** Erfüllung der Beta-Bedingungen (Art. 6 Abs. 1 lit. b DSGVO). **Dauer.** Die Uhrzeit: jedes Mal
+ersetzt, wenn jemand schreibt, mit dem Platz gelöscht; die verschlüsselte Kopie: 30 Tage nach der Freigabe des
+Platzes.
 
 ## 6. Was Kerfy Studio nicht tut
 
@@ -1021,8 +1023,8 @@ des Guichets und des Relays: OVHcloud, in Frankreich. Hoster der Sicherungen: Sc
 | Kündigung auf der Website: die Erklärung (E-Mail, Nummer, Grund, gewünschtes Ende, Datum und Uhrzeit) | 3 Jahre |
 | Kündigung auf der Website: die eingegebene E-Mail-Adresse, um die Versuche zu begrenzen | Höchstens 2 Tage |
 | Inhalt deines Platzes | Während des Abos, dann 30 Tage (3 Tage nach einer nicht fortgesetzten kostenlosen Woche) |
-| Freigegebener Beta-Platz (7 Tage ohne Nachricht an deine Agenten oder Ende des geschenkten Monats am 31. Dezember 2026 ohne Abo) | Server zurückgesetzt; nur die verschlüsselte Kopie seiner Sicherungen wird aufbewahrt, 30 Tage nach der Freigabe, dann endgültig gelöscht |
-| Uhrzeit, zu der du deinen Agenten zuletzt geschrieben hast (Beta-Platz) | Bei jedem Schreiben ersetzt; mit dem Platz gelöscht |
+| Freigegebener Beta-Platz (7 Tage ohne Nachricht an deine Agenten oder Ende des geschenkten Monats am 31. Dezember 2026 ohne Abo) | Server zurückgesetzt; nur die verschlüsselte Kopie seiner Sicherungen (höchstens 21 Tage Verlauf) wird aufbewahrt, 30 Tage nach der Freigabe, dann endgültig gelöscht |
+| Uhrzeit, zu der jemand deinen Agenten zuletzt geschrieben hat (Beta-Platz) | Jedes Mal ersetzt, wenn jemand schreibt; mit dem Platz gelöscht |
 | Sicherungen | 2 Stunden (alle), dann 48 Stunden (stündlich), 21 Tage (täglich), nichts Älteres; mit dem Platz gelöscht; was du löschst, ist innerhalb von 30 Tagen daraus verschwunden, alle Kopien eingeschlossen |
 | Sicherungsdateien, die ein Platz löscht, vom Guichet beiseitegelegt | 5 Tage |
 | Ersetzte oder gelöschte Versionen bei Scaleway (Sicherungen der Plätze, verschlüsselte Kopien der Datenbank des Guichets) | 1 Tag |

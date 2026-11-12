@@ -14,22 +14,27 @@ starten. Sie wird von Kerfy Studio angeboten, dem Herausgeber von BipAgents.
 - **Das geschenkte KI-Guthaben.** 2 € Nutzung des Modells pro Person und pro Monat, mit einer festen Obergrenze. Ist
   dieses Guthaben verbraucht, rufen deine Agenten das Modell bis zum nächsten Monat nicht mehr auf: Dir wird nichts
   berechnet. Es kann weder verkauft noch erstattet werden.
-- **Ungenutzter Platz.** Während der Beta und des geschenkten Monats wird ein Platz, dem 7 Tage lang niemand
-  geschrieben hat, für jemand anderen freigegeben. Deinen Agenten schreiben heißt: ihnen eine Nachricht, eine
-  Sprachnachricht, ein Foto oder eine Datei schicken, einen Live-Anruf führen, auf eine Karte antworten oder auf „Platz
-  behalten“ tippen; Routinen und Überwachungen laufen weiter, zählen aber nicht. Am 5. Tag sagen wir dir mit einer
-  Benachrichtigung, einer E-Mail und einem Banner in der App Bescheid, mit dem Knopf „Platz behalten“.
-- **Was die Freigabe ändert.** Der Server deines Platzes wird für jemand anderen zurückgesetzt, und dort bleibt keine
-  Kopie deiner Daten: Nur die verschlüsselte Kopie der Sicherungen deines Platzes wird aufbewahrt und nach 30 Tagen
-  endgültig gelöscht. Wenn du einen Familienagenten erstellt hast, verschwindet seine gemeinsame Unterhaltung für alle
-  seine Mitglieder, bis du deinen Platz zurückholst, und das Teilen deiner Agenten zum Lesen endet ebenfalls.
+- **Ungenutzter Platz.** Die Plätze der Beta sind begrenzt. Wenn 7 Tage lang niemand deinen Agenten schreibt, wird
+  dein Platz für jemand anderen freigegeben. Deinen Agenten schreiben heißt: einem Agenten eine Nachricht, eine
+  Sprachnachricht, ein Foto oder eine Datei schicken, einen Live-Anruf führen oder auf eine Karte antworten; Routinen,
+  die von selbst laufen, zählen nicht. Was die Mitglieder eines Familienagenten schreiben, den du erstellt hast, zählt
+  auch für deinen Platz. Am 5. Tag sagen wir dir mit einer Benachrichtigung, in der App und per E-Mail, wenn du ein
+  Konto hast, Bescheid: Dann reicht es, einem Agenten zu schreiben oder auf „Platz behalten“ zu tippen. Wenn niemand
+  schreibt, enden mit der Freigabe die gemeinsame Unterhaltung deiner Familienagenten und dein Teilen zum Lesen. Dein
+  Konto bleibt bestehen.
+- **Nach der Freigabe.** Dein Server wird zurückgesetzt und jemand anderem gegeben: Nichts bleibt dort. Wir bewahren
+  nur die verschlüsselte Kopie der Sicherungen deines Platzes auf (höchstens 21 Tage Verlauf: Unterhaltungen,
+  Gedächtnis der Agenten, Dateien, Notizbuch, Einstellungen), 30 Tage bei Scaleway in Paris, dann wird sie endgültig
+  gelöscht. Ihr Schlüssel bleibt auf deinem Telefon (und in der Kopie, die dein Wiederherstellungscode öffnet).
+  <!-- TODO (Kerfy Studio, 12/11): ne pas écrire ici « nous ne pouvons pas la lire » tant que ce n'est pas confirmé. -->
+  In diesen 30 Tagen bringt „Meinen Platz zurückholen“ sie auf einen neuen Platz, wenn noch einer frei ist. Wenn du
+  weder dein Telefon noch deinen Wiederherstellungscode mehr hast, lässt sie sich nicht öffnen, und du fängst von vorn
+  an. Exportiere deine Daten vor der Freigabe: Danach ist kein Export mehr möglich.
 - **Ende der Beta.** Die Beta endet am 30. November 2026. Dein Platz bleibt danach bis zum 31. Dezember 2026
-  geschenkt. Er wird nie kostenpflichtig, ohne dass du ein Abo wählst. Ohne Abo wird dein Platz danach auf dieselbe
-  Weise freigegeben. Wir sagen dir per E-Mail und in der App mindestens 7 Tage vor dem Ende des geschenkten Monats
+  geschenkt. Er wird nie kostenpflichtig, ohne dass du ein Abo wählst. Hast du bis zu diesem Datum kein Abo, wird dein
+  Platz wie oben freigegeben: Nur seine verschlüsselte Kopie wird 30 Tage aufbewahrt, und wenn du in diesen 30 Tagen
+  ein Abo abschließt, bekommst du deine Agenten zurück. Wir sagen dir mindestens 7 Tage vorher per E-Mail und in der App
   Bescheid.
-- **Deine Daten.** Du kannst sie aus der App exportieren, bis dein Platz freigegeben wird. Danach, während der 30 Tage,
-  bekommst du sie nur zurück, indem du deinen Platz zurückholst: mit „Meinen Platz zurückholen“ in der App, wenn noch
-  ein Platz frei ist, oder, nach dem Ende des geschenkten Monats, mit einem Abo.
 - **Ohne Gewähr.** Es ist eine Testversion: Funktionen können fehlen, sich ändern, fehlerhaft sein oder ausfallen, und
   Daten können verloren gehen. Bewahre eine Kopie von dem auf, was dir wichtig ist. Die Beta wird so bereitgestellt,
   wie sie ist, ohne Gewähr, soweit das Gesetz es erlaubt.
