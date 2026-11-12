@@ -19,7 +19,7 @@
 - Con tu propio servidor, Kerfy Studio solo puede recibir tres cosas:
   1. lo necesario para entregar tus **notificaciones** a través de su relé: un token de dispositivo sellado, nunca el
      texto de tus mensajes en claro;
-  2. lo que decidas enviarnos: un **correo** al soporte o la **denuncia** de una respuesta desde la app;
+  2. lo que decidas enviarnos: un **correo** al soporte o la **denuncia** de una respuesta o de un mensaje desde la app;
   3. **informes de fallos**, solo si has activado su envío en los ajustes de tu teléfono.
 - Con la oferta todo incluido, Kerfy Studio trata además tu cuenta, el estado de tu suscripción, datos técnicos sobre
   tu plaza (nunca su contenido) y tus copias de seguridad, ilegibles sin su clave, que se queda en tu plaza y en tus dispositivos (sección 5.5); aloja tu plaza sin
@@ -76,25 +76,49 @@ Con tu propio ordenador o tu propio servidor:
   bridge los lee, para rellenar un pago que has aprobado. El código de seguridad nunca se guarda: lo escribes en cada
   pago. El agente (el modelo de IA) nunca ve esos números, y Kerfy Studio no recibe nada. Con la oferta todo incluido,
   la tarjeta se queda en tu teléfono (sección 5.10).
-- **Varias personas en un mismo servidor** (función familia): cada persona tiene su propia instalación, separada de
-  las demás. Quien administra el servidor es responsable frente a las demás.
-- **Un agente personal que compartes con tus familiares**: pueden leer tus conversaciones con él (tus mensajes, sus
-  respuestas, las fotos, los archivos, las páginas y los mapas), desde el momento en que lo compartes, o también las
-  anteriores si así lo eliges. No pueden escribirle ni pedirle nada, y no ven su memoria. Lo que el agente lee o escribe
-  en esas conversaciones con sus herramientas (correo, calendario, salud, contactos, Cuaderno…) pasa a ser visible para
-  ellos: la app te lo recuerda antes de compartir. Puedes cambiar esta elección o dejar de compartir cuando quieras; una
-  vez que dejas de compartir, ya no tienen acceso. Lo mismo vale para un agente que un familiar comparte contigo.
-- **El agente de la familia** tiene una sola conversación, común a los miembros que eligió quien lo creó (toda la
-  familia o algunos miembros): lo que cada uno escribe ahí y sus respuestas son visibles para esos miembros, y recuerda
-  lo que cada uno le dice. Los archivos y fotos que se le envían son visibles para esos miembros y se guardan 30 días
-  en casa de quien lo creó. Puede hacer páginas, audios y rutinas: sus resultados llegan a la conversación común.
-  Nunca accede al correo, a la salud ni al Cuaderno personal de nadie. Solo lee el calendario de un miembro si este se
-  lo ha permitido (Ajustes › Calendario, o la página del agente): entonces lo pide al servidor de ese miembro en el
-  momento de responder, sin guardar copia en casa de quien lo creó, y sus respuestas son visibles para los miembros
-  de la conversación. Solo añade o cambia una cita si ese miembro también lo ha permitido.
+- **Varias personas en un mismo servidor** (función familia): cada persona tiene su propia instalación y sus propios
+  agentes, separados de los de las demás, salvo los agentes de la familia y los agentes compartidos (sección 2 bis), que
+  son comunes por elección. Quien administra el servidor es responsable frente a las demás.
 
 **Con la oferta todo incluido**, tu plaza ocupa el lugar de tu servidor, y Kerfy Studio elige el proveedor de
 alojamiento y el enrutador de IA: la sección 5 dice quién ve qué.
+
+## 2 bis. Los agentes de la familia y los agentes compartidos
+
+**El agente de la familia.** La persona que lo crea elige quién participa: toda la familia o algunos miembros. Tiene
+una sola conversación: cada uno ve en ella los mensajes de los demás, con su nombre de pila, y las respuestas del
+agente. Su memoria es común: lo que tú le dices puede salir en sus respuestas a los demás. Las páginas, los audios y las
+rutinas que hace llegan a esa conversación.
+
+- **Dónde.** El agente, su conversación, su memoria, sus archivos y sus fotos están en el servidor de la persona que lo
+  creó, o en su plaza con la oferta todo incluido, que Kerfy Studio aloja sin acceder a ella (sección 5.1). Los archivos
+  y fotos que se le envían (fotos, PDF, Word, Excel, PowerPoint) son visibles para los miembros y se guardan según el
+  plazo elegido en ese servidor, 30 días por defecto, y después se borran (sección 12).
+- **Lo que nunca lee**: tu correo, tu salud y tu Cuaderno.
+- **Tu calendario**, solo si se lo permites (Ajustes › Calendario, o la página del agente; desactivado al principio):
+  entonces pide a tu servidor (o a tu plaza) las citas que necesita, en el momento de responder, sin guardar copia en
+  casa de la persona que lo creó, y sus respuestas son visibles para los miembros. Añadir o cambiar una cita necesita
+  un segundo ajuste, también desactivado al principio. Estos ajustes solo los activas tú, en tu dispositivo: ni la
+  persona que creó el agente ni un padre o una madre pueden hacerlo en tu lugar, tampoco entre los 16 y los 18 años.
+  Base jurídica: tu consentimiento (artículo 6.1.a del RGPD), que das al activar estos ajustes y retiras al
+  desactivarlos.
+- **Cuando se retira a un miembro.** Si la persona que creó el agente te retira, tus mensajes se quedan en la
+  conversación común con tu nombre de pila, y tus archivos se retiran. Para dejar de formar parte del agente, pídele que
+  te retire. Si eliminas tu cuenta, tu nombre de pila se sustituye por «Antiguo miembro». Puedes pedir que se borren tus
+  mensajes: escribe a privacy@bipagents.com. Si la persona que creó el agente lo elimina, o elimina su cuenta o su
+  plaza, el agente, su conversación y sus archivos se borran para todos.
+- **Quién decide.** La persona que crea el agente elige sus miembros y sus herramientas, y puede retirar a un miembro.
+  En su propio servidor, es responsable frente a los demás miembros.
+
+**Un agente personal compartido con tus familiares.** Puedes dejarles leer tus conversaciones con uno de tus agentes
+(tus mensajes, sus respuestas, las fotos, los archivos, las páginas y los mapas), desde que lo compartes, o también las
+anteriores si así lo eliges (desactivado al principio). No pueden escribirle ni pedirle nada, y no ven su memoria. Lo
+que el agente lee o escribe en esas conversaciones con sus herramientas (correo, calendario, contactos, Cuaderno…) pasa
+a ser visible para ellos, y pueden hablar de otras personas: la app te lo recuerda antes de compartir. Si el agente
+puede leer tu salud, esos pasajes no se les pueden ocultar: el uso compartido solo empieza con una casilla aparte, tu
+consentimiento explícito (artículo 9.2.a del RGPD). Puedes cambiar estas elecciones o dejar de compartir cuando
+quieras; una vez que dejas de compartir, ya no tienen acceso. Lo mismo vale para un agente que un familiar comparte
+contigo.
 
 ## 3. Lo que la app guarda en tu teléfono
 
@@ -249,6 +273,10 @@ Una notificación (Android) o una pantalla propia (iPhone) lo muestra mientras d
 compartido o familiar. Kerfy Studio no recibe nada. **Base jurídica**: prestarte la función que eliges (artículo 6.1.b
 del RGPD).
 
+**Tus elecciones de aprobación.** Las acciones que has permitido con «Permitir siempre» para cada agente, los sitios
+bloqueados con «Rechazar siempre» y las solicitudes pendientes se guardan en tu servidor (o tu plaza); una solicitud pendiente se
+borra tras 24 horas sin respuesta. Kerfy Studio no recibe nada.
+
 ## 4. Lo que Kerfy Studio puede recibir
 
 ### 4.1 Las notificaciones, a través del relé de Kerfy Studio
@@ -267,10 +295,11 @@ olvida todo.
 - el token de dispositivo, la plataforma (Apple o Google) y el entorno (prueba o producción);
 - la **dirección IP** de tu teléfono (al registrarse) o de tu servidor (con cada notificación), solo para limitar
   abusos: se transforma en una huella, se guarda en memoria una hora como máximo y nunca se escribe;
-- el contenido de la notificación: un **texto genérico** como «Nuevo mensaje» (cualquier otro texto se sustituye),
-  **identificadores técnicos** (agente, conversación, tarea, tipo de notificación), el número que se muestra en el
-  icono y, **cifrados por tu servidor solo para tu teléfono**, el nombre del agente y el principio de su respuesta. Ni
-  el relé, ni Apple, ni Google pueden leerlos.
+- el contenido de la notificación: el nombre del agente y el principio del mensaje, **cifrados por tu servidor para la
+  clave de tu teléfono**: ni nuestro relé, ni Apple, ni Google pueden leerlos. Solo pasan en claro una línea neutra, un
+  código que tu teléfono muestra en tu idioma, como «Nuevo mensaje» o «Aprobación necesaria» (cualquier otro texto se
+  sustituye), **identificadores técnicos** (agente, conversación, tarea, tipo de notificación) y el número que se
+  muestra en el icono.
 
 **Lo que se conserva.** El relé no tiene base de datos. El token sellado se guarda en tu teléfono y en tu servidor; con
 la oferta todo incluido, el guichet de Kerfy Studio también lo guarda, siempre sellado (sección 5.6). Los registros
@@ -287,8 +316,7 @@ Messaging), vinculados a Kerfy Studio por un contrato conforme al artículo 28 d
 notificaciones a los iPhone a través de su servicio APNs.
 
 **Sin notificaciones.** Puedes rechazar o desactivar las notificaciones en los ajustes de tu teléfono: la app funciona
-sin ellas. Si desinstalas la app, Apple o Google marcan el token como inválido y tu servidor lo olvida. Si compilas
-la app tú mismo con tu propia cuenta de Apple, no se usa el relé de Kerfy Studio.
+sin ellas. Si desinstalas la app, Apple o Google marcan el token como inválido y tu servidor lo olvida.
 
 **En Android**, la app solo pide un token a Google en el momento en que activas las notificaciones.
 
@@ -310,14 +338,22 @@ la app tú mismo con tu propia cuenta de Apple, no se usa el relé de Kerfy Stud
 - **Denunciar esta respuesta** (mantener pulsada una respuesta) envía la denuncia **desde la app**, a través del relé
   de Kerfy Studio, solo a Kerfy Studio: ni a tu servidor ni al proveedor del modelo. Contiene el motivo, tus
   precisiones opcionales, **el texto de la respuesta denunciada**, la categoría del agente, la versión de la app y el
-  modelo del teléfono. **Ni tu dirección de correo, ni tu nombre, ni el del agente.** No se envía nada hasta que
-  pulsas «Enviar». El relé ve de paso la dirección IP de tu teléfono y solo la usa para limitar abusos (sección 4.1).
-  Como la denuncia no contiene ningún medio para contactarte, no podemos responderla: escribe al soporte si esperas
-  una respuesta.
-- **Denunciar este mensaje** (mantener pulsado el mensaje de otra persona, en la conversación común de un agente de
-  la familia o en una conversación que un familiar comparte contigo) sigue el mismo camino, con el mismo contenido,
-  más **el nombre de pila de esa persona tal como aparece y el nombre del agente**. No se le avisa. Base legal: el
-  interés legítimo de Kerfy Studio en moderar lo que los usuarios intercambian entre sí.
+  modelo del teléfono. **Ni tu nombre, ni el del agente.** El campo «Tu correo, si quieres una respuesta» es
+  opcional: si lo rellenas, tu dirección sale con la denuncia, solo sirve para responderte y se guarda con ella (plazo
+  más abajo); si no, no podemos responderte. No se envía nada hasta que pulsas «Enviar». El relé ve de paso la
+  dirección IP de tu teléfono y solo la usa para limitar abusos (sección 4.1).
+- **Denunciar este mensaje** (mantener pulsado el mensaje de otra persona, en un agente de la familia o un agente
+  compartido, sección 2 bis) envía la denuncia desde la app, a través del relé de Kerfy Studio, y después por correo
+  solo a Kerfy Studio, a través de su proveedor de correo (Proton AG, Suiza); Proton guarda el mensaje enviado hasta que lo borramos de la bandeja de salida. Contiene el motivo, tus
+  precisiones opcionales, **el texto del mensaje, el nombre de pila que se muestra de su autor y el nombre del agente**.
+  Ni tu nombre; tu dirección de correo solo si rellenas el mismo campo opcional o si la envías por correo (más
+  abajo). Al autor no se le avisa de tu denuncia. Kerfy Studio no lee la conversación y no puede borrar ese mensaje.
+  Puede, según el caso, aconsejarte, avisar a la persona que creó el agente si tiene cuenta, o tomar una medida prevista
+  por las condiciones de uso o la política de uso aceptable: la persona afectada recibe entonces un aviso, con los
+  motivos (sección 5.7). La persona que creó un agente de la familia también puede retirar a un miembro. Si estás en peligro, llama primero al 112. Ese mensaje es de otra persona: solo usamos lo que sirve para
+  tramitar la denuncia. Base jurídica: el interés legítimo de Kerfy Studio en hacer respetar las reglas de la app y
+  proteger a las personas que la usan (artículo 6.1.f del RGPD) y, con la oferta todo incluido, su obligación como
+  prestador de alojamiento de tramitar las denuncias (artículo 6.1.c; Reglamento (UE) 2022/2065, artículo 16).
 - **Si el relé no responde**, la app te propone enviar la misma denuncia por correo: entonces también recibimos tu
   dirección de correo.
 
@@ -329,7 +365,10 @@ en las precisiones solo lo que sea útil. Borramos lo que no sirve para tramitar
 responderte y hacer la app más segura (artículo 6.1.f del RGPD). Responder a una solicitud de ejercicio de tus
 derechos: obligación legal (artículo 6.1.c; artículos 12 a 22 del RGPD).
 **Plazo.** Soporte: 2 años después del último intercambio; código de ayuda (oferta): mientras dure la suscripción.
-Denuncias: 1 año después de su tramitación.
+Denuncia de una respuesta: 1 año después de su tramitación. Denuncia de un mensaje de otra persona: su contenido,
+incluido el correo recibido en Proton, se borra en cuanto se tramita, y como muy tarde 6 meses después de recibirlo;
+después solo se guarda una ficha sin el mensaje (fecha, motivo, decisión y sus motivos) durante 1 año después de la
+tramitación, más tiempo si un litigio o una autoridad lo exige.
 **Destinatarios.** Kerfy Studio y sus encargados del tratamiento: su proveedor de correo (Proton AG, Suiza) y el proveedor de alojamiento del relé y del guichet, por los que pasan las denuncias y los mensajes enviados desde la app.
 
 ### 4.3 Los informes de fallos
@@ -637,7 +676,7 @@ no borra nada en él y Kerfy Studio no guarda nada de él.
 | Proveedores de alojamiento de los modelos, socios de EUrouter | Hacen funcionar el modelo (hoy GLM-5.3 Flash) | Mensajes enviados al modelo, con los archivos y las fotos que ve | Unión Europea, según EUrouter |
 | Scaleway SAS (París, Francia) | Almacenamiento de objetos de las copias de seguridad (región fr-par, París) | Copias de seguridad cifradas de las plazas, ilegibles para él y para Kerfy Studio; copias cifradas de la base de datos del guichet; una versión sustituida o borrada se guarda 1 día | Unión Europea (Francia) |
 | OVHcloud (OVH SAS, Roubaix, Francia) | Aloja el guichet y el relé, en un VPS en Francia | Cuenta, suscripción, datos técnicos; tokens sellados y los registros del relé (secciones 4.1 y 5.6) | Francia |
-| Proton AG (Ginebra, Suiza) | Envía, desde una dirección bipagents.com, los códigos, los avisos de seguridad, las invitaciones, la confirmación de compra, el acuse de desistimiento y los avisos de eliminación; también aloja el buzón de soporte (sección 4.2) | Dirección de correo, contenido de esos correos | Suiza (decisión de adecuación, sección 11) |
+| Proton AG (Ginebra, Suiza) | Envía, desde una dirección bipagents.com, los códigos, los avisos de seguridad, las invitaciones, la confirmación de compra, el acuse de desistimiento y los avisos de eliminación; también aloja el buzón de soporte (sección 4.2) | Dirección de correo, contenido de esos correos; Proton guarda el mensaje enviado hasta que lo borramos de la bandeja de salida | Suiza (decisión de adecuación, sección 11) |
 | Stripe Payments Europe, Ltd. (Dublín, Irlanda) | Pago de las compras en el sitio bipagents.com, cálculo de impuestos, controles contra el fraude, facturas | Dirección de correo, dirección o país de facturación, datos de tarjeta, dirección IP | Unión Europea; posiblemente fuera de la Unión (sección 11) |
 
 Están vinculados a Kerfy Studio por un contrato conforme al artículo 28 del RGPD; Stripe actúa además como responsable
@@ -706,6 +745,36 @@ sin las horas: solo si escribiste al día siguiente y una semana después. Esto 
 solo sumadas a los totales del día, en los que no aparece nadie, guardados 2 años. Borradas en el acto cuando la plaza
 se reinstala, se retira o se da a otra persona.
 
+### 5.13 Pedir un código beta en el sitio
+
+En bipagents.com, «Obtener un código» te pide tu dirección de correo y hace que tu navegador haga un pequeño cálculo
+contra los robots (ALTCHA, servido y verificado por Kerfy Studio, que no deja nada en tu dispositivo: ni cookie, ni
+almacenamiento). Cada dirección recibe un solo código, las direcciones desechables se rechazan, y el número de códigos
+está limitado por día y por red. Tu dirección se lee un instante, solo para enviarte tu código a través de Proton AG
+(Suiza, sección 11), desde una dirección bipagents.com. No la guardamos, y Proton guarda el mensaje enviado hasta que lo borramos de la bandeja de salida. Solo guardamos una huella de tu
+dirección, calculada con una clave secreta, para comprobar que una dirección recibe un solo código: es un dato
+seudonimizado, y por tanto sigue siendo un dato personal. Tu dirección IP nunca se guarda en claro: solo su huella sirve
+para el límite por red, 2 días como máximo (sección 5.3).
+
+**Bases jurídicas.** Enviarte el código que pides (artículo 6.1.b del RGPD). Un solo código por dirección, el límite por
+red y el cálculo contra los robots: interés legítimo de Kerfy Studio en prevenir los abusos y repartir de forma justa las
+plazas de la beta (artículo 6.1.f). **Plazo.** La huella de la dirección, hasta el final de la beta, como muy tarde el 31 de diciembre de
+2026. Si después creas una cuenta, la sección 5.2 se aplica a tu cuenta.
+
+### 5.14 Las plazas beta sin usar
+
+Durante la beta y el mes de regalo, tu plaza anota la hora de tu última acción, nunca su contenido: un mensaje, una
+nota de voz, una foto o un archivo enviado a un agente, una llamada Live, una tarjeta a la que respondes. Las rutinas y
+los vigilantes que funcionan solos no cuentan. La envía al guichet con la supervisión técnica (sección 5.6). El guichet
+solo la usa para liberar una plaza beta que nadie usa desde hace 7 días: te avisa el 5.º día con una notificación y un
+correo, enviado a través de Proton AG (sección 5.9); Proton guarda el mensaje enviado hasta que lo borramos de la bandeja de salida. Una plaza liberada, como una plaza beta cuyo mes de
+regalo termina sin suscripción, pasa a otra persona: solo se guarda la última copia cifrada de sus copias de
+seguridad, ilegible sin su clave (sección 5.5), durante 30 días, y después se borra.
+
+**Base jurídica.** Ejecución de las condiciones de la beta (artículo 6.1.b del RGPD). **Plazo.** La hora de la última
+acción: se sustituye con cada acción y se borra con la plaza; la copia cifrada: 30 días después de la liberación de la
+plaza.
+
 ## 6. Lo que Kerfy Studio no hace
 
 - Sin publicidad, sin identificador publicitario, sin rastreo entre apps o sitios. Ninguna herramienta de estadísticas
@@ -755,13 +824,15 @@ cada servicio es responsable de lo que hace con ello.
   responde), usa el motor de síntesis de tu teléfono, según sus ajustes.
 - **En Android, los códigos QR** se leen en el teléfono, con una biblioteca integrada en la app, sin ningún servicio de
   Google.
-- **En Android, el escáner de documentos** y la lectura en el teléfono del texto de un papel escaneado son funciones
-  de los servicios de Google Play (Google ML Kit). Google
-  indica que ML Kit le envía información sobre el dispositivo y la app, identificadores de instalación y mediciones de
-  uso y rendimiento, para el diagnóstico y sus propias estadísticas. La app te lo dice y te pide tu acuerdo antes del
-  primer uso del escáner; sin ese acuerdo, el escáner no se abre
-  y Google ML Kit no lee el texto de ningún documento, y siempre puedes adjuntar una foto o un archivo.
-  Puedes cambiar de opinión en cualquier momento en Ajustes.
+- **El escáner de documentos y la lectura del texto.** El reconocimiento del texto de los documentos escaneados se
+  hace en tu teléfono: en iPhone con Vision de Apple, en Android con ML Kit de Google, que proporcionan los servicios de
+  Google Play, que descargan su modelo. El texto no se envía ni a Apple ni a Google. En Android, el escáner también es
+  una función de ML Kit, y Google indica que ML Kit le envía, cifrada, información sobre el dispositivo (fabricante,
+  modelo, versión del sistema) y sobre la app (nombre y versión), mediciones de rendimiento (como la latencia) y la
+  configuración de la API (como el formato y la resolución de la imagen), para el diagnóstico y estadísticas de uso,
+  sin transmitirla a terceros. La app te lo dice y te pide tu acuerdo antes del primer uso del escáner, y ese acuerdo
+  cubre también la lectura del texto; sin él, el escáner no se abre y ML Kit no lee ningún documento, y siempre puedes
+  adjuntar una foto o un archivo. Puedes cambiar de opinión en cualquier momento en Ajustes.
 - **Apple y Google** para las notificaciones (sección 4.1).
 - **Tailscale**, si lo usas: una app distinta, con su propia cuenta y su propia política de privacidad.
 - **Los enlaces que abres** (sitios citados por tus agentes, página de Hermes Agent) se abren en tu navegador. Tu
@@ -852,7 +923,9 @@ Scaleway, en Francia, sin transferencia fuera de la Unión. Puedes pedirnos una 
 | Registros técnicos del relé | 6 meses como máximo |
 | Correos de soporte | 2 años después del último intercambio |
 | Código de ayuda (oferta todo incluido) | Mientras dure la suscripción |
-| Denuncias | 1 año después de su tramitación |
+| Denuncia de una respuesta | 1 año después de su tramitación |
+| Denuncia de un mensaje de otra persona | Contenido: hasta su tramitación, 6 meses como máximo después de recibirlo; ficha sin el mensaje: 1 año después de la tramitación (más si un litigio o una autoridad lo exige) |
+| Solicitud de aprobación pendiente, en tu servidor o tu plaza | 24 horas sin respuesta, y después se borra |
 | Informes de fallos | 1 año después de su recepción (en Kerfy Studio) |
 | Cuenta de la oferta (identificadores, correo, dispositivos, invitaciones, crédito conservado) | Mientras exista la cuenta; se borra 30 días después de una solicitud de eliminación |
 | Invitación no aceptada | 30 días |
@@ -866,13 +939,17 @@ Scaleway, en Francia, sin transferencia fuera de la Unión. Puedes pedirnos una 
 | Huella del dispositivo Android, calculada con una clave secreta (semana gratis) | 24 meses desde la primera marca del teléfono; guardada aparte de la cuenta, no se borra con ella |
 | Invitación de un vínculo familiar | 7 días, o hasta la respuesta |
 | Compartir en lectura (copia cifrada, personas invitadas) | Hasta su fecha de fin, hasta que se detiene o hasta que se borra la cuenta |
+| Conversación y memoria de un agente de la familia | Mientras el agente exista en casa de la persona que lo creó |
 | Archivos enviados al agente de la familia | En el servidor de la persona que lo creó, hasta que quien los envió los elimina, deja de usar el agente, es retirado de él o deja la familia, o el agente se elimina; como muy tarde, el plazo elegido allí para los archivos (30 días por defecto) |
 | Nombre de campaña (sección 5.11) | 13 meses después de su registro, o con la cuenta o la suscripción |
 | Dirección IP al reservar una semana gratis | Nunca se guarda en claro; en memoria, como huella, 15 minutos como máximo |
-| Huella de la dirección IP (códigos beta, página de baja del sitio, denuncias de agentes compartidos) | 2 días como máximo; hasta 30 días en las copias cifradas de la base |
+| Dirección de correo dada para «Obtener un código» | En claro: solo el tiempo de enviar el código; su huella: hasta el final de la beta, como muy tarde el 31 de diciembre de 2026 |
+| Huella de la dirección IP (códigos beta, «Obtener un código», página de baja del sitio, denuncias de agentes compartidos) | 2 días como máximo; hasta 30 días en las copias cifradas de la base |
 | Baja en el sitio: la declaración (correo, número, motivo, fecha de fin, fecha y hora) | 3 años |
 | Baja en el sitio: la dirección de correo escrita, para limitar los intentos | 2 días como máximo |
 | Contenido de tu plaza | Durante la suscripción y después 30 días (3 días después de una semana gratis que no continuó) |
+| Plaza beta liberada (7 días sin uso, o final del mes de regalo el 31 de diciembre de 2026 sin suscripción) | Solo se guarda su copia cifrada, 30 días después de la liberación, y después se borra |
+| Hora de tu última acción en una plaza beta | Se sustituye con cada acción; se borra con la plaza |
 | Copias de seguridad | 2 horas (todas), luego 48 horas (por hora), 21 días (diarias), nada más antiguo; se borran con la plaza; lo que borras ha salido de ellas en 30 días, todas las copias incluidas |
 | Archivos de copia que una plaza borra, apartados por el guichet | 5 días |
 | Versiones sustituidas o borradas en Scaleway (copias de seguridad de las plazas, copias cifradas de la base de datos del guichet) | 1 día |
@@ -973,7 +1050,9 @@ del tutor: el adulto que prepara y supervisa su instalación, en su propio orden
 ## 17. Cambios
 
 Podemos modificar esta política, en particular antes de ofrecer enlaces de socios. La fecha al principio de la página
-cambia cada vez. Un cambio importante se anuncia en la app al menos 30 días antes de aplicarse.
+cambia cada vez. Una función nueva que eliges usar se aplica en cuanto la activas: la app te dice entonces qué hace
+con tus datos. Un cambio importante que afecta a lo que ya usas se anuncia en la app al menos 30 días antes de
+aplicarse.
 
 ## 18. Contacto
 

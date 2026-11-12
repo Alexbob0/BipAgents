@@ -126,13 +126,23 @@ restes responsable de tes appareils, de ton code de récupération, du respect d
 
 - Selon les outils que tu leur donnes, tes agents peuvent **agir** : envoyer des e-mails, naviguer et remplir des
   formulaires, manipuler des fichiers, piloter ta maison connectée, lancer des commandes sur ton serveur.
-- Avant une action sensible, l'agent te **demande ton accord** (« Oui, vas-y », « Oui, pour cette conversation » ou « Non »), dans l'app ou
-  depuis la notification. Quand c'est BipAgents qui installe Hermes Agent, les commandes risquées demandent toujours
-  ton accord (un Hermes Agent que tu avais déjà garde ses propres réglages).
-  L'app ne propose « Toujours » que pour ce qui n'est pas critique (ranger tes e-mails, écrire dans un service que tu
-  as connecté, des fichiers dans l'espace de l'agent), agent par agent ; tu le retires dans les réglages de l'agent.
-  Payer, envoyer en ton nom, supprimer et les commandes risquées te sont toujours demandés. Une demande faite quand tu
-  n'es pas là (une routine de nuit) t'attend jusqu'à 24 h et n'est faite qu'après ton accord. **C'est toi qui décides : lis la demande avant d'accepter.** Tu es responsable de ce que tu approuves.
+- Avant une action sensible, l'agent te **demande ton accord**, dans l'app ou depuis la notification, avec les boutons
+  de la carte qu'il te montre (par exemple « Oui, vas-y », « Oui, pour cette conversation » ou « Non »).
+- Pour un agent, tu peux choisir « Toujours autoriser » seulement pour des actions sans gravité : ranger, archiver ou marquer tes
+  e-mails, écrire dans un service que tu as connecté, gérer des fichiers dans l'espace de l'agent. Jamais pour payer,
+  envoyer quelque chose en ton nom, supprimer, envoyer des données à un nouveau site, créer une routine ou lancer une
+  commande : ces actions te sont demandées à chaque fois. Tu retires un « Toujours autoriser » dans les réglages de
+  l'agent. Une action faite avec « Toujours autoriser » compte comme approuvée par toi.
+- Pour envoyer des données à un nouveau site, « Refuser » vaut pour cette fois et « Refuser toujours » bloque ce site,
+  jusqu'à ce que tu le débloques dans les réglages de l'agent.
+- Quand un agent demande quelque chose en ton absence (une routine de nuit, par exemple), la demande attend ta réponse
+  en carte. Sans réponse, elle est abandonnée au bout de 24 h, ou au passage suivant de la routine, qui peut te la
+  redemander. Rien n'est fait sans ton accord.
+- Sur un agent de la famille, chaque carte est validée par la personne qui a fait la demande, jamais par le créateur à
+  sa place, et « Toujours autoriser » n'existe pas.
+- Quand c'est BipAgents qui installe Hermes Agent, les commandes risquées demandent toujours ton accord (un Hermes
+  Agent que tu avais déjà garde ses propres réglages). **C'est toi qui décides : lis la demande avant d'accepter.** Tu
+  es responsable de ce que tu approuves.
 - Selon ta configuration de Hermes Agent et les outils installés, certaines actions peuvent se faire sans demande
   d'accord. Ce que lisent tes agents (pages web, e-mails, fichiers) peut contenir des instructions cachées destinées
   à les détourner : garde les demandes d'accord activées et ne donne à chaque agent que les accès dont il a besoin.
@@ -165,11 +175,21 @@ l'IA, notamment pour les hypertrucages, s'appliquent à toi.
 Avec l'offre tout compris, la [politique d'usage acceptable](acceptable-use.fr.md) précise ces règles pour ta place
 (spam, attaques, minage de cryptomonnaie, revente…) et dit comment signaler un abus : **abuse@bipagents.com**.
 
-## 11. Signaler un contenu
+## 11. Signaler une réponse ou un message
 
 - Dans l'app : **appui long sur une réponse › Signaler cette réponse**. Le signalement part depuis l'app, par le
-  relais de Kerfy Studio, à Kerfy Studio seulement, avec le texte de la réponse ; si le relais ne répond pas, l'app te
-  propose de l'envoyer par e-mail. Dis-le aussi à ton agent pour qu'il ne recommence pas.
+  relais de Kerfy Studio, à Kerfy Studio seulement, avec le texte de la réponse ; tu peux ajouter ton e-mail si tu veux
+  une réponse. Si le relais ne répond pas, l'app te propose de l'envoyer par e-mail. Dis-le aussi à ton agent pour qu'il
+  ne recommence pas.
+- Un message d'une autre personne (agent de la famille, agent partagé) : **appui long › Signaler ce message**. Le
+  signalement part à Kerfy Studio seulement, avec le texte du message, le prénom affiché de son auteur et le nom de
+  l'agent, sans ton nom ; tu peux ajouter ton e-mail si tu veux une réponse. L'auteur n'en est pas prévenu. Kerfy
+  Studio ne lit pas les conversations et ne peut pas effacer un message ; s'il prend une mesure contre un compte, une
+  place ou un appareil (section 10, politique d'usage acceptable), il en donne les motifs à la personne concernée et
+  lui dit comment contester (règlement (UE) 2022/2065, article 17). La personne qui a créé un agent de la famille peut
+  aussi retirer un membre.
+- Ce que la section 10 interdit l'est aussi dans un agent de la famille ou un agent partagé (harcèlement, menaces,
+  haine, contenus illicites, atteinte à la vie privée).
 - Ou écris à **support@bipagents.com**.
 
 Les réponses de tes agents sont produites sur ton serveur, ou sur ta place avec l'offre tout compris, par le modèle
@@ -187,10 +207,13 @@ Drama 3 (« Built with Fish Audio »).
 
 Le relais transmet les notifications de ton serveur vers ton téléphone : c'est un service de « simple transport » au
 sens du règlement (UE) 2022/2065 sur les services numériques. Il transmet aussi à Kerfy Studio les signalements
-envoyés depuis l'app (section 11).
+envoyés depuis l'app (section 11). Avec l'offre tout compris, Kerfy Studio héberge les places, y compris la conversation
+d'un agent de la famille sur la place de la personne qui l'a créé : la politique d'usage acceptable (sections 4 et 5)
+décrit alors comment il traite un signalement.
 
-- **Ce qu'il accepte** : le nom de l'agent, un texte générique et des identifiants techniques. Tout autre texte est
-  remplacé automatiquement par un texte générique ; aucun contenu n'est conservé.
+- **Ce qu'il accepte** : un texte générique, des identifiants techniques et, chiffrés par ton serveur pour ton
+  téléphone seul, le nom de l'agent et le début du message, qu'il ne peut pas lire. Tout autre texte est remplacé
+  automatiquement par un texte générique ; aucun contenu n'est conservé.
 - **Limites** : des quotas par appareil et par serveur ; au-delà, les notifications sont refusées.
 - **Blocage** : en cas de manquement à la section 10, Kerfy Studio peut refuser les notifications d'un appareil ou
   d'un serveur ; cette décision est prise par une personne. Tu peux la contester en écrivant au point de contact.

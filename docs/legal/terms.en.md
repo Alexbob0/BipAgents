@@ -117,14 +117,22 @@ and what you do over SSH ([terms of the offer](offer.en.md)).
 
 - Depending on the tools you give them, your agents can **act**: send emails, browse and fill in forms, handle
   files, control your smart home, run commands on your server.
-- Before a sensitive action, the agent **asks for your approval** ("Yes, go ahead", "Yes, for this conversation" or "No"), in the app or from
-  the notification. When BipAgents installs Hermes Agent, risky commands always ask you (a Hermes Agent you already had
-  keeps its own settings).
-  The app offers "Always" only for what is not critical (sorting your emails, writing in a service you connected,
-  files in the agent's space), agent by agent; you remove it in the agent's settings. Paying, sending in your name,
-  deleting and risky commands are always asked. A request made while you are away (a night routine) waits for you for
-  up to 24 hours and is only carried out after your OK. **You decide: read the request before
-  accepting.** You are responsible for what you approve.
+- Before a sensitive action, the agent **asks for your approval**, in the app or from the notification, with the
+  buttons of the card it shows you (for example "Yes, go ahead", "Yes, for this conversation" or "No").
+- For an agent, you can choose "Always let …" only for minor actions: sorting, archiving or marking your emails,
+  writing to a service you connected, handling files in the agent's space. Never for paying, sending something on your
+  behalf, deleting, sending data to a new site, creating a routine or running a command: those always ask you. You
+  remove an "Always let …" in the agent's settings. An action done with "Always let …" counts as approved by you.
+- For sending data to a new site, "Decline" applies this once and "Always decline" blocks that site until you unblock
+  it in the agent's settings.
+- When an agent asks for something while you're away (a night routine, for example), the request waits for your
+  answer as a card. If you don't answer, it is dropped after 24 hours, or at the routine's next run, which may ask you
+  again. Nothing is done without your approval.
+- On a family agent, each card is approved by the person who made the request, never by the creator on their behalf,
+  and "Always let …" is not available.
+- When BipAgents installs Hermes Agent, risky commands always ask for your approval (a Hermes Agent you already had
+  keeps its own settings). **You decide: read the request before accepting.** You are responsible for what you
+  approve.
 - Depending on your Hermes Agent configuration and installed tools, some actions may happen without an approval
   request. What your agents read (web pages, emails, files) may contain hidden instructions meant to hijack them: keep
   approvals on and give each agent only the access it needs.
@@ -155,11 +163,19 @@ deep fakes, apply to you.
 With the all-included offer, the [acceptable use policy](acceptable-use.en.md) sets out these rules for your place
 (spam, attacks, cryptocurrency mining, reselling…) and says how to report abuse: **abuse@bipagents.com**.
 
-## 11. Reporting content
+## 11. Reporting an answer or a message
 
 - In the app: **long press a reply › Report this reply**. The report goes from the app, through Kerfy Studio's relay,
-  to Kerfy Studio only, with the reply's text; if the relay does not answer, the app offers to send it by email. Also
-  tell your agent so it doesn't do it again.
+  to Kerfy Studio only, with the reply's text; you can add your email if you want an answer. If the relay does not
+  answer, the app offers to send it by email. Also tell your agent so it doesn't do it again.
+- Another person's message (family agent, shared agent): **long press › Report this message**. The report goes to
+  Kerfy Studio only, with the message text, its author's displayed first name and the agent's name, without your name;
+  you can add your email if you want an answer. The author isn't told. Kerfy Studio doesn't read conversations and
+  cannot delete a message; if it takes a measure against an account, a place or a device (section 10, acceptable use
+  policy), it gives the person concerned its reasons and how to contest (Regulation (EU) 2022/2065, article 17). The
+  creator of a family agent can also remove a member.
+- What section 10 forbids is also forbidden in a family agent or a shared agent (harassment, threats, hate, illegal
+  content, invasion of privacy).
 - Or write to **support@bipagents.com**.
 
 Your agents' replies are produced on your server, or on your place with the all-included offer, by the chosen model:
@@ -177,10 +193,12 @@ Audio").
 
 The relay forwards your server's notifications to your phone: it is a "mere conduit" service within the meaning of
 Regulation (EU) 2022/2065 on digital services. It also forwards to Kerfy Studio the reports sent from the app
-(section 11).
+(section 11). With the all-included offer, Kerfy Studio hosts the places, including a family agent's conversation on
+its creator's place: the acceptable use policy (sections 4 and 5) then describes how it handles a notice.
 
-- **What it accepts**: the agent's name, a generic text and technical identifiers. Any other text is automatically
-  replaced with a generic text; no content is kept.
+- **What it accepts**: a generic text, technical identifiers and, encrypted by your server for your phone alone, the
+  agent's name and the start of the message, which it cannot read. Any other text is automatically replaced with a
+  generic text; no content is kept.
 - **Limits**: quotas per device and per server; beyond them, notifications are refused.
 - **Blocking**: in case of a breach of section 10, Kerfy Studio may refuse the notifications of a device or a server;
   this decision is made by a person. You can contest it by writing to the point of contact.
