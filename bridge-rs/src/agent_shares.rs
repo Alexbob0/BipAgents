@@ -152,19 +152,19 @@ pub fn guest_turns_closed(config: &Config, agent: Option<&AgentConfig>) -> bool 
 pub fn guest_turns_refused(config: &Config, status: u16) -> Response {
     let text = match crate::notebook::place_language(config).as_deref().unwrap_or("fr") {
         "en" => {
-            "Your agents can't be shared with your family until your Hermes is up to date: run bipagents \
+            "Your agents can't work with your family until your Hermes is up to date: run bipagents \
 hermes-update --fixes-only on your computer."
         }
         "de" => {
-            "Deine Agenten können erst mit deiner Familie geteilt werden, wenn dein Hermes aktuell ist: Führe auf \
+            "Deine Agenten können erst mit deiner Familie arbeiten, wenn dein Hermes aktuell ist: Führe auf \
 deinem Computer „bipagents hermes-update --fixes-only“ aus."
         }
         "es" => {
-            "Tus agentes no se pueden compartir con tu familia hasta que tu Hermes esté al día: ejecuta \
+            "Tus agentes no pueden trabajar con tu familia hasta que tu Hermes esté al día: ejecuta \
 «bipagents hermes-update --fixes-only» en tu ordenador."
         }
         _ => {
-            "Tes agents ne peuvent pas être partagés avec tes proches tant que ton Hermes n’est pas à jour : lance \
+            "Tes agents ne peuvent pas travailler avec tes proches tant que ton Hermes n’est pas à jour : lance \
 « bipagents hermes-update --fixes-only » sur ton ordinateur."
         }
     };
@@ -183,9 +183,16 @@ pub const FRIEND_TOOLS: [&str; 2] = [crate::agent_tools::CREATE_PAGE, crate::sha
 /// What a relative's bridge answers, and the owner's, to anything but reading a personal agent shared with her.
 pub const READ_ONLY: &str = "shared_read_only";
 
-/// The refusal of a write to a personal shared agent: 403 `{detail, code}`.
-pub fn read_only_refused() -> HttpError {
-    HttpError::with_code(403, "this agent is shared with you to read only", READ_ONLY)
+/// The refusal of a write to a personal shared agent: 403 `{detail, code}`, `detail` in the place's language (the
+/// apps' own line: « Tu peux lire, pas écrire. »).
+pub fn read_only_refused(config: &Config) -> HttpError {
+    let detail = match crate::notebook::place_language(config).as_deref().unwrap_or("fr") {
+        "en" => "This agent is shared with you to read: you can read, not write.",
+        "de" => "Dieser Agent ist mit dir zum Lesen geteilt: Du kannst lesen, nicht schreiben.",
+        "es" => "Este agente se comparte contigo para leer: puedes leer, no escribir.",
+        _ => "Cet agent est partagé avec toi en lecture : tu peux lire, pas écrire.",
+    };
+    HttpError::with_code(403, detail, READ_ONLY)
 }
 
 
@@ -611,8 +618,8 @@ pub fn closed_tool(name: &str, friend: bool) -> Option<Dict> {
 /// everyone's, read with `read_sent_file`.
 pub fn sent_files_rule(person: &str) -> String {
     format!(
-        "The files and photos sent to you by everyone who uses you ({person}, your person, the other relatives) are \
-the family's: {person}'s photos come with their message; read a document with read_sent_file (the path of its « Pièce \
+        "The files and photos sent to you by everyone who uses you ({person} and the other members) are \
+seen by all of them: {person}'s photos come with their message; read a document with read_sent_file (the path of its « Pièce \
 jointe » line), and with no path it lists everyone's files, who sent each. Never send them outside the family."
     )
 }
@@ -646,7 +653,7 @@ pub(crate) fn talking_agent(state: &AppState, headers: &HeaderMap, agent: &str) 
     let (household, agent) = shared_agent(state, headers, agent)?;
     if !crate::family_agent::is_family(&state.config(), &agent.name) {
         tracing::info!(agent = %agent.name, household = %household, "shared agent: a write to a read-only share refused");
-        return Err(read_only_refused());
+        return Err(read_only_refused(&state.config()));
     }
     Ok((household, agent))
 }
@@ -1548,7 +1555,7 @@ pub async fn relay_send(
 ) -> Option<ApiResult<Response>> {
     let id = agent.filter(|a| a.contains(SEPARATOR))?.to_string();
     if read_only(&state.config(), &id) {
-        return Some(Err(read_only_refused()));
+        return Some(Err(read_only_refused(&state.config())));
     }
     Some(async {
         let text = tk::strip(&body.text).to_string();
@@ -1609,7 +1616,7 @@ pub async fn relay_send(
 pub async fn relay_stop(state: &AppState, agent: Option<&str>, cid: &str) -> Option<ApiResult<Response>> {
     let id = agent.filter(|a| a.contains(SEPARATOR))?;
     if read_only(&state.config(), id) {
-        return Some(Err(read_only_refused()));
+        return Some(Err(read_only_refused(&state.config())));
     }
     Some(
         async {
@@ -1694,7 +1701,7 @@ pub async fn approve_mine(
     request_id: Option<&str>,
 ) -> ApiResult<Response> {
     if read_only(&state.config(), id) {
-        return Err(read_only_refused());
+        return Err(read_only_refused(&state.config()));
     }
     let mut body = json!({"run_id": run_id, "choice": choice, "request_id": request_id});
     if let Some(answer) = answer {

@@ -2,7 +2,7 @@
 
 # Condiciones generales de venta de la oferta todo incluido
 
-> Última actualización: 11 de noviembre de 2026.
+> Última actualización: 12 de noviembre de 2026.
 
 ## 1. Objeto
 
@@ -242,7 +242,9 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
 
 - La persona que contrata invita a las demás por correo, con un enlace que solo sirve una vez. Cada persona invitada
   crea su propia cuenta y tiene **su propia plaza** y sus agentes; el crédito de IA es el del plan, compartido
-  (sección 6). **Ni la persona que paga ni Kerfy Studio pueden leer sus agentes ni sus conversaciones.**
+  (sección 6). **Ni la persona que paga ni Kerfy Studio pueden leer sus agentes ni sus conversaciones**, salvo lo que ella misma
+  decida compartir (un agente que comparte, lo que escribe a un agente de la familia, su agenda si la abre
+  al agente de la familia).
 - **Lo que ve la persona que paga**: cuánto del crédito de IA ha usado cada persona en el mes (un importe en euros, y
   su estimación en mensajes), para seguir el crédito de la familia y fijar límites. **Nunca lo que escribe cada uno ni
   lo que hacen sus agentes.** Cada persona invitada ve lo que queda del crédito para todos, lo que ha usado y su

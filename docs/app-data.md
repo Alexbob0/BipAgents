@@ -3,7 +3,7 @@
 # What the BipAgents apps send over the network
 
 **In short:** conversations, files, voice-note transcripts, health data, reminders, contacts and the agents' memory go only to the
-person's own server (their bridge and Hermes). Kerfy Studio's services get account, purchase and push-routing data,
+person's own server (their bridge and Hermes), and, for a family agent, on to the server of the relative who made it. Kerfy Studio's services get account, purchase and push-routing data,
 plus sealed boxes they cannot open. There are no analytics or crash SDKs of ours; on Android, the Google Maps SDK (map cards) and the ML Kit
 document scanner send Google their own technical data (§4). Apple and Google get what their stores,
 sign-in and push need, and the voice for dictation only where the person agreed to online dictation. With the
@@ -103,7 +103,18 @@ their place on the all-included offer. Everything personal goes here, with that 
   screenshots shared to BipAgents are handed to the agent the person picks, as a draft and attachments in its
   conversation, sent only when the person taps Send. The iOS share extension writes them to the App Group
   (`share/<id>/`, deleted when opened, or after an hour). A reply the agent drafts (a ```draft block) gets « Envoyer
-  avec… », the system share sheet: the app never sends it.
+  avec… », the system share sheet: the app never sends it. The share sheet also lists the agents relatives share with
+  the person (read from the app's own list in the App Group, `share-targets.json`).
+- **An agent a relative hosts** (`bridge-rs/src/family_thread.rs`, `agent_shares.rs`, `shared_files.rs`,
+  `agent_feed.rs`, `family_relay.rs`): the app talks only to the person's own bridge, which carries on to the bridge of
+  the household that hosts the agent, with the key of their family link: directly, or, for a home install out of
+  reach, through the home bridge's own long poll to it. Never through Kerfy Studio's servers. **The family agent**: the
+  person's messages, photos and files go there, into one conversation common to the members its creator chose (their
+  first names on their messages), its files kept there (30 days by default); for a scanned PDF, the words the phone
+  read from its pages go with it (iOS Vision on the phone; Android ML Kit text recognition, §4). **A personal agent a
+  relative shares**: read-only, the phone only fetches the owner's conversations with it (from the share on, or
+  earlier ones if the owner chose), never its memory. The members' notifications come from their own bridge, sealed
+  for their phones (§3).
 - **Contacts** (`App/Features/Settings/ContactsSync.swift`, `android/.../contacts/ContactsSync.kt`): a copy of the
   address book (`PUT /v1/contacts`) goes to every bridge where at least one agent may read it, narrowed to what the
   person chose for that bridge (`PUT /v1/contacts/scope`: the whole address book or some groups, the notes only when
@@ -290,7 +301,8 @@ Used only when the build sets a relay host (`BIPPushRelayHost` / `push.relayHost
   voice already goes: nowhere with on-device recognition, with the voice to Apple or Google with online dictation.
   The accurate dictation (Parakeet) takes no hints; the phone puts the person's names right in its text afterwards.
 - **Android ML Kit document scanner** (Play services): the scan is done on the phone, and the PDF is attached like any
-  file; for a Carnet paper, its text is read on the phone with ML Kit text recognition (`ui/NotebookPapers.kt`). Google
+  file; for a Carnet paper or a PDF sent to a family agent, its text is read on the phone with ML Kit text recognition
+  (`ui/NotebookPapers.kt`, `model/ScanText.kt`; for a PDF only once the person accepted the scanner). Google
   says ML Kit may send usage and diagnostic data. The app does not change this.
 - **Android map cards** (`ui/NativeMaps.kt`, `ui/LinkPreviewCard.kt`): the Google Maps SDK draws the places and routes of
   a reply (no « My location »: the person's position is never on these maps). Google's Play disclosure for the SDK:

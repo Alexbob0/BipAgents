@@ -727,7 +727,8 @@ then responsible for what it does with it.
   services features (Google ML Kit). Google states that ML Kit
   sends it information about the device and the app, installation identifiers and usage and performance metrics, for
   diagnostics and its own statistics. The app tells you so and asks for your agreement before the scanner's first
-  use; without that agreement, the scanner does not open, and you can still attach a photo or a file. You can change
+  use; without that agreement, the scanner does not open
+  and no document's text is read by Google ML Kit, and you can still attach a photo or a file. You can change
   your mind at any time in Settings.
 - **Apple and Google** for notifications (section 4.1).
 - **Tailscale**, if you use it: a separate app, with its own account and its own privacy policy.
@@ -840,7 +841,7 @@ of the applicable safeguards.
 | Keyed fingerprint of the Android device (free week) | 24 months after the phone was first marked; kept apart from the account, not erased with it |
 | Family-link invitation | 7 days, or until answered |
 | Read-only share (encrypted copy, people invited) | Until its end date, until it is stopped, or until the account is erased |
-| Files sent to the family agent | On the server of the person who created it, until the person who sent them deletes them, stops using the agent or leaves the family, or the agent is deleted; at the latest the time chosen there for files (30 days by default) |
+| Files sent to the family agent | On the server of the person who created it, until the person who sent them deletes them, stops using the agent, is removed from it or leaves the family, or the agent is deleted; at the latest the time chosen there for files (30 days by default) |
 | Campaign name (section 5.11) | 13 months after it was recorded, or with the account or the subscription |
 | IP address when a free week is reserved | Never stored in clear; in memory, as a fingerprint, 15 minutes at most |
 | Fingerprint of the IP address (beta codes, the website's cancellation page, reports of shared agents) | 2 days at most; up to 30 days in the encrypted copies of the database |

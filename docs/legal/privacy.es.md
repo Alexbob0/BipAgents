@@ -752,7 +752,8 @@ cada servicio es responsable de lo que hace con ello.
   de los servicios de Google Play (Google ML Kit). Google
   indica que ML Kit le envía información sobre el dispositivo y la app, identificadores de instalación y mediciones de
   uso y rendimiento, para el diagnóstico y sus propias estadísticas. La app te lo dice y te pide tu acuerdo antes del
-  primer uso del escáner; sin ese acuerdo, el escáner no se abre, y siempre puedes adjuntar una foto o un archivo.
+  primer uso del escáner; sin ese acuerdo, el escáner no se abre
+  y Google ML Kit no lee el texto de ningún documento, y siempre puedes adjuntar una foto o un archivo.
   Puedes cambiar de opinión en cualquier momento en Ajustes.
 - **Apple y Google** para las notificaciones (sección 4.1).
 - **Tailscale**, si lo usas: una app distinta, con su propia cuenta y su propia política de privacidad.
@@ -858,7 +859,7 @@ Scaleway, en Francia, sin transferencia fuera de la Unión. Puedes pedirnos una 
 | Huella del dispositivo Android, calculada con una clave secreta (semana gratis) | 24 meses desde la primera marca del teléfono; guardada aparte de la cuenta, no se borra con ella |
 | Invitación de un vínculo familiar | 7 días, o hasta la respuesta |
 | Compartir en lectura (copia cifrada, personas invitadas) | Hasta su fecha de fin, hasta que se detiene o hasta que se borra la cuenta |
-| Archivos enviados al agente de la familia | En el servidor de la persona que lo creó, hasta que quien los envió los elimina, deja de usar el agente o deja la familia, o el agente se elimina; como muy tarde, el plazo elegido allí para los archivos (30 días por defecto) |
+| Archivos enviados al agente de la familia | En el servidor de la persona que lo creó, hasta que quien los envió los elimina, deja de usar el agente, es retirado de él o deja la familia, o el agente se elimina; como muy tarde, el plazo elegido allí para los archivos (30 días por defecto) |
 | Nombre de campaña (sección 5.11) | 13 meses después de su registro, o con la cuenta o la suscripción |
 | Dirección IP al reservar una semana gratis | Nunca se guarda en claro; en memoria, como huella, 15 minutos como máximo |
 | Huella de la dirección IP (códigos beta, página de baja del sitio, denuncias de agentes compartidos) | 2 días como máximo; hasta 30 días en las copias cifradas de la base |

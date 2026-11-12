@@ -2,7 +2,7 @@
 
 # Conditions générales d'utilisation de BipAgents
 
-> Dernière mise à jour : 10 novembre 2026.
+> Dernière mise à jour : 12 novembre 2026.
 
 ## 1. Objet
 
@@ -126,10 +126,13 @@ restes responsable de tes appareils, de ton code de récupération, du respect d
 
 - Selon les outils que tu leur donnes, tes agents peuvent **agir** : envoyer des e-mails, naviguer et remplir des
   formulaires, manipuler des fichiers, piloter ta maison connectée, lancer des commandes sur ton serveur.
-- Avant une action sensible, l'agent te **demande ton accord** (Une fois, Cette session ou Refuser), dans l'app ou
+- Avant une action sensible, l'agent te **demande ton accord** (« Oui, vas-y », « Oui, pour cette conversation » ou « Non »), dans l'app ou
   depuis la notification. Quand c'est BipAgents qui installe Hermes Agent, les commandes risquées demandent toujours
-  ton accord (un Hermes Agent que tu avais déjà garde ses propres réglages), et l'app ne propose pas « Toujours
-  autoriser ». **C'est toi qui décides : lis la demande avant d'accepter.** Tu es responsable de ce que tu approuves.
+  ton accord (un Hermes Agent que tu avais déjà garde ses propres réglages).
+  L'app ne propose « Toujours » que pour ce qui n'est pas critique (ranger tes e-mails, écrire dans un service que tu
+  as connecté, des fichiers dans l'espace de l'agent), agent par agent ; tu le retires dans les réglages de l'agent.
+  Payer, envoyer en ton nom, supprimer et les commandes risquées te sont toujours demandés. Une demande faite quand tu
+  n'es pas là (une routine de nuit) t'attend jusqu'à 24 h et n'est faite qu'après ton accord. **C'est toi qui décides : lis la demande avant d'accepter.** Tu es responsable de ce que tu approuves.
 - Selon ta configuration de Hermes Agent et les outils installés, certaines actions peuvent se faire sans demande
   d'accord. Ce que lisent tes agents (pages web, e-mails, fichiers) peut contenir des instructions cachées destinées
   à les détourner : garde les demandes d'accord activées et ne donne à chaque agent que les accès dont il a besoin.

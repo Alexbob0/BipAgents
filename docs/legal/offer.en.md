@@ -2,7 +2,7 @@ English · [Français](offer.fr.md) · [Deutsch](offer.de.md) · [Español](offe
 
 # Terms of sale of the all-included offer
 
-> Last updated: 11 November 2026.
+> Last updated: 12 November 2026.
 
 ## 1. Purpose
 
@@ -236,7 +236,9 @@ section 6); the services you connect to your agents and their own subscriptions.
 
 - The person who subscribes invites the others by email, with a link that only works once. Each invited person creates
   their own account and has **their own place** and their agents; the AI credit is the plan's, shared (section 6).
-  **Neither the person who pays nor Kerfy Studio can read their agents or their conversations.**
+  **Neither the person who pays nor Kerfy Studio can read their agents or their conversations**, except what they
+  choose to share themselves (an agent they share, what they write to a family agent, their calendar if they open
+  it to the family agent).
 - **What the person who pays sees**: how much of the AI credit each person used in the month (an amount in euros, and
   its estimate in messages), to follow the family's credit and set limits. **Never what anyone writes or what their
   agents do.** Each invited person sees what is left of the credit for everyone, what they used and their limit if

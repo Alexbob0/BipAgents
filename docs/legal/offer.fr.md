@@ -2,7 +2,7 @@
 
 # Conditions générales de vente de l'offre tout compris
 
-> Dernière mise à jour : 11 novembre 2026.
+> Dernière mise à jour : 12 novembre 2026.
 
 ## 1. Objet
 
@@ -249,7 +249,9 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
 
 - La personne qui souscrit invite les autres par e-mail, avec un lien qui ne sert qu'une fois. Chaque personne invitée
   crée son propre compte et a **sa propre place** et ses agents ; le crédit d'IA est celui du forfait, partagé
-  (section 6). **Ni la personne qui paie ni Kerfy Studio ne peuvent lire ses agents ou ses conversations.**
+  (section 6). **Ni la personne qui paie ni Kerfy Studio ne peuvent lire ses agents ou ses conversations**, sauf ce qu'elle choisit
+  elle-même de partager (un agent qu'elle partage, ce qu'elle écrit à un agent de la famille, son agenda si elle
+  l'ouvre à l'agent de la famille).
 - **Ce que voit la personne qui paie** : combien du crédit d'IA chaque personne a utilisé dans le mois (un montant en
   euros, et son estimation en messages), pour suivre le crédit de la famille et fixer des limites. **Jamais ce que
   chacun écrit ni ce que font ses agents.** Chaque personne invitée voit ce qu'il reste du crédit pour tout le monde,

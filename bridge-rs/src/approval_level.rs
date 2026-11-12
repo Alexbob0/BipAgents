@@ -627,10 +627,10 @@ pub const RULE_END: &str = "<!-- /bipagents:approval-level -->";
 pub const RULE: &str = concat!(
     "Your person chose to validate only what is critical. Don't ask them « shall I…? » or « do you want me to…? » ",
     "before what is not critical (reading, sorting, archiving or moving mail, a sort rule, a draft, a page, files in your ",
-    "own space, a routine, a background task within its budget, a note in a service they connected): do it, then say ",
-    "what you did; the app shows it to them with a way to undo it. Ask first, always, before what is critical: paying or ",
-    "using a card, a password, a secret or a login, sending anything in their name, deleting for good, sharing with ",
-    "other people."
+    "own space, a background task within its budget, a note in a service they connected): do it, then say what you ",
+    "did; the app shows it to them, with a way to undo it when it can be undone. Ask first, always, before what is ",
+    "critical: paying or using a card, a password, a secret or a login, sending anything in their name, sending data to ",
+    "a site, deleting for good, sharing with other people. A routine you make starts only once they say yes on its card."
 );
 
 /// The personality without the rule's block.
@@ -934,7 +934,7 @@ pub async fn auto_task(jobs: &std::sync::Arc<crate::jobs::Jobs>, agent: &AgentCo
                 Line {
                     agent: agent.name.clone(),
                     kind: "task_start".into(),
-                    summary: format!("Tâche de fond lancée : {shown} ({})", crate::jobs::euros_text(euros)),
+                    summary: task_line(&crate::mail_tidy::language(&config, &agent.name), &shown, &crate::jobs::euros_text(euros)),
                     session_id: from,
                     undo: Some(Undo::Task { job: id }),
                     ..Line::default()
@@ -954,6 +954,16 @@ pub async fn auto_task(jobs: &std::sync::Arc<crate::jobs::Jobs>, agent: &AgentCo
                 false,
             ))
         }
+    }
+}
+
+/// The Boîte line of a background task started at once: « Tâche de fond lancée : Tri des factures (0,50 €) ».
+fn task_line(lang: &str, title: &str, euros: &str) -> String {
+    match crate::names::names(lang).lang {
+        "fr" => format!("Tâche de fond lancée : {title} ({euros})"),
+        "de" => format!("Hintergrundaufgabe gestartet: {title} ({euros})"),
+        "es" => format!("Tarea en segundo plano iniciada: {title} ({euros})"),
+        _ => format!("Background task started: {title} ({euros})"),
     }
 }
 
@@ -1030,34 +1040,85 @@ pub fn take_digest(config: &Config, agent: &str, lang: &str, now: chrono::DateTi
         }
         b.digests.insert(agent.to_string(), day.clone());
         let n = shown.len();
-        let fr = crate::names::names(lang).lang == "fr";
-        // under « Seulement le critique » the level says why; else each line says « toujours autorisé »
-        let (title, head, tail) = if fr {
-            let why = if critical { " (tu valides seulement le critique)" } else { "" };
-            (
-                "Validé pour toi",
-                if n == 1 {
-                    format!("Aujourd'hui, une chose a été validée sans te demander{why} :")
-                } else {
-                    format!("Aujourd'hui, {n} choses ont été validées sans te demander{why} :")
-                },
-                if critical {
-                    "Tu peux les annuler dans la Boîte, ou tout valider toi-même dans Réglages › Validations.".to_string()
-                } else {
-                    format!("Tu peux les annuler dans la Boîte, ou retirer « Toujours » dans les réglages de {shown_agent}.")
-                },
-            )
-        } else {
-            let why = if critical { " (you validate only what is critical)" } else { "" };
-            (
-                "Approved for you",
-                format!("Today, {n} thing{} went through without asking you{why}:", if n == 1 { "" } else { "s" }),
-                if critical {
-                    "You can undo them in the Inbox, or validate everything yourself in Settings › Approvals.".to_string()
-                } else {
-                    format!("You can undo them in the Inbox, or remove « Always » in {shown_agent}'s settings.")
-                },
-            )
+        // under « Seulement le critique » the level says why; else each line says « toujours autorisé »; not every
+        // line can be undone (data sent to a site, a file saved): « ce qui peut l'être »
+        let (title, head, tail) = match crate::names::names(lang).lang {
+            "fr" => {
+                let why = if critical { " (tu valides seulement le critique)" } else { "" };
+                (
+                    "Validé pour toi",
+                    if n == 1 {
+                        format!("Aujourd'hui, une chose a été validée sans te demander{why} :")
+                    } else {
+                        format!("Aujourd'hui, {n} choses ont été validées sans te demander{why} :")
+                    },
+                    if critical {
+                        "Tu peux annuler dans la Boîte ce qui peut l'être, ou tout valider toi-même dans Réglages › \
+                         Validations."
+                            .to_string()
+                    } else {
+                        format!(
+                            "Tu peux annuler dans la Boîte ce qui peut l'être, ou retirer « Toujours » dans les réglages \
+                             de {shown_agent}."
+                        )
+                    },
+                )
+            }
+            "de" => {
+                let why = if critical { " (du bestätigst nur das Wichtige)" } else { "" };
+                (
+                    "Für dich bestätigt",
+                    if n == 1 {
+                        format!("Heute wurde eine Sache ohne Nachfrage bestätigt{why}:")
+                    } else {
+                        format!("Heute wurden {n} Sachen ohne Nachfrage bestätigt{why}:")
+                    },
+                    if critical {
+                        "Was sich rückgängig machen lässt, machst du im Eingang rückgängig, oder du bestätigst alles \
+                         selbst in Einstellungen › Bestätigungen."
+                            .to_string()
+                    } else {
+                        format!(
+                            "Was sich rückgängig machen lässt, machst du im Eingang rückgängig, oder du entfernst „Immer“ \
+                             in den Einstellungen von {shown_agent}."
+                        )
+                    },
+                )
+            }
+            "es" => {
+                let why = if critical { " (solo validas lo importante)" } else { "" };
+                (
+                    "Validado para ti",
+                    if n == 1 {
+                        format!("Hoy se ha validado una cosa sin preguntarte{why}:")
+                    } else {
+                        format!("Hoy se han validado {n} cosas sin preguntarte{why}:")
+                    },
+                    if critical {
+                        "Puedes deshacer en el Buzón lo que se pueda, o validarlo todo tú en Ajustes › Validaciones."
+                            .to_string()
+                    } else {
+                        format!("Puedes deshacer en el Buzón lo que se pueda, o quitar «Siempre» en los ajustes de {shown_agent}.")
+                    },
+                )
+            }
+            _ => {
+                let why = if critical { " (you validate only what matters)" } else { "" };
+                (
+                    "Approved for you",
+                    format!("Today, {n} thing{} went through without asking you{why}:", if n == 1 { "" } else { "s" }),
+                    if critical {
+                        "You can undo what can be undone in the Inbox, or validate everything yourself in Settings › \
+                         Approvals."
+                            .to_string()
+                    } else {
+                        format!(
+                            "You can undo what can be undone in the Inbox, or remove « Always » in {shown_agent}'s \
+                             settings."
+                        )
+                    },
+                )
+            }
         };
         Some((format!("auto-digest:{agent}:{day}"), title.to_string(), format!("{head}\n{}\n\n{tail}", shown.join("\n"))))
     })
@@ -1362,6 +1423,15 @@ mod tests {
         assert!(text.contains("2 choses") && text.contains("- A") && text.contains("- B"), "{text}");
         assert!(take_digest(&config, "vie", "fr", evening).is_none(), "once a day");
         assert!(take_digest(&config, "coach", "en", evening).unwrap().2.contains("Today, 1 thing went"));
+        assert!(text.contains("annuler dans la Boîte ce qui peut l'être"), "not every line can be undone: {text}");
+        // German and Spanish say the same, in their words
+        record(&config, Line { agent: "lea".into(), kind: "mail_archive".into(), summary: "D".into(), ..Line::default() });
+        record(&config, Line { agent: "pablo".into(), kind: "mail_archive".into(), summary: "E".into(), ..Line::default() });
+        let (_, title, text) = take_digest(&config, "lea", "de", evening).unwrap();
+        assert!(title == "Für dich bestätigt" && text.contains("Heute wurde eine Sache ohne Nachfrage") && text.contains("Eingang"), "{text}");
+        let (_, title, text) = take_digest(&config, "pablo", "es", evening).unwrap();
+        assert!(title == "Validado para ti" && text.contains("sin preguntarte") && text.contains("Buzón"), "{text}");
+        assert_eq!(task_line("es", "Facturas", "0,50 €"), "Tarea en segundo plano iniciada: Facturas (0,50 €)");
         let next = chrono::Local.with_ymd_and_hms(2026, 11, 7, 20, 0, 0).unwrap();
         assert!(take_digest(&config, "vie", "fr", next).is_none(), "nothing new");
     }

@@ -3,7 +3,7 @@
 # Ce que les apps BipAgents envoient sur le réseau
 
 **En bref :** les conversations, fichiers, transcriptions de notes vocales, données de santé, rappels, contacts et la mémoire des
-agents ne vont qu’au serveur de la personne (son bridge et Hermes). Les services de Kerfy Studio reçoivent des données
+agents ne vont qu’au serveur de la personne (son bridge et Hermes), et, pour un agent de la famille, au serveur du proche qui l’a créé. Les services de Kerfy Studio reçoivent des données
 de compte, d’achat et d’acheminement des notifications, ainsi que des paquets scellés qu’ils ne peuvent pas ouvrir. Les
 apps n’intègrent aucun SDK de mesure d’audience ni de rapport de plantage pour nous ; sur Android, le SDK Google Maps
 (cartes) et le scanner de documents ML Kit envoient à Google leurs propres données techniques (§4). Apple et Google reçoivent ce qu’exigent leurs
@@ -109,7 +109,20 @@ de l’offre tout compris. Tout ce qui est personnel va ici, avec la clé de ce 
   ou des captures partagés vers BipAgents vont à l’agent que la personne choisit, en brouillon et pièces jointes dans sa
   conversation, envoyés seulement quand elle touche Envoyer. L’extension de partage iOS les écrit dans l’App Group
   (`share/<id>/`, effacé à l’ouverture, ou au bout d’une heure). Une réponse que l’agent rédige (un bloc ```draft) a
-  « Envoyer avec… », la feuille de partage du système : l’app ne l’envoie jamais.
+  « Envoyer avec… », la feuille de partage du système : l’app ne l’envoie jamais. La feuille de partage liste aussi les
+  agents que des proches partagent avec la personne (lus dans la liste de l’app, dans l’App Group,
+  `share-targets.json`).
+- **Un agent qu’un proche héberge** (`bridge-rs/src/family_thread.rs`, `agent_shares.rs`, `shared_files.rs`,
+  `agent_feed.rs`, `family_relay.rs`) : l’app ne parle qu’au bridge de la personne, qui transmet au bridge du foyer qui
+  héberge l’agent, avec la clé de leur lien famille : directement, ou, pour une installation à la maison injoignable,
+  par la longue attente que le bridge de la maison garde ouverte vers lui. Jamais par les serveurs de Kerfy Studio.
+  **L’agent de la famille** : les messages, photos et fichiers de la personne y vont, dans une conversation commune
+  aux membres choisis par celui qui l’a créé (leur prénom sur leurs messages), ses fichiers gardés là-bas (30 jours
+  par défaut) ; pour un PDF scanné, les mots que le téléphone a lus sur ses pages vont avec (iOS : Vision, sur le
+  téléphone ; Android : reconnaissance de texte ML Kit, §4). **Un agent personnel qu’un proche partage** : en lecture
+  seule, le téléphone ne fait que lire les conversations du propriétaire avec lui (depuis le partage, ou aussi
+  celles d’avant si le propriétaire l’a choisi), jamais sa mémoire. Les notifications des membres viennent de leur
+  propre bridge, scellées pour leurs téléphones (§3).
 - **Contacts** (`App/Features/Settings/ContactsSync.swift`, `android/.../contacts/ContactsSync.kt`) : une copie du
   carnet d’adresses (`PUT /v1/contacts`) part à chaque bridge où au moins un agent peut le lire, réduite à ce que la
   personne a choisi pour ce bridge (`PUT /v1/contacts/scope` : tout le carnet ou certains groupes, les notes seulement
@@ -310,8 +323,9 @@ Il n’est utilisé que si la version de l’app définit un hôte de relais (`B
   Google avec la dictée en ligne. La dictée précise (Parakeet) ne prend pas d’indices : le téléphone remet ensuite les
   noms de la personne dans son texte.
 - **Scanner de documents ML Kit sur Android** (services Play) : la numérisation se fait sur le téléphone, et le PDF est
-  joint comme n’importe quel fichier ; pour un papier du Carnet, son texte est lu sur le téléphone avec la
-  reconnaissance de texte ML Kit (`ui/NotebookPapers.kt`). Selon Google, ML Kit peut envoyer des données d’usage et de
+  joint comme n’importe quel fichier ; pour un papier du Carnet ou un PDF envoyé à un agent de la famille, son texte
+  est lu sur le téléphone avec la reconnaissance de texte ML Kit (`ui/NotebookPapers.kt`, `model/ScanText.kt` ; pour
+  un PDF, seulement une fois le scanner accepté). Selon Google, ML Kit peut envoyer des données d’usage et de
   diagnostic. L’app ne modifie pas ce comportement.
 - **Cartes des réponses sur Android** (`ui/NativeMaps.kt`, `ui/LinkPreviewCard.kt`) : le SDK Google Maps dessine les
   lieux et itinéraires d’une réponse (pas de « Ma position » : la position de la personne n’est jamais sur ces cartes).

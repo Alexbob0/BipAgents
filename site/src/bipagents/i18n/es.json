@@ -301,11 +301,11 @@
     },
     "4": {
       "q": "¿Quién puede leer mis conversaciones?",
-      "a": "Nosotros no: Kerfy Studio no las lee ni entrena ninguna IA con ellas. Para responderte, la IA lee lo que tu agente le envía: a través de EUrouter, un enrutador de IA europeo, y luego el proveedor que ejecuta el modelo elegido; la app nombra el enrutador y el modelo antes de tu primer mensaje. Como alquilamos el servidor, técnicamente podríamos entrar en tu espacio: nuestro software no lo hace, y solo lo haríamos si la ley nos obliga."
+      "a": "Nosotros no: Kerfy Studio no las lee ni entrena ninguna IA con ellas. Para responderte, la IA lee lo que tu agente le envía: a través de EUrouter, un enrutador de IA europeo, y luego el proveedor que ejecuta el modelo elegido; la app nombra el enrutador y el modelo antes de tu primer mensaje. Como alquilamos el servidor, técnicamente podríamos entrar en tu espacio: nuestro software no lo hace, y solo lo haríamos si la ley nos obliga. Tus familiares solo leen lo que compartes con ellos: uno de tus agentes, solo para leer, y la conversación común del agente de la familia."
     },
     "5": {
       "q": "¿Cómo funcionan Dúo y Familia?",
-      "a": "Cada persona invitada tiene su propia cuenta, su espacio y sus agentes; el crédito de IA del plan es común. Ni la persona que paga ni nosotros leemos las conversaciones de los demás: la persona que paga solo ve cuánto crédito usa cada persona. Con Familia, hasta seis personas comparten el mismo plan y su crédito."
+      "a": "Cada persona invitada tiene su propia cuenta, su espacio y sus agentes; el crédito de IA del plan es común. Pagar no da acceso a ninguna conversación: la persona que paga solo ve cuánto crédito usa cada persona. Con Familia, hasta seis personas comparten el mismo plan y su crédito."
     },
     "6": {
       "q": "¿Puedo dejarlo cuando quiera?",

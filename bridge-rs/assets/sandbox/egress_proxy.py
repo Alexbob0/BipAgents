@@ -815,7 +815,7 @@ PHONE_REFUSED = "Site refused by the phone exit"
 PHONE_FAILED = "Bad Gateway (the phone could not reach the site)"
 CONNECTIONS = "Too many new connections - wait a minute"
 UNKNOWN_BROWSER = "Unknown browser"
-REFUSED = "Sending to this site refused by your person - it stays readable, retry within the hour"
+REFUSED = "Sending to this site refused for good by your person - it stays readable, a little each hour"
 REGISTRY_HOUR = "Package registries paused - too much was sent to them, retry within the hour"
 REGISTRY_DAY = "Package registries paused - too much was sent to them today, retry tomorrow"
 PAUSED = "Sending paused - your person has a card to answer about this site, retry within the hour"
@@ -829,8 +829,9 @@ BODIES = {
     REGISTRY_DAY: "What your programs send to the package registries is limited per hour and per day, and today's "
                   "limit was reached: installs wait until tomorrow (midnight UTC). Tell your person if it blocks "
                   "their work.",
-    REFUSED: "Your person refused sending to this site. It stays readable with a small allowance an hour, which is "
-             "used up: retry within the hour, and do without sending to it.",
+    REFUSED: "Your person refused sending to this site for good (only they can change it, in « Sites autorisés »). "
+             "It stays readable with a small allowance an hour, which is used up: reading works again within the "
+             "hour; don't send to it, do without it.",
     PAUSED_TODAY: "Your programs sent today what sites not validated may take without your person: a small amount "
                   "passes each hour, this hour's is used up. Retry within the hour; if your person's work needs "
                   "this site, ask them to allow it (sandbox_sites_request).",

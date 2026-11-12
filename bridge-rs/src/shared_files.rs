@@ -688,8 +688,8 @@ async fn own_delete(
 pub fn tool() -> Value {
     json!({
         "name": TOOL_NAME,
-        "description": "The files and photos sent to you by everyone who uses you (your person and the relatives you are \
-    shared with): with a path (from a « [Pièce jointe : … → /famille/…] » line, or the list), a document's words (PDF, \
+        "description": "The files and photos sent to you by everyone who uses you (the members of the family you serve): \
+    with a path (from a « [Pièce jointe : … → /famille/…] » line, or the list), a document's words (PDF, \
     Word, Excel, PowerPoint, OpenDocument, text; a scan's text recognised on the phone) or a photo; with no path, the list: \
     each file, who sent it, when, its path.",
         "inputSchema": {"type": "object", "properties": {

@@ -2,7 +2,7 @@
 
 # Nutzungsbedingungen von BipAgents
 
-> Zuletzt aktualisiert: 10. November 2026.
+> Zuletzt aktualisiert: 12. November 2026.
 
 ## 1. Gegenstand
 
@@ -130,10 +130,14 @@ Dienste, die du mit deinen Agenten verbindest, und für das, was du per SSH tust
 
 - Je nach den Werkzeugen, die du ihnen gibst, können deine Agenten **handeln**: E-Mails senden, surfen und Formulare
   ausfüllen, Dateien bearbeiten, dein Smart Home steuern, Befehle auf deinem Server ausführen.
-- Vor einer sensiblen Aktion **fragt dich der Agent nach deinem Einverständnis** (Einmal, Diese Sitzung oder
-  Ablehnen), in der App oder aus der Benachrichtigung. Wenn BipAgents Hermes Agent installiert, fragen riskante
+- Vor einer sensiblen Aktion **fragt dich der Agent nach deinem Einverständnis** („Ja, mach nur“, „Ja, für dieses Gespräch“ oder „Nein“), in der App oder aus der Benachrichtigung. Wenn BipAgents Hermes Agent installiert, fragen riskante
   Befehle immer nach deinem Einverständnis (ein Hermes Agent, den du schon hattest, behält seine eigenen
-  Einstellungen), und die App bietet „Immer erlauben“ nicht an. **Du entscheidest: Lies die Anfrage, bevor du
+  Einstellungen).
+  Die App bietet „Immer“ nur für das an, was nicht kritisch ist (deine E-Mails ordnen, in einen Dienst schreiben, den
+  du verbunden hast, Dateien im Bereich des Agenten), Agent für Agent; du nimmst es in den Einstellungen des Agenten
+  zurück. Bei Bezahlen, Senden in deinem Namen, Löschen und riskanten Befehlen wirst du immer gefragt. Eine Anfrage, die
+  entsteht, während du nicht da bist (eine nächtliche Routine), wartet bis zu 24 Stunden auf dich und wird erst nach
+  deinem Einverständnis ausgeführt. **Du entscheidest: Lies die Anfrage, bevor du
   zustimmst.** Du bist für das verantwortlich, was du freigibst.
 - Je nach deiner Konfiguration von Hermes Agent und den installierten Werkzeugen können manche Aktionen ohne
   Freigabeanfrage geschehen. Was deine Agenten lesen (Webseiten, E-Mails, Dateien), kann versteckte Anweisungen
