@@ -263,7 +263,7 @@ section 6); the services you connect to your agents and their own subscriptions.
   OVHcloud and Hetzner have physical access to their servers.
 - **Backups**: your place backs itself up a few minutes after each activity, and at least once a day, encrypted on the place before it leaves, with a key
   that stays on your place and on your devices (plus the encrypted copy that your recovery code opens, section 7).
-  Kerfy Studio keeps these backups on its backup server, unreadable without that key: those of the last 2 hours, then one per hour for 48 hours, one per day for 21 days, nothing older. When a beta place is freed ([beta terms](beta.en.md)), its server is reset and only the encrypted copy of its backups is kept, then erased after 30 days. Settings ›
+  Kerfy Studio keeps these backups on its backup server, unreadable without that key: those of the last 2 hours, then one per hour for 48 hours, one per day for 21 days, nothing older. When a beta place is freed ([beta terms](beta.en.md)), its server is reset and only the encrypted copy of its backups (21 days of history at most) is kept, then erased after 30 days. Settings ›
   All-included plan › Backups shows the latest one and starts one at once.
 - **OVHcloud's daily image**: on its servers, OVHcloud also makes, on its side, a daily image of the whole server,
   which it keeps on its premises (one restore point per day, not encrypted by Kerfy Studio). When a place is
