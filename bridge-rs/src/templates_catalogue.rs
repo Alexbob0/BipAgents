@@ -224,10 +224,10 @@ pub async fn adopt(state: &AppState, body: &Value) -> ApiResult<Value> {
 
 fn left_out_routine(lang: &str, name: &str) -> String {
     match language(lang) {
-        "fr" => format!("la routine « {name} » (pas pour l'agent de la famille)"),
-        "de" => format!("die Routine „{name}“ (nicht für den Familienagenten)"),
-        "es" => format!("la rutina « {name} » (no para el agente de la familia)"),
-        _ => format!("the routine “{name}” (not for the family's agent)"),
+        "fr" => format!("la routine « {name} » (demande-la-lui dans la conversation si tu la veux)"),
+        "de" => format!("die Routine „{name}“ (bitte ihn im Gespräch darum, wenn du sie willst)"),
+        "es" => format!("la rutina «{name}» (pídesela en la conversación si la quieres)"),
+        _ => format!("the routine “{name}” (ask it for it in the conversation if you want it)"),
     }
 }
 

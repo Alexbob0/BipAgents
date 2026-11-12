@@ -192,7 +192,7 @@ async fn never_shared_nor_run_for_a_relative_on_a_hermes_without_the_guest_turn_
     assert_eq!(refused.json()["code"], bipbridge::agent_shares::GUEST_TURNS_OPEN);
     let detail = refused.json()["detail"].as_str().unwrap().to_string();
     assert!(
-        detail.starts_with("Tes agents ne peuvent pas être partagés") && detail.contains("--fixes-only"),
+        detail.starts_with("Tes agents ne peuvent pas travailler avec tes proches") && detail.contains("--fixes-only"),
         "{detail}"
     );
     let view = a.get("/v1/agents/cuisine/shares", &h).await.json();

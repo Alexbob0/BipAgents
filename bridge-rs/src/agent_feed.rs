@@ -286,7 +286,7 @@ pub fn under_her_bridge(id: &str, mut page: Value) -> Value {
 /// writes refused.
 pub async fn relay_thread(state: &AppState, id: &str, what: &str, q: &QueryMap) -> ApiResult<Response> {
     if what.ends_with(":delete") {
-        return Err(shares::read_only_refused());
+        return Err(shares::read_only_refused(&state.config()));
     }
     if what.is_empty() {
         let (status, list) = owner_list(state, id).await?;
