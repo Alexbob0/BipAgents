@@ -14,21 +14,25 @@ est proposée par Kerfy Studio, l'éditeur de BipAgents.
 - **Le crédit d'IA offert.** 2 € d'utilisation du modèle par personne et par mois, avec un plafond strict. Une fois ce
   crédit utilisé, tes agents n'appellent plus le modèle jusqu'au mois suivant : rien ne t'est facturé. Il ne se revend
   pas et ne se rembourse pas.
-- **Place inutilisée.** Pendant la bêta et le mois offert, une place à laquelle personne n'a écrit pendant 7 jours est
-  libérée pour quelqu'un d'autre. Écrire à ses agents, c'est leur envoyer un message, une note vocale, une photo ou un
-  fichier, passer un appel Live, répondre à une carte ou toucher « Garder ma place » ; les routines et les veilles
-  continuent de tourner, mais ne comptent pas. Le 5e jour, tu es prévenu par une notification, un e-mail et un bandeau
-  dans l'app, avec le bouton « Garder ma place ».
-- **Ce que la libération change.** Le serveur de ta place est remis à zéro pour quelqu'un d'autre, et il n'y reste
-  aucune copie de tes données : seule la copie chiffrée des sauvegardes de ta place est gardée, puis effacée pour de bon
-  au bout de 30 jours. Si tu as créé un agent de la famille, sa conversation commune disparaît pour tous ses membres
-  jusqu'à ce que tu reprennes ta place, et les partages en lecture de tes agents s'arrêtent aussi.
+- **Place inutilisée.** Les places de la bêta sont limitées. Si personne n'écrit à tes agents pendant 7 jours, ta place
+  est libérée pour quelqu'un d'autre. Écrire à tes agents, c'est envoyer un message, une note vocale, une photo ou un
+  fichier à un agent, passer un appel Live ou répondre à une carte ; les routines qui tournent seules ne comptent pas.
+  Ce qu'écrivent les membres d'un agent de la famille que tu as créé compte aussi pour ta place. Le 5e jour, nous te
+  prévenons par une notification, dans l'app et par e-mail si tu as un compte : il suffit alors d'écrire à un agent, ou
+  de toucher « Garder ma place ». Si personne n'écrit, la conversation commune de tes agents de la famille et tes
+  partages en lecture s'arrêtent avec la libération. Ton compte reste ouvert.
+- **Après la libération.** Ton serveur est remis à zéro et donné à quelqu'un d'autre : rien n'y reste. Nous gardons
+  seulement la copie chiffrée des sauvegardes de ta place (21 jours d'historique au plus : conversations, mémoire des
+  agents, fichiers, Carnet, réglages), 30 jours chez Scaleway, à Paris, puis elle est effacée pour de bon. Sa clé reste
+  sur ton téléphone (et dans la copie que ton code de récupération ouvre).
+  <!-- TODO (Kerfy Studio, 12/11): ne pas écrire ici « nous ne pouvons pas la lire » tant que ce n'est pas confirmé. -->
+  Pendant ces 30 jours, « Reprendre ma place » la remet sur une nouvelle place, s'il en reste une libre. Si tu n'as plus
+  ni ton téléphone ni ton code de récupération, elle ne peut pas être ouverte et tu repars de zéro. Exporte tes données
+  avant la libération : après, l'export n'est plus possible.
 - **Fin de la bêta.** La bêta se termine le 30 novembre 2026. Ta place reste ensuite offerte jusqu'au 31 décembre 2026.
-  Elle ne devient jamais payante sans que tu choisisses un abonnement. Sans abonnement, ta place est ensuite libérée de
-  la même façon. Nous te prévenons par e-mail et dans l'app au moins 7 jours avant la fin du mois offert.
-- **Tes données.** Tu peux les exporter depuis l'app jusqu'à ce que ta place soit libérée. Ensuite, pendant les
-  30 jours, tu les retrouves seulement en reprenant ta place : « Reprendre ma place » dans l'app, s'il reste une place
-  libre, ou, après la fin du mois offert, en t'abonnant.
+  Elle ne devient jamais payante sans que tu choisisses un abonnement. Sans abonnement à cette date, ta place est libérée
+  comme ci-dessus : seule sa copie chiffrée est gardée 30 jours, et t'abonner pendant ces 30 jours ramène tes agents.
+  Nous te prévenons par e-mail et dans l'app au moins 7 jours avant.
 - **Sans garantie.** C'est une version d'essai : des fonctions peuvent manquer, changer, mal marcher ou s'arrêter, et
   des données peuvent être perdues. Garde une copie de ce qui compte pour toi. La bêta est fournie telle quelle, sans
   garantie, dans la limite de ce que la loi permet.

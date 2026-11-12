@@ -96,7 +96,9 @@ def markdown(text: str, links: Dict[str, str]) -> str:
             block: List[str] = []
             while i < len(lines) and (re.match(r"^(\s*)([-*]|\d+\.)\s+", lines[i])
                                       or (lines[i].startswith("  ") and lines[i].strip() and block)):
-                block.append(lines[i]); i += 1
+                if not lines[i].strip().startswith("<!--"):  # an editors' note inside an item (one line)
+                    block.append(lines[i])
+                i += 1
             out.append(listing(block, links))
             continue
         paragraph.append(line)
