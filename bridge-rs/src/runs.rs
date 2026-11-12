@@ -1396,6 +1396,7 @@ impl RunHub {
             event
         };
         let event = if event.r#type == "run.completed" { self.no_reply_in_plain_words(sub, event) } else { event };
+        let event = if event.r#type == "run.failed" { self.reply_cut_in_plain_words(sub, &st, event) } else { event };
         let event = if event.r#type == "run.failed" { self.account_failure_in_plain_words(sub, event) } else { event };
         let event =
             if matches!(event.r#type.as_str(), "run.completed" | "run.failed") { with_stopped(event) } else { event };
@@ -2465,9 +2466,39 @@ touche « Démarrer » pour reprendre."
         SSEEvent::new(event.r#type, data, raw)
     }
 
+    /// A turn Hermes ended because the model's reply was cut mid tool-call (reply_cut.rs): the person reads one plain
+    /// line (the model's limit, not BipAgents), marked `bip_reply_cut`, and the agent's next turn in this conversation
+    /// is told what to do (write in parts, or sum up).
+    fn reply_cut_in_plain_words(&self, sub: &RunSubscription, st: &SubscriptionState, event: SSEEvent) -> SSEEvent {
+        let error = as_str(event.data.get("error")).unwrap_or_default();
+        let Some(cut) = crate::reply_cut::kind(&error) else { return event };
+        let lang = match &self.config {
+            Some(shared) => {
+                let config = shared.get();
+                let agent = config.agent(Some(&sub.agent.name)).cloned().unwrap_or_else(|| sub.agent.clone());
+                crate::handback::language_of(&config, &agent)
+            }
+            None => "en".to_string(),
+        };
+        if let Some(session) = st.session_id.as_deref().filter(|s| !s.is_empty()) {
+            crate::reply_cut::noted(&sub.agent.name, session, cut);
+        }
+        tracing::warn!(agent = %sub.agent.name, run_id = %sub.run_id, cut = ?cut, "reply cut mid tool-call: plain line shown");
+        let name = if sub.agent.display_name.trim().is_empty() { &sub.agent.name } else { &sub.agent.display_name };
+        let mut data = event.data;
+        data.insert("error".into(), json!(crate::reply_cut::person_line(cut, name, &lang)));
+        data.insert("bip_reply_cut".into(), json!(true));
+        let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+        SSEEvent::new(event.r#type, data, raw)
+    }
+
     /// A turn that failed on a model chosen for this agent at home (model_choice.rs): one plain sentence (check the
     /// model, or go back to the install's default), never the provider's words nor the plan's credit notice.
     fn account_failure_in_plain_words(&self, sub: &RunSubscription, event: SSEEvent) -> SSEEvent {
+        // a reply cut by the model's length limit is no problem of the model chosen
+        if event.data.contains_key("bip_reply_cut") {
+            return event;
+        }
         let Some(shared) = &self.config else { return event };
         let config = shared.get();
         let agent = config.agent(Some(&sub.agent.name)).cloned().unwrap_or_else(|| sub.agent.clone());
