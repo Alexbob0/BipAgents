@@ -10,20 +10,29 @@
 //! a Live / Quick Live call started, an approval card answered (yes, no, always; a card payment too). Background
 //! reads, sync polls, push registrations, routines, watchers and tasks never touch it. Writing it never fails a
 //! request. Self-installs write it too (nobody reads it there).
+//!
+//! « Garder ma place » (contract v2), the day-5 banner's button: `POST /v1/place/keep` (the bridge key) → 204, a
+//! person action written at once, whatever the once-a-minute rule.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::LazyLock;
 
 use axum::extract::Request;
-use axum::http::Method;
+use axum::http::{Method, StatusCode};
 use axum::middleware::Next;
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
+use axum::routing::post;
+use axum::Router;
+
+use crate::app::AppState;
 
 /// `~/.local/state/bipagents/used`, next to sleep.rs' `asleep` marker.
 pub const FILE: &str = ".local/state/bipagents/used";
 /// At most one write a minute.
 pub const EVERY_SECONDS: i64 = 60;
+/// « Garder ma place »: the place kept, written whatever the once-a-minute rule.
+pub const KEEP_PATH: &str = "/v1/place/keep";
 
 /// Whether `method path` (the full path, as the outer router sees it) is a person's action.
 pub fn person_action(method: &Method, path: &str) -> bool {
@@ -39,6 +48,8 @@ pub fn person_action(method: &Method, path: &str) -> bool {
             | ["v1", "live", "calls", "start"]
             // an approval card answered (app.rs `approve`), a card payment approved or refused (card_pay.rs)
             | ["v1", "approve"]
+            // « Garder ma place », the day-5 banner's button
+            | ["v1", "place", "keep"]
             | ["v1", "vault", "payments", _, "approve" | "deny"]
             // a relative's message or answer to an agent of this place (agent_shares.rs: shared and family agents)
             | ["family", "s", _, "conversations", _, "messages"]
@@ -59,8 +70,17 @@ impl Used {
 
     /// Notes a person action at `now` (epoch seconds): written unless it was less than a minute ago. Whether it wrote.
     pub fn note_at(&self, now: i64) -> bool {
+        self.write(now, false)
+    }
+
+    /// The same, written whatever the once-a-minute rule (« Garder ma place »).
+    pub fn keep_at(&self, now: i64) -> bool {
+        self.write(now, true)
+    }
+
+    fn write(&self, now: i64, always: bool) -> bool {
         let last = self.last.load(Ordering::Relaxed);
-        if now - last < EVERY_SECONDS
+        if (!always && now - last < EVERY_SECONDS)
             || self.last.compare_exchange(last, now, Ordering::Relaxed, Ordering::Relaxed).is_err()
         {
             return false;
@@ -96,11 +116,27 @@ static USED: LazyLock<Used> = LazyLock::new(|| {
 /// The middleware (app.rs, around the routed app): a person's action that succeeded is noted.
 pub async fn note(request: Request, next: Next) -> Response {
     let counted = person_action(request.method(), request.uri().path());
+    let kept = request.uri().path().trim_end_matches('/') == KEEP_PATH;
     let response = next.run(request).await;
     if counted && response.status().is_success() {
-        USED.note_at(chrono::Utc::now().timestamp());
+        let now = chrono::Utc::now().timestamp();
+        if kept {
+            USED.keep_at(now);
+        } else {
+            USED.note_at(now);
+        }
     }
     response
+}
+
+/// « Garder ma place »: nothing but the use the middleware above writes.
+async fn keep() -> Response {
+    StatusCode::NO_CONTENT.into_response()
+}
+
+/// Mounted under /v1 with the bridge key.
+pub fn router() -> Router<AppState> {
+    Router::new().route("/place/keep", post(keep))
 }
 
 #[cfg(test)]
@@ -136,6 +172,20 @@ mod tests {
         assert!(post("/v1/vault/payments/p1/approve"));
         assert!(post("/v1/vault/payments/p1/deny"));
         assert!(post("/family/s/cuisine/approval"));
+    }
+
+    #[test]
+    fn keep_my_place_counts_and_is_written_at_once() {
+        assert!(post(KEEP_PATH));
+        assert!(!person_action(&Method::GET, KEEP_PATH));
+        let dir = tempfile::tempdir().unwrap();
+        let used = Used::new(dir.path().to_path_buf());
+        assert!(used.note_at(1_762_950_000));
+        // a message a few seconds before: the button still writes its own time
+        assert!(used.keep_at(1_762_950_010));
+        assert_eq!(std::fs::read_to_string(&used.path).unwrap(), "1762950010");
+        // and the once-a-minute rule goes on from there
+        assert!(!used.note_at(1_762_950_030));
     }
 
     #[test]
