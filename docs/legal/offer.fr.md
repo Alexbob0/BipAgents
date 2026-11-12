@@ -418,8 +418,9 @@ déjà payé. Si tu n'es pas d'accord, tu peux résilier sans frais avant qu'il 
 
 - En cas de problème, écris d'abord à **support@bipagents.com** pour chercher une solution.
 - **Médiation** : si ta réclamation écrite n'a pas abouti, tu peux saisir gratuitement le médiateur de la consommation
-  de Kerfy Studio. Médiateur : en cours de désignation ; aucune vente n'a lieu pendant la bêta. Tu dois le saisir dans
-  l'année qui suit ta réclamation écrite (articles L612-1, L612-2, L616-1 et R616-1 du Code de la consommation).
+  de Kerfy Studio. Pendant la bêta, l'offre est gratuite et aucune vente n'a lieu. Le médiateur de la consommation
+  auquel Kerfy Studio adhère sera indiqué ici, avec son adresse et son site, avant la première vente. Tu dois le saisir
+  dans l'année qui suit ta réclamation écrite (articles L612-1, L612-2, L616-1 et R616-1 du Code de la consommation).
 - Ces conditions sont soumises au **droit français**. Si tu es consommateur et résides dans un autre pays de l'Union
   européenne, tu gardes en plus la protection des règles impératives de ce pays. Les tribunaux compétents sont ceux
   indiqués dans les conditions d'utilisation (section 20). Si tu vis hors de l'Union européenne, la section 17

@@ -14,10 +14,10 @@ est proposée par Kerfy Studio, l'éditeur de BipAgents.
 - **Le crédit d'IA offert.** 2 € d'utilisation du modèle par personne et par mois, avec un plafond strict. Une fois ce
   crédit utilisé, tes agents n'appellent plus le modèle jusqu'au mois suivant : rien ne t'est facturé. Il ne se revend
   pas et ne se rembourse pas.
-- **La fin de la bêta.** La bêta se termine le 30 novembre 2026. Ta place reste ensuite gratuite jusqu'au 31 décembre
-  2026. Rien ne devient payant sans toi : aucun abonnement ne commence tout seul, et pour continuer, tu souscris toi-même
-  après avoir vu le prix. Après le 31 décembre 2026, une place sans abonnement est suspendue (sans IA), puis effacée
-  avec ses données 30 jours plus tard. L'app te prévient à l'avance.
+- **Fin de la bêta.** La bêta se termine le 30 novembre 2026. Ta place reste ensuite offerte jusqu'au 31 décembre 2026.
+  Elle ne devient jamais payante sans que tu choisisses un abonnement. Sans abonnement, ta place est ensuite suspendue
+  (l'IA s'arrête), puis effacée avec ses données 30 jours après sa suspension. Nous te prévenons par e-mail et dans
+  l'app au moins 7 jours avant la suspension, et tu peux exporter tes données jusqu'à l'effacement.
 - **Sans garantie.** C'est une version d'essai : des fonctions peuvent manquer, changer, mal marcher ou s'arrêter, et
   des données peuvent être perdues. Garde une copie de ce qui compte pour toi. La bêta est fournie telle quelle, sans
   garantie, dans la limite de ce que la loi permet.

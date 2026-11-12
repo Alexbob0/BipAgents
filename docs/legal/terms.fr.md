@@ -128,17 +128,18 @@ restes responsable de tes appareils, de ton code de récupération, du respect d
   formulaires, manipuler des fichiers, piloter ta maison connectée, lancer des commandes sur ton serveur.
 - Avant une action sensible, l'agent te **demande ton accord**, dans l'app ou depuis la notification, avec les boutons
   de la carte qu'il te montre (par exemple « Oui, vas-y », « Oui, pour cette conversation » ou « Non »).
-- Pour un agent, tu peux choisir « Toujours » seulement pour des actions sans gravité : ranger, archiver ou marquer tes
+- Pour un agent, tu peux choisir « Toujours autoriser » seulement pour des actions sans gravité : ranger, archiver ou marquer tes
   e-mails, écrire dans un service que tu as connecté, gérer des fichiers dans l'espace de l'agent. Jamais pour payer,
   envoyer quelque chose en ton nom, supprimer, envoyer des données à un nouveau site, créer une routine ou lancer une
-  commande : ces actions te sont demandées à chaque fois. Tu retires un « Toujours » dans les réglages de l'agent. Une
-  action faite avec « Toujours » compte comme approuvée par toi.
+  commande : ces actions te sont demandées à chaque fois. Tu retires un « Toujours autoriser » dans les réglages de
+  l'agent. Une action faite avec « Toujours autoriser » compte comme approuvée par toi.
 - Pour envoyer des données à un nouveau site, « Refuser » vaut pour cette fois et « Refuser toujours » bloque ce site,
   jusqu'à ce que tu le débloques dans les réglages de l'agent.
-- Quand un agent demande quelque chose en ton absence (une routine de nuit, par exemple), la demande t'attend en carte
-  jusqu'à 24 heures et n'est faite qu'après ton accord ; sans réponse, elle est abandonnée.
-- Dans un agent de la famille, c'est le membre dont c'est le tour qui répond à ses cartes, et « Toujours » n'y est pas
-  proposé.
+- Quand un agent demande quelque chose en ton absence (une routine de nuit, par exemple), la demande attend ta réponse
+  en carte. Sans réponse, elle est abandonnée au bout de 24 h, ou au passage suivant de la routine, qui peut te la
+  redemander. Rien n'est fait sans ton accord.
+- Sur un agent de la famille, chaque carte est validée par la personne qui a fait la demande, jamais par le créateur à
+  sa place, et « Toujours autoriser » n'existe pas.
 - Quand c'est BipAgents qui installe Hermes Agent, les commandes risquées demandent toujours ton accord (un Hermes
   Agent que tu avais déjà garde ses propres réglages). **C'est toi qui décides : lis la demande avant d'accepter.** Tu
   es responsable de ce que tu approuves.
@@ -184,8 +185,8 @@ Avec l'offre tout compris, la [politique d'usage acceptable](acceptable-use.fr.m
   l'agent, sans ton nom ; tu peux ajouter ton e-mail si tu veux une réponse. L'auteur n'en est pas prévenu. Kerfy
   Studio ne lit pas les conversations et ne peut pas effacer un message ; s'il prend une mesure contre un compte, une
   place ou un appareil (section 10, politique d'usage acceptable), il en donne les motifs à la personne concernée et
-  lui dit comment contester (règlement (UE) 2022/2065, article 17). Tu peux aussi quitter l'agent ; la personne qui a
-  créé un agent de la famille peut retirer un membre.
+  lui dit comment contester (règlement (UE) 2022/2065, article 17). La personne qui a créé un agent de la famille peut
+  aussi retirer un membre.
 - Ce que la section 10 interdit l'est aussi dans un agent de la famille ou un agent partagé (harcèlement, menaces,
   haine, contenus illicites, atteinte à la vie privée).
 - Ou écris à **support@bipagents.com**.

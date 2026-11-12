@@ -103,10 +103,11 @@ routines qu'il fait arrivent dans cette conversation.
   demande un second réglage, éteint lui aussi au départ. Ces réglages ne s'allument que par toi, sur ton appareil : ni
   la personne qui a créé l'agent ni un parent ne peut le faire à ta place, y compris entre 16 et 18 ans. Base légale :
   ton consentement (article 6.1.a du RGPD), que tu donnes en allumant ces réglages et retires en les éteignant.
-- **Quand un membre part.** Si tu quittes l'agent ou en es retiré, tes messages restent dans la conversation, avec ton
-  prénom, et tes fichiers en sont retirés. Si tu supprimes ton compte, ton prénom y devient « Ancien membre ». Si la
-  personne qui a créé l'agent le supprime, ou supprime son compte ou sa place, l'agent, sa conversation et ses fichiers
-  sont effacés pour tous.
+- **Quand un membre est retiré.** Si la personne qui a créé l'agent te retire, tes messages restent dans la
+  conversation commune avec ton prénom, et tes fichiers sont retirés. Pour ne plus faire partie de l'agent, demande-lui
+  de te retirer. Si tu supprimes ton compte, ton prénom est remplacé par « Ancien membre ». Tu peux demander que tes
+  messages soient effacés : écris à privacy@bipagents.com. Si la personne qui a créé l'agent le supprime, ou supprime
+  son compte ou sa place, l'agent, sa conversation et ses fichiers sont effacés pour tous.
 - **Qui en décide.** La personne qui crée l'agent choisit ses membres et ses outils, et peut retirer un membre. Sur son
   propre serveur, elle en est responsable vis-à-vis des autres membres.
 
@@ -280,7 +281,7 @@ et ne lisent que le nom du site. Une notification (Android) ou l'écran « Relai
 avec « Arrêter ». Jamais pour un agent partagé ou familial. Kerfy Studio n'en reçoit rien. **Base légale** : te
 fournir la fonction que tu choisis (article 6.1.b du RGPD).
 
-**Tes choix d'accord.** Les actions que tu as permises avec « Toujours » pour chaque agent, les sites bloqués avec
+**Tes choix d'accord.** Les actions que tu as permises avec « Toujours autoriser » pour chaque agent, les sites bloqués avec
 « Refuser toujours » et les demandes en attente sont gardés sur ton serveur (ou ta place) ; une demande en attente est
 effacée après 24 heures sans réponse. Kerfy Studio n'en reçoit rien.
 
@@ -302,10 +303,11 @@ oublie tout.
 - le jeton d'appareil, la plateforme (Apple ou Google) et l'environnement (test ou production) ;
 - l'**adresse IP** de ton téléphone (à l'inscription) ou de ton serveur (à chaque notification), uniquement pour
   limiter les abus : elle est transformée en empreinte, gardée en mémoire une heure au plus, jamais écrite ;
-- le contenu de la notification : un **texte générique** comme « Nouveau message » (tout autre texte est remplacé), des
-  **identifiants techniques** (agent, conversation, tâche, type de notification), le nombre à afficher sur l'icône et,
-  **chiffrés par ton serveur pour ton téléphone seul**, le nom de l'agent et le début de sa réponse. Ni le relais, ni
-  Apple, ni Google ne peuvent les lire.
+- le contenu de la notification : le nom de l'agent et le début du message, **chiffrés par ton serveur pour la clé de
+  ton téléphone** : ni notre relais, ni Apple, ni Google ne peuvent les lire. Passent seulement en clair une ligne
+  neutre, un code que ton téléphone affiche dans ta langue, comme « Nouveau message » ou « Approbation requise » (tout
+  autre texte est remplacé), des **identifiants techniques** (agent, conversation, tâche, type de notification) et le
+  nombre à afficher sur l'icône.
 
 **Ce qui est conservé.** Le relais n'a pas de base de données. Le jeton scellé est conservé sur ton téléphone et sur
 ton serveur ; avec l'offre tout compris, le guichet de Kerfy Studio le garde aussi, toujours scellé (section 5.6). Les
@@ -358,8 +360,8 @@ l'oublie.
   pas prévenu de ton signalement. Kerfy Studio ne lit pas la conversation et ne peut pas effacer ce message. Il peut,
   selon les cas, te conseiller, prévenir la personne qui a créé l'agent si elle a un compte, ou prendre une mesure
   prévue par les conditions d'utilisation ou la politique d'usage acceptable : la personne visée en est alors
-  informée, avec les motifs (section 5.7). Tu peux aussi quitter l'agent, et la personne qui a créé un agent de la
-  famille peut retirer un membre. Si tu es en danger, appelle d'abord le 112. Ce message est celui d'une autre
+  informée, avec les motifs (section 5.7). La personne qui a créé un agent de la famille peut aussi retirer un
+  membre. Si tu es en danger, appelle d'abord le 112. Ce message est celui d'une autre
   personne : nous n'utilisons que ce qui sert à traiter le signalement. Base légale : l'intérêt légitime de Kerfy
   Studio à faire respecter les règles de l'app et à protéger les personnes qui l'utilisent (article 6.1.f du RGPD)
   et, avec l'offre tout compris, son obligation d'hébergeur de traiter les signalements (article 6.1.c ; règlement
@@ -761,17 +763,18 @@ d'autre.
 ### 5.13 Demander un code bêta sur le site
 
 Sur bipagents.com, « Obtenir un code » te demande ton adresse e-mail et fait faire à ton navigateur un petit calcul
-contre les robots (ALTCHA, servi et vérifié par Kerfy Studio, qui n'écrit rien sur ton appareil : ni cookie, ni
+contre les robots (ALTCHA, servi et vérifié par Kerfy Studio, qui ne dépose rien sur ton appareil : ni cookie, ni
 stockage). Une adresse reçoit un seul code, les adresses jetables sont refusées, et le nombre de codes est limité par
-jour et par réseau. Ton adresse ne sert en clair qu'à t'envoyer le code, par Proton AG (Suisse, section 11), depuis une
-adresse bipagents.com : elle n'est pas gardée, et Proton garde le message envoyé le temps que nous l'effacions de la
-boîte d'envoi. Kerfy Studio garde seulement une empreinte de ton adresse, calculée
-avec une clé secrète, qui permet de reconnaître une adresse déjà servie sans pouvoir la relire. Ton adresse IP n'est
-jamais enregistrée en clair : seule son empreinte sert à la limite par réseau, 2 jours au plus (section 5.3).
+jour et par réseau. Ton adresse est lue un instant, seulement pour t'envoyer ton code par Proton AG (Suisse,
+section 11), depuis une adresse bipagents.com. Nous ne la gardons pas, et Proton garde le message envoyé le temps que
+nous l'effacions de la boîte d'envoi. Nous gardons seulement une empreinte de ton adresse, calculée avec une clé
+secrète, pour vérifier qu'une adresse ne reçoit qu'un code : c'est une donnée pseudonyme, donc encore une donnée
+personnelle. Ton adresse IP n'est jamais enregistrée en clair : seule son empreinte sert à la limite par réseau,
+2 jours au plus (section 5.3).
 
 **Bases légales.** T'envoyer le code que tu demandes (article 6.1.b du RGPD). Un seul code par adresse, la limite par
-réseau et le calcul contre les robots : intérêt légitime de Kerfy Studio à répartir équitablement les places de la
-bêta (article 6.1.f). **Durée.** L'empreinte de l'adresse, jusqu'à la fin de la bêta, au plus tard le 31 décembre 2026.
+réseau et le calcul contre les robots : intérêt légitime de Kerfy Studio à prévenir les abus et à répartir
+équitablement les places de la bêta (article 6.1.f). **Durée.** L'empreinte de l'adresse, jusqu'à la fin de la bêta, au plus tard le 31 décembre 2026.
 Si tu crées ensuite un compte, la section 5.2 s'applique à ton compte.
 
 ## 6. Ce que Kerfy Studio ne fait pas
@@ -824,16 +827,16 @@ est ensuite responsable de ce qu'il en fait.
   répond pas), elle utilise le moteur de synthèse de ton téléphone, selon ses réglages.
 - **Sur Android, la lecture des QR codes** se fait sur le téléphone, avec une bibliothèque intégrée à l'app, sans
   service Google.
-- **Sur Android, le scanner de documents**, et la lecture sur le téléphone du texte d'un papier scanné, sont des
-  fonctions des services Google Play (Google ML Kit) : le modèle qui lit le texte est téléchargé par les services
-  Google Play et tourne sur le téléphone. Google indique
-  que ML Kit lui envoie des informations sur l'appareil et l'app, des identifiants d'installation et des mesures
-  d'usage et de performance, pour le diagnostic et ses statistiques. L'app te le dit et te demande ton accord avant
-  la première utilisation du scanner, et cet accord couvre aussi la lecture du texte ; sans lui, le scanner ne s'ouvre pas
-  et le texte d'aucun document n'est lu par Google ML Kit, et tu peux toujours joindre une
-  photo ou un fichier. Tu peux changer d'avis à tout moment dans Réglages.
-- **Sur iPhone**, le texte d'un papier scanné est lu sur le téléphone par les outils d'Apple (Vision), sans service en
-  ligne.
+- **Le scanner de documents et la lecture du texte.** La reconnaissance du texte des documents scannés se fait sur
+  ton téléphone : sur iPhone avec Vision d'Apple, sur Android avec ML Kit de Google, fourni par les services Google
+  Play, qui en téléchargent le modèle. Le texte n'est envoyé ni à Apple ni à Google. Sur Android, le scanner est aussi
+  une fonction de ML Kit, et Google indique que ML Kit lui envoie, chiffrées, des informations sur l'appareil
+  (fabricant, modèle, version du système) et sur l'app (nom et version), des mesures de performance (comme la latence)
+  et la configuration de l'API (comme le format et la résolution de l'image), pour le diagnostic et des statistiques
+  d'usage, sans les transmettre à des tiers. L'app te le dit et te demande ton accord avant la première utilisation du
+  scanner, et cet accord couvre aussi la lecture du texte ; sans lui, le scanner ne s'ouvre pas et ML Kit ne lit
+  aucun document, et tu peux toujours joindre une photo ou un fichier. Tu peux changer d'avis à tout moment dans
+  Réglages.
 - **Apple et Google** pour les notifications (section 4.1).
 - **Tailscale**, si tu l'utilises : une app distincte, avec son propre compte et sa propre politique de
   confidentialité.
@@ -959,8 +962,7 @@ l'Union. Tu peux nous demander une copie des garanties applicables.
 | Empreinte de l'adresse IP (codes bêta, « Obtenir un code », page de résiliation du site, signalements d'agents partagés) | 2 jours au plus ; jusqu'à 30 jours dans les copies chiffrées de la base |
 | Résiliation sur le site : la déclaration (e-mail, numéro, motif, date de fin, date et heure) | 3 ans |
 | Résiliation sur le site : l'adresse e-mail tapée, pour limiter les essais | 2 jours au plus |
-| Contenu de ta place | Pendant l'abonnement, puis 30 jours (3 jours après une semaine gratuite non poursuivie) |
-| Contenu d'une place bêta | Jusqu'à la fin du mois gratuit qui suit la bêta (31 décembre 2026) ; sans abonnement, la place est ensuite suspendue (sans IA), puis effacée 30 jours après |
+| Contenu de ta place | Pendant l'abonnement (place bêta : jusqu'à la fin du mois offert, le 31 décembre 2026) ; quand l'abonnement ou le mois offert prend fin, la place est suspendue, puis effacée 30 jours après sa suspension (3 jours après une semaine gratuite non poursuivie) |
 | Sauvegardes | 2 heures (toutes), puis 48 heures (horaires), 21 jours (quotidiennes), rien au-delà ; effacées avec la place ; ce que tu effaces en est parti sous 30 jours, toutes copies comprises |
 | Fichiers de sauvegarde qu'une place efface, mis de côté par le guichet | 5 jours |
 | Versions remplacées ou effacées chez Scaleway (sauvegardes des places, copies chiffrées de la base du guichet) | 1 jour |
