@@ -331,7 +331,16 @@ async fn served_upload(
 ) -> ApiResult<Response> {
     let (household, agent) = shares::shared_agent(&state, &headers, &agent)?;
     let config = state.config();
-    let c = shares::conversation(&config, &household, &agent.name, &cid)?;
+    let c = if crate::family_thread::is_common(&config, &agent.name) {
+        // a family agent's one conversation (family_thread.rs): her entry made with her first file if need be
+        let key = crate::family_thread::entry(&config, &agent.name, &household, None)?;
+        shares::object(&shares::read(&shares::owner_path(&config)), "conversations")
+            .and_then(|all| all.get(&key))
+            .cloned()
+            .unwrap_or(Value::Null)
+    } else {
+        shares::conversation(&config, &household, &agent.name, &cid)?
+    };
     if let Err(full) = crate::place_backup::refuse_when_full().await {
         // the host's place full: as for a file to its own agents (storage_watch.rs), its person told
         let c = config.clone();
