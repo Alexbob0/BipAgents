@@ -301,11 +301,11 @@
     },
     "4": {
       "q": "Qui peut lire mes conversations ?",
-      "a": "Pas nous : Kerfy Studio ne les lit pas et n’entraîne aucune IA avec. Pour te répondre, l’IA lit ce que ton agent lui envoie : via EUrouter, un routeur d’IA européen, puis le fournisseur qui fait tourner le modèle choisi ; l’app nomme le routeur et le modèle avant ton premier message. Comme nous louons le serveur, nous pourrions techniquement entrer dans ton espace : notre logiciel ne le fait pas, et nous ne le ferions que si la loi nous y oblige."
+      "a": "Pas nous : Kerfy Studio ne les lit pas et n’entraîne aucune IA avec. Pour te répondre, l’IA lit ce que ton agent lui envoie : via EUrouter, un routeur d’IA européen, puis le fournisseur qui fait tourner le modèle choisi ; l’app nomme le routeur et le modèle avant ton premier message. Comme nous louons le serveur, nous pourrions techniquement entrer dans ton espace : notre logiciel ne le fait pas, et nous ne le ferions que si la loi nous y oblige. Tes proches ne lisent que ce que tu partages avec eux : un de tes agents, en lecture seule, et la conversation commune de l’agent de la famille."
     },
     "5": {
       "q": "Comment marchent Duo et Famille ?",
-      "a": "Chaque personne invitée a son propre compte, son espace et ses agents ; le crédit d’IA du forfait est commun. Ni la personne qui paie ni nous ne lisons les conversations des autres : la personne qui paie voit seulement combien de crédit chacun utilise. Avec Famille, jusqu’à six personnes partagent le même forfait et son crédit."
+      "a": "Chaque personne invitée a son propre compte, son espace et ses agents ; le crédit d’IA du forfait est commun. Payer ne donne accès à aucune conversation : la personne qui paie voit seulement combien de crédit chacun utilise. Avec Famille, jusqu’à six personnes partagent le même forfait et son crédit."
     },
     "6": {
       "q": "Je peux arrêter quand je veux ?",

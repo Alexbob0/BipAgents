@@ -301,11 +301,11 @@
     },
     "4": {
       "q": "Who can read my conversations?",
-      "a": "Not us: Kerfy Studio doesn’t read them or train any AI on them. To answer you, the AI reads what your agent sends it: through EUrouter, a European AI router, then the provider running the chosen model; the app names the router and the model before your first message. As we rent the server, we could technically enter your space: our software doesn’t, and we only would if the law required it."
+      "a": "Not us: Kerfy Studio doesn’t read them or train any AI on them. To answer you, the AI reads what your agent sends it: through EUrouter, a European AI router, then the provider running the chosen model; the app names the router and the model before your first message. As we rent the server, we could technically enter your space: our software doesn’t, and we only would if the law required it. Your relatives only read what you share with them: one of your agents, read-only, and the family agent’s shared conversation."
     },
     "5": {
       "q": "How do Duo and Family work?",
-      "a": "Each invited person has their own account, space and agents; the plan’s AI credit is shared. Neither the person who pays nor we read anyone else’s conversations: the person who pays only sees how much credit each person uses. With Family, up to six people share the same plan and its credit."
+      "a": "Each invited person has their own account, space and agents; the plan’s AI credit is shared. Paying gives access to no one’s conversations: the person who pays only sees how much credit each person uses. With Family, up to six people share the same plan and its credit."
     },
     "6": {
       "q": "Can I stop whenever I want?",
