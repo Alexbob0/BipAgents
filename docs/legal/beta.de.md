@@ -14,10 +14,10 @@ starten. Sie wird von Kerfy Studio angeboten, dem Herausgeber von BipAgents.
 - **Das geschenkte KI-Guthaben.** 2 € Nutzung des Modells pro Person und pro Monat, mit einer festen Obergrenze. Ist
   dieses Guthaben verbraucht, rufen deine Agenten das Modell bis zum nächsten Monat nicht mehr auf: Dir wird nichts
   berechnet. Es kann weder verkauft noch erstattet werden.
-- **Das Ende der Beta.** Die Beta endet am 30. November 2026. Dein Platz bleibt danach bis zum 31. Dezember 2026
-  kostenlos. Nichts wird ohne dich kostenpflichtig: Kein Abo beginnt von selbst, und um weiterzumachen, schließt du
-  selbst ein Abo ab, nachdem du den Preis gesehen hast. Nach dem 31. Dezember 2026 wird ein Platz ohne Abo angehalten
-  (ohne KI) und 30 Tage später mit seinen Daten gelöscht. Die App sagt dir das vorher.
+- **Ende der Beta.** Die Beta endet am 30. November 2026. Dein Platz bleibt danach bis zum 31. Dezember 2026
+  geschenkt. Er wird nie kostenpflichtig, ohne dass du ein Abo wählst. Ohne Abo wird dein Platz danach angehalten (die
+  KI hört auf) und 30 Tage nach dem Anhalten mit seinen Daten gelöscht. Wir sagen dir per E-Mail und in der App
+  mindestens 7 Tage vor dem Anhalten Bescheid, und du kannst deine Daten bis zur Löschung exportieren.
 - **Ohne Gewähr.** Es ist eine Testversion: Funktionen können fehlen, sich ändern, fehlerhaft sein oder ausfallen, und
   Daten können verloren gehen. Bewahre eine Kopie von dem auf, was dir wichtig ist. Die Beta wird so bereitgestellt,
   wie sie ist, ohne Gewähr, soweit das Gesetz es erlaubt.

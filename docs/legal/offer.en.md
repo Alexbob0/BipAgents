@@ -236,9 +236,9 @@ section 6); the services you connect to your agents and their own subscriptions.
 
 - The person who subscribes invites the others by email, with a link that only works once. Each invited person creates
   their own account and has **their own place** and their agents; the AI credit is the plan's, shared (section 6).
-  **Neither the person who pays nor Kerfy Studio can read their agents or their conversations**, except what they
-  choose to share themselves (an agent they share, what they write to a family agent, their calendar if they open
-  it to the family agent).
+  **Neither the person who pays nor Kerfy Studio reads their agents or their conversations**, except what they choose
+  to share: an agent they share read-only, what they write in a family agent (read by its members) and their calendar
+  if they open it to a family agent.
 - **What the person who pays sees**: how much of the AI credit each person used in the month (an amount in euros, and
   its estimate in messages), to follow the family's credit and set limits. **Never what anyone writes or what their
   agents do.** Each invited person sees what is left of the credit for everyone, what they used and their limit if
@@ -404,8 +404,9 @@ paid. If you do not agree, you can cancel at no cost before it applies.
 
 - If there is a problem, first write to **support@bipagents.com** to look for a solution.
 - **Mediation**: if your written complaint did not settle the matter, you can go, free of charge, to Kerfy Studio's
-  consumer mediator: [to be completed: name of the mediator, postal address, website]. You must do so within one year
-  of your written complaint (articles L612-1, L612-2, L616-1 and R616-1 of the French Consumer Code).
+  consumer mediator. During the beta, the offer is free and no sale takes place. The consumer mediator Kerfy Studio has
+  joined will be named here, with its address and website, before the first sale. You must go to the mediator within
+  one year of your written complaint (articles L612-1, L612-2, L616-1 and R616-1 of the French Consumer Code).
 - These terms are governed by **French law**. If you are a consumer living in another country of the European Union,
   you also keep the protection of that country's mandatory rules. The competent courts are those stated in the terms
   of use (section 20). If you live outside the European Union, section 17 also applies.
@@ -428,12 +429,6 @@ your country's taxes, calculated by Stripe Tax, and you cancel on Stripe's custo
   date and how to cancel online; a price change is announced to you a second time between 7 and 30 days before it
   applies (section 5; California Business and Professions Code, sections 17600 and following).
 - **Age**: nobody under 13 may use a place (section 7).
-- **Individual arbitration**: any dispute between you and Kerfy Studio related to the offer is settled by **final,
-  individual arbitration**, administered by [to be completed: arbitration body and its consumer rules], and not in
-  court. You can always go to your county's small claims court for a claim within its jurisdiction. Kerfy Studio pays
-  the arbitration body's fees beyond what you would pay to go to court. **You waive the right to act in a class
-  action** or a class arbitration, as a party or as a member. You can opt out of this arbitration clause by writing to
-  support@bipagents.com within 30 days of subscribing; the rest of the contract does not change.
 - **Liability**: to the extent the law of your state allows, Kerfy Studio's total liability to you is limited to the
   amount you paid for the offer during the 12 months before the event in question, and Kerfy Studio is not liable for
   indirect damage; for you, this rule replaces the sentence of section 14 saying that its liability is not capped.
@@ -479,8 +474,7 @@ your country's taxes, calculated by Stripe Tax, and you cancel on Stripe's custo
   60th day before the end of the year (about 65 days before; sections 214.3 and 214.4).
 - **Withdrawing from the contract**: the function in section 12 remains available to you. It adds to the cancellation
   rights the law of your province gives you (in Quebec, those of the Consumer Protection Act for distance contracts).
-- **Courts**: the arbitration clause, the class action waiver and the liability cap set out for the United States do
-  not apply to you. You can go to the courts of your province, including as part of a class action.
+- **Courts**: the liability cap set out for the United States does not apply to you. You can go to the courts of your province, including as part of a class action.
 - **Governing law**: French law, together with the consumer protection rules of your province that are mandatory. If
   you live in Quebec, those Quebec rules apply and you can go to the courts of Quebec.
 - **Language**: these terms exist in French and English. In Quebec, the French version is given to you first; you can

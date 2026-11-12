@@ -129,16 +129,18 @@ condiciones de los servicios que conectas a tus agentes y de lo que haces por SS
   manejar archivos, controlar tu domótica, ejecutar comandos en tu servidor.
 - Antes de una acción delicada, el agente te **pide tu acuerdo**, en la app o desde la notificación, con los botones
   de la tarjeta que te muestra (por ejemplo «Sí, adelante», «Sí, para esta conversación» o «No»).
-- Para un agente, puedes elegir «Siempre» solo para acciones sin gravedad: ordenar, archivar o marcar tus correos,
-  escribir en un servicio que has conectado, gestionar archivos en el espacio del agente. Nunca para pagar, enviar algo
-  en tu nombre, borrar, enviar datos a un sitio nuevo, crear una rutina o ejecutar un comando: estas acciones se te
-  piden cada vez. Quitas un «Siempre» en los ajustes del agente. Una acción hecha con «Siempre» cuenta como aprobada
-  por ti.
+- Para un agente, puedes elegir «Permitir siempre» solo para acciones sin gravedad: ordenar, archivar o marcar tus
+  correos, escribir en un servicio que has conectado, gestionar archivos en el espacio del agente. Nunca para pagar,
+  enviar algo en tu nombre, borrar, enviar datos a un sitio nuevo, crear una rutina o ejecutar un comando: estas
+  acciones se te piden cada vez. Quitas un «Permitir siempre» en los ajustes del agente. Una acción hecha con «Permitir
+  siempre» cuenta como aprobada por ti.
 - Para enviar datos a un sitio nuevo, «Rechazar» vale para esta vez y «Rechazar siempre» bloquea ese sitio, hasta que
   lo desbloquees en los ajustes del agente.
-- Cuando un agente pide algo mientras no estás (una rutina nocturna, por ejemplo), la solicitud te espera en una
-  tarjeta hasta 24 horas y solo se hace después de tu acuerdo; sin respuesta, se abandona.
-- En un agente de la familia, es el miembro al que le toca quien responde a sus tarjetas, y «Siempre» no se ofrece.
+- Cuando un agente pide algo mientras no estás (una rutina nocturna, por ejemplo), la solicitud espera tu respuesta en
+  una tarjeta. Sin respuesta, se abandona al cabo de 24 horas, o en la siguiente ejecución de la rutina, que puede
+  volver a pedírtela. No se hace nada sin tu acuerdo.
+- En un agente de la familia, cada tarjeta la valida la persona que hizo la solicitud, nunca el creador en su lugar, y
+  «Permitir siempre» no existe.
 - Cuando es BipAgents quien instala Hermes Agent, los comandos de riesgo siempre piden tu acuerdo (un Hermes Agent que
   ya tenías conserva sus propios ajustes). **Tú decides: lee la solicitud antes de aceptar.** Eres responsable de lo
   que apruebas.
@@ -184,8 +186,8 @@ Con la oferta todo incluido, la [política de uso aceptable](acceptable-use.es.m
   del agente, sin tu nombre; puedes añadir tu correo si quieres una respuesta. El autor no recibe ningún aviso. Kerfy
   Studio no lee las conversaciones y no puede borrar un mensaje; si toma una medida contra una cuenta, una plaza o un
   dispositivo (sección 10, política de uso aceptable), da los motivos a la persona afectada y le dice cómo impugnarla
-  (Reglamento (UE) 2022/2065, artículo 17). También puedes dejar el agente; la persona que creó un agente de la familia
-  puede retirar a un miembro.
+  (Reglamento (UE) 2022/2065, artículo 17). La persona que creó un agente de la familia también puede retirar a un
+  miembro.
 - Lo que prohíbe la sección 10 también está prohibido en un agente de la familia o un agente compartido (acoso,
   amenazas, odio, contenidos ilícitos, ataques a la vida privada).
 - O escribe a **support@bipagents.com**.

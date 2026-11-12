@@ -133,17 +133,18 @@ Dienste, die du mit deinen Agenten verbindest, und für das, was du per SSH tust
 - Vor einer sensiblen Aktion **fragt dich der Agent nach deinem Einverständnis**, in der App oder aus der
   Benachrichtigung, mit den Knöpfen der Karte, die er dir zeigt (zum Beispiel „Ja, mach nur“, „Ja, für dieses Gespräch“
   oder „Nein“).
-- Für einen Agenten kannst du „Immer“ nur für harmlose Aktionen wählen: deine E-Mails ordnen, archivieren oder
+- Für einen Agenten kannst du „Immer erlauben“ nur für harmlose Aktionen wählen: deine E-Mails ordnen, archivieren oder
   markieren, in einen Dienst schreiben, den du verbunden hast, Dateien im Bereich des Agenten verwalten. Nie für
   Bezahlen, etwas in deinem Namen senden, Löschen, Daten an eine neue Website senden, eine Routine erstellen oder einen
-  Befehl ausführen: Bei diesen Aktionen wirst du jedes Mal gefragt. Ein „Immer“ nimmst du in den Einstellungen des
-  Agenten zurück. Eine mit „Immer“ ausgeführte Aktion gilt als von dir freigegeben.
+  Befehl ausführen: Bei diesen Aktionen wirst du jedes Mal gefragt. Ein „Immer erlauben“ nimmst du in den Einstellungen
+  des Agenten zurück. Eine mit „Immer erlauben“ ausgeführte Aktion gilt als von dir freigegeben.
 - Beim Senden von Daten an eine neue Website gilt „Ablehnen“ für dieses eine Mal, und „Immer ablehnen“ sperrt diese
   Website, bis du sie in den Einstellungen des Agenten wieder freigibst.
 - Wenn ein Agent etwas fragt, während du nicht da bist (zum Beispiel eine nächtliche Routine), wartet die Anfrage als
-  Karte bis zu 24 Stunden auf dich und wird erst nach deinem Einverständnis ausgeführt; ohne Antwort wird sie verworfen.
-- In einem Familienagenten antwortet das Mitglied, das gerade an der Reihe ist, auf seine Karten, und „Immer“ wird dort
-  nicht angeboten.
+  Karte auf deine Antwort. Ohne Antwort wird sie nach 24 Stunden verworfen, oder beim nächsten Lauf der Routine, die
+  dich erneut fragen kann. Nichts geschieht ohne dein Einverständnis.
+- In einem Familienagenten wird jede Karte von der Person freigegeben, die die Anfrage gestellt hat, nie vom Ersteller
+  an ihrer Stelle, und „Immer erlauben“ gibt es dort nicht.
 - Wenn BipAgents Hermes Agent installiert, fragen riskante Befehle immer nach deinem Einverständnis (ein Hermes Agent,
   den du schon hattest, behält seine eigenen Einstellungen). **Du entscheidest: Lies die Anfrage, bevor du
   zustimmst.** Du bist für das verantwortlich, was du freigibst.
@@ -194,8 +195,7 @@ für deinen Platz (Spam, Angriffe, Kryptomining, Weiterverkauf …) und sagt, wi
   Verfasser wird nicht benachrichtigt. Kerfy Studio liest die Unterhaltungen nicht und kann keine Nachricht löschen;
   wenn es eine Maßnahme gegen ein Konto, einen Platz oder ein Gerät trifft (Abschnitt 10, Richtlinie zur zulässigen
   Nutzung), nennt es der betroffenen Person die Gründe und sagt ihr, wie sie widersprechen kann (Verordnung (EU)
-  2022/2065, Art. 17). Du kannst den Agenten auch verlassen; die Person, die einen Familienagenten erstellt hat, kann
-  ein Mitglied entfernen.
+  2022/2065, Art. 17). Die Person, die einen Familienagenten erstellt hat, kann auch ein Mitglied entfernen.
 - Was Abschnitt 10 verbietet, ist auch in einem Familienagenten oder einem geteilten Agenten verboten (Belästigung,
   Drohungen, Hass, rechtswidrige Inhalte, Verletzung der Privatsphäre).
 - Oder schreib an **support@bipagents.com**.

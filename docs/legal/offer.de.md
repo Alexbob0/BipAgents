@@ -431,8 +431,9 @@ Inkrafttreten kostenlos kündigen.
 
 - Bei einem Problem schreib zuerst an **support@bipagents.com**, um eine Lösung zu suchen.
 - **Schlichtung**: Hat deine schriftliche Beschwerde nichts gebracht, kannst du dich kostenlos an die
-  Verbraucherschlichtungsstelle von Kerfy Studio wenden. Schlichtungsstelle: wird gerade benannt; während der Beta
-  findet kein Verkauf statt. Das musst du innerhalb eines Jahres nach deiner schriftlichen Beschwerde tun (Art. L612-1, L612-2, L616-1
+  Verbraucherschlichtungsstelle von Kerfy Studio wenden. Während der Beta ist das Angebot kostenlos, und es findet
+  kein Verkauf statt. Die Verbraucherschlichtungsstelle, der Kerfy Studio angeschlossen ist, wird hier mit ihrer
+  Anschrift und ihrer Website vor dem ersten Verkauf genannt. Das musst du innerhalb eines Jahres nach deiner schriftlichen Beschwerde tun (Art. L612-1, L612-2, L616-1
   und R616-1 des französischen Verbrauchergesetzbuchs).
 - Diese Bedingungen unterliegen **französischem Recht**. Wenn du Verbraucher bist und in einem anderen Land der
   Europäischen Union wohnst, behältst du zusätzlich den Schutz der zwingenden Vorschriften dieses Landes. Zuständig sind

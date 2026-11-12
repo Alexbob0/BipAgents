@@ -106,10 +106,12 @@ Seiten, Audios und Routinen, die er erstellt, erscheinen in dieser Unterhaltung.
   nur du ein, auf deinem Gerät: Weder die Person, die den Agenten erstellt hat, noch ein Elternteil kann das für dich
   tun, auch nicht zwischen 16 und 18 Jahren. Rechtsgrundlage: deine Einwilligung (Art. 6 Abs. 1 lit. a DSGVO), die du
   gibst, indem du diese Einstellungen einschaltest, und widerrufst, indem du sie ausschaltest.
-- **Wenn ein Mitglied geht.** Wenn du den Agenten verlässt oder aus ihm entfernt wirst, bleiben deine Nachrichten in der
-  Unterhaltung, mit deinem Vornamen, und deine Dateien werden daraus entfernt. Wenn du dein Konto löschst, wird dein
-  Vorname dort zu „Ehemaliges Mitglied“. Wenn die Person, die den Agenten erstellt hat, ihn löscht oder ihr Konto oder
-  ihren Platz löscht, werden der Agent, seine Unterhaltung und seine Dateien für alle gelöscht.
+- **Wenn ein Mitglied entfernt wird.** Wenn die Person, die den Agenten erstellt hat, dich entfernt, bleiben deine
+  Nachrichten in der gemeinsamen Unterhaltung mit deinem Vornamen, und deine Dateien werden entfernt. Um nicht mehr zum
+  Agenten zu gehören, bitte sie, dich zu entfernen. Wenn du dein Konto löschst, wird dein Vorname durch „Ehemaliges
+  Mitglied“ ersetzt. Du kannst verlangen, dass deine Nachrichten gelöscht werden: Schreib an privacy@bipagents.com. Wenn
+  die Person, die den Agenten erstellt hat, ihn löscht oder ihr Konto oder ihren Platz löscht, werden der Agent, seine
+  Unterhaltung und seine Dateien für alle gelöscht.
 - **Wer entscheidet.** Die Person, die den Agenten erstellt, wählt seine Mitglieder und seine Werkzeuge und kann ein
   Mitglied entfernen. Auf ihrem eigenen Server ist sie den anderen Mitgliedern gegenüber dafür verantwortlich.
 
@@ -289,7 +291,7 @@ lesen nur den Namen der Website. Eine Benachrichtigung (Android) bzw. ein eigene
 es läuft, mit „Stopp“. Nie für einen geteilten oder Familien-Agenten. Kerfy Studio erhält nichts davon.
 **Rechtsgrundlage**: die Funktion bereitstellen, die du wählst (Art. 6 Abs. 1 lit. b DSGVO).
 
-**Deine Freigaben.** Die Aktionen, die du für jeden Agenten mit „Immer“ erlaubt hast, die mit „Immer ablehnen“
+**Deine Freigaben.** Die Aktionen, die du für jeden Agenten mit „Immer erlauben“ erlaubt hast, die mit „Immer ablehnen“
 gesperrten Websites und die offenen Anfragen werden auf deinem Server (oder deinem Platz) gespeichert; eine offene
 Anfrage wird nach 24 Stunden ohne Antwort gelöscht. Kerfy Studio erhält nichts davon.
 
@@ -312,10 +314,11 @@ es, leitet an Apple oder Google weiter und vergisst dann alles.
 - die **IP-Adresse** deines Telefons (bei der Anmeldung) oder deines Servers (bei jeder Benachrichtigung), nur um
   Missbrauch zu begrenzen: Sie wird in einen Fingerabdruck umgewandelt, höchstens eine Stunde im Arbeitsspeicher
   gehalten und nie gespeichert;
-- der Inhalt der Benachrichtigung: ein **allgemeiner Text** wie „Neue Nachricht“ (jeder andere Text wird ersetzt),
-  **technische Kennungen** (Agent, Unterhaltung, Aufgabe, Art der Benachrichtigung), die Zahl für das App-Symbol und,
-  **von deinem Server nur für dein Telefon verschlüsselt**, der Name des Agenten und der Anfang seiner Antwort. Weder
-  das Relay noch Apple noch Google können sie lesen.
+- der Inhalt der Benachrichtigung: der Name des Agenten und der Anfang der Nachricht, **von deinem Server für den
+  Schlüssel deines Telefons verschlüsselt**: Weder unser Relay noch Apple noch Google können sie lesen. Im Klartext
+  laufen nur eine neutrale Zeile, ein Code, den dein Telefon in deiner Sprache anzeigt, etwa „Neue Nachricht“ oder
+  „Freigabe erforderlich“ (jeder andere Text wird ersetzt), **technische Kennungen** (Agent, Unterhaltung, Aufgabe, Art
+  der Benachrichtigung) und die Zahl für das App-Symbol.
 
 **Was gespeichert wird.** Das Relay hat keine Datenbank. Das versiegelte Token wird auf deinem Telefon und auf deinem
 Server gespeichert; mit dem Alles-inklusive-Angebot bewahrt es auch der Guichet von Kerfy Studio auf, weiterhin
@@ -370,8 +373,8 @@ ungültig, und dein Server vergisst es.
   Verfasser wird über deine Meldung nicht benachrichtigt. Kerfy Studio liest die Unterhaltung nicht und kann diese
   Nachricht nicht löschen. Je nach Fall kann es dich beraten, die Person, die den Agenten erstellt hat, benachrichtigen,
   wenn sie ein Konto hat, oder eine Maßnahme nach den Nutzungsbedingungen oder der Richtlinie zur zulässigen Nutzung
-  treffen: Die betroffene Person wird dann darüber informiert, mit den Gründen (Abschnitt 5.7). Du kannst den Agenten
-  auch verlassen, und die Person, die einen Familienagenten erstellt hat, kann ein Mitglied entfernen. Wenn du in
+  treffen: Die betroffene Person wird dann darüber informiert, mit den Gründen (Abschnitt 5.7). Die Person, die einen
+  Familienagenten erstellt hat, kann auch ein Mitglied entfernen. Wenn du in
   Gefahr bist, ruf zuerst die 112 an. Diese Nachricht ist die einer anderen Person: Wir nutzen nur, was zur Bearbeitung
   der Meldung dient. Rechtsgrundlage: das berechtigte Interesse von Kerfy Studio, die Regeln der App durchzusetzen und
   die Personen zu schützen, die sie nutzen (Art. 6 Abs. 1 lit. f DSGVO), und, mit dem Alles-inklusive-Angebot, seine
@@ -799,17 +802,17 @@ neu installiert, entfernt oder jemand anderem gegeben wird.
 
 Auf bipagents.com fragt dich „Einen Code holen“ nach deiner E-Mail-Adresse und lässt deinen Browser eine kleine
 Rechenaufgabe gegen Roboter lösen (ALTCHA, bereitgestellt und geprüft von Kerfy Studio, das nichts auf deinem Gerät
-speichert: weder Cookie noch Speicher). Eine Adresse erhält nur einen Code, Wegwerfadressen werden abgelehnt, und die
-Zahl der Codes ist pro Tag und pro Netz begrenzt. Deine Adresse dient im Klartext nur dazu, dir den Code zu schicken,
-über Proton AG (Schweiz, Abschnitt 11), von einer bipagents.com-Adresse: Sie wird nicht aufbewahrt, und Proton bewahrt
-die gesendete Nachricht auf, bis wir sie aus dem Postausgang löschen. Kerfy Studio behält nur einen Fingerabdruck
-deiner Adresse, mit einem geheimen Schlüssel berechnet, mit dem sich eine schon bediente Adresse erkennen lässt, ohne
-sie wieder lesen zu können. Deine IP-Adresse wird nie im Klartext gespeichert: Nur ihr Fingerabdruck dient der Grenze
+ablegt: weder Cookie noch Speicher). Eine Adresse erhält nur einen Code, Wegwerfadressen werden abgelehnt, und die
+Zahl der Codes ist pro Tag und pro Netz begrenzt. Deine Adresse wird nur kurz gelesen, nur um dir deinen Code über
+Proton AG (Schweiz, Abschnitt 11) von einer bipagents.com-Adresse zu schicken. Wir bewahren sie nicht auf, und Proton
+bewahrt die gesendete Nachricht auf, bis wir sie aus dem Postausgang löschen. Wir behalten nur einen Fingerabdruck
+deiner Adresse, mit einem geheimen Schlüssel berechnet, um zu prüfen, dass eine Adresse nur einen Code erhält: Das ist
+ein pseudonymes Datum, also weiterhin ein personenbezogenes Datum. Deine IP-Adresse wird nie im Klartext gespeichert: Nur ihr Fingerabdruck dient der Grenze
 pro Netz, höchstens 2 Tage (Abschnitt 5.3).
 
 **Rechtsgrundlagen.** Dir den Code schicken, den du anforderst (Art. 6 Abs. 1 lit. b DSGVO). Ein Code pro Adresse, die
-Grenze pro Netz und die Rechenaufgabe gegen Roboter: berechtigtes Interesse von Kerfy Studio, die Plätze der Beta
-fair zu verteilen (Art. 6 Abs. 1 lit. f). **Dauer.** Der Fingerabdruck der Adresse bis zum Ende der Beta, spätestens bis
+Grenze pro Netz und die Rechenaufgabe gegen Roboter: berechtigtes Interesse von Kerfy Studio, Missbrauch zu verhindern und die
+Plätze der Beta fair zu verteilen (Art. 6 Abs. 1 lit. f). **Dauer.** Der Fingerabdruck der Adresse bis zum Ende der Beta, spätestens bis
 zum 31. Dezember 2026. Wenn du danach ein Konto erstellst, gilt für dein Konto Abschnitt 5.2.
 
 ## 6. Was Kerfy Studio nicht tut
@@ -862,16 +865,16 @@ Telefon verlässt; jeder Dienst ist dann für das verantwortlich, was er damit m
   nicht antwortet), nutzt sie die Sprachausgabe deines Telefons nach dessen Einstellungen.
 - **Auf Android werden QR-Codes** auf dem Telefon gelesen, mit einer in die App eingebauten Bibliothek, ohne
   Google-Dienst.
-- **Auf Android sind der Dokumentenscanner** und das Lesen des Texts eines gescannten Papiers auf dem Telefon
-  Funktionen der Google-Play-Dienste (Google ML Kit): Das Modell, das den Text liest, wird von den Google-Play-Diensten
-  heruntergeladen und läuft auf dem Telefon. Google gibt an, dass
-  ML Kit ihm Informationen über das Gerät und die App, Installationskennungen sowie Nutzungs- und Leistungsdaten
-  schickt, für die Diagnose und eigene Statistiken. Die App sagt dir das und fragt vor der ersten Nutzung des Scanners
-  nach deinem Einverständnis, und dieses Einverständnis gilt auch für das Lesen des Texts; ohne es öffnet sich der Scanner nicht
-  und Google ML Kit liest den Text keines Dokuments, und du kannst weiterhin ein
-  Foto oder eine Datei anhängen. Du kannst deine Wahl jederzeit in den Einstellungen ändern.
-- **Auf dem iPhone** wird der Text eines gescannten Papiers auf dem Telefon von Apples Werkzeugen (Vision) gelesen,
-  ohne Online-Dienst.
+- **Der Dokumentenscanner und das Lesen des Texts.** Die Erkennung des Texts gescannter Dokumente geschieht auf deinem
+  Telefon: auf dem iPhone mit Vision von Apple, auf Android mit ML Kit von Google, bereitgestellt von den
+  Google-Play-Diensten, die das Modell dafür herunterladen. Der Text wird weder an Apple noch an Google geschickt. Auf
+  Android ist auch der Scanner eine Funktion von ML Kit, und Google gibt an, dass ML Kit ihm verschlüsselt
+  Informationen über das Gerät (Hersteller, Modell, Systemversion) und über die App (Name und Version),
+  Leistungsmesswerte (etwa die Latenz) und die Konfiguration der API (etwa Format und Auflösung des Bilds) schickt, für
+  die Diagnose und Nutzungsstatistiken, ohne sie an Dritte weiterzugeben. Die App sagt dir das und fragt vor der ersten
+  Nutzung des Scanners nach deinem Einverständnis, und dieses Einverständnis gilt auch für das Lesen des Texts; ohne es
+  öffnet sich der Scanner nicht und ML Kit liest kein Dokument, und du kannst weiterhin ein Foto oder eine Datei
+  anhängen. Du kannst deine Wahl jederzeit in den Einstellungen ändern.
 - **Apple und Google** für die Benachrichtigungen (Abschnitt 4.1).
 - **Tailscale**, wenn du es nutzt: eine eigene App mit eigenem Konto und eigener Datenschutzerklärung.
 - **Links, die du öffnest** (Websites, die deine Agenten nennen, die Seite von Hermes Agent), öffnen sich in deinem
@@ -988,8 +991,7 @@ des Guichets und des Relays: OVHcloud, in Frankreich. Hoster der Sicherungen: Sc
 | Fingerabdruck der IP-Adresse (Beta-Codes, „Einen Code holen“, Kündigungsseite der Website, Meldungen geteilter Agenten) | Höchstens 2 Tage; bis zu 30 Tage in den verschlüsselten Kopien der Datenbank |
 | Kündigung auf der Website: die Erklärung (E-Mail, Nummer, Grund, gewünschtes Ende, Datum und Uhrzeit) | 3 Jahre |
 | Kündigung auf der Website: die eingegebene E-Mail-Adresse, um die Versuche zu begrenzen | Höchstens 2 Tage |
-| Inhalt deines Platzes | Während des Abos, dann 30 Tage (3 Tage nach einer nicht fortgesetzten kostenlosen Woche) |
-| Inhalt eines Beta-Platzes | Bis zum Ende des kostenlosen Monats nach der Beta (31. Dezember 2026); ohne Abo wird der Platz danach angehalten (ohne KI) und 30 Tage später gelöscht |
+| Inhalt deines Platzes | Während des Abos (Beta-Platz: bis zum Ende des geschenkten Monats, am 31. Dezember 2026); wenn das Abo oder der geschenkte Monat endet, wird der Platz angehalten und 30 Tage nach dem Anhalten gelöscht (3 Tage nach einer nicht fortgesetzten kostenlosen Woche) |
 | Sicherungen | 2 Stunden (alle), dann 48 Stunden (stündlich), 21 Tage (täglich), nichts Älteres; mit dem Platz gelöscht; was du löschst, ist innerhalb von 30 Tagen daraus verschwunden, alle Kopien eingeschlossen |
 | Sicherungsdateien, die ein Platz löscht, vom Guichet beiseitegelegt | 5 Tage |
 | Ersetzte oder gelöschte Versionen bei Scaleway (Sicherungen der Plätze, verschlüsselte Kopien der Datenbank des Guichets) | 1 Tag |

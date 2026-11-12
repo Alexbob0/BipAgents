@@ -17,7 +17,7 @@ English · [Français](privacy.fr.md) · [Deutsch](privacy.de.md) · [Español](
 - With your own server, Kerfy Studio can receive only three things:
   1. what it takes to deliver your **notifications** through its relay: a sealed device token, never the text of your
      messages in clear;
-  2. what you choose to send us: an **email** to support, or a **report** of a reply from the app;
+  2. what you choose to send us: an **email** to support, or a **report** of a reply or a message from the app;
   3. **crash reports**, only if you turned on sharing them in your phone's settings.
 - With the all-included offer, Kerfy Studio also processes your account, the state of your subscription, technical
   data about your place (never its content) and your backups, unreadable without their key, which stays on your place and on your devices (section 5.5); it hosts your
@@ -75,25 +75,47 @@ With your own computer or your own server:
   postcode go into your server's encrypted vault, where only the bridge reads them, to fill in a payment you approved.
   The security code is never kept: you type it at each payment. The agent (the AI model) never sees these numbers, and
   Kerfy Studio receives none of it. With the all-included offer, the card stays on your phone (section 5.10).
-- **Several people on one server** (the family feature): each person has their own install, separate from the
-  others. Whoever administers the server is responsible towards the others.
-- **A personal agent you share with your relatives**: they can read your conversations with it (your messages, its
-  replies, the photos, files, pages and maps), from the moment you share it, or the earlier ones too if you choose so.
-  They can't write to it or ask it anything, and don't see its memory. Whatever the agent reads or writes in those
-  conversations with its tools (mail, calendar, health, contacts, Notebook…) becomes visible to them: the app reminds
-  you before you share. You can change this choice or stop sharing at any time; once you stop, they no longer have
-  access. The same goes for an agent a relative shares with you.
-- **The family agent** has a single conversation, shared by the members its creator chose (the whole family or some
-  of them): what each of them writes there and its replies are visible to those members, and it remembers what each
-  person tells it. Files and photos sent to it are visible to those members and kept for 30 days with its creator. It
-  can make pages, audio and routines; their results arrive in the shared conversation. It never reaches anyone's mail,
-  health data or personal Carnet. It reads a member's calendar only if that member allowed it (Settings › Calendar,
-  or the agent's page): it then asks that member's server at the moment it answers, keeps no copy with its creator,
-  and its replies are visible to the members of the conversation. It adds or changes an appointment only if that
-  member allowed that too.
+- **Several people on one server** (the family feature): each person has their own install and their own agents,
+  separate from the others, except family agents and shared agents (section 2 bis), which are shared by choice.
+  Whoever administers the server is responsible towards the others.
 
 **With the all-included offer**, your place takes the place of your server, and Kerfy Studio chooses the hosting
 provider and the AI router: section 5 says who sees what.
+
+## 2 bis. Family agents and shared agents
+
+**The family agent.** Its creator chooses who takes part: the whole family or some members. It has a single
+conversation: everyone sees the others' messages, with their first name, and the agent's answers. Its memory is
+shared: what you tell it may come up in its answers to the others. The pages, audio and routines it makes arrive in
+that conversation.
+
+- **Where.** The agent, its conversation, its memory, its files and photos are on its creator's server, or on their
+  place with the all-included offer, which Kerfy Studio hosts without accessing it (section 5.1). Files and photos sent
+  to it (photos, PDF, Word, Excel, PowerPoint) are visible to the members and kept for the time chosen on that server,
+  30 days by default, then deleted (section 12).
+- **What it never reads**: your mail, your health data and your Notebook.
+- **Your calendar**, only if you allow it (Settings › Calendar, or the agent's page; off at first): it then asks your
+  server (or your place) for the events it needs when it answers, keeps no copy with its creator, and its answers are
+  visible to the members. Adding or changing an event is a second switch, also off at first. These switches are turned
+  on only by you, on your device: neither the agent's creator nor a parent can do it for you, including between 16 and
+  18. Legal basis: your consent (GDPR article 6(1)(a)), which you give by turning these switches on and withdraw by
+  turning them off.
+- **When a member is removed.** If the agent's creator removes you, your messages stay in the shared conversation
+  with your first name, and your files are removed. To stop being part of the agent, ask its creator to remove you. If
+  you delete your account, your first name is replaced with "Former member". You can ask for your messages to be
+  erased: write to privacy@bipagents.com. If the creator deletes the agent, or deletes their account or their place,
+  the agent, its conversation and its files are erased for everyone.
+- **Who decides.** The agent's creator chooses its members and its tools, and can remove a member. On their own server,
+  they are responsible towards the other members.
+
+**A personal agent shared with your relatives.** You can let them read your conversations with one of your agents
+(your messages, its replies, the photos, files, pages and maps), from the moment you share it, or the earlier ones too
+if you choose so (off at first). They can't write to it or ask it anything, and don't see its memory. Whatever the
+agent reads or writes in those conversations with its tools (mail, calendar, contacts, Notebook…) becomes visible to
+them, and the conversations may mention other people: the app reminds you before you share. If the agent can read
+your health data, those parts cannot be hidden from them: sharing only goes ahead with a separate tick box, your
+explicit consent (GDPR article 9(2)(a)). You can change these choices or stop sharing at any time; once you stop, they
+no longer have access. The same goes for an agent a relative shares with you.
 
 ## 3. What the app keeps on your phone
 
@@ -243,6 +265,10 @@ and your server only pass the data on and read only the site's name. A notificat
 (iPhone) shows it while it lasts, with « Stop ». Never for a shared or family agent. Kerfy Studio receives none of it.
 **Legal basis**: providing the feature you choose (GDPR article 6(1)(b)).
 
+**Your approval choices.** The actions you allowed with "Always let …" for each agent, the sites blocked with "Always
+decline" and the pending requests are kept on your server (or your place); a pending request is deleted after 24
+hours without an answer. Kerfy Studio receives none of it.
+
 ## 4. What Kerfy Studio may receive
 
 ### 4.1 Notifications, through Kerfy Studio's relay
@@ -261,10 +287,10 @@ everything.
 - the device token, the platform (Apple or Google) and the environment (test or production);
 - the **IP address** of your phone (when registering) or of your server (with each notification), only to limit
   abuse: it is turned into a fingerprint, kept in memory for one hour at most, never written down;
-- the notification's content: a **generic text** such as "New message" (any other text is replaced), **technical
-  identifiers** (agent, conversation, task, notification type), the number to show on the icon and, **encrypted by
-  your server for your phone alone**, the agent's name and the start of its reply. Neither the relay, nor Apple, nor
-  Google can read them.
+- the notification's content: the agent's name and the start of the message, **encrypted by your server for your
+  phone's key**: neither our relay, nor Apple, nor Google can read them. Only these travel in clear: a neutral line, a
+  code your phone shows in your language, such as "New message" or "Approval needed" (any other text is replaced),
+  **technical identifiers** (agent, conversation, task, notification type) and the number to show on the icon.
 
 **What is kept.** The relay has no database. The sealed token is kept on your phone and on your server; with the
 all-included offer, Kerfy Studio's guichet keeps it too, still sealed (section 5.6).
@@ -280,8 +306,7 @@ article 6(1)(b)). Limiting abuse and protecting the service: Kerfy Studio's legi
 by a contract that complies with GDPR article 28. Apple delivers notifications to iPhones through its APNs service.
 
 **Without notifications.** You can refuse or turn off notifications in your phone's settings: the app works without
-them. If you uninstall the app, Apple or Google report the token as invalid and your server forgets it. If you build
-the app yourself with your own Apple account, Kerfy Studio's relay is not used.
+them. If you uninstall the app, Apple or Google report the token as invalid and your server forgets it.
 
 **On Android**, the app only asks Google for a token when you turn notifications on.
 
@@ -306,10 +331,18 @@ the app yourself with your own Apple account, Kerfy Studio's relay is not used.
   address, not your name, not the agent's name.** Nothing is sent until you tap "Send". On the way, the relay sees
   your phone's IP address and only uses it to limit abuse (section 4.1). Since the report contains no way to reach
   you, we cannot answer it: write to support if you expect an answer.
-- **Report this message** (long press on another person's message, in a family agent's shared conversation or in a
-  conversation a relative shares with you) takes the same path, with the same content, plus **that person's first
-  name as shown and the agent's name**. They are not told. Legal basis: Kerfy Studio's legitimate interest in
-  moderating what users exchange with each other.
+- **Report this message** (long press on another person's message, in a family agent or a shared agent, section
+  2 bis) sends the report from the app, through Kerfy Studio's relay, then by email to Kerfy Studio only, through its
+  email provider (Proton AG, Switzerland); Proton keeps the sent message until we delete it from the outbox. It
+  contains the reason, any details you add, **the message text, its author's displayed first name and the agent's
+  name**. Not your name or email address, unless you add it to get an answer or you send it by email (below). The
+  author isn't told about your report. Kerfy Studio doesn't read the conversation and cannot delete the message.
+  Depending on the case, it may advise you, tell the agent's creator if they have an account, or take a measure
+  provided for in the terms of use or the acceptable use policy: the person concerned is then told, with the reasons
+  (section 5.7). The creator of a family agent can also remove a member. If you are in danger, call 112 first. This
+  message is someone else's: we only use what is needed to handle the report. Legal basis: Kerfy Studio's legitimate
+  interest in enforcing the app's rules and protecting the people who use it (GDPR article 6(1)(f)) and, with the
+  all-included offer, its duty as a host to handle notices (article 6(1)(c); Regulation (EU) 2022/2065, article 16).
 - **If the relay does not answer**, the app offers to send the same report by email: we then also receive your email
   address.
 
@@ -320,8 +353,11 @@ only write what is useful in the details. We delete whatever is not needed to ha
 **Legal bases.** Answering your messages and handling your reports: Kerfy Studio's legitimate interest in answering
 you and making the app safer (GDPR article 6(1)(f)). Answering a request to exercise your rights: legal obligation
 (article 6(1)(c); GDPR articles 12 to 22).
-**Retention.** Support: 2 years after the last exchange; help code (offer): as long as the subscription lasts.
-Reports: 1 year after they were handled.
+**Retention.** Support: 2 years after the last exchange; help code (offer): as long as the subscription lasts. Report
+of a reply: 1 year after it was handled. Report of another person's message: its content, including the email received
+at Proton, is deleted once handled, and at the latest 6 months after receipt; only a record without the message (date,
+reason, decision and its reasons) is then kept 1 year after handling, longer if a dispute or an authority requires
+it.
 **Recipients.** Kerfy Studio and its processors: its email provider (Proton AG, Switzerland) and the hosting provider
 of the relay and the guichet, through which reports and the messages sent from the app travel.
 
@@ -618,7 +654,7 @@ Kerfy Studio keeps nothing of it.
 | Model hosting providers, EUrouter's partners | Run the model (today GLM-5.3 Flash) | Messages sent to the model, with the files and photos it is shown | European Union, according to EUrouter |
 | Scaleway SAS (Paris, France) | Object storage for the backups (region fr-par, Paris) | The places' encrypted backups, unreadable for it and for Kerfy Studio; encrypted copies of the guichet's database; a replaced or deleted version is kept 1 day | European Union (France) |
 | OVHcloud (OVH SAS, Roubaix, France) | Hosts the guichet and the relay, on a VPS in France | Account, subscription, technical data; sealed tokens and the relay's logs (sections 4.1 and 5.6) | France |
-| Proton AG (Geneva, Switzerland) | Sends, from a bipagents.com address, the codes, the security notices, the invitations, the purchase confirmation, the withdrawal acknowledgement and the deletion notices; also hosts the support mailbox (section 4.2) | Email address, content of these emails | Switzerland (adequacy decision, section 11) |
+| Proton AG (Geneva, Switzerland) | Sends, from a bipagents.com address, the codes, the security notices, the invitations, the purchase confirmation, the withdrawal acknowledgement and the deletion notices; also hosts the support mailbox (section 4.2) | Email address, content of these emails; Proton keeps the sent message until we delete it from the outbox | Switzerland (adequacy decision, section 11) |
 | Stripe Payments Europe, Ltd. (Dublin, Ireland) | Payment of purchases on the bipagents.com website, tax calculation, fraud checks, invoices | Email address, billing address or country, card details, IP address | European Union; possibly outside the Union (section 11) |
 
 They are bound to Kerfy Studio by a contract that complies with GDPR article 28; Stripe also acts as an independent
@@ -686,6 +722,22 @@ subscription). With your own server, none of this leaves.
 to the day's totals, in which no one appears, kept 2 years. Erased at once when the place is reinstalled, removed or
 given to someone else.
 
+### 5.13 Asking for a beta code on the website
+
+On bipagents.com, "Get a code" asks for your email address and has your browser do a small calculation against bots
+(ALTCHA, served and checked by Kerfy Studio, which stores nothing on your device: no cookie, no storage). An address
+gets a single code, disposable addresses are refused, and the number of codes is limited per day and per network.
+Your address is read for a moment, only to send you your code through Proton AG (Switzerland, section 11), from a
+bipagents.com address. We don't keep it, and Proton keeps the sent message until we delete it from the outbox. We only
+keep a fingerprint of your address, computed with a secret key, to check that an address gets only one code: it is
+pseudonymous data, so still personal data. Your IP address is never stored in clear: only its fingerprint is used for
+the per-network limit, 2 days at most (section 5.3).
+
+**Legal bases.** Sending you the code you ask for (GDPR article 6(1)(b)). One code per address, the per-network limit
+and the anti-bot calculation: Kerfy Studio's legitimate interest in preventing abuse and sharing the beta's places
+fairly (article 6(1)(f)). **Retention.** The address's fingerprint, until the end of the beta, 31 December 2026 at the
+latest. If you then create an account, section 5.2 applies to your account.
+
 ## 6. What Kerfy Studio does not do
 
 - No ads, no advertising identifier, no tracking across apps or websites. No analytics tool in the app: only the count
@@ -730,13 +782,15 @@ then responsible for what it does with it.
 - **The phone's text-to-speech.** When the phone's voice reads a text (in the demo, or when your server does not
   answer), it uses your phone's speech engine, according to its settings.
 - **On Android, QR codes** are read on the phone, with a library built into the app, without any Google service.
-- **On Android, the document scanner**, and reading on the phone the text of a scanned paper, are Google Play
-  services features (Google ML Kit). Google states that ML Kit
-  sends it information about the device and the app, installation identifiers and usage and performance metrics, for
-  diagnostics and its own statistics. The app tells you so and asks for your agreement before the scanner's first
-  use; without that agreement, the scanner does not open
-  and no document's text is read by Google ML Kit, and you can still attach a photo or a file. You can change
-  your mind at any time in Settings.
+- **The document scanner and text recognition.** Text recognition on scanned documents happens on your phone: on
+  iPhone with Apple's Vision, on Android with Google's ML Kit, provided by Google Play services, which download its
+  model. The text is not sent to Apple or Google. On Android, the scanner is also an ML Kit feature, and Google states
+  that ML Kit sends it, encrypted, information about the device (manufacturer, model, system version) and the app (name
+  and version), performance metrics (such as latency) and the API configuration (such as image format and resolution),
+  for diagnostics and usage analytics, without passing them to third parties. The app tells you so and asks for your
+  agreement before the scanner's first use, and that agreement also covers text recognition; without it, the scanner
+  does not open and ML Kit reads no document, and you can still attach a photo or a file. You can change your mind at
+  any time in Settings.
 - **Apple and Google** for notifications (section 4.1).
 - **Tailscale**, if you use it: a separate app, with its own account and its own privacy policy.
 - **Links you open** (websites your agents mention, the Hermes Agent page) open in your browser. Your phone never
@@ -834,7 +888,9 @@ of the applicable safeguards.
 | Relay technical logs | 6 months at most |
 | Support emails | 2 years after the last exchange |
 | Help code (all-included offer) | As long as the subscription lasts |
-| Reports | 1 year after they were handled |
+| Report of a reply | 1 year after it was handled |
+| Report of another person's message | Content: until handled, 6 months at most after receipt; record without the message: 1 year after handling (longer if a dispute or an authority requires it) |
+| Pending approval request, on your server or place | 24 hours without an answer, then deleted |
 | Crash reports | 1 year after receipt (at Kerfy Studio) |
 | Account of the offer (identifiers, email, devices, invitations, kept credit) | As long as the account exists; erased 30 days after a deletion request |
 | Invitation not accepted | 30 days |
@@ -848,13 +904,15 @@ of the applicable safeguards.
 | Keyed fingerprint of the Android device (free week) | 24 months after the phone was first marked; kept apart from the account, not erased with it |
 | Family-link invitation | 7 days, or until answered |
 | Read-only share (encrypted copy, people invited) | Until its end date, until it is stopped, or until the account is erased |
+| Conversation and memory of a family agent | As long as the agent exists with its creator |
 | Files sent to the family agent | On the server of the person who created it, until the person who sent them deletes them, stops using the agent, is removed from it or leaves the family, or the agent is deleted; at the latest the time chosen there for files (30 days by default) |
 | Campaign name (section 5.11) | 13 months after it was recorded, or with the account or the subscription |
 | IP address when a free week is reserved | Never stored in clear; in memory, as a fingerprint, 15 minutes at most |
-| Fingerprint of the IP address (beta codes, the website's cancellation page, reports of shared agents) | 2 days at most; up to 30 days in the encrypted copies of the database |
+| Email address given for "Get a code" | In clear: only while the code is sent; its fingerprint: until the end of the beta, 31 December 2026 at the latest |
+| Fingerprint of the IP address (beta codes, "Get a code", the website's cancellation page, reports of shared agents) | 2 days at most; up to 30 days in the encrypted copies of the database |
 | Cancellation on the website: the declaration (email, number, reason, end date, date and time) | 3 years |
 | Cancellation on the website: the email address typed, to limit tries | 2 days at most |
-| Content of your place | During the subscription, then 30 days (3 days after a free week that was not continued) |
+| Content of your place | During the subscription (beta place: until the end of the free month, 31 December 2026); when the subscription or the free month ends, the place is suspended, then erased 30 days after its suspension (3 days after a free week that was not continued) |
 | Backups | 2 hours (all), then 48 hours (hourly), 21 days (daily), nothing older; erased with the place; what you delete is gone from them within 30 days, every copy included |
 | Backup files a place deletes, set aside by the guichet | 5 days |
 | Replaced or deleted versions at Scaleway (the places' backups, encrypted copies of the guichet's database) | 1 day |
@@ -959,7 +1017,8 @@ their own server, gives it for the child (sections 4.1 and 14 of Quebec's law).
 ## 17. Changes
 
 We may change this policy, in particular before offering partner links. The date at the top changes each time. A
-significant change is announced in the app at least 30 days before it applies.
+new feature you choose to use applies as soon as you turn it on: the app then tells you what it does with your data.
+A significant change to something you already use is announced in the app at least 30 days before it applies.
 
 ## 18. Contact
 

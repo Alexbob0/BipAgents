@@ -413,7 +413,8 @@ estás de acuerdo, puedes cancelar sin coste antes de que se aplique.
 
 - Si hay un problema, escribe primero a **support@bipagents.com** para buscar una solución.
 - **Mediación**: si tu reclamación escrita no ha dado resultado, puedes acudir gratis al mediador de consumo de Kerfy
-  Studio. Mediador: en proceso de designación; no hay ninguna venta durante la beta. Debes hacerlo en el año siguiente
+  Studio. Durante la beta, la oferta es gratuita y no hay ninguna venta. El mediador de consumo al que se adhiere Kerfy
+  Studio se indicará aquí, con su dirección y su sitio web, antes de la primera venta. Debes hacerlo en el año siguiente
   a tu reclamación escrita (artículos L612-1, L612-2, L616-1 y R616-1 del Código de Consumo francés).
 - Estas condiciones se rigen por el **derecho francés**. Si eres consumidor y resides en otro país de la Unión
   Europea, conservas además la protección de las normas imperativas de ese país. Los tribunales competentes son los
