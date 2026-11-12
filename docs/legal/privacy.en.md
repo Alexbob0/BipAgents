@@ -107,6 +107,8 @@ that conversation.
   the agent, its conversation and its files are erased for everyone.
 - **Who decides.** The agent's creator chooses its members and its tools, and can remove a member. On their own server,
   they are responsible towards the other members.
+- **During the beta**, if the creator's place is freed (section 5.14), the shared conversation disappears for all
+  members until they take their place back; the same goes for the read-only shares of their agents.
 
 **A personal agent shared with your relatives.** You can let them read your conversations with one of your agents
 (your messages, its replies, the photos, files, pages and maps), from the moment you share it, or the earlier ones too
@@ -741,16 +743,24 @@ latest. If you then create an account, section 5.2 applies to your account.
 
 ### 5.14 Unused beta places
 
-During the beta and the free month, your place records the time of your last action, never its content: a message, a
-voice note, a photo or a file sent to an agent, a Live call, a card you answer. Routines and watchers running on their
-own don't count. It sends it to the guichet with the technical monitoring (section 5.6). The guichet only uses it to
-free a beta place nobody has used for 7 days: it warns you on day 5 by a notification and an email, sent by Proton AG
-(section 5.9); Proton keeps the sent message until we delete it from the outbox. A freed place, like a beta place
-whose free month ends without a subscription, goes to someone else: only the last encrypted copy of its backups,
-unreadable without its key (section 5.5), is kept 30 days, then erased.
+During the beta and the free month, your place records the time you last wrote to your agents, never what you wrote:
+a message, a voice note, a photo or a file sent to an agent, a Live call, a card you answer, or "Keep my place".
+Routines and watchers keep running, but don't count. It sends this time to the guichet with the technical monitoring
+(section 5.6). The guichet only uses it to free a beta place nobody has written to for 7 days. It warns you on day 5 by
+a notification, a banner in the app and an email, sent by Proton AG (section 5.9); Proton keeps the sent message until
+we delete it from the outbox.
 
-**Legal basis.** Performance of the beta terms (GDPR article 6(1)(b)). **Retention.** The time of the last action:
-replaced at each action, erased with the place; the encrypted copy: 30 days after the place is freed.
+**When a place is freed** (7 days without a message, or the free month ending without a subscription), its server is
+reset for someone else and no copy of your data remains on it (OVHcloud's daily image that held it is replaced within
+about a day, section 5.5). Only the encrypted copy of your place's backups is kept, at Scaleway, in France
+(section 5.5), then erased for good after 30 days. This copy is still personal data: it may contain health data and
+your relatives' messages. Its key stays on your phone (and in the copy your recovery code opens, section 5.2).
+<!-- TODO (Kerfy Studio, 12/11): ne pas écrire ici « nous ne pouvons pas la lire » tant que ce n'est pas confirmé. -->
+If you created a family agent, its shared conversation disappears for all its members until you take your place back,
+and the read-only shares of your agents stop too (section 2 bis).
+
+**Legal basis.** Performance of the beta terms (GDPR article 6(1)(b)). **Retention.** The time: replaced each time you
+write, erased with the place; the encrypted copy: 30 days after the place is freed.
 
 ## 6. What Kerfy Studio does not do
 
@@ -927,8 +937,8 @@ of the applicable safeguards.
 | Cancellation on the website: the declaration (email, number, reason, end date, date and time) | 3 years |
 | Cancellation on the website: the email address typed, to limit tries | 2 days at most |
 | Content of your place | During the subscription, then 30 days (3 days after a free week that was not continued) |
-| Freed beta place (7 days unused, or end of the free month on 31 December 2026 without a subscription) | Only its encrypted copy is kept, 30 days after it is freed, then erased |
-| Time of your last action on a beta place | Replaced at each action; erased with the place |
+| Freed beta place (7 days without a message to your agents, or end of the free month on 31 December 2026 without a subscription) | Server reset; only the encrypted copy of its backups is kept, 30 days after it is freed, then erased for good |
+| Time you last wrote to your agents (beta place) | Replaced each time you write; erased with the place |
 | Backups | 2 hours (all), then 48 hours (hourly), 21 days (daily), nothing older; erased with the place; what you delete is gone from them within 30 days, every copy included |
 | Backup files a place deletes, set aside by the guichet | 5 days |
 | Replaced or deleted versions at Scaleway (the places' backups, encrypted copies of the guichet's database) | 1 day |

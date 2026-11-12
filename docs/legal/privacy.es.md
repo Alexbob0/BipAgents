@@ -109,6 +109,9 @@ rutinas que hace llegan a esa conversación.
   plaza, el agente, su conversación y sus archivos se borran para todos.
 - **Quién decide.** La persona que crea el agente elige sus miembros y sus herramientas, y puede retirar a un miembro.
   En su propio servidor, es responsable frente a los demás miembros.
+- **Durante la beta**, si se libera la plaza de la persona que creó el agente (sección 5.14), la conversación común
+  desaparece para todos los miembros hasta que recupere su plaza; lo mismo vale para los usos compartidos en lectura de
+  sus agentes.
 
 **Un agente personal compartido con tus familiares.** Puedes dejarles leer tus conversaciones con uno de tus agentes
 (tus mensajes, sus respuestas, las fotos, los archivos, las páginas y los mapas), desde que lo compartes, o también las
@@ -763,17 +766,25 @@ plazas de la beta (artículo 6.1.f). **Plazo.** La huella de la dirección, hast
 
 ### 5.14 Las plazas beta sin usar
 
-Durante la beta y el mes de regalo, tu plaza anota la hora de tu última acción, nunca su contenido: un mensaje, una
-nota de voz, una foto o un archivo enviado a un agente, una llamada Live, una tarjeta a la que respondes. Las rutinas y
-los vigilantes que funcionan solos no cuentan. La envía al guichet con la supervisión técnica (sección 5.6). El guichet
-solo la usa para liberar una plaza beta que nadie usa desde hace 7 días: te avisa el 5.º día con una notificación y un
-correo, enviado a través de Proton AG (sección 5.9); Proton guarda el mensaje enviado hasta que lo borramos de la bandeja de salida. Una plaza liberada, como una plaza beta cuyo mes de
-regalo termina sin suscripción, pasa a otra persona: solo se guarda la última copia cifrada de sus copias de
-seguridad, ilegible sin su clave (sección 5.5), durante 30 días, y después se borra.
+Durante la beta y el mes de regalo, tu plaza anota la hora de la última vez que escribiste a tus agentes, nunca lo
+que escribiste: un mensaje, una nota de voz, una foto o un archivo enviado a un agente, una llamada Live, una tarjeta a
+la que respondes, o «Conservar mi plaza». Las rutinas y los vigilantes siguen funcionando, pero no cuentan. Envía esa
+hora al guichet con la supervisión técnica (sección 5.6). El guichet solo la usa para liberar una plaza beta a la que
+nadie ha escrito desde hace 7 días. Te avisa el 5.º día con una notificación, un aviso en la app y un correo, enviado a
+través de Proton AG (sección 5.9); Proton guarda el mensaje enviado hasta que lo borramos de la bandeja de salida.
 
-**Base jurídica.** Ejecución de las condiciones de la beta (artículo 6.1.b del RGPD). **Plazo.** La hora de la última
-acción: se sustituye con cada acción y se borra con la plaza; la copia cifrada: 30 días después de la liberación de la
-plaza.
+**En la liberación** (7 días sin mensajes, o final del mes de regalo sin suscripción), el servidor de la plaza se pone
+a cero para otra persona y no queda en él ninguna copia de tus datos (la imagen diaria de OVHcloud que la contenía se
+sustituye en un día aproximadamente, sección 5.5). Solo se guarda la copia cifrada de las copias de seguridad de tu
+plaza, en Scaleway, en Francia (sección 5.5), que se borra para siempre al cabo de 30 días. Esta copia sigue siendo un
+dato personal: puede contener datos de salud y los mensajes de tus familiares. Su clave se queda en tu teléfono (y en
+la copia que abre tu código de recuperación, sección 5.2).
+<!-- TODO (Kerfy Studio, 12/11): ne pas écrire ici « nous ne pouvons pas la lire » tant que ce n'est pas confirmé. -->
+Si has creado un agente de la familia, su conversación común desaparece para todos sus miembros hasta que recuperes tu
+plaza, y los usos compartidos en lectura de tus agentes también se detienen (sección 2 bis).
+
+**Base jurídica.** Ejecución de las condiciones de la beta (artículo 6.1.b del RGPD). **Plazo.** La hora: se sustituye
+cada vez que escribes y se borra con la plaza; la copia cifrada: 30 días después de la liberación de la plaza.
 
 ## 6. Lo que Kerfy Studio no hace
 
@@ -948,8 +959,8 @@ Scaleway, en Francia, sin transferencia fuera de la Unión. Puedes pedirnos una 
 | Baja en el sitio: la declaración (correo, número, motivo, fecha de fin, fecha y hora) | 3 años |
 | Baja en el sitio: la dirección de correo escrita, para limitar los intentos | 2 días como máximo |
 | Contenido de tu plaza | Durante la suscripción y después 30 días (3 días después de una semana gratis que no continuó) |
-| Plaza beta liberada (7 días sin uso, o final del mes de regalo el 31 de diciembre de 2026 sin suscripción) | Solo se guarda su copia cifrada, 30 días después de la liberación, y después se borra |
-| Hora de tu última acción en una plaza beta | Se sustituye con cada acción; se borra con la plaza |
+| Plaza beta liberada (7 días sin mensajes a tus agentes, o final del mes de regalo el 31 de diciembre de 2026 sin suscripción) | Servidor puesto a cero; solo se guarda la copia cifrada de sus copias de seguridad, 30 días después de la liberación, y después se borra para siempre |
+| Hora de la última vez que escribiste a tus agentes (plaza beta) | Se sustituye cada vez que escribes; se borra con la plaza |
 | Copias de seguridad | 2 horas (todas), luego 48 horas (por hora), 21 días (diarias), nada más antiguo; se borran con la plaza; lo que borras ha salido de ellas en 30 días, todas las copias incluidas |
 | Archivos de copia que una plaza borra, apartados por el guichet | 5 días |
 | Versiones sustituidas o borradas en Scaleway (copias de seguridad de las plazas, copias cifradas de la base de datos del guichet) | 1 día |

@@ -110,6 +110,9 @@ routines qu'il fait arrivent dans cette conversation.
   son compte ou sa place, l'agent, sa conversation et ses fichiers sont effacés pour tous.
 - **Qui en décide.** La personne qui crée l'agent choisit ses membres et ses outils, et peut retirer un membre. Sur son
   propre serveur, elle en est responsable vis-à-vis des autres membres.
+- **Pendant la bêta**, si la place de la personne qui a créé l'agent est libérée (section 5.14), la conversation
+  commune disparaît pour tous les membres jusqu'à ce qu'elle reprenne sa place ; il en va de même pour les partages en
+  lecture de ses agents.
 
 **Un agent personnel partagé avec tes proches.** Tu peux leur laisser lire tes conversations avec un de tes agents (tes
 messages, ses réponses, les photos, fichiers, pages et cartes), à partir du partage, ou aussi celles d'avant si tu le
@@ -780,17 +783,26 @@ Si tu crées ensuite un compte, la section 5.2 s'applique à ton compte.
 
 ### 5.14 Les places bêta inutilisées
 
-Pendant la bêta et le mois offert, ta place note l'heure de ta dernière action, jamais son contenu : un message, une
-note vocale, une photo ou un fichier envoyé à un agent, un appel Live, une carte à laquelle tu réponds. Les routines et
-les veilles qui tournent seules ne comptent pas. Elle l'envoie au guichet avec la surveillance technique
-(section 5.6). Le guichet s'en sert seulement pour libérer une place bêta dont personne ne se sert depuis 7 jours : il
-te prévient le 5e jour par une notification et un e-mail, envoyé par Proton AG (section 5.9) ; Proton garde le message
-envoyé le temps que nous l'effacions de la boîte d'envoi. Une place libérée, comme une place bêta dont le mois offert
-finit sans abonnement, passe à quelqu'un d'autre : seule la dernière copie chiffrée de ses sauvegardes, illisible sans
-sa clé (section 5.5), est gardée 30 jours, puis effacée.
+Pendant la bêta et le mois offert, ta place note l'heure de la dernière fois que tu as écrit à tes agents, jamais ce
+que tu as écrit : un message, une note vocale, une photo ou un fichier envoyé à un agent, un appel Live, une carte à
+laquelle tu réponds, ou « Garder ma place ». Les routines et les veilles continuent de tourner, mais ne comptent pas.
+Elle envoie cette heure au guichet avec la surveillance technique (section 5.6). Le guichet s'en sert seulement pour
+libérer une place bêta à laquelle personne n'a écrit depuis 7 jours. Il te prévient le 5e jour par une notification,
+un bandeau dans l'app et un e-mail, envoyé par Proton AG (section 5.9) ; Proton garde le message envoyé le temps que
+nous l'effacions de la boîte d'envoi.
 
-**Base légale.** Exécution des conditions de la bêta (article 6.1.b du RGPD). **Durée.** L'heure de la dernière action :
-remplacée à chaque action, effacée avec la place ; la copie chiffrée : 30 jours après la libération de la place.
+**À la libération** (7 jours sans message, ou fin du mois offert sans abonnement), le serveur de la place est remis à
+zéro pour quelqu'un d'autre et il n'y reste aucune copie de tes données (l'image quotidienne d'OVHcloud qui la
+contenait est remplacée dans la journée environ, section 5.5). Seule la copie chiffrée des sauvegardes de ta
+place est gardée, chez Scaleway, en France (section 5.5), puis effacée pour de bon au bout de 30 jours. Cette copie
+reste une donnée personnelle : elle peut contenir des données de santé et les messages de tes proches. Sa clé reste
+sur ton téléphone (et dans la copie que ton code de récupération ouvre, section 5.2).
+<!-- TODO (Kerfy Studio, 12/11): ne pas écrire ici « nous ne pouvons pas la lire » tant que ce n'est pas confirmé. -->
+Si tu as créé un agent de la famille, sa conversation commune disparaît pour tous ses membres jusqu'à ce que tu
+reprennes ta place, et les partages en lecture de tes agents s'arrêtent aussi (section 2 bis).
+
+**Base légale.** Exécution des conditions de la bêta (article 6.1.b du RGPD). **Durée.** L'heure : remplacée chaque
+fois que tu écris, effacée avec la place ; la copie chiffrée : 30 jours après la libération de la place.
 
 ## 6. Ce que Kerfy Studio ne fait pas
 
@@ -978,8 +990,8 @@ l'Union. Tu peux nous demander une copie des garanties applicables.
 | Résiliation sur le site : la déclaration (e-mail, numéro, motif, date de fin, date et heure) | 3 ans |
 | Résiliation sur le site : l'adresse e-mail tapée, pour limiter les essais | 2 jours au plus |
 | Contenu de ta place | Pendant l'abonnement, puis 30 jours (3 jours après une semaine gratuite non poursuivie) |
-| Place bêta libérée (7 jours sans usage, ou fin du mois offert le 31 décembre 2026 sans abonnement) | Seule sa copie chiffrée est gardée, 30 jours après la libération, puis effacée |
-| Heure de ta dernière action sur une place bêta | Remplacée à chaque action ; effacée avec la place |
+| Place bêta libérée (7 jours sans message à tes agents, ou fin du mois offert le 31 décembre 2026 sans abonnement) | Serveur remis à zéro ; seule la copie chiffrée de ses sauvegardes est gardée, 30 jours après la libération, puis effacée pour de bon |
+| Heure de la dernière fois que tu as écrit à tes agents (place bêta) | Remplacée chaque fois que tu écris ; effacée avec la place |
 | Sauvegardes | 2 heures (toutes), puis 48 heures (horaires), 21 jours (quotidiennes), rien au-delà ; effacées avec la place ; ce que tu effaces en est parti sous 30 jours, toutes copies comprises |
 | Fichiers de sauvegarde qu'une place efface, mis de côté par le guichet | 5 jours |
 | Versions remplacées ou effacées chez Scaleway (sauvegardes des places, copies chiffrées de la base du guichet) | 1 jour |
