@@ -1545,10 +1545,13 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
             }
             if [crate::sandbox_sites::LIST, crate::sandbox_sites::REQUEST].contains(&name.as_str()) {
                 let (c, a) = (config.clone(), agent.clone());
-                let (mut text, is_error, card) =
-                    tokio::task::spawn_blocking(move || crate::sandbox_sites::call(&c, &a, &name, &arguments))
-                        .await
-                        .map_err(anyhow::Error::from)?;
+                // the turn calling it: a « Refuser » in that turn answers a second request at once
+                let turn = state.hub.turn_of(&agent.name, crate::sandbox_sites::REQUEST).map(|t| t.run_id);
+                let (mut text, is_error, card) = tokio::task::spawn_blocking(move || {
+                    crate::sandbox_sites::call(&c, &a, &name, &arguments, turn.as_deref())
+                })
+                .await
+                .map_err(anyhow::Error::from)?;
                 if let Some(card) = card {
                     // in its turn's conversation before anyone can answer it (card_place.rs)
                     let run = format!("{}{}", crate::sandbox_sites::RUN_PREFIX, card.id);
