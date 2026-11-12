@@ -11,7 +11,9 @@
 //!     GET  /v1/agents/{agent_id}/shares   share view (below)
 //!     PUT  /v1/agents/{agent_id}/shares   {households: [id], history?: {<household>: "from_now"|"all"},
 //!                                          confirmed?: bool}  → share view
-//!          409 {detail, warning} when a household is added, or one goes to "all", without `confirmed: true`
+//!          409 {detail, warning} when a household is added, or one goes to "all", without `confirmed: true`;
+//!          an agent reading the owner's health also needs `health_consent: true` (409 then says `health: true` and
+//!          `health_line`, `health_consent`: the words of the line and of the checkbox); the consent is kept with the share (`health_consent`: when)
 //!
 //!     share view  {agent, households: [{id, name, shared, history, since}], warning: {private_tools: [name],
 //!                  confirm: true}, told: {household: bool} (PUT only: whether their bridge got the news)}
@@ -388,6 +390,36 @@ fichiers et pages. Ils ne pourront ni lui écrire ni lui demander quoi que ce so
     }
 }
 
+/// An agent that reads the owner's health data, shared read-only: the relatives would read what it says of his
+/// health (passages that can't be hidden), so sharing needs its own, explicit consent (art. 9.2.a GDPR).
+pub fn reads_health(config: &Config, agent: &str) -> bool {
+    !crate::family_agent::is_family(config, agent) && crate::health::enabled(config, agent)
+}
+
+/// The health consent's words, as the apps say them: the line, then the separate, unticked checkbox's.
+pub fn health_consent_text(config: &Config) -> (&'static str, &'static str) {
+    match crate::notebook::place_language(config).as_deref() {
+        Some("en") => ("Your relative will also see what the agent read from your health data. Tick the box to accept.", "I agree that my relative can see my health data in these conversations."),
+        Some("de") => ("Dein Angehöriger sieht auch, was der Agent aus deinen Gesundheitsdaten gelesen hat. Hake das Kästchen an, um zuzustimmen.", "Ich bin einverstanden, dass mein Angehöriger meine Gesundheitsdaten in diesen Unterhaltungen sieht."),
+        Some("es") => ("Tu familiar también verá lo que el agente leyó de tus datos de salud. Marca la casilla para aceptarlo.", "Acepto que mi familiar vea mis datos de salud en estas conversaciones."),
+        _ => ("Ton proche verra aussi ce que l’agent a lu dans ta santé. Coche la case pour l’accepter.", "J’accepte que mon proche voie mes données de santé dans ces conversations."),
+    }
+}
+
+/// The owner's health consent, kept with each share it was given for (when).
+fn stamp_health_consent(config: &Config, agent: &str, households: &[String]) -> anyhow::Result<()> {
+    let at = now();
+    update(&owner_path(config), |data| {
+        if let Some(Value::Object(per)) = object_mut(data, "history").get_mut(agent) {
+            for h in households {
+                if let Some(entry) = per.get_mut(h).filter(|e| e.is_object()) {
+                    entry["health_consent"] = json!(at);
+                }
+            }
+        }
+    })
+}
+
 fn tokens_value(input: i64, output: i64) -> Value {
     json!({"input": input, "output": output})
 }
@@ -451,9 +483,18 @@ pub fn share_view(config: &Config, agent: &AgentConfig) -> Value {
             let id = h.get("id").map(py::py_str).unwrap_or_default();
             let on = shared.contains(&id);
             let w = window_of(&data, &agent.name, &id);
-            json!({"id": id, "name": h.get("name"), "shared": on,
+            let mut item = json!({"id": id, "name": h.get("name"), "shared": on,
                    "history": on.then_some(if w.all { ALL } else { FROM_NOW }),
-                   "since": (on && w.since > 0.0).then_some(w.since)})
+                   "since": (on && w.since > 0.0).then_some(w.since)});
+            let consent = object(&data, "history")
+                .and_then(|all| all.get(&agent.name))
+                .and_then(|per| per.get(&id))
+                .and_then(|e| e.get("health_consent"))
+                .and_then(Value::as_f64);
+            if let Some(at) = consent.filter(|_| on) {
+                item["health_consent"] = json!(at);
+            }
+            item
         })
         .collect();
     let mut view = json!({
@@ -461,6 +502,9 @@ pub fn share_view(config: &Config, agent: &AgentConfig) -> Value {
         "households": listed,
         "warning": {"private_tools": private_tools(config, &agent.name), "confirm": true},
     });
+    if reads_health(config, &agent.name) {
+        view["warning"]["health"] = json!(true);
+    }
     if crate::family_agent::is_family(config, &agent.name) {
         view["conversations"] = json!(member_conversations(&data, &linked, &agent.name));
         view["tokens"] = json!(member_tokens(&data, &linked, &agent.name));
@@ -1317,16 +1361,30 @@ async fn put_shares(
     let before = shared_with(&config, &agent.name);
     let data = read(&owner_path(&config));
     // what makes more of the owner's words readable: a household added, one going to `all`
-    let widens = wanted.iter().any(|h| {
-        !before.contains(h) || (history.get(h) == Some(&true) && !window_of(&data, &agent.name, h).all)
-    });
-    if widens && !body.get("confirmed").map(py::truthy).unwrap_or(false) {
+    let widened: Vec<String> = wanted
+        .iter()
+        .filter(|h| !before.contains(h) || (history.get(*h) == Some(&true) && !window_of(&data, &agent.name, h).all))
+        .cloned()
+        .collect();
+    let health = !widened.is_empty() && reads_health(&config, &agent.name);
+    let given = |key: &str| body.get(key).map(py::truthy).unwrap_or(false);
+    // a health-reading agent: its own, explicit consent too (`health_consent: true`), never implied by `confirmed`
+    if !widened.is_empty() && (!given("confirmed") || (health && !given("health_consent"))) {
         let view = share_view(&config, &agent);
         let mut payload = json!({"detail": confirm_text(&config, &agent, &private_tools(&config, &agent.name))});
         payload["warning"] = view["warning"].clone();
+        if health {
+            let (line, checkbox) = health_consent_text(&config);
+            payload["health"] = json!(true);
+            payload["health_line"] = json!(line);
+            payload["health_consent"] = json!(checkbox);
+        }
         return Ok(web::json_response(409, &payload));
     }
     let (added, removed) = set_shared(&config, &agent.name, &wanted, &history)?;
+    if health {
+        stamp_health_consent(&config, &agent.name, &widened)?;
+    }
     let mut told = Map::new();
     for (household, shared) in added.iter().map(|h| (h, true)).chain(removed.iter().map(|h| (h, false))) {
         told.insert(household.clone(), json!(tell_relative(&state, household, &agent, shared).await));
@@ -1932,6 +1990,13 @@ mod tests {
         let private = confirm_text(&config, &agent, &["mail", "calendar", "notebook"]);
         assert!(private.contains("Cuisine a accès à ta messagerie, ton agenda et ton Carnet"), "{private}");
         assert!(private.contains("ils le verront aussi"));
+    }
+
+    #[test]
+    fn the_health_consent_says_the_line_and_the_checkbox() {
+        let (line, checkbox) = health_consent_text(&Config::with_key("k"));
+        assert_eq!(line, "Ton proche verra aussi ce que l’agent a lu dans ta santé. Coche la case pour l’accepter.");
+        assert_eq!(checkbox, "J’accepte que mon proche voie mes données de santé dans ces conversations.");
     }
 
     #[test]

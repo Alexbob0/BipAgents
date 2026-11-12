@@ -232,6 +232,47 @@ def test_the_owner_may_show_the_conversations_of_before_too(bridges, fakes):
     assert bad.status_code == 422
 
 
+def test_an_agent_reading_the_owners_health_is_shared_only_with_its_own_consent(bridges, fakes):
+    a, b = alex_and_marie(bridges, fakes)
+    # Cuisine's « Santé » switch on (health.rs keeps it there; this install doesn't manage its agents' settings)
+    (a.state_dir / "health").mkdir(parents=True, exist_ok=True)
+    (a.state_dir / "health" / "agents.json").write_text(json.dumps({"agents": ["cuisine"]}))
+    view = a.get("/v1/agents/cuisine/shares", headers=AUTH).json()
+    assert view["warning"]["health"] is True and "health" in view["warning"]["private_tools"]
+    body = {"households": ["marie"], "confirmed": True}
+    # « confirmed » alone is not the health consent: refused, the checkbox's words given
+    refused = a.put("/v1/agents/cuisine/shares", headers=AUTH, json=body)
+    assert refused.status_code == 409, refused.text
+    refused = refused.json()
+    assert refused["health"] is True
+    assert refused["health_line"] == "Ton proche verra aussi ce que l’agent a lu dans ta santé. Coche la case pour l’accepter."
+    assert refused["health_consent"] == "J’accepte que mon proche voie mes données de santé dans ces conversations."
+    assert a.get("/v1/agents/cuisine/shares", headers=AUTH).json()["households"][0]["shared"] is False
+    assert a.put("/v1/agents/cuisine/shares", headers=AUTH,
+                 json={**body, "health_consent": False}).status_code == 409
+    # the consent alone (no confirmation) is not enough either
+    assert a.put("/v1/agents/cuisine/shares", headers=AUTH,
+                 json={"households": ["marie"], "health_consent": True}).status_code == 409
+    before = time.time()
+    shared = a.put("/v1/agents/cuisine/shares", headers=AUTH, json={**body, "health_consent": True})
+    assert shared.status_code == 200, shared.text
+    [marie] = shared.json()["households"]
+    assert marie["shared"] is True and marie["health_consent"] >= before - 1
+    # « Aussi les conversations d'avant » shows more: the health consent is asked again
+    wider = {"households": ["marie"], "history": {"marie": "all"}, "confirmed": True}
+    again = a.put("/v1/agents/cuisine/shares", headers=AUTH, json=wider)
+    assert again.status_code == 409 and again.json()["health"] is True, again.text
+    assert a.put("/v1/agents/cuisine/shares", headers=AUTH,
+                 json={**wider, "health_consent": True}).json()["households"][0]["history"] == "all"
+    # nothing widened (the same share again): nothing asked
+    assert a.put("/v1/agents/cuisine/shares", headers=AUTH, json={"households": ["marie"]}).status_code == 200
+    # an agent without health: no health consent asked
+    plain = a.put("/v1/agents/budget/shares", headers=AUTH, json={"households": ["marie"]})
+    assert plain.status_code == 409 and "health" not in plain.json() and "health" not in plain.json()["warning"]
+    assert a.put("/v1/agents/budget/shares", headers=AUTH,
+                 json={"households": ["marie"], "confirmed": True}).status_code == 200
+
+
 def test_at_start_the_relatives_own_conversations_with_a_personal_agent_go(bridges, fakes):
     a, b = alex_and_marie(bridges, fakes)
     share(a, b)
