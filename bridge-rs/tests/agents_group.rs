@@ -566,9 +566,14 @@ async fn a_sandboxed_agent_opens_the_files_it_is_sent() {
         config.get().agent(Some("budget")).unwrap().upload_dir_container.as_deref(),
         Some(&*s(&hub.join("profiles/budget/uploads")))
     );
-    assert!(!args(&commands).iter().any(|a| a[2] == "budget"));
+    // Hermes' `config set` commands only: where SELinux enforces (the build server) the sandbox's own folders are
+    // labelled too (`stat`, `chcon`: sandbox::label_hermes_folders), a host step of its own
+    let hermes = |commands: &Commands| -> Vec<Vec<String>> {
+        args(commands).into_iter().filter(|a| a.len() > 6 && a[1] == "-p" && a[3..5] == strs(&["config", "set"])).collect()
+    };
+    assert!(!hermes(&commands).iter().any(|a| a[2] == "budget"));
     // Again (each start), once Hermes holds them: nothing changes.
-    for a in args(&commands) {
+    for a in hermes(&commands) {
         std::fs::write(
             hub.join("profiles").join(&a[2]).join("config.yaml"),
             format!("terminal:\n  backend: docker\n  docker_volumes: {}\n", a[6]),
@@ -577,7 +582,7 @@ async fn a_sandboxed_agent_opens_the_files_it_is_sent() {
     }
     commands.lock().unwrap().clear();
     agents_admin::mount_all_uploads(config.clone(), run.clone()).await;
-    assert!(commands.lock().unwrap().is_empty());
+    assert!(hermes(&commands).is_empty());
     // A file sent now: named as the sandbox sees it, readable by the sandbox's user.
     let source = dir.path().join("spooled");
     std::fs::write(&source, b"%PDF-1.7").unwrap();

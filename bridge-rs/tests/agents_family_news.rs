@@ -280,8 +280,9 @@ async fn a_household_s_message_reaches_only_the_agents_it_may_address() {
     let members = family_news::members(&reqwest::Client::new(), &a.app.state.config()).await;
     assert_eq!(members[0].agents, [("cuisine".to_string(), "Cuisine".to_string())], "tell_family offers no other");
 
-    // shared with Alex's household: it may be told
-    let shared = b.send_json("PUT", "/v1/agents/budget/shares", &h, &json!({"households": ["alex"]})).await;
+    // shared with Alex's household (each addition confirmed, agents_shared.rs): it may be told
+    let body = json!({"households": ["alex"], "confirmed": true});
+    let shared = b.send_json("PUT", "/v1/agents/budget/shares", &h, &body).await;
     assert_eq!(shared.status, 200, "{}", shared.text());
     let now = b.send_json("POST", "/family/tell", &theirs, &json!({"agent": "budget", "text": "Loyer payé"})).await;
     assert_eq!(now.status, 200, "{}", now.text());

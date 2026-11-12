@@ -280,10 +280,10 @@ async fn an_agent_proposes_a_task_the_person_starts() {
     let result = jobs::propose_tool(Some(&board), &agent, &arguments).await.unwrap();
     assert_eq!(result["isError"], false);
     assert!(result["content"][0]["text"].as_str().unwrap().contains("Tâches de fond"));
-    assert!(result["content"][0]["text"].as_str().unwrap().contains("363,636 tokens"), "small: 0.20 € at home");
+    assert!(result["content"][0]["text"].as_str().unwrap().contains("1,818,181 tokens"), "small: 5 × 0.20 € at home");
     let proposed = board.list(None)[0].clone();
     assert_eq!((proposed["state"].as_str(), proposed["proposed_by"].as_str()), (Some("proposed"), Some("agent")));
-    assert_eq!((proposed["budget_eur"].as_f64(), proposed["max_tokens"].as_i64()), (Some(0.20), Some(363_636)));
+    assert_eq!((proposed["budget_eur"].as_f64(), proposed["max_tokens"].as_i64()), (Some(1.0), Some(1_818_181)));
     assert!(!fake.lock().unwrap().requests.iter().any(|(_, p, _)| p.ends_with("/v1/runs"))); // nothing spent before the go
     let first = told.lock().unwrap()[0].clone();
     assert_eq!((first.3.as_str(), first.1), ("Tâche de fond proposée", None));
@@ -357,9 +357,15 @@ async fn the_routes_need_the_bridge_key_and_list_the_jobs() {
     let (k, v) = common::auth();
     let answer = app.get("/v1/jobs", &[(k, &v)]).await;
     assert_eq!(answer.status, 200);
+    // a home install (the test's HOME has no place token): five times the offer's budgets (jobs.rs HOME_BUDGET_SCALE)
     assert_eq!(
         answer.json(),
-        json!({"jobs": [], "budgets_eur": {"small": 0.20, "medium": 0.50, "large": 1.50}, "budgets_tokens": {"small": 363_636, "medium": 909_090, "large": 2_727_272}})
+        json!({"jobs": [], "budgets_eur": {"small": 1.0, "medium": 2.5, "large": 7.5}, "budgets_tokens": {"small": 1_818_181, "medium": 4_545_454, "large": 13_636_363}})
+    );
+    // a place of the offer keeps its own: 0.20 / 0.50 / 1.50 €, cache reads at the input price
+    assert_eq!(
+        jobs::budgets_on(&common::config(dir.path(), &Urls::default()), true),
+        (json!({"small": 0.20, "medium": 0.50, "large": 1.50}), json!({"small": 363_636, "medium": 909_090, "large": 2_727_272}))
     );
     let missing = app.request("POST", "/v1/jobs/t000000000000/pause", &[(k, &v)], None).await;
     assert_eq!((missing.status.as_u16(), missing.json()), (404, json!({"detail": "unknown job"})));
@@ -552,7 +558,10 @@ async fn a_task_is_stopped_on_its_real_tokens_before_a_call_past_its_budget() {
     assert_eq!((paused["state"].as_str(), paused["reason"].as_str()), (Some("paused"), Some("budget")), "{paused:?}");
     // after its 2nd call (55.6k, the next reading 35k at least) it goes on; after its 3rd (95.9k, the next 40k) a 4th
     // would pass 100k: stopped as it asks for tools, within its budget
-    assert_eq!(paused["tokens"], json!({"input": 95_000, "output": 900, "cached": 1_000}));
+    // at home (the test's HOME) its screens count a cache read a tenth of a fresh token; an offer place shows Hermes' own
+    assert_eq!(paused["tokens"], json!({"input": 94_100, "output": 900, "cached": 100, "cache_reads": 1_000}));
+    let raw = jobs::load(&config, &id).unwrap();
+    assert_eq!(jobs::task_view_on(&raw, true)["tokens"], json!({"input": 95_000, "output": 900, "cached": 1_000}));
     assert!(jobs::spent(&paused) <= 100_000);
     let g = fake.lock().unwrap();
     assert!(g.requests.iter().any(|(m, p, _)| m == "POST" && p == "/p/coach/v1/runs/r1/stop"));
@@ -645,7 +654,11 @@ async fn a_task_counts_its_euros_as_the_month_s_credit_does_cache_reads_included
     // its first call (95k read, 90k of it from the cache) cost 0.0026 €: the old count said 0.048 €, three times
     // this budget, and stopped it there; it went on to its second call (0.0107 €), whose next one would pass 0.015 €
     assert_eq!((paused["state"].as_str(), paused["reason"].as_str()), (Some("paused"), Some("budget")), "{paused:?}");
-    assert_eq!(paused["tokens"], json!({"input": 400_000, "output": 3_000, "cached": 380_000}));
+    // a place of the offer shows Hermes' own counts; the test's HOME is a home install, whose screens weigh the cache
+    // reads at their price (0.02 / 0.10), its euros the same
+    let raw = jobs::load(&config, &id).unwrap();
+    assert_eq!(jobs::task_view_on(&raw, true)["tokens"], json!({"input": 400_000, "output": 3_000, "cached": 380_000}));
+    assert_eq!(paused["tokens"], json!({"input": 96_000, "output": 3_000, "cached": 76_000, "cache_reads": 380_000}));
     let bill = (20_000.0 * 0.10 + 380_000.0 * 0.02 + 3_000.0 * 0.35) / 1e6;
     assert!((paused["eur"].as_f64().unwrap() - bill).abs() < 1e-6, "{} vs {bill}", paused["eur"]);
     assert_eq!(paused["budget_eur"], json!(0.015));
