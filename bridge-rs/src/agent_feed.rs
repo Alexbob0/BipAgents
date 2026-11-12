@@ -161,7 +161,7 @@ async fn served_run_events(
     if going.is_none_or(|(run, _)| run != run_id) {
         return Err(HttpError::new(404, "no such turn"));
     }
-    Ok(shares::turn_words(&state, &agent, &run_id, false))
+    Ok(shares::turn_words(&state, &agent, &run_id, false, None))
 }
 
 async fn served_attachment(

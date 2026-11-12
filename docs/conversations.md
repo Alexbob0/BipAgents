@@ -526,6 +526,17 @@ nothing while the model writes a call's arguments or its own notes).
   message to `main` makes it. The thread's `tip` and a send's `tip` are the conversation's id (the apps key a turn by
   it). A catch-up (`after=`) is answered with the latest page (`reset: true`): her words only, whose cursors move as
   Hermes stores her turn.
+- **A family agent** (family_thread.rs, 12/11; internal/notes/family-common-thread.md): ONE conversation, common to its
+  members — the agent's main thread on its creator's place. Every route above names it for a member (`main`, `new`,
+  its id `family`; it lists alone, `kind: family`, and is never deleted: 409); the creator reads it as his own main
+  thread, `kind: family` too, and his `new` lands in it. Each person item carries `by: {name, mine}` (the writer's
+  frame taken off the words); `pending.run`, `pending.approvals[]`, `pending.questions[]` and the live
+  `approval.request` / `clarify.request` events carry the `by` of the turn they belong to (only its writer answers). A
+  message while someone else's turn goes on is `queued` (an `s_` item with `by`, and in `pending.queue`), never steering
+  it; words steer one's own turn. A member's turn is a normal run with a member's instructions; her approvals are
+  hers (out of the creator's Boîte, 403 at his `/v1/approve`). Everyone is told by a `reply` push of the others'
+  messages (« Marie : … ») and of every reply, unless the conversation is on their screen: the creator's devices by
+  his bridge, each member's by hers (`POST /family/fa/said`, session `main`).
 
 ### 6.7 Sending, stopping, answering (step 4)
 

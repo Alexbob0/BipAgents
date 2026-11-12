@@ -1779,6 +1779,12 @@ the BipAgents app.",
             return Err(err);
         }
     };
+    if crate::family_agent::is_family(&maker.config.get(), &agent.name) {
+        // a family agent's audio is the family's: into its pool, so every member's bridge serves it (family_thread.rs)
+        let (config, agent_c, path) = (maker.config.get(), agent.name.clone(), py::py_str(made.get("path").unwrap_or(&Value::Null)));
+        let name = if title.is_empty() { None } else { Some(title.clone()) };
+        let _ = tokio::task::spawn_blocking(move || crate::shared_files::share_made(&config, &agent_c, &path, name.as_deref())).await;
+    }
     let cast: String = match made.get("cast") {
         Some(Value::Object(map)) => {
             map.iter().map(|(speaker, voice)| format!("\n- {speaker}: {}", py::py_str(voice))).collect()
@@ -2025,6 +2031,10 @@ async fn mcp(
     // relative's discussion closes the agent while it goes on.
     let mut page_mark: Option<pages::Mark> = None;
     let mut asker: Option<crate::shared_pages::Asker> = None;
+    // a family agent's tools are closed above (family_agent.rs `TOOLS`), the same in every turn, a member's too
+    let family = crate::family_agent::is_family(&state.config(), &agent.name);
+    // the family member whose turn it is (a family agent's routine she asks for is hers: routines.rs `by`)
+    let mut member: Option<crate::shared_pages::Asker> = None;
     let arguments = match crate::shared_pages::who(&state, &agent.name, &name) {
         crate::shared_pages::Who::Guest => {
             if let Some(closed) = crate::agent_shares::closed_tool(&name, false) {
@@ -2034,9 +2044,12 @@ async fn mcp(
             arguments
         }
         crate::shared_pages::Who::Friend(friend) => {
-            if let Some(closed) = crate::agent_shares::closed_tool(&name, true) {
+            if let Some(closed) = crate::agent_shares::closed_tool(&name, true).filter(|_| !family) {
                 tracing::info!(agent = %agent.name, tool = %name, "tool closed during a relative's turn");
                 return Ok(answer(closed));
+            }
+            if family {
+                member = Some(friend.clone());
             }
             if name == crate::shared_files::TOOL_NAME {
                 // the files everyone who uses the agent sent, its pool (shared_files.rs)
@@ -2059,11 +2072,19 @@ async fn mcp(
                 // the owner's turns too: the files of everyone who uses the agent are everyone's (shared_files.rs)
                 return Ok(answer(crate::shared_files::read_call(&state, &agent.name, &arguments).await));
             }
-            // a page made in a conversation shown to friends: theirs to see, not to pass on (read_shares.rs)
-            if name == CREATE_PAGE && crate::read_shares::shared_turn(&state, &agent.name) {
-                page_mark = Some(pages::Mark { group: true, asked_by: None, lang: lang.clone() });
+            if name == CREATE_PAGE && family {
+                // a family agent's page, made in its creator's turn: the family's (every member sees it, marked as
+                // his), never in his personal Carnet (family_thread.rs)
+                let by = Some(state.households.name()).filter(|n| !n.trim().is_empty());
+                page_mark = Some(pages::Mark { group: true, asked_by: by, lang: lang.clone() });
+                crate::shared_pages::friend_arguments(&arguments)
+            } else {
+                // a page made in a conversation shown to friends: theirs to see, not to pass on (read_shares.rs)
+                if name == CREATE_PAGE && crate::read_shares::shared_turn(&state, &agent.name) {
+                    page_mark = Some(pages::Mark { group: true, asked_by: None, lang: lang.clone() });
+                }
+                arguments
             }
-            arguments
         }
     };
     // The brake (loop_brake.rs), per turn (the run the hub follows, else the routine's): the same write twice, too many
@@ -2156,7 +2177,14 @@ async fn mcp(
             // its pause or delete, one line in the Boîte, not pushed (audit PI-6 O3)
             crate::routines::tell_done(&state, &agent, routine, *done, origin.as_deref()).await;
         }
-        if let Some((line, card)) = called.card {
+        if let (Some((_, card)), Some(m)) = (&called.card, &member) {
+            // asked by a family member in the family's conversation (family_thread.rs): her card, answered from her
+            // bridge (it follows her turn: her Boîte, her push), never the creator's; its reports for everyone
+            crate::routines::set_card_by(&state.config(), &agent.name, card, &m.household);
+            let run_id = format!("{}{card}", crate::routines::RUN_PREFIX);
+            crate::card_place::taken(&state.config(), &run_id);
+            crate::threads::threads_of(&state).touch(&agent.name, origin.as_deref(), "card").await;
+        } else if let Some((line, card)) = called.card {
             // its card (a routine to start, a proposal): in this turn's conversation (card_place.rs) and pushed, as
             // routine_trigger's; the agent was told it waits, so no turn resumes to tell it the answer (`taken`);
             // critical at every level (approval_level.rs), so `settle_new` answers none of them
