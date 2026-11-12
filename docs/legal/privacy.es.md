@@ -2,7 +2,7 @@
 
 # Política de privacidad de BipAgents
 
-> Última actualización: 11 de noviembre de 2026.
+> Última actualización: 12 de noviembre de 2026.
 
 ## En resumen
 
@@ -78,14 +78,15 @@ Con tu propio ordenador o tu propio servidor:
   la tarjeta se queda en tu teléfono (sección 5.10).
 - **Varias personas en un mismo servidor** (función familia): cada persona tiene su propia instalación, separada de
   las demás. Quien administra el servidor es responsable frente a las demás.
-- **Un agente que un familiar comparte contigo** (incluido el agente de la familia) funciona en casa de ese familiar.
-  Tus mensajes y los archivos que le envías (fotos, documentos) se guardan en su servidor (o su plaza), en tu
-  conversación: el agente solo los lee cuando eres tú quien le escribe, y la app no se los muestra a nadie más, ni
-  siquiera a tu familiar, salvo si le pides al agente que los comparta (por ejemplo en el Carnet de la familia). Tu
-  propio servidor solo guarda un archivo el tiempo de enviarlo. Se borran cuando se elimina la conversación, cuando
-  dejas de usar el agente, cuando tu familiar deja de compartirlo y, como muy tarde, al final del plazo elegido en su
-  servidor para los archivos (30 días por defecto). Como con todo lo que pasa por su servidor, la persona que lo
-  administra puede acceder a ellos técnicamente.
+- **Los agentes compartidos** (un agente que un familiar comparte contigo o que tú compartes con tus familiares,
+  incluido el agente de la familia) funcionan en casa de la persona que los creó. Los archivos y fotos que se les envían
+  se guardan en su servidor (o su plaza) y son visibles para todos los que usan el agente, esa persona incluida, con el
+  nombre de quien los envió; el agente puede usarlos cuando cualquiera de ellos le escribe. Los mensajes se quedan en la
+  conversación de cada uno. Para un documento escaneado sin texto, tu teléfono reconoce su texto (en el dispositivo) y
+  lo envía con el archivo. Tu propio servidor solo guarda un archivo el tiempo de enviarlo. Los archivos se borran
+  cuando quien los envió los elimina, deja de usar el agente o su hogar deja la familia, cuando el agente deja de estar
+  compartido o se elimina y, como muy tarde, al final del plazo elegido en ese servidor para los archivos (30 días por
+  defecto). Como con todo lo que pasa por ese servidor, la persona que lo administra puede acceder a ellos técnicamente.
 
 **Con la oferta todo incluido**, tu plaza ocupa el lugar de tu servidor, y Kerfy Studio elige el proveedor de
 alojamiento y el enrutador de IA: la sección 5 dice quién ve qué.
@@ -855,7 +856,7 @@ Scaleway, en Francia, sin transferencia fuera de la Unión. Puedes pedirnos una 
 | Huella del dispositivo Android, calculada con una clave secreta (semana gratis) | 24 meses desde la primera marca del teléfono; guardada aparte de la cuenta, no se borra con ella |
 | Invitación de un vínculo familiar | 7 días, o hasta la respuesta |
 | Compartir en lectura (copia cifrada, personas invitadas) | Hasta su fecha de fin, hasta que se detiene o hasta que se borra la cuenta |
-| Archivos enviados al agente de un familiar | En su servidor, hasta que se elimina la conversación o termina el uso compartido; como muy tarde, el plazo elegido allí para los archivos (30 días por defecto) |
+| Archivos enviados a un agente compartido | En el servidor de la persona que lo creó, hasta que quien los envió los elimina, deja de usar el agente o deja la familia, o el agente deja de estar compartido; como muy tarde, el plazo elegido allí para los archivos (30 días por defecto) |
 | Nombre de campaña (sección 5.11) | 13 meses después de su registro, o con la cuenta o la suscripción |
 | Dirección IP al reservar una semana gratis | Nunca se guarda en claro; en memoria, como huella, 15 minutos como máximo |
 | Huella de la dirección IP (códigos beta, página de baja del sitio, denuncias de agentes compartidos) | 2 días como máximo; hasta 30 días en las copias cifradas de la base |

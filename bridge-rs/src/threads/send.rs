@@ -59,6 +59,10 @@ pub struct Attachment {
     pub path: Option<String>,
     #[serde(default, skip_serializing)]
     pub data: Option<String>,
+    /// A scan's text recognised on the phone (a PDF with no text of its own): kept beside the file in a shared
+    /// agent's pool (shared_files.rs), never stored with the message.
+    #[serde(default, skip_serializing)]
+    pub text: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -525,6 +529,12 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
     let phone = body.phone.as_deref().and_then(crate::reminders::phone_named);
     let mut body = body;
     body.attachments = keep_photos(state, agent, std::mem::take(&mut body.attachments)).await;
+    if !body.attachments.is_empty() {
+        // an agent others use too (shared with relatives, the family's): its files also go into its pool, everyone's
+        let (config, shared, files, person) = (state.config(), agent.clone(), body.attachments.clone(), state.households.name());
+        let pooled = move || crate::shared_files::share_own_files(&config, &shared, &files, &person);
+        let _ = tokio::task::spawn_blocking(pooled).await;
+    }
     let tip = tip_of(state, &threads, agent, &thread, &words).await?;
     let tip = tip.as_str();
     let answer = |state: &str, run: Option<&str>| {
@@ -642,7 +652,7 @@ mod tests {
     use super::*;
 
     fn photo() -> Attachment {
-        Attachment { kind: "image".into(), name: None, mime: Some("image/png".into()), size: None, path: None, data: Some("AAAA".into()) }
+        Attachment { kind: "image".into(), name: None, mime: Some("image/png".into()), size: None, path: None, data: Some("AAAA".into()), text: None }
     }
 
     #[test]
@@ -660,7 +670,7 @@ mod tests {
     #[test]
     fn a_document_goes_as_its_reference_line() {
         let doc = Attachment { kind: "document".into(), name: Some("devis.pdf".into()), mime: Some("application/pdf".into()),
-                               size: Some(12_000), path: Some("/uploads/2026-11/abc-devis.pdf".into()), data: None };
+                               size: Some(12_000), path: Some("/uploads/2026-11/abc-devis.pdf".into()), data: None, text: None };
         let input = input_of(None, "Regarde", &[doc]);
         assert_eq!(input, json!("Regarde\n\n[Pièce jointe : devis.pdf (application/pdf, 12 Ko) → /uploads/2026-11/abc-devis.pdf]"));
         // the timeline reads it back as the message's attachment, the words alone shown

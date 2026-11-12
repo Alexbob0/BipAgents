@@ -174,7 +174,8 @@ pub mod maps;
 pub mod memory_edit;
 pub mod shared_memory;
 pub mod shared_pages;
-pub mod shared_files; // the files a relative sends to a shared agent, kept in her conversation on the host
+pub mod shared_files; // the files sent to a shared agent, its pool on the owner's place, everyone's who uses it
+pub mod doc_text; // a document's words (PDF, Word, Excel, PowerPoint, OpenDocument, text) for a tool-less turn
 pub mod memory_language;
 pub mod message_search;
 pub mod notebook;
