@@ -277,6 +277,32 @@ def test_a_proxy_left_half_stopped_by_the_last_stop_is_removed_and_started_again
     assert "sandboxes without network" not in bridge.log_tail(4000)
 
 
+def test_a_bridge_restart_keeps_the_proxy_started_out_of_its_unit(bridges, fakes):
+    """As a systemd service (a place), the proxy starts in a scope of its own: a bridge stop no longer signals its
+    monitor, whose restart died half-done after a wave (lab 2026-11-12: sandboxes without network). The next bridge
+    finds it running, started the same way, and keeps it: no connection of a sandbox cut."""
+    bridge, hub, _ = isolated(bridges, fakes, agents=("vie",))
+    bridge.env_extra["INVOCATION_ID"] = "0123456789abcdef0123456789abcdef"
+    started(bridge, hub, ["vie"])
+    scoped = [a for a in bridge.commands.of("systemd-run") if "bipagents-egress" in a]
+    assert len(scoped) == 1, bridge.commands.of("systemd-run")
+    assert scoped[0][:4] == ["--user", "--scope", "--quiet", "--collect"]
+    run = scoped[0][scoped[0].index("run"):]
+    assert run[:5] == ["run", "-d", "--replace", "--name", "bipagents-egress"]
+    assert not any(a[:1] == ["run"] and "bipagents-egress" in a for a in bridge.commands.of("podman")), "never in the unit"
+    spec = next(a for a in run if a.startswith("bipagents.spec=")).split("=", 1)[1]
+    # running, started the same way, its monitor alive (this test's process stands for it)
+    bridge.commands.rule("podman", ["container", "inspect", "--format"], stdout=f"true {os.getpid()} {spec}\n")
+    bridge.commands.clear()
+    bridge.restart()
+    assert wait_until(lambda: "registries' proxy kept" in bridge.log_tail(3000), timeout=15), bridge.log_tail(3000)
+    assert not [a for a in bridge.commands.of("systemd-run") if "bipagents-egress" in a]
+    assert not any(a[:1] in (["run"], ["rm"]) and "bipagents-egress" in a for a in bridge.commands.of("podman"))
+    assert wait_until(lambda: terminal(hub, "vie").get("docker_env", {}).get("HTTPS_PROXY", "").endswith(":3128"),
+                      timeout=15)
+    assert "sandboxes without network" not in bridge.log_tail(4000)
+
+
 def test_the_shared_folders_are_volumes_and_the_file_tools_follow_the_links(bridges, fakes):
     bridge, hub, volumes = isolated(bridges, fakes, agents=("vie", "wellness", "budget"))
     started(bridge, hub, ["vie", "wellness", "budget"])
