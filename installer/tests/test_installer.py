@@ -605,6 +605,62 @@ def test_a_bridge_relaying_for_another_moves_to_the_publishers_relay(tmp_path, m
     assert migrations.push_relay_service(runner, tmp_path) == "no relay between bridges here"
 
 
+def test_every_install_gets_the_publishers_push_relay(tmp_path, monkeypatch):
+    """2026-11-12: the offer's places and the installs from before 2026-11-04 had no `[push] service_url`: no push."""
+    from bipinstall import drain, migrations, stack
+    config = tmp_path / ".config" / "bipagents" / "bridge.toml"
+    config.parent.mkdir(parents=True)
+    runner = hermes.Runner()
+    runner.dry = False
+    ran = []
+    runner.run = lambda args, **kw: ran.append(list(args)) or ""
+    monkeypatch.setattr(drain, "until_quiet", lambda path, what: ran.append(["drain", what]) or "")
+    assert migrations.push_service_everywhere(runner, tmp_path) == "no bridge here"
+    monkeypatch.setattr(stack, "PUSH_SERVICE_URL", "")
+    config.write_text('bridge_key = "k"\n\n[cron]\nwatch = true\n')
+    with pytest.raises(migrations.NotYet):
+        migrations.push_service_everywhere(runner, tmp_path)
+    monkeypatch.setattr(stack, "PUSH_SERVICE_URL", "https://push.example.com")
+    # no [push] table (an offer's place): one added, the bridge drained then restarted
+    assert "publisher's push relay" in migrations.push_service_everywhere(runner, tmp_path)
+    assert config.read_text() == ('bridge_key = "k"\n\n[cron]\nwatch = true\n\n[push]\n'
+                                  'service_url = "https://push.example.com"\n')
+    assert ran[0] == ["drain", "bridge"] and len(ran) == 2
+    # a second run changes nothing, restarts nothing
+    ran.clear()
+    assert "already" in migrations.push_service_everywhere(runner, tmp_path) and ran == []
+    # a [push] table without it, or with an empty one; an Apple key of its own changes nothing to that
+    for push in ('[push]\nmessage_wait_seconds = 3\n', '[push]\nservice_url = ""\nmessage_wait_seconds = 3\n'):
+        config.write_text(f'bridge_key = "k"\n\n{push}\n[apns]\nteam_id = "T"\n')
+        migrations.push_service_everywhere(runner, tmp_path)
+        assert config.read_text() == ('bridge_key = "k"\n\n[push]\nservice_url = "https://push.example.com"\n'
+                                      'message_wait_seconds = 3\n\n[apns]\nteam_id = "T"\n')
+    # Alex's own install (direct APNs): the relay line too, its [apns] and key file left, the key's place said
+    config.write_text('bridge_key = "k"\n\n[apns]\nteam_id = "T"\np8_path = "/home/alex/.config/bipagents/AuthKey.p8"\n')
+    said = migrations.push_service_everywhere(runner, tmp_path)
+    assert "/home/alex/.config/bipagents/AuthKey.p8" in said and "yourself" in said
+    assert 'p8_path = "/home/alex' in config.read_text() and 'service_url = "https://push.example.com"' in config.read_text()
+    # one given by the person is kept
+    config.write_text('bridge_key = "k"\n\n[push]\nservice_url = "https://push.mine.org"\n')
+    assert "already" in migrations.push_service_everywhere(runner, tmp_path)
+    assert "push.mine.org" in config.read_text()
+
+
+def test_bridge_settings_migrations_apply_over_the_persons_own_hermes(tmp_path, monkeypatch):
+    from bipinstall import migrations
+    monkeypatch.setattr(migrations, "STATE", tmp_path / "migrations.json")
+    seen = []
+    monkeypatch.setattr(migrations, "MIGRATIONS", [
+        ("2026-11-10-clarify-hour", lambda r, h: seen.append("hermes") or "hermes"),
+        ("2026-11-12-push-service-everywhere", lambda r, h: seen.append("push") or "push"),
+    ])
+    runner = hermes.Runner()
+    runner.dry = False
+    said = migrations.run(runner, tmp_path, own_hermes=False)
+    assert seen == ["push"] and said[1] == "push" and "not applied" in said[0]
+    assert migrations.pending() == ["2026-11-10-clarify-hour"]
+
+
 
 def test_family_add_restarts_the_bridge_by_its_own_name(tmp_path, monkeypatch):
     from bipinstall import family

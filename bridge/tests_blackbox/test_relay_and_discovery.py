@@ -93,6 +93,65 @@ def test_devices_registered_with_the_publishers_relay_go_through_it(bridges, fak
         assert db.execute("SELECT count(*) FROM devices").fetchone()[0] == 0
 
 
+FCM_TOKEN = "eXaMpLe:APA91bH_" + "x" * 140
+
+
+def test_a_place_without_the_relay_reaches_no_phone_until_it_gets_it(bridges, fakes):
+    """2026-11-12 (the offer's places, the installs from before 2026-11-04): no `[push] service_url`, so `push_relay`
+    false; the Android app gave its Firebase token, which a bridge without a Firebase account can't use: no push, ever.
+    With the line the installer's migration 2026-11-12-push-service-everywhere writes, the app's next launch registers
+    a relay token and the push goes through the relay."""
+    bridge = bridges.new("place", change=lambda c: c.pop("apns")).start()   # a place: no Apple key of its own
+    health = bridge.get("/health").json()
+    assert health["push_relay"] is False and health["fcm"] is False and health["push"] is None
+    # what the app does with such a health: its own token, as it is
+    device = bridge.post("/v1/devices", json={"token": FCM_TOKEN, "environment": "fcm", "agent_ids": ["wellness"]},
+                         headers=AUTH)
+    assert device.status_code == 200
+    assert bridge.logged("device registered, but this bridge has no way to send to it (no key of its own, "
+                         "no [push] service_url)")
+    boite_message(bridge, fakes, "Avant")
+    assert not wait_until(lambda: fakes.push_service.seen("/v1/relay/push"), timeout=3)
+    # the migration's line, the bridge restarted; the app's next launch reads health again
+    bridge.config["push"] = {**bridge.config.get("push", {}), "service_url": fakes.push_service.url}
+    bridge.restart()
+    assert bridge.get("/health").json()["push_relay"] is True
+    relayed = "r2." + "Ab_-" * 15
+    assert bridge.post("/v1/devices", json={"token": relayed, "environment": "relay", "agent_ids": ["wellness"]},
+                       headers=AUTH).status_code == 200
+    boite_message(bridge, fakes, "Après", name="Le point du soir")
+    assert wait_until(lambda: fakes.push_service.seen("/v1/relay/push"), timeout=15)
+    assert {r.json()["token"] for r in fakes.push_service.seen("/v1/relay/push")} == {relayed}
+
+
+def test_an_install_with_its_own_apple_key_moves_its_phones_to_the_relay_without_losing_one(bridges, fakes):
+    """Alex 2026-11-12: every install sends through the publisher's relay, his own (direct APNs) too. With
+    `service_url` the bridge no longer says « apns » (the apps register with the relay at their next launch); a phone
+    still known by its APNs token is sent to directly meanwhile; its relay registration (same push key) drops it."""
+    import base64
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    key = base64.b64encode(ec.generate_private_key(ec.SECP256R1()).public_key().public_bytes(
+        serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)).decode()
+    bridge = bridges.new(change=lambda c: c["push"].update(service_url=fakes.push_service.url)).start()
+    health = bridge.get("/health").json()
+    assert health["apns"] is True and health["push"] is None and health["push_relay"] is True
+    # registered before the switch: its APNs token
+    assert bridge.post("/v1/devices", headers=AUTH, json={"token": TOKEN, "environment": "production",
+                                                          "agent_ids": ["wellness"], "push_key": key}).status_code == 200
+    boite_message(bridge, fakes, "Pendant")
+    assert wait_until(lambda: len(fakes.apns.pushes()) == 1, timeout=15)
+    # its next launch: a relay token, the same key; the APNs row goes
+    relayed = "r2." + "Ab_-" * 15
+    assert bridge.post("/v1/devices", headers=AUTH, json={"token": relayed, "environment": "relay",
+                                                          "agent_ids": ["wellness"], "push_key": key}).status_code == 200
+    with bridge.db() as db:
+        assert [r[0] for r in db.execute("SELECT token FROM devices")] == [relayed]
+    boite_message(bridge, fakes, "Après", name="Le point du soir")
+    assert wait_until(lambda: len(fakes.push_service.seen("/v1/relay/push")) == 1, timeout=15)
+    assert len(fakes.apns.pushes()) == 1
+
+
 def test_a_bridge_without_the_relay_refuses_relay_tokens(bridge):
     assert bridge.get("/health").json()["push_relay"] is False
     response = bridge.post("/v1/devices", json={"token": "r2." + "A" * 60, "environment": "relay"}, headers=AUTH)
