@@ -31,7 +31,18 @@
 //!                                                        undone}]}   newest first
 //!     POST /v1/approvals/auto/{id}/undo        {ok, item} | 409 {code: not_undoable | undone, detail} | 404
 //!
-//!     data_dir/approval-level.json (0600)      the levels, the auto lines (`KEEP_DAYS`), the digests sent
+//!     DELETE /v1/agents/{agent}/approval-always/{key}                    → the same (that « Toujours » gone)
+//!
+//!     data_dir/approval-level.json (0600)      the levels, the « Toujours », the auto lines (`KEEP_DAYS`), the digests
+//!
+//! **« Toujours »** (Alex 12/11: a night routine's mail moves never ran, nobody approves at 3 a.m.): on a card of a kind
+//! that is not critical (`ALWAYS_KINDS`: sorting mail, a sort rule, writing in one service the person connected —
+//! per service —, files in the agent's own space), one more answer « Toujours autoriser Vie à … » (`bip_always` on
+//! the card, the app sends `always`). Kept per agent and kind (`grant_always`), applied as « Seulement le critique »
+//! would (answered at once, in routines too, an « auto » line in the Boîte marked « toujours autorisé », with
+//! « Annuler » when it can be undone), listed in the agent's settings and taken back there (`revoke_always`). Only the
+//! person's own answer grants it (app.rs `approve`): never the bridge's own answers, a relative, nor any agent tool;
+//! never a critical kind, never a family agent's card.
 //!
 //! No Python counterpart.
 
@@ -261,6 +272,9 @@ pub struct Line {
     /// Summed up in a daily message already.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub digested: bool,
+    /// Approved by a « Toujours » of the person (not by the level).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub always: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -286,6 +300,9 @@ struct Book {
     /// agent → the local day of its last daily message (« 2026-11-06 »).
     #[serde(default)]
     digests: BTreeMap<String, String>,
+    /// agent → its « Toujours » (`always_key` → when the person granted it).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    always: BTreeMap<String, BTreeMap<String, f64>>,
 }
 
 static LOCK: Mutex<()> = Mutex::new(());
@@ -335,9 +352,204 @@ pub fn level_for(config: &Config, agent: &str) -> &'static str {
         .unwrap_or(ALL)
 }
 
-/// Approved by the bridge at once: `agent` is « Seulement le critique » and the kind is not critical.
+/// Approved by the bridge at once: the kind is not critical, and `agent` is « Seulement le critique » or the person
+/// said « Toujours » for that kind.
 pub fn auto_for(config: &Config, agent: &str, kind: &str) -> bool {
-    !rule_of(kind).critical && level_for(config, agent) == CRITICAL
+    !rule_of(kind).critical && (level_for(config, agent) == CRITICAL || granted(config, agent, kind))
+}
+
+// -- « Toujours » ------------------------------------------------------------------------------------------------------
+
+/// The kinds a « Toujours » may cover: not critical, asked as a card (the mail ones) or a Hermes approval (a write in
+/// one service, per service; files in the agent's own space). Anything else is never offered.
+pub const ALWAYS_KINDS: [&str; 6] =
+    ["mail_archive", "mail_mark_read", "mail_move", "mail_rule", "service_write", "files_write"];
+
+static SERVICE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-z0-9][a-z0-9_.-]{0,63}$").expect("valid regex"));
+
+/// A « Toujours » can cover `key`: a kind of `ALWAYS_KINDS`, not critical; `service_write:<service>` with its service
+/// (a new service asks again), the others without.
+pub fn offers_always(key: &str) -> bool {
+    let (kind, service) = match key.split_once(':') {
+        Some((k, s)) => (k, Some(s)),
+        None => (key, None),
+    };
+    ALWAYS_KINDS.contains(&kind)
+        && !rule_of(kind).critical
+        && match service {
+            Some(s) => kind == "service_write" && SERVICE.is_match(s),
+            None => kind != "service_write",
+        }
+}
+
+/// The key a Hermes approval's « Toujours » would have (None: never offered).
+pub fn hermes_always_key(data: &Map<String, Value>) -> Option<String> {
+    let kind = classify_hermes(data);
+    let key = if kind == "service_write" {
+        let command = data.get("command").and_then(Value::as_str).unwrap_or("");
+        let server = TRUST_GATE.captures(command)?[2].to_lowercase();
+        format!("service_write:{server}")
+    } else {
+        kind.to_string()
+    };
+    offers_always(&key).then_some(key)
+}
+
+/// The person said « Toujours » for `key` to `agent`.
+pub fn granted(config: &Config, agent: &str, key: &str) -> bool {
+    offers_always(key) && load(config).always.get(agent).is_some_and(|k| k.contains_key(key))
+}
+
+/// `agent` has at least one « Toujours ».
+pub fn has_grants(config: &Config, agent: &str) -> bool {
+    load(config).always.get(agent).is_some_and(|k| k.keys().any(|key| offers_always(key)))
+}
+
+/// The person's « Toujours » for `key` to `agent` (only from their own answer: app.rs `approve`). Err: not offered.
+pub fn grant_always(config: &Config, agent: &str, key: &str) -> Result<(), String> {
+    if !offers_always(key) || crate::family_agent::is_family(config, agent) {
+        return Err(format!("« {key} » can't be allowed for good"));
+    }
+    let now = py::time_time();
+    change(config, |b| {
+        b.always.entry(agent.to_string()).or_default().entry(key.to_string()).or_insert(now);
+    });
+    tracing::info!(target: "bipbridge::approval_level", agent, key, "always allowed by the person");
+    Ok(())
+}
+
+/// That « Toujours » taken back: true when there was one.
+pub fn revoke_always(config: &Config, agent: &str, key: &str) -> bool {
+    let gone = change(config, |b| {
+        let Some(keys) = b.always.get_mut(agent) else { return false };
+        let gone = keys.remove(key).is_some();
+        if keys.is_empty() {
+            b.always.remove(agent);
+        }
+        gone
+    });
+    if gone {
+        tracing::info!(target: "bipbridge::approval_level", agent, key, "always taken back by the person");
+    }
+    gone
+}
+
+fn capitalized(text: &str) -> String {
+    let mut chars = text.chars();
+    chars.next().map(|c| c.to_uppercase().collect::<String>() + chars.as_str()).unwrap_or_default()
+}
+
+/// What a « Toujours » allows, as words: [fr, en, de with « zu », de alone, es], the verb first.
+fn always_words(key: &str) -> Option<[String; 5]> {
+    if !offers_always(key) {
+        return None;
+    }
+    let s = |a: &str, b: &str, c: &str, d: &str, e: &str| Some([a, b, c, d, e].map(str::to_string));
+    match key.split_once(':') {
+        Some((_, service)) => {
+            let n = capitalized(&service.replace(['_', '-'], " "));
+            Some([
+                format!("écrire dans {n}"),
+                format!("write in {n}"),
+                format!("in {n} zu schreiben"),
+                format!("in {n} schreiben"),
+                format!("escribir en {n}"),
+            ])
+        }
+        None => match key {
+            "mail_move" => s(
+                "déplacer tes e-mails",
+                "move your e-mails",
+                "deine E-Mails zu verschieben",
+                "deine E-Mails verschieben",
+                "mover tus correos",
+            ),
+            "mail_archive" => s(
+                "archiver tes e-mails",
+                "archive your e-mails",
+                "deine E-Mails zu archivieren",
+                "deine E-Mails archivieren",
+                "archivar tus correos",
+            ),
+            "mail_mark_read" => s(
+                "marquer tes e-mails comme lus",
+                "mark your e-mails as read",
+                "deine E-Mails als gelesen zu markieren",
+                "deine E-Mails als gelesen markieren",
+                "marcar tus correos como leídos",
+            ),
+            "mail_rule" => s(
+                "trier tes e-mails avec des règles",
+                "sort your e-mails with rules",
+                "deine E-Mails mit Regeln zu sortieren",
+                "deine E-Mails mit Regeln sortieren",
+                "ordenar tus correos con reglas",
+            ),
+            "files_write" => s(
+                "enregistrer des fichiers dans son espace",
+                "save files in its space",
+                "Dateien in seinem Bereich zu speichern",
+                "Dateien in seinem Bereich speichern",
+                "guardar archivos en su espacio",
+            ),
+            _ => None,
+        },
+    }
+}
+
+/// The card's extra answer: « Toujours autoriser Vie à déplacer tes e-mails ».
+pub fn always_button(lang: &str, agent_shown: &str, key: &str) -> Option<String> {
+    let [fr, en, de, _, es] = always_words(key)?;
+    Some(match lang {
+        "fr" => format!("Toujours autoriser {agent_shown} à {fr}"),
+        "de" => format!("{agent_shown} immer erlauben, {de}"),
+        "es" => format!("Permitir siempre a {agent_shown} {es}"),
+        _ => format!("Always let {agent_shown} {en}"),
+    })
+}
+
+/// The settings' line: « Déplacer tes e-mails ».
+pub fn always_short(lang: &str, key: &str) -> Option<String> {
+    let [fr, en, _, de, es] = always_words(key)?;
+    Some(capitalized(crate::approval_text::pick(lang, &fr, &en, &de, &es)))
+}
+
+/// The mark of a line a « Toujours » approved.
+fn always_mark(lang: &str) -> &'static str {
+    crate::approval_text::pick(lang, "(toujours autorisé)", "(always allowed)", "(immer erlaubt)", "(siempre permitido)")
+}
+
+/// A card of the bridge's own with its « Toujours » answer (`bip_always`, `bip_always_kind`) when its kind offers one
+/// (never on a family agent's card: its members answer it, each for themselves).
+pub fn with_always(config: &Config, mut item: Dict) -> Dict {
+    let run = item.get("run_id").and_then(Value::as_str).unwrap_or("");
+    // a held Hermes approval (held_approvals.rs) as Hermes' own would be; the bridge's cards by their kind
+    let key = if run.starts_with(crate::held_approvals::RUN_PREFIX) {
+        hermes_always_key(&item)
+    } else {
+        Some(classify_card(&item).to_string()).filter(|k| offers_always(k))
+    };
+    let agent = item.get("agent").and_then(Value::as_str).unwrap_or("").to_string();
+    let Some(key) = key else { return item };
+    if !agent.is_empty() && !crate::family_agent::is_family(config, &agent) {
+        let lang = crate::mail_tidy::language(config, &agent);
+        if let Some(label) = always_button(&lang, &crate::mail_tidy::shown_agent(config, &agent), &key) {
+            item.insert("bip_always".into(), json!(label));
+            item.insert("bip_always_kind".into(), json!(key));
+        }
+    }
+    item
+}
+
+/// A Hermes approval's « Toujours » answer (its label, its key) when its kind offers one (the hub adds them to the card).
+pub fn hermes_always(config: &Config, agent: &AgentConfig, data: &Map<String, Value>) -> Option<(String, String)> {
+    let key = hermes_always_key(data)?;
+    if crate::family_agent::is_family(config, &agent.name) {
+        return None;
+    }
+    let lang = crate::handback::language_of(config, agent);
+    let shown = if agent.display_name.trim().is_empty() { agent.name.clone() } else { agent.display_name.clone() };
+    always_button(&lang, &shown, &key).map(|label| (label, key))
 }
 
 pub fn set_level(config: &Config, level: &str) -> Result<(), String> {
@@ -372,11 +584,29 @@ pub fn view(config: &Config) -> Value {
         .collect();
     let kinds: Vec<Value> =
         TABLE.iter().map(|r| json!({"kind": r.kind, "critical": r.critical, "undo": r.undo})).collect();
+    // each agent's « Toujours », in its language, oldest first
+    let always: Map<String, Value> = book
+        .always
+        .iter()
+        .filter(|(a, _)| config.agents.contains_key(a.as_str()))
+        .map(|(a, keys)| {
+            let lang = crate::mail_tidy::language(config, a);
+            let mut keys: Vec<(&String, &f64)> = keys.iter().collect();
+            keys.sort_by(|x, y| x.1.total_cmp(y.1));
+            let list: Vec<Value> = keys
+                .into_iter()
+                .filter_map(|(key, at)| always_short(&lang, key).map(|label| json!({"kind": key, "label": label, "at": iso(*at)})))
+                .collect();
+            (a.clone(), Value::Array(list))
+        })
+        .filter(|(_, list)| list.as_array().is_some_and(|l| !l.is_empty()))
+        .collect();
     json!({
         "level": book.level.as_deref().and_then(level_word).unwrap_or(ALL),
         "chosen": book.level.is_some(),
         "agents": agents,
         "kinds": kinds,
+        "always": always,
     })
 }
 
@@ -386,6 +616,7 @@ pub fn forget(config: &Config, agent: &str) {
         b.agents.remove(agent);
         b.lines.retain(|l| l.agent != agent);
         b.digests.remove(agent);
+        b.always.remove(agent);
     });
 }
 
@@ -413,13 +644,27 @@ pub fn split_block(soul: &str) -> (String, bool) {
     (format!("{}{}", soul[..start].trim_end(), &soul[end + RULE_END.len()..]), true)
 }
 
-/// The personality with the rule's block when `agent` is « Seulement le critique » (agents_admin.rs `soul_text`).
+/// What the agent reads of its « Toujours » (in English, the same words each time: the prompt cache).
+pub fn always_rule(config: &Config, agent: &str) -> Option<String> {
+    let keys: Vec<String> =
+        load(config).always.get(agent)?.keys().filter_map(|k| always_words(k).map(|w| w[1].clone())).collect();
+    if keys.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "Your person always lets you do these without asking: {}. Don't ask them « shall I…? » before them: do it, then \
+         say what you did (the app shows it to them). Anything else is asked as usual.",
+        keys.join("; ")
+    ))
+}
+
+/// The personality with the rule's block when `agent` is « Seulement le critique », or has a « Toujours »
+/// (agents_admin.rs `soul_text`).
 pub fn with_block(config: &Config, agent: &str, soul: &str) -> String {
     let (body, _) = split_block(soul);
-    if level_for(config, agent) != CRITICAL {
-        return body;
-    }
-    format!("{}\n\n{RULE_START}\n{RULE}\n{RULE_END}\n", body.trim_end())
+    let rule = if level_for(config, agent) == CRITICAL { Some(RULE.to_string()) } else { always_rule(config, agent) };
+    let Some(rule) = rule else { return body };
+    format!("{}\n\n{RULE_START}\n{rule}\n{RULE_END}\n", body.trim_end())
 }
 
 /// The personalities rendered again after a level changed (the block in or out).
@@ -454,6 +699,7 @@ pub fn line_view(line: &Line) -> Value {
         "id": line.id, "agent": line.agent, "kind": line.kind, "summary": line.summary, "at": iso(line.at),
         "run_id": line.run_id, "session_id": line.session_id,
         "undo": line.undo.is_some() && line.undone_at.is_none(), "undone": line.undone_at.is_some(),
+        "always": line.always,
     })
 }
 
@@ -573,7 +819,7 @@ pub async fn settle_new(
     session: Option<&str>,
 ) -> Vec<String> {
     let config = state.config();
-    if level_for(&config, &agent.name) != CRITICAL {
+    if level_for(&config, &agent.name) != CRITICAL && !has_grants(&config, &agent.name) {
         return Vec::new();
     }
     let cards = crate::card_place::bridge_cards(state, &config, Some(&agent.name));
@@ -595,7 +841,7 @@ pub async fn settle_new(
 /// sends no notification then). None: asked as usual.
 pub async fn settle_card(state: &AppState, agent: &AgentConfig, run_id: &str) -> Option<String> {
     let config = state.config();
-    if level_for(&config, &agent.name) != CRITICAL {
+    if level_for(&config, &agent.name) != CRITICAL && !has_grants(&config, &agent.name) {
         return None;
     }
     let cards = crate::card_place::bridge_cards(state, &config, Some(&agent.name));
@@ -622,6 +868,13 @@ async fn approve_item(state: &AppState, agent: &AgentConfig, item: &Dict, sessio
         .find_map(|k| item.get(*k).and_then(Value::as_str).filter(|s| !s.is_empty()))
         .unwrap_or("")
         .to_string();
+    // not the level: one of the person's « Toujours » (each line says so)
+    let always = level_for(&config, &agent.name) != CRITICAL;
+    let summary = if always {
+        format!("{summary} {}", always_mark(&crate::mail_tidy::language(&config, &agent.name)))
+    } else {
+        summary
+    };
     let place = crate::card_place::of(&config, &run_id);
     let session = place.and_then(|p| p.report.or(p.session)).or(session.map(str::to_string));
     record(
@@ -633,6 +886,7 @@ async fn approve_item(state: &AppState, agent: &AgentConfig, item: &Dict, sessio
             run_id: Some(run_id),
             session_id: session,
             undo: undo_of(item, kind),
+            always,
             ..Line::default()
         },
     );
@@ -642,7 +896,7 @@ async fn approve_item(state: &AppState, agent: &AgentConfig, item: &Dict, sessio
 /// What the agent reads in its call's result when its cards were approved at once.
 pub fn told(summaries: &[String]) -> String {
     format!(
-        "Approved at once (your person validates only what is critical), being done now: {}. No need to wait for \
+        "Approved at once (your person lets these through without asking), being done now: {}. No need to wait for \
          their OK; tell them in a few words what you did (the app shows it with « Annuler »).",
         summaries.iter().map(|s| format!("« {s} »")).collect::<Vec<_>>().join(", ")
     )
@@ -705,24 +959,46 @@ pub async fn auto_task(jobs: &std::sync::Arc<crate::jobs::Jobs>, agent: &AgentCo
 
 /// A Hermes approval (runs.rs `on_approval`) the person's level approves at once: true when it does (the caller
 /// answers Hermes « once » and pushes nothing). A relative's turn never.
-pub fn auto_hermes(config: &Config, agent: &str, run_id: &str, data: &Map<String, Value>) -> Option<&'static str> {
+/// (Also a « Toujours » of the person: the kind's, and whether a « Toujours » approved it.)
+pub fn auto_hermes(config: &Config, agent: &str, run_id: &str, data: &Map<String, Value>) -> Option<(&'static str, bool)> {
     if crate::agent_shares::relative_run(config, run_id) {
         return None;
     }
     let kind = classify_hermes(data);
-    auto_for(config, agent, kind).then_some(kind)
+    if rule_of(kind).critical {
+        return None;
+    }
+    if level_for(config, agent) == CRITICAL {
+        return Some((kind, false));
+    }
+    let key = hermes_always_key(data)?;
+    granted(config, agent, &key).then_some((kind, true))
 }
 
-/// Logs an approval runs.rs answered at once.
-pub fn record_hermes(config: &Config, agent: &str, kind: &str, summary: &str, run_id: &str, session: Option<&str>) {
+/// Logs an approval runs.rs answered at once (`always`: by a « Toujours »).
+pub fn record_hermes(
+    config: &Config,
+    agent: &str,
+    kind: &str,
+    summary: &str,
+    run_id: &str,
+    session: Option<&str>,
+    always: bool,
+) {
+    let summary = if always {
+        format!("{summary} {}", always_mark(&crate::mail_tidy::language(config, agent)))
+    } else {
+        summary.to_string()
+    };
     record(
         config,
         Line {
             agent: agent.to_string(),
             kind: kind.to_string(),
-            summary: summary.to_string(),
+            summary,
             run_id: Some(run_id.to_string()),
             session_id: session.map(str::to_string),
+            always,
             ..Line::default()
         },
     );
@@ -738,6 +1014,8 @@ pub fn take_digest(config: &Config, agent: &str, lang: &str, now: chrono::DateTi
         return None;
     }
     let day = now.format("%Y-%m-%d").to_string();
+    let critical = level_for(config, agent) == CRITICAL;
+    let shown_agent = crate::mail_tidy::shown_agent(config, agent);
     change(config, |b| {
         if b.digests.get(agent) == Some(&day) {
             return None;
@@ -753,21 +1031,32 @@ pub fn take_digest(config: &Config, agent: &str, lang: &str, now: chrono::DateTi
         b.digests.insert(agent.to_string(), day.clone());
         let n = shown.len();
         let fr = crate::names::names(lang).lang == "fr";
+        // under « Seulement le critique » the level says why; else each line says « toujours autorisé »
         let (title, head, tail) = if fr {
+            let why = if critical { " (tu valides seulement le critique)" } else { "" };
             (
                 "Validé pour toi",
                 if n == 1 {
-                    "Aujourd'hui, une chose a été validée sans te demander (tu valides seulement le critique) :".to_string()
+                    format!("Aujourd'hui, une chose a été validée sans te demander{why} :")
                 } else {
-                    format!("Aujourd'hui, {n} choses ont été validées sans te demander (tu valides seulement le critique) :")
+                    format!("Aujourd'hui, {n} choses ont été validées sans te demander{why} :")
                 },
-                "Tu peux les annuler dans la Boîte, ou tout valider toi-même dans Réglages › Validations.",
+                if critical {
+                    "Tu peux les annuler dans la Boîte, ou tout valider toi-même dans Réglages › Validations.".to_string()
+                } else {
+                    format!("Tu peux les annuler dans la Boîte, ou retirer « Toujours » dans les réglages de {shown_agent}.")
+                },
             )
         } else {
+            let why = if critical { " (you validate only what is critical)" } else { "" };
             (
                 "Approved for you",
-                format!("Today, {n} thing{} went through without asking you (you validate only what is critical):", if n == 1 { "" } else { "s" }),
-                "You can undo them in the Inbox, or validate everything yourself in Settings › Approvals.",
+                format!("Today, {n} thing{} went through without asking you{why}:", if n == 1 { "" } else { "s" }),
+                if critical {
+                    "You can undo them in the Inbox, or validate everything yourself in Settings › Approvals.".to_string()
+                } else {
+                    format!("You can undo them in the Inbox, or remove « Always » in {shown_agent}'s settings.")
+                },
             )
         };
         Some((format!("auto-digest:{agent}:{day}"), title.to_string(), format!("{head}\n{}\n\n{tail}", shown.join("\n"))))
@@ -857,6 +1146,25 @@ async fn put_agent_level(State(state): State<AppState>, UrlPath(agent): UrlPath<
     Ok(web::ok(view(&config)))
 }
 
+async fn delete_always(
+    State(state): State<AppState>,
+    UrlPath((agent, key)): UrlPath<(String, String)>,
+) -> ApiResult<Response> {
+    let config = state.config();
+    let agent = crate::app::agent_or_404(&config, Some(&agent))?;
+    if !revoke_always(&config, &agent.name, &key) {
+        return Err(HttpError::not_found());
+    }
+    granted_now(&config, &agent.name).await;
+    Ok(web::ok(view(&config)))
+}
+
+/// After a « Toujours » given or taken back: the agent's personality says so (`always_rule`).
+pub async fn granted_now(config: &Config, agent: &str) {
+    let (c, a) = (config.clone(), agent.to_string());
+    let _ = tokio::task::spawn_blocking(move || render_souls(&c, &[a])).await;
+}
+
 async fn get_auto(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
     let config = state.config();
     let limit = q.get("limit").and_then(|l| l.parse().ok()).unwrap_or(100usize).clamp(1, 500);
@@ -882,6 +1190,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/approval-level", get(get_level).put(put_level))
         .route("/agents/{agent}/approval-level", put(put_agent_level))
+        .route("/agents/{agent}/approval-always/{key}", axum::routing::delete(delete_always))
         .route("/approvals/auto", get(get_auto))
         .route("/approvals/auto/{id}/undo", post(post_undo))
 }
@@ -1067,6 +1376,93 @@ mod tests {
         assert_eq!(undo_of(&item(json!({"request_id": "j1"})), "mail_move"), Some(Undo::MailJob { job: "j1".into() }));
         assert_eq!(undo_of(&item(json!({"request_id": "r1"})), "mail_rule"), Some(Undo::MailRule { rule: "r1".into() }));
         assert_eq!(undo_of(&item(json!({"request_id": "x"})), "routine_way"), None);
+    }
+
+    #[test]
+    fn toujours_is_offered_only_for_what_is_not_critical() {
+        for key in ["mail_move", "mail_archive", "mail_mark_read", "mail_rule", "files_write", "service_write:notion"] {
+            assert!(offers_always(key), "{key}");
+        }
+        // every critical kind, and anything not named: never
+        for rule in TABLE.iter().filter(|r| r.critical) {
+            assert!(!offers_always(rule.kind), "{}", rule.kind);
+        }
+        for key in ["service_write", "service_write:", "service_write:../x", "mail_move:x", "task_start", "unknown",
+                    "service_send:notion", "mail_trash", "site_send", "held_mail", "payment", ""] {
+            assert!(!offers_always(key), "{key}");
+        }
+        let gate = |tool: &str, server: &str| {
+            hermes_always_key(&data(json!({"command": format!("MCP tool '{tool}' on UNTRUSTED server '{server}' wants to run")})))
+        };
+        assert_eq!(gate("create_page", "Notion").as_deref(), Some("service_write:notion"), "per service");
+        assert_eq!(gate("shared_files_write", "bipagents_files").as_deref(), Some("files_write"));
+        assert_eq!(gate("delete_page", "notion"), None);
+        assert_eq!(gate("send_message", "slack"), None);
+        assert_eq!(hermes_always_key(&data(json!({"command": "rm -rf /", "pattern_key": "recursive delete"}))), None);
+        assert_eq!(always_button("fr", "Vie", "mail_move").as_deref(), Some("Toujours autoriser Vie à déplacer tes e-mails"));
+        assert_eq!(always_button("en", "Vie", "service_write:google_drive").as_deref(), Some("Always let Vie write in Google drive"));
+        assert_eq!(always_button("de", "Vie", "mail_archive").as_deref(), Some("Vie immer erlauben, deine E-Mails zu archivieren"));
+        assert_eq!(always_button("es", "Vie", "files_write").as_deref(), Some("Permitir siempre a Vie guardar archivos en su espacio"));
+        assert_eq!(always_short("de", "mail_move").as_deref(), Some("Deine E-Mails verschieben"));
+        assert_eq!(always_button("fr", "Vie", "mail_trash"), None);
+    }
+
+    #[test]
+    fn toujours_approves_that_kind_for_that_agent_until_taken_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = config_in(&dir);
+        config.agents.insert("vie".into(), AgentConfig { name: "vie".into(), display_name: "Vie".into(), ..Default::default() });
+        assert!(!auto_for(&config, "vie", "mail_move") && !has_grants(&config, "vie"));
+        assert!(grant_always(&config, "vie", "mail_trash").is_err(), "a critical kind");
+        assert!(grant_always(&config, "vie", "site_send").is_err());
+        grant_always(&config, "vie", "mail_move").unwrap();
+        assert!(auto_for(&config, "vie", "mail_move") && has_grants(&config, "vie"));
+        // only that kind, only that agent; the critical ones still asked
+        assert!(!auto_for(&config, "vie", "mail_archive") && !auto_for(&config, "coach", "mail_move"));
+        assert!(!auto_for(&config, "vie", "mail_trash"));
+        // a service write: per service
+        grant_always(&config, "vie", "service_write:notion").unwrap();
+        let ask = |server: &str| data(json!({"command": format!("MCP tool 'create_page' on UNTRUSTED server '{server}'")}));
+        assert_eq!(auto_hermes(&config, "vie", "run_1", &ask("notion")), Some(("service_write", true)));
+        assert_eq!(auto_hermes(&config, "vie", "run_1", &ask("airtable")), None, "a new service asks again");
+        let sends = data(json!({"command": "MCP tool 'send_message' on UNTRUSTED server 'notion'"}));
+        assert_eq!(auto_hermes(&config, "vie", "run_1", &sends), None);
+        // listed in the agent's words, oldest first; the agent's personality says so
+        let v = view(&config);
+        let list = v["always"]["vie"].as_array().unwrap();
+        assert_eq!(list.iter().map(|k| k["kind"].as_str().unwrap()).collect::<Vec<_>>(), ["mail_move", "service_write:notion"]);
+        assert!(list[0]["label"].as_str().is_some_and(|l| !l.is_empty()));
+        let soul = with_block(&config, "vie", "Tu es Vie.\n");
+        assert!(soul.contains("move your e-mails") && soul.contains("write in Notion") && !soul.contains(RULE), "{soul}");
+        // its line in the Boîte says « toujours autorisé »
+        record_hermes(&config, "vie", "service_write", "Vie veut créer dans Notion", "run_1", None, true);
+        let line = &lines(&config, Some("vie"), 1)[0];
+        assert!(line.always && (line.summary.ends_with("(always allowed)") || line.summary.ends_with("(toujours autorisé)")));
+        assert_eq!(line_view(line)["always"], true);
+        // taken back: asked again, the rule gone
+        assert!(revoke_always(&config, "vie", "mail_move") && !revoke_always(&config, "vie", "mail_move"));
+        assert!(!auto_for(&config, "vie", "mail_move"));
+        assert!(revoke_always(&config, "vie", "service_write:notion"));
+        assert!(!has_grants(&config, "vie") && view(&config)["always"].get("vie").is_none());
+        assert_eq!(with_block(&config, "vie", &soul).trim_end(), "Tu es Vie.");
+    }
+
+    #[test]
+    fn a_card_offers_toujours_only_for_its_kind() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = config_in(&dir);
+        config.agents.insert("vie".into(), AgentConfig { name: "vie".into(), display_name: "Vie".into(), ..Default::default() });
+        let card = |v: Value| with_always(&config, item(v));
+        let moved = card(json!({"agent": "vie", "run_id": "bip-mail-1", "bip_mail": {"action": "move:Factures"}}));
+        assert_eq!(moved["bip_always_kind"], "mail_move");
+        assert!(moved["bip_always"].as_str().unwrap().contains("Vie"));
+        for never in [json!({"agent": "vie", "run_id": "bip-mail-2", "bip_mail": {"action": "trash"}}),
+                      json!({"agent": "vie", "run_id": "bip-site-1"}), json!({"agent": "vie", "run_id": "bip-rout-1"}),
+                      json!({"agent": "vie", "run_id": "bip-held-1", "command": "rm -rf /tmp"})] {
+            assert!(card(never.clone()).get("bip_always").is_none(), "{never}");
+        }
+        let held = card(json!({"agent": "vie", "run_id": "bip-held-2", "command": "MCP tool 'update_page' on UNTRUSTED server 'notion'"}));
+        assert_eq!(held["bip_always_kind"], "service_write:notion");
     }
 
     #[test]

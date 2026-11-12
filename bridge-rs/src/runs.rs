@@ -453,6 +453,9 @@ pub struct SubscriptionState {
     pub used_browser: bool,
     /// A background task's run (jobs.rs): the brake's higher limits (loop_brake.rs).
     pub background: bool,
+    /// A turn nobody started from an app (background_turn.rs: a routine, a watcher's, a task, a resumed one): while no
+    /// app follows it, what it asks is kept by the bridge, never waited for inside Hermes (held_approvals.rs).
+    pub unattended: bool,
     /// The brake's count of the run's tool calls, and whether it stopped the run.
     pub turn: crate::loop_brake::TurnCount,
     pub braked: bool,
@@ -518,6 +521,7 @@ impl Default for SubscriptionState {
             phone: None,
             used_browser: false,
             background: false,
+            unattended: false,
             turn: crate::loop_brake::TurnCount::default(),
             braked: false,
             loop_rescue: None,
@@ -620,9 +624,22 @@ pub struct RunHub {
     pub queues: std::sync::OnceLock<std::sync::Weak<crate::msg_queue::Queues>>,
     /// The conversations (threads.rs): told each run's end (their version grows, the apps are told).
     pub threads: crate::threads::Link,
+    /// What turns nobody follows ask, handed to the bridge (held_approvals.rs `start`); unset (tests): Hermes waits.
+    pub unattended: std::sync::OnceLock<mpsc::UnboundedSender<crate::held_approvals::Unattended>>,
     inner: Mutex<HubInner>,
     tasks: Mutex<Vec<JoinHandle<()>>>,
     next_id: AtomicU64,
+}
+
+/// Why the bridge answered a Hermes approval itself.
+#[derive(Debug, Clone, PartialEq)]
+enum Auto {
+    /// The person's level (« Seulement le critique »).
+    Level,
+    /// One of the person's « Toujours ».
+    Always,
+    /// What the person approved later on a held card (its id).
+    Held(String),
 }
 
 enum Outcome {
@@ -649,6 +666,7 @@ impl RunHub {
             jobs: std::sync::OnceLock::new(),
             queues: std::sync::OnceLock::new(),
             threads: Default::default(),
+            unattended: std::sync::OnceLock::new(),
             inner: Mutex::new(HubInner::default()),
             tasks: Mutex::new(Vec::new()),
             next_id: AtomicU64::new(1),
@@ -1362,7 +1380,11 @@ impl RunHub {
     fn dispatch(&self, sub: &Arc<RunSubscription>, event: SSEEvent) {
         let mut inner = lock(&self.inner);
         let mut st = lock(&sub.state);
-        let event = if event.r#type == "approval.request" { self.in_plain_words(sub, &st, event) } else { event };
+        let event = if event.r#type == "approval.request" {
+            self.with_always(sub, self.in_plain_words(sub, &st, event))
+        } else {
+            event
+        };
         let event = if matches!(event.r#type.as_str(), "approval.request" | "clarify.request") {
             with_item_id(sub, event)
         } else {
@@ -1448,7 +1470,9 @@ impl RunHub {
             self.on_approval(&mut inner, sub, &mut st, &event);
         } else if kind == "clarify.request" {
             Self::keep_question(&mut inner, sub, &st, &event);
-            self.on_clarify(sub, &mut st, &event);
+            if !self.hold_question(sub, &st, &event) {
+                self.on_clarify(sub, &mut st, &event);
+            }
         } else if kind == crate::hermes_prompts::APPROVAL_SETTLED || kind == crate::hermes_prompts::CLARIFY_SETTLED {
             Self::forget_pending(&mut inner, &sub.agent.name, &sub.run_id, event.data.get("request_id"));
         } else if is_terminal(kind) {
@@ -1994,6 +2018,39 @@ impl RunHub {
         st.send_all(Some(event));
     }
 
+    /// A turn nobody started from an app (background_turn.rs `follow`): what it asks while no app follows it is kept
+    /// by the bridge (held_approvals.rs).
+    pub fn mark_unattended(&self, agent: &str, run_id: &str) {
+        let inner = lock(&self.inner);
+        if let Some(sub) = inner.subs.get(&(agent.to_string(), run_id.to_string())) {
+            lock(&sub.state).unattended = true;
+        }
+    }
+
+    /// Nobody can answer the run now: a turn nobody started from an app, no app following it, not a room's, not a
+    /// relative's, and the bridge takes such requests.
+    fn nobody_there(&self, sub: &RunSubscription, st: &SubscriptionState) -> bool {
+        st.unattended
+            && st.followers() == 0
+            && st.room_id.is_none()
+            && self.unattended.get().is_some()
+            && !self.someone_elses(&sub.run_id)
+    }
+
+    /// A question of a run nobody can answer now, handed to the bridge (answered at once). False: asked as usual.
+    fn hold_question(&self, sub: &RunSubscription, st: &SubscriptionState, event: &SSEEvent) -> bool {
+        if !self.nobody_there(sub, st) {
+            return false;
+        }
+        let Some(tx) = self.unattended.get() else { return false };
+        let request = crate::held_approvals::Unattended::Question {
+            agent: sub.agent.clone(),
+            run_id: sub.run_id.clone(),
+            request_id: clarify_id(&event.data),
+        };
+        tx.send(request).is_ok()
+    }
+
     /// A background task's run (jobs.rs): the brake's higher limits.
     pub fn mark_background(&self, agent: &str, run_id: &str) {
         let inner = lock(&self.inner);
@@ -2362,6 +2419,23 @@ touche « Démarrer » pour reprendre."
         SSEEvent::new(event.r#type, data, raw)
     }
 
+    /// An approval whose kind a « Toujours » may cover (approval_level.rs): its answer `bip_always` (the button's words)
+    /// and `bip_always_kind` added before anyone sees it. A relative's turn never.
+    fn with_always(&self, sub: &RunSubscription, event: SSEEvent) -> SSEEvent {
+        let Some(shared) = &self.config else { return event };
+        if event.data.contains_key("bip_always") || self.someone_elses(&sub.run_id) {
+            return event;
+        }
+        let config = shared.get();
+        let agent = config.agent(Some(&sub.agent.name)).cloned().unwrap_or_else(|| sub.agent.clone());
+        let Some((label, key)) = crate::approval_level::hermes_always(&config, &agent, &event.data) else { return event };
+        let mut data = event.data;
+        data.insert("bip_always".into(), json!(label));
+        data.insert("bip_always_kind".into(), json!(key));
+        let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+        SSEEvent::new(event.r#type, data, raw)
+    }
+
     /// A run that ended on Hermes' own « ⚠️ No reply: … /model » explanation, alone or after a fragment of an answer,
     /// ends on our plain line instead (no_reply.rs), marked `bip_no_reply` for the apps.
     fn no_reply_in_plain_words(&self, sub: &RunSubscription, event: SSEEvent) -> SSEEvent {
@@ -2436,7 +2510,7 @@ touche « Démarrer » pour reprendre."
             item.insert("execution_generation".into(), json!(generation));
         }
         // the apps' own reading needs Hermes' pattern key; the plain words (in_plain_words) go with it
-        for key in ["pattern_key", "bip_summary", "bip_detail"] {
+        for key in ["pattern_key", "bip_summary", "bip_detail", "bip_always", "bip_always_kind"] {
             if let Some(value) = data.get(key).filter(|v| v.is_string()) {
                 item.insert(key.into(), value.clone());
             }
@@ -2450,25 +2524,37 @@ touche « Démarrer » pour reprendre."
         // not critical, and the person validates only what is: answered « once » at once, nothing pushed, a line in the
         // Boîte (approval_level.rs); kept waiting until Hermes settles it, so a failed answer still shows in the Boîte
         let elsewhere = self.someone_elses(&sub.run_id);
-        let auto = self.config.as_ref().map(|c| c.get()).filter(|_| !elsewhere).and_then(|config| {
-            crate::approval_level::auto_hermes(&config, &sub.agent.name, &sub.run_id, data).map(|kind| (config, kind))
+        // exactly what the person approved on a held card (held_approvals.rs): answered « once », used up
+        let granted = self.config.as_ref().map(|c| c.get()).filter(|_| !elsewhere).and_then(|config| {
+            let grant = crate::held_approvals::take_grant(&config, &sub.agent.name, command.as_deref().unwrap_or(""))?;
+            Some((config, crate::approval_level::classify_hermes(data), Auto::Held(grant.card)))
         });
-        let answering = auto.map(|(config, kind)| (config, kind, item.clone()));
+        let auto = granted.or_else(|| {
+            self.config.as_ref().map(|c| c.get()).filter(|_| !elsewhere).and_then(|config| {
+                crate::approval_level::auto_hermes(&config, &sub.agent.name, &sub.run_id, data)
+                    .map(|(kind, always)| (config, kind, if always { Auto::Always } else { Auto::Level }))
+            })
+        });
+        let answering = auto.map(|(config, kind, why)| (config, kind, why, item.clone()));
+        let held = item.clone();
         inner.pending.insert((sub.agent.name.clone(), sub.run_id.clone(), dedupe.clone()), item);
-        if let Some((config, kind, mut fields)) = answering {
+        if let Some((config, kind, why, mut fields)) = answering {
             let (hermes, agent, run_id) = (self.hermes.clone(), sub.agent.clone(), sub.run_id.clone());
             let (summary, session) = (shown.clone().unwrap_or_default(), st.session_id.clone());
-            tracing::info!(agent = %agent.name, run_id = %run_id, kind, "approval answered by the level");
+            tracing::info!(agent = %agent.name, run_id = %run_id, kind, why = ?why, "approval answered by the bridge");
             self.spawn(async move {
                 match hermes.answer_prompt(&agent, &run_id, "approval", "once", request_id.as_deref()).await {
                     Ok((status, _)) if (200..300).contains(&status) => {
                         fields.insert("choice".into(), json!("once"));
-                        fields.insert("via".into(), json!("auto"));
+                        fields.insert("via".into(), json!(if matches!(why, Auto::Held(_)) { "held" } else { "auto" }));
                         fields.remove("created_at");
                         if let Err(err) = crate::approvals_log::record(&config, &agent.name, &fields) {
                             tracing::warn!(agent = %agent.name, error = %err, "approval decision not kept");
                         }
-                        crate::approval_level::record_hermes(&config, &agent.name, kind, &summary, &run_id, session.as_deref());
+                        if !matches!(why, Auto::Held(_)) {
+                            let always = why == Auto::Always;
+                            crate::approval_level::record_hermes(&config, &agent.name, kind, &summary, &run_id, session.as_deref(), always);
+                        }
                     }
                     other => {
                         tracing::warn!(agent = %agent.name, run_id = %run_id, answer = ?other.map(|r| r.0), "approval not answered by the level: left to the person");
@@ -2476,6 +2562,20 @@ touche « Démarrer » pour reprendre."
                 }
             });
             return;
+        }
+        // nobody can answer now (a routine at night…): kept by the bridge as its own card, the turn ends now
+        if self.nobody_there(sub, st) && !st.pushed.contains(&dedupe) {
+            let request = crate::held_approvals::Unattended::Approval {
+                agent: sub.agent.clone(),
+                run_id: sub.run_id.clone(),
+                session: st.session_id.clone(),
+                item: held,
+            };
+            if self.unattended.get().is_some_and(|tx| tx.send(request).is_ok()) {
+                st.pushed.insert(dedupe);
+                tracing::info!(agent = %sub.agent.name, run_id = %sub.run_id, "approval in a turn nobody follows: held");
+                return;
+            }
         }
         let followers = st.followers();
         let push = match self.push.clone() {

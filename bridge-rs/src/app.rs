@@ -299,6 +299,7 @@ impl AppState {
         self.spawn(crate::mail_tidy::run_forever(self.clone())); // mail tidy jobs a restart left behind
         self.spawn(crate::mail_rules::run_forever(self.clone())); // standing mail rules: resumes, weekly line
         self.spawn(crate::approval_level::run_forever(self.clone())); // the auto approvals' daily message
+        crate::held_approvals::start(self); // what turns nobody follows ask: kept as cards, never waited for
         self.spawn(crate::door_tls::announce_forever(self.clone())); // our door's certificate to linked households
         // a household that can't be reached (a home) and one that can (a place): the calls kept for it, fetched by it
         self.spawn(crate::family_relay::serve_loopback(self.clone()));
@@ -1275,6 +1276,18 @@ async fn bridge_card(
             None => Err(HttpError::new(404, "no such request (answered already?)")),
         }?));
     }
+    // what a turn nobody followed asked (held_approvals.rs): « Oui » lets the agent do exactly that once, as it goes on
+    if let Some(id) = run_id.strip_prefix(crate::held_approvals::RUN_PREFIX) {
+        let allow = crate::card_place::allowed(&body.choice); // an unknown word: refused
+        let (config, name, id) = (state.config(), agent.name.clone(), id.to_string());
+        let answered = tokio::task::spawn_blocking(move || crate::held_approvals::answer(&config, &name, &id, allow))
+            .await
+            .map_err(anyhow::Error::from)?;
+        return Ok(Some(match answered {
+            Some(_) => Ok(web::ok(json!({"ok": true, "choice": if allow { "once" } else { "deny" }}))),
+            None => Err(HttpError::new(404, "no such request (answered already?)")),
+        }?));
+    }
     // a space card (what to keep when the place fills up, storage_watch.rs), answered here
     if let Some(id) = run_id.strip_prefix(crate::storage_watch::RUN_PREFIX) {
         return Ok(Some(crate::storage_watch::approve(state, agent, id, &body.choice).await?));
@@ -1326,6 +1339,22 @@ pub(crate) async fn answer_bridge_card(state: &AppState, agent: &AgentConfig, ru
     }
 }
 
+/// The « Toujours » kind card `run_id` offers (its `bip_always_kind`, set by the bridge: approval_level.rs), among
+/// `items` (the cards, or the Hermes approvals, waiting).
+fn always_kind_of(items: Vec<crate::Dict>, run_id: &str) -> Option<String> {
+    let item = items.into_iter().find(|i| i.get("run_id").and_then(Value::as_str) == Some(run_id))?;
+    let key = item.get("bip_always_kind").and_then(Value::as_str)?.to_string();
+    crate::approval_level::offers_always(&key).then_some(key)
+}
+
+/// The person's « Toujours » kept, and told to the agent's personality.
+async fn grant(config: &Config, agent: &str, key: &str) {
+    match crate::approval_level::grant_always(config, agent, key) {
+        Ok(()) => crate::approval_level::granted_now(config, agent).await,
+        Err(why) => tracing::warn!(agent, key, why = %why, "always not kept"),
+    }
+}
+
 async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>) -> ApiResult<Response> {
     let config = state.config();
     if config.agent(Some(&body.agent)).is_none() && crate::agent_shares::is_shared_with_me(&config, &body.agent) {
@@ -1345,6 +1374,10 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
     if run_id.starts_with("bip-") {
         let members = crate::card_place::members(&state, &agent.name, &run_id);
         let choice = body.choice.trim().to_lowercase();
+        // « Toujours autoriser… »: the kind the card offers it for, read from the card itself (never from the body)
+        let always = (choice == "always")
+            .then(|| always_kind_of(crate::card_place::bridge_cards(&state, &config, Some(&agent.name)), &run_id))
+            .flatten();
         let mut first: Option<ApiResult<Option<Response>>> = None;
         for member in &members {
             let answered = bridge_card(&state, &agent, member, &body).await;
@@ -1358,14 +1391,30 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
             }
         }
         if let Some(response) = first.transpose()?.flatten() {
+            if let (Some(key), true) = (always, response.status().is_success()) {
+                grant(&config, &agent.name, &key).await;
+            }
             return Ok(response);
         }
     }
     let request_id = body.request_id.as_deref();
-    let (kind, value) = match &body.answer {
+    let (kind, mut value) = match &body.answer {
         Some(answer) => ("clarify", answer.trim().to_string()),
         None => ("approval", body.choice.trim().to_lowercase()),
     };
+    // « Toujours autoriser… » on a Hermes approval that offers it: Hermes answered « once » (never its own « always »,
+    // which nothing here could take back), the « Toujours » kept by the bridge
+    let mut always = None;
+    if kind == "approval" && value == "always" {
+        let asked = state.hub.pending_approvals(Some(&agent.name)).into_iter().filter(|p| {
+            p.get("run_id").and_then(Value::as_str) == Some(run_id.as_str())
+                && (request_id.is_none() || p.get("request_id").and_then(Value::as_str) == request_id)
+        });
+        always = always_kind_of(asked.collect(), &run_id);
+        if always.is_some() {
+            value = "once".into();
+        }
+    }
     let (status, payload) =
         match state.hermes.answer_prompt(&agent, &run_id, kind, &value, request_id).await {
             Ok(r) => r,
@@ -1384,6 +1433,9 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
         let session = asked.and_then(|q| q.get("session_id").and_then(Value::as_str).map(str::to_string));
         crate::threads::threads_of(&state).touch(&agent.name, session.as_deref(), "answered").await;
     } else if (200..300).contains(&status) {
+        if let Some(key) = &always {
+            grant(&state.config(), &agent.name, key).await;
+        }
         // kept for the conversation, with the request as it was shown (approvals_log.rs)
         let shown = state.hub.pending_approvals(Some(&agent.name)).into_iter().find(waiting);
         let session = shown.as_ref().and_then(|p| p.get("session_id").and_then(Value::as_str).map(str::to_string));

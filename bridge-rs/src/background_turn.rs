@@ -363,6 +363,8 @@ impl Pipeline {
     pub fn follow(&self, agent: &AgentConfig, kind: Kind, run_id: &str, session: &str, budget: Option<i64>) {
         let Some(hub) = &self.hub else { return };
         hub.watch(agent, run_id, Some(session).filter(|s| !s.is_empty()), false);
+        // nobody started it from an app: what it asks while no app follows it waits as a card (held_approvals.rs)
+        hub.mark_unattended(&agent.name, run_id);
         if kind.long() {
             hub.mark_background(&agent.name, run_id);
         }
