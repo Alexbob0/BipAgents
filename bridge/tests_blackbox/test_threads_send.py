@@ -90,6 +90,20 @@ def test_a_message_is_its_app_id_from_the_send_to_the_stored_row(bridges, fakes)
     assert page(bridge, thread)["items"][-2]["client_id"] == "C1D00000-0000-4000-8000-000000000001"
 
 
+def test_a_message_marks_the_place_used_reads_do_not(bridges, fakes):
+    """Freed beta places (used.rs): the last person action, epoch seconds, for the seat agent's beat."""
+    bridge, thread = setup(bridges, fakes)
+    used = bridge.home / ".local/state/bipagents/used"
+    page(bridge, thread)
+    bridge.get("/v1/approvals", headers=AUTH)
+    assert not used.exists(), "a read is not a use"
+    fakes.hermes.runs["r1"] = [sse("run.completed", run_id="r1", output="Oui.")]
+    before = int(time.time())
+    assert send(bridge, thread, "C1D00000-0000-4000-8000-0000000000B1", "Tu es là ?").status_code == 200
+    assert wait_until(used.exists)
+    assert before <= int(used.read_text()) <= int(time.time())
+
+
 def test_photos_and_documents_go_with_their_message(bridges, fakes):
     bridge, thread = setup(bridges, fakes)
     fakes.hermes.runs["r1"] = [sse("run.completed", run_id="r1", output="Vu.")]

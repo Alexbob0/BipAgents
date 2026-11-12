@@ -62,7 +62,16 @@ const GUICHET_BODIES: &[&str] = &[
     "Ton mois offert finit bientôt : abonne-toi pour garder tes agents. Réglages › Offre tout compris.",
     // a conversation someone shows this person read-only (the guichet's read_shares.rs); the app names it itself
     "Nouveau message dans une conversation partagée",
+    // freed beta places (BipAgents-reprise/release-1112/place-idle-contract.md): `place_idle_soon` on day 5 without
+    // use, `place_parked` when the place is freed on day 7 (the apps translate them, fr/en/de/es/nl)
+    PLACE_IDLE_SOON,
+    PLACE_PARKED,
 ];
+/// `place_idle_soon`: nobody used the place for 5 days.
+pub const PLACE_IDLE_SOON: &str =
+    "Tu n’as pas utilisé tes agents depuis 5 jours : ta place sera libérée dans 2 jours. Écris-leur pour la garder.";
+/// `place_parked`: the place was freed on day 7, its copy kept 30 days.
+pub const PLACE_PARKED: &str = "Ta place a été libérée : personne ne s’en est servi pendant 7 jours. Tes données sont gardées 30 jours : ouvre l’app pour la reprendre.";
 pub const MAX_PAYLOAD_BYTES: usize = 4096;
 /// The values the apps use; anything else is dropped (no « time-sensitive », no custom sound).
 const CATEGORIES: &[&str] = &["MESSAGE", "APPROVAL"];
@@ -292,6 +301,18 @@ mod tests {
         let clean = scrub(&push, Audience::Guichet).unwrap();
         assert_eq!(clean["aps"]["alert"]["body"], shared);
         assert_eq!((clean["kind"].clone(), clean["rshare"].clone()), (json!("rshare"), json!("Q2xxZm9vYmFyYmF6cXV4")));
+    }
+
+    #[test]
+    fn a_freed_beta_place_is_told_by_the_guichet_only() {
+        for text in [PLACE_IDLE_SOON, PLACE_PARKED] {
+            let push = json!({"aps": {"alert": {"title": "BipAgents", "body": text, "loc-key": text}}, "kind": "server"});
+            assert_eq!(scrub(&push, Audience::Guichet).unwrap()["aps"]["alert"], json!({"body": text, "loc-key": text}));
+            assert_eq!(scrub(&push, Audience::Bridge).unwrap()["aps"]["alert"]["body"], BRIDGE_FALLBACK);
+        }
+        // the contract's words, apostrophes typeset as the relay's other generic bodies
+        assert!(PLACE_IDLE_SOON.starts_with("Tu n’as pas utilisé tes agents depuis 5 jours"));
+        assert!(PLACE_PARKED.ends_with("Tes données sont gardées 30 jours : ouvre l’app pour la reprendre."));
     }
 
     #[test]

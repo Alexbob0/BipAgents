@@ -243,6 +243,17 @@ def test_the_seat_agent_does_only_signed_orders_for_its_server(tmp_path):
     assert not agent.verified(order["body"], "not base64!", str(pub))
 
 
+def test_the_seat_agent_reads_the_last_use_only_when_it_is_a_number(tmp_path):
+    agent = _seat_agent()
+    assert agent.used(str(tmp_path)) is None
+    state = tmp_path / ".local" / "state" / "bipagents"
+    state.mkdir(parents=True)
+    (state / "used").write_text("1762950000")
+    assert agent.used(str(tmp_path)) == 1762950000
+    (state / "used").write_text("")
+    assert agent.used(str(tmp_path)) is None
+
+
 def test_the_seat_agent_s_heartbeat_says_only_states_a_version_a_time_and_numbers(tmp_path, monkeypatch):
     """Each place: its door answers on the server, its Hermes runs, the BipAgents commit it runs, the time of its last
     backup that worked; the server: memory, swap, disk, load. Nothing else."""
@@ -272,6 +283,8 @@ def test_the_seat_agent_s_heartbeat_says_only_states_a_version_a_time_and_number
     monkeypatch.setattr(agent, "running", lambda uid, words: uid == 1000 and words == ("hermes", "gateway"))
     (tmp_path / "bip2" / ".local" / "state" / "bipagents").mkdir(parents=True)
     (tmp_path / "bip2" / ".local" / "state" / "bipagents" / "asleep").write_text("1790000000")
+    # its last person action (bridge-rs/src/used.rs): in the beat; place 1's bridge never wrote one, nothing said
+    (tmp_path / "bip2" / ".local" / "state" / "bipagents" / "used").write_text("1789990000\n")
     # place 2's encrypted space waits for its key (bridge-rs/src/space.rs): locked, not down
     (tmp_path / "bip2" / ".local" / "share" / "bipagents" / "space").mkdir(parents=True)
     (tmp_path / "bip2" / ".local" / "share" / "bipagents" / "space" / "locked.json").write_text(
@@ -279,7 +292,7 @@ def test_the_seat_agent_s_heartbeat_says_only_states_a_version_a_time_and_number
     assert agent.health() == {"1": {"up": True, "hermes": True, "asleep": False, "version": "0123456789ab",
                                     "backup": 1790000000.5, "locked": None},
                               "2": {"up": False, "hermes": False, "asleep": True, "version": None, "backup": None,
-                                    "locked": "key service unreachable"}}
+                                    "locked": "key service unreachable", "used": 1789990000}}
     monkeypatch.undo()
     assert agent.door_open(port) is True
     listening.close()

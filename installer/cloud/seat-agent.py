@@ -64,6 +64,7 @@ BACKUP_CHECK = ".local/state/bipagents/backup-check.json"   # its backup timer's
 # by all (flock needs no more).
 BACKUP_LOCK = "/var/lib/bipagents/backup.lock"
 ASLEEP = ".local/state/bipagents/asleep"   # its bridge put its Hermes to sleep (bridge-rs/src/sleep.rs)
+USED = ".local/state/bipagents/used"       # its last person action, epoch seconds (bridge-rs/src/used.rs)
 SETUP = ".config/bipagents/setup.json"     # its bridge's pairing secret while it waits for an app (cloud_setup.py)
 LOCKED = ".local/share/bipagents/space/locked.json"   # its encrypted space not open yet, and why (space.rs)
 CREDIT = ".local/state/bipagents/credit.json"   # its plan's AI credit as the guichet says it (bridge-rs/src/credit.rs)
@@ -484,6 +485,16 @@ def locked(home):
         return None
 
 
+def used(home):
+    """When a person last used the place (epoch seconds its bridge writes, at most once a minute), else None: the
+    guichet frees a beta place nobody used for 7 days, never one that never reported it (an old bridge)."""
+    try:
+        with open(os.path.join(home, USED)) as fh:
+            return int(fh.read().strip())
+    except (OSError, ValueError):
+        return None
+
+
 def running(uid, words, proc="/proc"):
     """A process of this account whose command line holds all `words` (what runs, never what it does)."""
     for pid in os.listdir(proc):
@@ -565,6 +576,9 @@ def health():
                               "asleep": os.path.exists(os.path.join(entry.pw_dir, ASLEEP)),
                               "version": version(entry.pw_dir), "backup": last_backup(user),
                               "locked": locked(entry.pw_dir)}
+        last_used = used(entry.pw_dir)
+        if last_used is not None:
+            seats[str(number)]["used"] = last_used
     return seats
 
 
