@@ -2,7 +2,7 @@
 
 # Condiciones de uso de BipAgents
 
-> Última actualización: 10 de noviembre de 2026.
+> Última actualización: 12 de noviembre de 2026.
 
 ## 1. Objeto
 
@@ -127,9 +127,13 @@ condiciones de los servicios que conectas a tus agentes y de lo que haces por SS
 
 - Según las herramientas que les des, tus agentes pueden **actuar**: enviar correos, navegar y rellenar formularios,
   manejar archivos, controlar tu domótica, ejecutar comandos en tu servidor.
-- Antes de una acción delicada, el agente te **pide tu acuerdo** (Una vez, Esta sesión o Rechazar), en la app o
+- Antes de una acción delicada, el agente te **pide tu acuerdo** («Sí, adelante», «Sí, para esta conversación» o «No»), en la app o
   desde la notificación. Cuando es BipAgents quien instala Hermes Agent, los comandos de riesgo siempre piden tu
-  acuerdo (un Hermes Agent que ya tenías conserva sus propios ajustes), y la app no ofrece «Permitir siempre».
+  acuerdo (un Hermes Agent que ya tenías conserva sus propios ajustes).
+  La app solo ofrece «Siempre» para lo que no es crítico (ordenar tus correos, escribir en un servicio que has
+  conectado, archivos en el espacio del agente), agente por agente; lo quitas en los ajustes del agente. Pagar, enviar
+  en tu nombre, borrar y los comandos de riesgo siempre se te piden. Una solicitud hecha cuando no estás (una rutina
+  nocturna) te espera hasta 24 horas y solo se hace después de tu acuerdo.
   **Tú decides: lee la solicitud antes de aceptar.** Eres responsable de lo que apruebas.
 - Según tu configuración de Hermes Agent y las herramientas instaladas, algunas acciones pueden hacerse sin solicitud
   de aprobación. Lo que leen tus agentes (páginas web, correos, archivos) puede contener instrucciones ocultas

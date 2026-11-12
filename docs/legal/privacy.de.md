@@ -803,7 +803,8 @@ Telefon verlässt; jeder Dienst ist dann für das verantwortlich, was er damit m
   Funktionen der Google-Play-Dienste (Google ML Kit). Google gibt an, dass
   ML Kit ihm Informationen über das Gerät und die App, Installationskennungen sowie Nutzungs- und Leistungsdaten
   schickt, für die Diagnose und eigene Statistiken. Die App sagt dir das und fragt vor der ersten Nutzung des Scanners
-  nach deinem Einverständnis; ohne dieses Einverständnis öffnet sich der Scanner nicht, und du kannst weiterhin ein
+  nach deinem Einverständnis; ohne dieses Einverständnis öffnet sich der Scanner nicht
+  und Google ML Kit liest den Text keines Dokuments, und du kannst weiterhin ein
   Foto oder eine Datei anhängen. Du kannst deine Wahl jederzeit in den Einstellungen ändern.
 - **Apple und Google** für die Benachrichtigungen (Abschnitt 4.1).
 - **Tailscale**, wenn du es nutzt: eine eigene App mit eigenem Konto und eigener Datenschutzerklärung.
@@ -911,7 +912,7 @@ des Guichets und des Relays: OVHcloud, in Frankreich. Hoster der Sicherungen: Sc
 | Fingerabdruck des Android-Geräts, mit einem geheimen Schlüssel gehasht (kostenlose Woche) | 24 Monate nach der ersten Markierung des Telefons; getrennt vom Konto aufbewahrt, nicht mit ihm gelöscht |
 | Einladung einer Familienverbindung | 7 Tage oder bis zur Antwort |
 | Teilen zum Lesen (verschlüsselte Kopie, eingeladene Personen) | Bis zum Enddatum, bis zum Beenden oder bis zur Löschung des Kontos |
-| Dateien, die an den Familienagenten gesendet werden | Auf dem Server der Person, die ihn erstellt hat, bis der Absender sie löscht, den Agenten nicht mehr nutzt oder die Familie verlässt, oder der Agent gelöscht wird; spätestens die dort für Dateien gewählte Frist (standardmäßig 30 Tage) |
+| Dateien, die an den Familienagenten gesendet werden | Auf dem Server der Person, die ihn erstellt hat, bis der Absender sie löscht, den Agenten nicht mehr nutzt, aus ihm entfernt wird oder die Familie verlässt, oder der Agent gelöscht wird; spätestens die dort für Dateien gewählte Frist (standardmäßig 30 Tage) |
 | Kampagnenname (Abschnitt 5.11) | 13 Monate nach der Aufzeichnung, oder mit dem Konto oder dem Abo |
 | IP-Adresse bei der Reservierung einer kostenlosen Woche | Nie im Klartext gespeichert; im Arbeitsspeicher, als Fingerabdruck, höchstens 15 Minuten |
 | Fingerabdruck der IP-Adresse (Beta-Codes, Kündigungsseite der Website, Meldungen geteilter Agenten) | Höchstens 2 Tage; bis zu 30 Tage in den verschlüsselten Kopien der Datenbank |

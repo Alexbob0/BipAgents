@@ -2,7 +2,7 @@
 
 # Allgemeine Verkaufsbedingungen des Alles-inklusive-Angebots
 
-> Zuletzt aktualisiert: 11. November 2026.
+> Zuletzt aktualisiert: 12. November 2026.
 
 ## 1. Gegenstand
 
@@ -250,8 +250,8 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 
 - Die Person, die abschließt, lädt die anderen per E-Mail ein, mit einem Link, der nur einmal funktioniert. Jede
   eingeladene Person erstellt ihr eigenes Konto und hat **ihren eigenen Platz** und ihre Agenten; das KI-Guthaben ist
-  das des Tarifs, geteilt (Abschnitt 6). **Weder die Person, die zahlt, noch Kerfy Studio können ihre Agenten oder
-  ihre Unterhaltungen lesen.**
+  das des Tarifs, geteilt (Abschnitt 6). **Weder die Person, die zahlt, noch Kerfy Studio können ihre Agenten oder ihre Unterhaltungen lesen**, außer dem,
+  was sie selbst teilen möchte (ein Agent, den sie teilt, was sie einem Familienagenten schreibt).
 - **Was die Person, die zahlt, sieht**: wie viel vom KI-Guthaben jede Person im Monat verbraucht hat (ein Betrag in
   Euro und seine Schätzung in Nachrichten), um das Guthaben der Familie zu verfolgen und Limits zu setzen. **Nie, was
   jemand schreibt oder was seine Agenten tun.** Jede eingeladene Person sieht, was vom Guthaben für alle übrig ist,

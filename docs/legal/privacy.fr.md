@@ -767,7 +767,8 @@ est ensuite responsable de ce qu'il en fait.
   fonctions des services Google Play (Google ML Kit). Google indique
   que ML Kit lui envoie des informations sur l'appareil et l'app, des identifiants d'installation et des mesures
   d'usage et de performance, pour le diagnostic et ses statistiques. L'app te le dit et te demande ton accord avant
-  la première utilisation du scanner ; sans cet accord, le scanner ne s'ouvre pas, et tu peux toujours joindre une
+  la première utilisation du scanner ; sans cet accord, le scanner ne s'ouvre pas
+  et le texte d'aucun document n'est lu par Google ML Kit, et tu peux toujours joindre une
   photo ou un fichier. Tu peux changer d'avis à tout moment dans Réglages.
 - **Apple et Google** pour les notifications (section 4.1).
 - **Tailscale**, si tu l'utilises : une app distincte, avec son propre compte et sa propre politique de
@@ -884,7 +885,7 @@ l'Union. Tu peux nous demander une copie des garanties applicables.
 | Empreinte de l'appareil Android, hachée avec une clé secrète (semaine gratuite) | 24 mois après le premier marquage du téléphone ; gardée à part du compte, pas effacée avec lui |
 | Invitation d'un lien famille | 7 jours, ou jusqu'à la réponse |
 | Partage en lecture (copie chiffrée, personnes invitées) | Jusqu'à sa date de fin, son arrêt ou l'effacement du compte |
-| Fichiers envoyés à l'agent de la famille | Sur le serveur de la personne qui l'a créé, jusqu'à ce que celui qui les a envoyés les supprime, arrête d'utiliser l'agent ou quitte la famille, ou que l'agent soit supprimé ; au plus tard la durée choisie là-bas pour les fichiers (30 jours par défaut) |
+| Fichiers envoyés à l'agent de la famille | Sur le serveur de la personne qui l'a créé, jusqu'à ce que celui qui les a envoyés les supprime, arrête d'utiliser l'agent, en est retiré ou quitte la famille, ou que l'agent soit supprimé ; au plus tard la durée choisie là-bas pour les fichiers (30 jours par défaut) |
 | Nom de campagne (section 5.11) | 13 mois après son enregistrement, ou avec le compte ou l'abonnement |
 | Adresse IP à la réservation d'une semaine gratuite | Jamais enregistrée en clair ; en mémoire, sous forme d'empreinte, 15 minutes au plus |
 | Empreinte de l'adresse IP (codes bêta, page de résiliation du site, signalements d'agents partagés) | 2 jours au plus ; jusqu'à 30 jours dans les copies chiffrées de la base |

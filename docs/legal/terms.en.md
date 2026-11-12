@@ -2,7 +2,7 @@ English · [Français](terms.fr.md) · [Deutsch](terms.de.md) · [Español](term
 
 # BipAgents terms of use
 
-> Last updated: 10 November 2026.
+> Last updated: 12 November 2026.
 
 ## 1. Purpose
 
@@ -117,9 +117,13 @@ and what you do over SSH ([terms of the offer](offer.en.md)).
 
 - Depending on the tools you give them, your agents can **act**: send emails, browse and fill in forms, handle
   files, control your smart home, run commands on your server.
-- Before a sensitive action, the agent **asks for your approval** (Once, This session or Deny), in the app or from
+- Before a sensitive action, the agent **asks for your approval** ("Yes, go ahead", "Yes, for this conversation" or "No"), in the app or from
   the notification. When BipAgents installs Hermes Agent, risky commands always ask you (a Hermes Agent you already had
-  keeps its own settings), and the app does not offer "Always allow". **You decide: read the request before
+  keeps its own settings).
+  The app offers "Always" only for what is not critical (sorting your emails, writing in a service you connected,
+  files in the agent's space), agent by agent; you remove it in the agent's settings. Paying, sending in your name,
+  deleting and risky commands are always asked. A request made while you are away (a night routine) waits for you for
+  up to 24 hours and is only carried out after your OK. **You decide: read the request before
   accepting.** You are responsible for what you approve.
 - Depending on your Hermes Agent configuration and installed tools, some actions may happen without an approval
   request. What your agents read (web pages, emails, files) may contain hidden instructions meant to hijack them: keep
