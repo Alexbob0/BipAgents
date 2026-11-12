@@ -127,14 +127,21 @@ condiciones de los servicios que conectas a tus agentes y de lo que haces por SS
 
 - Según las herramientas que les des, tus agentes pueden **actuar**: enviar correos, navegar y rellenar formularios,
   manejar archivos, controlar tu domótica, ejecutar comandos en tu servidor.
-- Antes de una acción delicada, el agente te **pide tu acuerdo** («Sí, adelante», «Sí, para esta conversación» o «No»), en la app o
-  desde la notificación. Cuando es BipAgents quien instala Hermes Agent, los comandos de riesgo siempre piden tu
-  acuerdo (un Hermes Agent que ya tenías conserva sus propios ajustes).
-  La app solo ofrece «Siempre» para lo que no es crítico (ordenar tus correos, escribir en un servicio que has
-  conectado, archivos en el espacio del agente), agente por agente; lo quitas en los ajustes del agente. Pagar, enviar
-  en tu nombre, borrar y los comandos de riesgo siempre se te piden. Una solicitud hecha cuando no estás (una rutina
-  nocturna) te espera hasta 24 horas y solo se hace después de tu acuerdo.
-  **Tú decides: lee la solicitud antes de aceptar.** Eres responsable de lo que apruebas.
+- Antes de una acción delicada, el agente te **pide tu acuerdo**, en la app o desde la notificación, con los botones
+  de la tarjeta que te muestra (por ejemplo «Sí, adelante», «Sí, para esta conversación» o «No»).
+- Para un agente, puedes elegir «Siempre» solo para acciones sin gravedad: ordenar, archivar o marcar tus correos,
+  escribir en un servicio que has conectado, gestionar archivos en el espacio del agente. Nunca para pagar, enviar algo
+  en tu nombre, borrar, enviar datos a un sitio nuevo, crear una rutina o ejecutar un comando: estas acciones se te
+  piden cada vez. Quitas un «Siempre» en los ajustes del agente. Una acción hecha con «Siempre» cuenta como aprobada
+  por ti.
+- Para enviar datos a un sitio nuevo, «Rechazar» vale para esta vez y «Rechazar siempre» bloquea ese sitio, hasta que
+  lo desbloquees en los ajustes del agente.
+- Cuando un agente pide algo mientras no estás (una rutina nocturna, por ejemplo), la solicitud te espera en una
+  tarjeta hasta 24 horas y solo se hace después de tu acuerdo; sin respuesta, se abandona.
+- En un agente de la familia, es el miembro al que le toca quien responde a sus tarjetas, y «Siempre» no se ofrece.
+- Cuando es BipAgents quien instala Hermes Agent, los comandos de riesgo siempre piden tu acuerdo (un Hermes Agent que
+  ya tenías conserva sus propios ajustes). **Tú decides: lee la solicitud antes de aceptar.** Eres responsable de lo
+  que apruebas.
 - Según tu configuración de Hermes Agent y las herramientas instaladas, algunas acciones pueden hacerse sin solicitud
   de aprobación. Lo que leen tus agentes (páginas web, correos, archivos) puede contener instrucciones ocultas
   destinadas a desviarlos: mantén activadas las solicitudes de aprobación y da a cada agente solo los accesos que
@@ -167,11 +174,20 @@ IA, en particular para las ultrasuplantaciones.
 Con la oferta todo incluido, la [política de uso aceptable](acceptable-use.es.md) precisa estas reglas para tu plaza
 (spam, ataques, minería de criptomonedas, reventa…) y dice cómo denunciar un abuso: **abuse@bipagents.com**.
 
-## 11. Denunciar un contenido
+## 11. Denunciar una respuesta o un mensaje
 
 - En la app: **mantén pulsada una respuesta › Denunciar esta respuesta**. La denuncia sale desde la app, a través del
   relé de Kerfy Studio, solo a Kerfy Studio, con el texto de la respuesta; si el relé no responde, la app te propone
   enviarla por correo. Díselo también a tu agente para que no vuelva a hacerlo.
+- Un mensaje de otra persona (agente de la familia, agente compartido): **mantén pulsado › Denunciar este mensaje**. La
+  denuncia sale solo a Kerfy Studio, con el texto del mensaje, el nombre de pila que se muestra de su autor y el nombre
+  del agente, sin tu nombre; puedes añadir tu correo si quieres una respuesta. El autor no recibe ningún aviso. Kerfy
+  Studio no lee las conversaciones y no puede borrar un mensaje; si toma una medida contra una cuenta, una plaza o un
+  dispositivo (sección 10, política de uso aceptable), da los motivos a la persona afectada y le dice cómo impugnarla
+  (Reglamento (UE) 2022/2065, artículo 17). También puedes dejar el agente; la persona que creó un agente de la familia
+  puede retirar a un miembro.
+- Lo que prohíbe la sección 10 también está prohibido en un agente de la familia o un agente compartido (acoso,
+  amenazas, odio, contenidos ilícitos, ataques a la vida privada).
 - O escribe a **support@bipagents.com**.
 
 Las respuestas de tus agentes se producen en tu servidor, o en tu plaza con la oferta todo incluido, con el modelo
@@ -189,10 +205,12 @@ with Fish Audio»).
 
 El relé transmite las notificaciones de tu servidor a tu teléfono: es un servicio de «mera transmisión» en el sentido
 del Reglamento (UE) 2022/2065 de servicios digitales. También transmite a Kerfy Studio las denuncias enviadas desde la
-app (sección 11).
+app (sección 11). Con la oferta todo incluido, Kerfy Studio aloja las plazas, incluida la conversación de un agente de
+la familia en la plaza de la persona que lo creó: la política de uso aceptable (secciones 4 y 5) describe entonces cómo
+trata una denuncia.
 
-- **Lo que acepta**: el nombre del agente, un texto genérico e identificadores técnicos. Cualquier otro texto se
-  sustituye automáticamente por un texto genérico; no se conserva ningún contenido.
+- **Lo que acepta**: un texto genérico, identificadores técnicos y, cifrados por tu servidor solo para tu teléfono, el
+  nombre del agente y el comienzo del mensaje, que no puede leer. Cualquier otro texto se sustituye automáticamente por un texto genérico; no se conserva ningún contenido.
 - **Límites**: cuotas por dispositivo y por servidor; por encima, las notificaciones se rechazan.
 - **Bloqueo**: en caso de incumplimiento de la sección 10, Kerfy Studio puede rechazar las notificaciones de un
   dispositivo o de un servidor; esta decisión la toma una persona. Puedes impugnarla escribiendo al punto de

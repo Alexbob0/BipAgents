@@ -242,9 +242,9 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
 
 - La persona que contrata invita a las demás por correo, con un enlace que solo sirve una vez. Cada persona invitada
   crea su propia cuenta y tiene **su propia plaza** y sus agentes; el crédito de IA es el del plan, compartido
-  (sección 6). **Ni la persona que paga ni Kerfy Studio pueden leer sus agentes ni sus conversaciones**, salvo lo que ella misma
-  decida compartir (un agente que comparte, lo que escribe a un agente de la familia, su agenda si la abre
-  al agente de la familia).
+  (sección 6). **Ni la persona que paga ni Kerfy Studio leen sus agentes ni sus conversaciones**, salvo lo que ella
+  decida compartir: un agente que comparte en lectura, lo que escribe en un agente de la familia (que leen sus
+  miembros) y su agenda si la abre a un agente de la familia.
 - **Lo que ve la persona que paga**: cuánto del crédito de IA ha usado cada persona en el mes (un importe en euros, y
   su estimación en mensajes), para seguir el crédito de la familia y fijar límites. **Nunca lo que escribe cada uno ni
   lo que hacen sus agentes.** Cada persona invitada ve lo que queda del crédito para todos, lo que ha usado y su
@@ -413,8 +413,8 @@ estás de acuerdo, puedes cancelar sin coste antes de que se aplique.
 
 - Si hay un problema, escribe primero a **support@bipagents.com** para buscar una solución.
 - **Mediación**: si tu reclamación escrita no ha dado resultado, puedes acudir gratis al mediador de consumo de Kerfy
-  Studio: [por completar: nombre del mediador, dirección postal, sitio web]. Debes hacerlo en el año siguiente a tu
-  reclamación escrita (artículos L612-1, L612-2, L616-1 y R616-1 del Código de Consumo francés).
+  Studio. Mediador: en proceso de designación; no hay ninguna venta durante la beta. Debes hacerlo en el año siguiente
+  a tu reclamación escrita (artículos L612-1, L612-2, L616-1 y R616-1 del Código de Consumo francés).
 - Estas condiciones se rigen por el **derecho francés**. Si eres consumidor y resides en otro país de la Unión
   Europea, conservas además la protección de las normas imperativas de ese país. Los tribunales competentes son los
   indicados en las condiciones de uso (sección 20). Si vives fuera de la Unión Europea, también se aplica la
@@ -440,13 +440,6 @@ los impuestos de tu país, calculados por Stripe Tax, y cancelas en la página d
   fecha y cómo cancelar en línea; un cambio de precio se te anuncia una segunda vez entre 7 y 30 días antes de aplicarse
   (sección 5; Business and Professions Code de California, artículos 17600 y siguientes).
 - **Edad**: ninguna persona menor de 13 años puede usar una plaza (sección 7).
-- **Arbitraje individual**: todo litigio entre tú y Kerfy Studio relacionado con la oferta se resuelve mediante un
-  **arbitraje individual y definitivo**, administrado por [por completar: organismo de arbitraje y sus reglas para los
-  consumidores], y no ante un tribunal. Siempre puedes acudir al tribunal de reclamaciones menores (small claims court)
-  de tu condado para una demanda que sea de su competencia. Kerfy Studio asume los gastos del organismo de arbitraje
-  por encima de lo que pagarías por acudir a un tribunal. **Renuncias a actuar en el marco de una acción colectiva**
-  (class action) o de un arbitraje colectivo, como parte o como miembro. Puedes rechazar esta cláusula de arbitraje
-  escribiendo a support@bipagents.com en los 30 días siguientes a tu contratación; el resto del contrato no cambia.
 - **Responsabilidad**: en la medida en que lo permita la ley de tu estado, la responsabilidad total de Kerfy Studio
   frente a ti se limita al importe que hayas pagado por la oferta durante los 12 meses anteriores al hecho en cuestión,
   y Kerfy Studio no responde de los daños indirectos; para ti, esta regla sustituye a la frase de la sección 14 sobre

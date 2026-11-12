@@ -130,14 +130,22 @@ Dienste, die du mit deinen Agenten verbindest, und für das, was du per SSH tust
 
 - Je nach den Werkzeugen, die du ihnen gibst, können deine Agenten **handeln**: E-Mails senden, surfen und Formulare
   ausfüllen, Dateien bearbeiten, dein Smart Home steuern, Befehle auf deinem Server ausführen.
-- Vor einer sensiblen Aktion **fragt dich der Agent nach deinem Einverständnis** („Ja, mach nur“, „Ja, für dieses Gespräch“ oder „Nein“), in der App oder aus der Benachrichtigung. Wenn BipAgents Hermes Agent installiert, fragen riskante
-  Befehle immer nach deinem Einverständnis (ein Hermes Agent, den du schon hattest, behält seine eigenen
-  Einstellungen).
-  Die App bietet „Immer“ nur für das an, was nicht kritisch ist (deine E-Mails ordnen, in einen Dienst schreiben, den
-  du verbunden hast, Dateien im Bereich des Agenten), Agent für Agent; du nimmst es in den Einstellungen des Agenten
-  zurück. Bei Bezahlen, Senden in deinem Namen, Löschen und riskanten Befehlen wirst du immer gefragt. Eine Anfrage, die
-  entsteht, während du nicht da bist (eine nächtliche Routine), wartet bis zu 24 Stunden auf dich und wird erst nach
-  deinem Einverständnis ausgeführt. **Du entscheidest: Lies die Anfrage, bevor du
+- Vor einer sensiblen Aktion **fragt dich der Agent nach deinem Einverständnis**, in der App oder aus der
+  Benachrichtigung, mit den Knöpfen der Karte, die er dir zeigt (zum Beispiel „Ja, mach nur“, „Ja, für dieses Gespräch“
+  oder „Nein“).
+- Für einen Agenten kannst du „Immer“ nur für harmlose Aktionen wählen: deine E-Mails ordnen, archivieren oder
+  markieren, in einen Dienst schreiben, den du verbunden hast, Dateien im Bereich des Agenten verwalten. Nie für
+  Bezahlen, etwas in deinem Namen senden, Löschen, Daten an eine neue Website senden, eine Routine erstellen oder einen
+  Befehl ausführen: Bei diesen Aktionen wirst du jedes Mal gefragt. Ein „Immer“ nimmst du in den Einstellungen des
+  Agenten zurück. Eine mit „Immer“ ausgeführte Aktion gilt als von dir freigegeben.
+- Beim Senden von Daten an eine neue Website gilt „Ablehnen“ für dieses eine Mal, und „Immer ablehnen“ sperrt diese
+  Website, bis du sie in den Einstellungen des Agenten wieder freigibst.
+- Wenn ein Agent etwas fragt, während du nicht da bist (zum Beispiel eine nächtliche Routine), wartet die Anfrage als
+  Karte bis zu 24 Stunden auf dich und wird erst nach deinem Einverständnis ausgeführt; ohne Antwort wird sie verworfen.
+- In einem Familienagenten antwortet das Mitglied, das gerade an der Reihe ist, auf seine Karten, und „Immer“ wird dort
+  nicht angeboten.
+- Wenn BipAgents Hermes Agent installiert, fragen riskante Befehle immer nach deinem Einverständnis (ein Hermes Agent,
+  den du schon hattest, behält seine eigenen Einstellungen). **Du entscheidest: Lies die Anfrage, bevor du
   zustimmst.** Du bist für das verantwortlich, was du freigibst.
 - Je nach deiner Konfiguration von Hermes Agent und den installierten Werkzeugen können manche Aktionen ohne
   Freigabeanfrage geschehen. Was deine Agenten lesen (Webseiten, E-Mails, Dateien), kann versteckte Anweisungen
@@ -175,11 +183,21 @@ Mit dem Alles-inklusive-Angebot präzisiert die [Richtlinie zur zulässigen Nutz
 für deinen Platz (Spam, Angriffe, Kryptomining, Weiterverkauf …) und sagt, wie du Missbrauch meldest:
 **abuse@bipagents.com**.
 
-## 11. Inhalte melden
+## 11. Eine Antwort oder eine Nachricht melden
 
 - In der App: **lange auf eine Antwort drücken › Diese Antwort melden**. Die Meldung geht aus der App, über das Relay
   von Kerfy Studio, nur an Kerfy Studio, mit dem Text der Antwort; wenn das Relay nicht antwortet, bietet dir die App
   an, sie per E-Mail zu schicken. Sag es auch deinem Agenten, damit er es nicht wieder tut.
+- Eine Nachricht einer anderen Person (Familienagent, geteilter Agent): **lange drücken › Diese Nachricht melden**. Die
+  Meldung geht nur an Kerfy Studio, mit dem Text der Nachricht, dem angezeigten Vornamen ihres Verfassers und dem Namen
+  des Agenten, ohne deinen Namen; du kannst deine E-Mail-Adresse hinzufügen, wenn du eine Antwort möchtest. Der
+  Verfasser wird nicht benachrichtigt. Kerfy Studio liest die Unterhaltungen nicht und kann keine Nachricht löschen;
+  wenn es eine Maßnahme gegen ein Konto, einen Platz oder ein Gerät trifft (Abschnitt 10, Richtlinie zur zulässigen
+  Nutzung), nennt es der betroffenen Person die Gründe und sagt ihr, wie sie widersprechen kann (Verordnung (EU)
+  2022/2065, Art. 17). Du kannst den Agenten auch verlassen; die Person, die einen Familienagenten erstellt hat, kann
+  ein Mitglied entfernen.
+- Was Abschnitt 10 verbietet, ist auch in einem Familienagenten oder einem geteilten Agenten verboten (Belästigung,
+  Drohungen, Hass, rechtswidrige Inhalte, Verletzung der Privatsphäre).
 - Oder schreib an **support@bipagents.com**.
 
 Die Antworten deiner Agenten werden auf deinem Server, oder mit dem Alles-inklusive-Angebot auf deinem Platz, von dem
@@ -198,9 +216,12 @@ aufgenommen („Built with Fish Audio“).
 
 Das Relay leitet die Benachrichtigungen deines Servers an dein Telefon weiter: Es ist ein Dienst der „reinen
 Durchleitung“ im Sinne der Verordnung (EU) 2022/2065 über digitale Dienste. Es leitet auch die aus der App gesendeten
-Meldungen an Kerfy Studio weiter (Abschnitt 11).
+Meldungen an Kerfy Studio weiter (Abschnitt 11). Mit dem Alles-inklusive-Angebot hostet Kerfy Studio die Plätze,
+auch die Unterhaltung eines Familienagenten auf dem Platz der Person, die ihn erstellt hat: Die Richtlinie zur
+zulässigen Nutzung (Abschnitte 4 und 5) beschreibt dann, wie es eine Meldung bearbeitet.
 
-- **Was es annimmt**: den Namen des Agenten, einen allgemeinen Text und technische Kennungen. Jeder andere Text wird
+- **Was es annimmt**: einen allgemeinen Text, technische Kennungen und, von deinem Server nur für dein Telefon
+  verschlüsselt, den Namen des Agenten und den Anfang der Nachricht, die es nicht lesen kann. Jeder andere Text wird
   automatisch durch einen allgemeinen Text ersetzt; kein Inhalt wird gespeichert.
 - **Grenzen**: Kontingente pro Gerät und pro Server; darüber hinaus werden Benachrichtigungen abgelehnt.
 - **Sperre**: Bei einem Verstoß gegen Abschnitt 10 kann Kerfy Studio die Benachrichtigungen eines Geräts oder eines

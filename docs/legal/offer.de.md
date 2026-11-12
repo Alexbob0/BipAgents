@@ -250,9 +250,9 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 
 - Die Person, die abschließt, lädt die anderen per E-Mail ein, mit einem Link, der nur einmal funktioniert. Jede
   eingeladene Person erstellt ihr eigenes Konto und hat **ihren eigenen Platz** und ihre Agenten; das KI-Guthaben ist
-  das des Tarifs, geteilt (Abschnitt 6). **Weder die Person, die zahlt, noch Kerfy Studio können ihre Agenten oder ihre Unterhaltungen lesen**, außer dem,
-  was sie selbst teilen möchte (ein Agent, den sie teilt, was sie einem Familienagenten schreibt, ihr Kalender, wenn sie
-  ihn für den Familienagenten öffnet).
+  das des Tarifs, geteilt (Abschnitt 6). **Weder die Person, die zahlt, noch Kerfy Studio lesen ihre Agenten oder ihre Unterhaltungen**, außer dem,
+  was sie teilen möchte: ein Agent, den sie zum Lesen teilt, was sie in einem Familienagenten schreibt (von seinen
+  Mitgliedern gelesen), und ihr Kalender, wenn sie ihn für einen Familienagenten öffnet.
 - **Was die Person, die zahlt, sieht**: wie viel vom KI-Guthaben jede Person im Monat verbraucht hat (ein Betrag in
   Euro und seine Schätzung in Nachrichten), um das Guthaben der Familie zu verfolgen und Limits zu setzen. **Nie, was
   jemand schreibt oder was seine Agenten tun.** Jede eingeladene Person sieht, was vom Guthaben für alle übrig ist,
@@ -431,8 +431,8 @@ Inkrafttreten kostenlos kündigen.
 
 - Bei einem Problem schreib zuerst an **support@bipagents.com**, um eine Lösung zu suchen.
 - **Schlichtung**: Hat deine schriftliche Beschwerde nichts gebracht, kannst du dich kostenlos an die
-  Verbraucherschlichtungsstelle von Kerfy Studio wenden: [zu ergänzen: Name der Schlichtungsstelle, Postanschrift,
-  Website]. Das musst du innerhalb eines Jahres nach deiner schriftlichen Beschwerde tun (Art. L612-1, L612-2, L616-1
+  Verbraucherschlichtungsstelle von Kerfy Studio wenden. Schlichtungsstelle: wird gerade benannt; während der Beta
+  findet kein Verkauf statt. Das musst du innerhalb eines Jahres nach deiner schriftlichen Beschwerde tun (Art. L612-1, L612-2, L616-1
   und R616-1 des französischen Verbrauchergesetzbuchs).
 - Diese Bedingungen unterliegen **französischem Recht**. Wenn du Verbraucher bist und in einem anderen Land der
   Europäischen Union wohnst, behältst du zusätzlich den Schutz der zwingenden Vorschriften dieses Landes. Zuständig sind
@@ -460,14 +460,6 @@ Stripe (Abschnitte 2 und 11).
   wie du online kündigst; eine Preisänderung wird dir 7 bis 30 Tage vor ihrem Inkrafttreten ein zweites Mal angekündigt
   (Abschnitt 5; California Business and Professions Code, §§ 17600 ff.).
 - **Alter**: Keine Person unter 13 Jahren darf einen Platz nutzen (Abschnitt 7).
-- **Individuelles Schiedsverfahren**: Jeder Streit zwischen dir und Kerfy Studio im Zusammenhang mit dem Angebot wird
-  durch ein **individuelles und endgültiges Schiedsverfahren** beigelegt, durchgeführt von [zu ergänzen: Schiedsstelle
-  und ihre Regeln für Verbraucher], und nicht vor einem Gericht. Du kannst dich immer an das Gericht für geringfügige
-  Forderungen (small claims court) deines Countys wenden, wenn dein Anspruch dorthin gehört. Kerfy Studio trägt die
-  Gebühren der Schiedsstelle, soweit sie über das hinausgehen, was du für die Anrufung eines Gerichts zahlen würdest.
-  **Du verzichtest auf jede Sammelklage** (class action) und jedes Sammelschiedsverfahren, als Partei oder als Mitglied.
-  Du kannst diese Schiedsklausel ablehnen, indem du innerhalb von 30 Tagen nach deinem Abschluss an
-  support@bipagents.com schreibst; der Rest des Vertrags ändert sich nicht.
 - **Haftung**: Soweit das Recht deines Bundesstaats es erlaubt, ist die gesamte Haftung von Kerfy Studio dir gegenüber
   auf den Betrag begrenzt, den du in den 12 Monaten vor dem betreffenden Ereignis für das Angebot bezahlt hast, und
   Kerfy Studio haftet nicht für indirekte Schäden; diese Regel ersetzt für dich den Satz in Abschnitt 14, nach dem die
