@@ -982,7 +982,7 @@ async fn handed_back_the_browser_answers_at_once_and_nothing_pauses_it() {
         assert!(text_of(&answer).starts_with("Error calling tool 'click_element'"));
         assert_eq!(text_of(&answer).contains(browser_mcp::STREAK_HINT), id == 8, "{answer}");
         // with the page's real fields (lab 13/11: guessed names, then the panel clicked open again and again)
-        let fields = "The page's fields now (selector, kind, label): #lastname (text, Nom); #phone (tel, Téléphone)";
+        let fields = "instructions): #lastname (text, Nom); #phone (tel, Téléphone)";
         assert_eq!(text_of(&answer).contains(fields), id == 8, "{answer}");
         assert_eq!(answer["result"]["structuredContent"], json!({"result": false}));
     }
@@ -1168,4 +1168,33 @@ async fn a_browser_that_cannot_start_is_never_a_json_rpc_error() {
         assert!(text_of(&answer).starts_with("the agent's browser could not start"), "{answer}");
         assert_eq!(answer["result"]["structuredContent"], json!({"success": false}));
     }
+}
+
+#[test]
+fn a_terms_box_that_also_names_cookies_is_the_terms() {
+    // second review 13/11: many French sign-up forms word their terms box this way since the CNIL's guidance (terms,
+    // privacy and cookie policies in one sentence); a cookie banner's own choice is not the terms
+    let not_terms = [
+        "J'ai lu et j'accepte les conditions générales d'utilisation et la politique de confidentialité et de cookies  cgu cgu",
+        "Ich akzeptiere die AGB und die Datenschutz- und Cookie-Richtlinie  agb agb",
+        "I agree to the Terms of Use and the Privacy and Cookie Policy  terms terms",
+    ]
+    .into_iter()
+    .filter(|label| !browser_mcp::terms_box(label))
+    .collect::<Vec<_>>();
+    assert!(not_terms.is_empty(), "left to the agent: {not_terms:#?}");
+    assert!(!browser_mcp::terms_box("Accepter les cookies de mesure d'audience (consentement) cookie-consent"));
+}
+
+#[test]
+fn a_script_that_fills_a_form_and_sends_it_is_refused() {
+    // second review 13/11: the fields (the password among them) set from a table, the terms ticked, then sent, in one
+    // script: the site got everything before the check after the call
+    let script = "const data = {'#lastname': 'Testeur', '#register-password': 'Provisoire123!'}; \
+        for (const [s, v] of Object.entries(data)) document.querySelector(s).value = v; \
+        document.querySelector('#cgu').checked = true; document.getElementById('register-form').requestSubmit();";
+    assert!(browser_mcp::script_fills_and_sends(script));
+    assert!(browser_mcp::script_fills_and_sends("f.elements.email.value = 'a@b.c'; f.submit()"));
+    assert!(!browser_mcp::script_fills_and_sends("document.querySelector('#lastname').value = 'Testeur'"));
+    assert!(!browser_mcp::script_fills_and_sends("document.getElementById('register-form').requestSubmit()"));
 }

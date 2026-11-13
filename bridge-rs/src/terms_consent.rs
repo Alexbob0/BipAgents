@@ -62,20 +62,28 @@ pub fn tool() -> Value {
 // --- the box in the page --------------------------------------------------------------------------------------------
 
 /// Finds, in one frame, the box not ticked whose label holds `box` (or is held in it), accents, case and punctuation
-/// aside; with `apply`, ticks it if it is a terms or consent box. Run in an isolated world: it reads no value, and its
-/// click is the page's own `click`.
+/// aside: its `<label>`, the text it is labelled by (`aria-labelledby`), else the short text around it (second review
+/// 13/11: a box whose text is a span beside it), and its aria-label; among several, the one shown (a form's hidden
+/// mobile copy left out). With `apply`, ticks it if it is a terms or consent box (a cookie banner's choice is not,
+/// unless it also names the terms). Run in an isolated world: it reads no value, and its click is the page's own `click`.
 pub fn box_script(wanted: &str, apply: bool) -> String {
     let wanted = serde_json::to_string(wanted).unwrap_or_else(|_| "\"\"".into());
     format!(
         "(() => {{ \
 const norm = (t) => (t || '').toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim(); \
 const TERMS = /\\b(cgu|cgv|agb|rgpd|gdpr)\\b|terms|conditions|consent|privacy|confidentialit|datenschutz|terminos|condiciones|politique de/; \
+const STRONG = /\\b(cgu|cgv|agb)\\b|conditions|terms|terminos|condiciones|nutzungsbedingungen/; \
 const want = norm({wanted}); \
-const label = (e) => ([...(e.labels || [])].map((l) => l.innerText).join(' ') + ' ' + ((e.getAttribute && e.getAttribute('aria-label')) || '')).replace(/\\s+/g, ' ').trim(); \
-const found = [...document.querySelectorAll('input[type=checkbox]')].filter((e) => !e.disabled && !e.checked).filter((e) => {{ const t = norm(label(e)); return t && want && (t.includes(want) || want.includes(t)); }}); \
+const label = (e) => {{ const own = [...(e.labels || [])].map((l) => l.innerText).join(' '); \
+const by = ((e.getAttribute && e.getAttribute('aria-labelledby')) || '').split(/\\s+/).map((i) => ((document.getElementById(i) || {{}}).innerText || '')).join(' '); \
+const p = e.parentElement; const around = own || by.trim() ? '' : (p && p.innerText.length <= 300 ? p.innerText : ((e.nextElementSibling || {{}}).innerText || '')); \
+return [own, by, around, (e.getAttribute && e.getAttribute('aria-label')) || ''].join(' ').replace(/\\s+/g, ' ').trim(); }}; \
+const seen = (e) => e.getClientRects().length > 0 || [...(e.labels || [])].some((l) => l.getClientRects().length > 0); \
+let found = [...document.querySelectorAll('input[type=checkbox]')].filter((e) => !e.disabled && !e.checked).filter((e) => {{ const t = norm(label(e)); return t && want && (t.includes(want) || want.includes(t)); }}); \
+if (found.length > 1) {{ const shownOnes = found.filter(seen); if (shownOnes.length >= 1) found = shownOnes; }} \
 if (found.length !== 1) return JSON.stringify({{count: found.length}}); \
-const box = found[0]; const shown = label(box).slice(0, 300); \
-const terms = TERMS.test(norm(shown + ' ' + (box.name || '') + ' ' + (box.id || ''))) && !/cookie/.test(norm(shown)); \
+const box = found[0]; const shown = label(box).slice(0, 300); const all = norm(shown + ' ' + (box.name || '') + ' ' + (box.id || '')); \
+const terms = TERMS.test(all) && (!/cookie/.test(all) || STRONG.test(all)); \
 if (!{apply} || !terms) return JSON.stringify({{count: 1, label: shown, terms: terms}}); \
 box.scrollIntoView({{block: 'center'}}); box.click(); \
 if (!box.checked) {{ box.checked = true; box.dispatchEvent(new Event('input', {{bubbles: true}})); box.dispatchEvent(new Event('change', {{bubbles: true}})); }} \
@@ -328,6 +336,9 @@ pub async fn call(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> Di
              asked for it (a newsletter, « remember me »)."
         ));
     }
+    if crate::browsers::hold_token(&config, &agent.name).is_some() {
+        return refusal(WAIT); // before a held « Oui » is used: it stays for the next call (second review 13/11)
+    }
     let key = command(&origin, &label);
     let held_grant = {
         let (c, name, k) = (config.clone(), agent.name.clone(), key.clone());
@@ -431,7 +442,8 @@ mod tests {
         assert!(script.contains("const want = norm(\"J'accepte\\\"); alert(1); (\\\"\");"), "{script}");
         assert!(script.contains("if (!false || !terms)"));
         assert!(box_script("x", true).contains("if (!true || !terms)"));
-        assert!(script.contains("!/cookie/.test"));
+        assert!(script.contains("!/cookie/.test(all) || STRONG.test(all)") && script.contains("aria-labelledby"));
+        assert!(script.contains("found.filter(seen)"));
     }
 
     #[test]
