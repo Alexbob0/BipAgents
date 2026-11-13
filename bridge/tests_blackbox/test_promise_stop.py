@@ -7,6 +7,8 @@ import asyncio
 import threading
 import time
 
+import pytest
+
 from bbkit.common import AUTH, read_sse, sse
 from bbkit.servers import wait_until
 
@@ -575,3 +577,24 @@ def test_ok_words_sent_before_the_start_do_start(bridges, fakes):
     fakes.hermes.start_failures = 0   # Hermes takes runs again (else the queue's own start meets the fake's 502)
     assert wait_until(lambda: any("laisse tomber" in str(s["input"]) for s in fakes.hermes.started.values()), timeout=8)
     assert not bridge.get("/v1/agents/wellness/queue", headers=AUTH).json().get("paused")
+
+
+# -- fourth review of 13/11 (failed before its fix) ---------------------------------------------------------------------
+
+WAITS_FOR_THEM = [
+    "Je te prépare une version imprimable si tu veux !",
+    "I'll put together a shopping list if you'd like.",
+    "Dis-moi si ça te va et je lance la commande.",
+    "Let me know if this works for you and I'll send the invite.",
+    "Envoie-moi le lien et je regarde.",
+]
+
+
+@pytest.mark.parametrize("reply", WAITS_FOR_THEM)
+def test_an_offer_or_a_request_for_their_yes_is_not_continued(bridges, fakes, reply):
+    bridge = bridges.new().start()
+    fakes.hermes.runs["run_vie"] = turn("run_vie", reply)
+    fakes.hermes.runs["r1"] = turn("r1", "C'est fait : commande passée.", tools=["mcp__stealth__navigate"])
+    events = follow(bridge, "run_vie")
+    hidden = {r: s["input"][:120] for r, s in fakes.hermes.started.items()}
+    assert notices(events) == [] and hidden == {}, f"a hidden turn told to do it now: {hidden}"
