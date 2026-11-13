@@ -2,7 +2,7 @@
 
 # Richtlinie zur zulässigen Nutzung des Alles-inklusive-Angebots
 
-> Zuletzt aktualisiert: 28. Oktober 2026.
+> Zuletzt aktualisiert: 13. November 2026.
 
 ## 1. Wozu sie dient
 
@@ -43,6 +43,12 @@ lassen für:
 Wenn deine Agenten surfen oder einen Online-Dienst nutzen, müssen sie **die Nutzungsbedingungen dieser Website oder
 dieses Dienstes** und die Rechte anderer **beachten**: Dafür stehst du ein.
 
+**Zwischen Menschen.** In der gemeinsamen Unterhaltung eines Familienagenten liest jedes Mitglied, was die anderen
+schreiben; ein zum Lesen geteilter Agent zeigt deinen Angehörigen deine Unterhaltungen
+([Datenschutzerklärung](privacy.de.md), Abschnitt 2 bis). Was du dort schreibst oder zeigst, folgt denselben Regeln
+wie alles andere: keine Belästigung, keine Drohungen, kein Hass, keine rechtswidrigen Inhalte, keine privaten Daten
+einer anderen Person ohne ihre Einwilligung, kein Auftreten unter fremdem Namen (Nutzungsbedingungen, Abschnitt 10).
+
 ## 3. Deine Verantwortung
 
 Du stehst für das ein, was du und deine Agenten von deinem Platz aus tun, mit deinem Einverständnis oder weil deine
@@ -66,8 +72,13 @@ Hoster und Behörden.
   - eine Erklärung, dass du in gutem Glauben davon überzeugt bist, dass diese Angaben richtig und vollständig sind.
 - **Danach**: Wir bestätigen den Eingang unverzüglich und teilen dir mit, was wir entschieden haben.
 
-Für eine Antwort deiner eigenen Agenten, die dich stört, nutze stattdessen „Diese Antwort melden“ in der App
-(Nutzungsbedingungen, Abschnitt 11). **Wenn das Leben oder die Sicherheit einer Person bedroht ist, ruf zuerst den
+**In der App** geht es einfacher: **lange drücken › Diese Nachricht melden** auf der Nachricht eines Angehörigen, oder
+**Diese Antwort melden** auf der Antwort eines Agenten. Die Meldung geht über das Relay von Kerfy Studio, bei der
+Nachricht eines Angehörigen danach per E-Mail, nur an Kerfy Studio, mit dem gemeldeten Text. Ihr Verfasser wird nicht
+benachrichtigt. Deine E-Mail-Adresse ist freiwillig und dient nur dazu, dir zu antworten. Was gesendet wird und wie
+lange es aufbewahrt wird: [Datenschutzerklärung](privacy.de.md), Abschnitt 4.2; siehe auch die Nutzungsbedingungen,
+Abschnitt 11.
+**Wenn das Leben oder die Sicherheit einer Person bedroht ist, ruf zuerst den
 Notruf (112).**
 
 ## 5. Was Kerfy Studio tut
@@ -88,6 +99,11 @@ Notruf (112).**
 - **Ende des Abos**: Bei einem schweren oder wiederholten Verstoß kann Kerfy Studio das Abo beenden, nachdem es dich
   aufgefordert hat, den Verstoß abzustellen, außer in dringenden Fällen oder bei einem besonders schweren Verstoß
   (Bedingungen des Angebots, Abschnitt 11).
+- **In der App gemachte Meldungen**: Kerfy Studio kann Inhalte auf dem Server oder dem Platz einer Person weder
+  lesen noch löschen. Es kann dir antworten, die Person benachrichtigen, die den Familienagenten erstellt hat, die
+  betroffene Person verwarnen und bei einem schweren Verstoß die oben genannten Maßnahmen ergreifen, bis hin zur
+  Beendigung des Abonnements für das Angebot, mit Begründung. Die Person, die einen Familienagenten erstellt hat, kann
+  auch ein Mitglied entfernen.
 - **Behörden**: Kerfy Studio beantwortet die gesetzlich vorgesehenen Anordnungen und Auskunftsersuchen von Behörden und
   informiert sie unverzüglich, wenn es von einer Straftat erfährt, die das Leben oder die Sicherheit einer Person
   bedroht (Art. 18 der Verordnung (EU) 2022/2065).

@@ -2,7 +2,7 @@
 
 # Política de uso aceptable de la oferta todo incluido
 
-> Última actualización: 28 de octubre de 2026.
+> Última actualización: 13 de noviembre de 2026.
 
 ## 1. Para qué sirve
 
@@ -41,6 +41,12 @@ Te comprometes a no usar tu plaza, tus agentes ni tu crédito de IA, ni a dejar 
 Cuando tus agentes navegan o usan un servicio en línea, deben **respetar las condiciones de uso de ese sitio o de ese
 servicio** y los derechos de los demás: tú respondes de ello.
 
+**Entre personas.** En la conversación común de un agente de la familia, cada miembro lee lo que escriben los demás;
+un agente compartido en lectura muestra tus conversaciones a tus allegados
+([política de privacidad](privacy.es.md), sección 2 bis). Lo que escribes o muestras ahí sigue las mismas reglas que
+todo lo demás: nada de acoso, amenazas ni odio, nada de contenido ilícito, nada de datos privados de otra persona sin
+su consentimiento, nada de suplantar a nadie (condiciones de uso, sección 10).
+
 ## 3. Tu responsabilidad
 
 Respondes de lo que haces tú y de lo que hacen tus agentes desde tu plaza, con tu acuerdo o porque tu configuración lo
@@ -64,8 +70,12 @@ que los proveedores de alojamiento y las autoridades.
   - una declaración que confirme que crees de buena fe que esta información es exacta y completa.
 - **Después**: acusamos recibo sin demora y te decimos lo que hemos decidido.
 
-Para una respuesta de tus propios agentes que te moleste, usa mejor «Denunciar esta respuesta» en la app (condiciones
-de uso, sección 11). **Si la vida o la seguridad de una persona está amenazada, llama primero a los servicios de
+**En la app** es más sencillo: **mantén pulsado › Denunciar este mensaje** en el mensaje de un allegado, o
+**Denunciar esta respuesta** en la respuesta de un agente. La denuncia sale por el relé de Kerfy Studio, y luego por
+correo para el mensaje de un allegado, solo a Kerfy Studio, con el texto denunciado. Su autor no recibe ningún aviso.
+Tu correo es opcional y solo sirve para responderte. Qué se envía y cuánto tiempo se conserva:
+[política de privacidad](privacy.es.md), sección 4.2; ver también las condiciones de uso, sección 11.
+**Si la vida o la seguridad de una persona está amenazada, llama primero a los servicios de
 emergencia (112).**
 
 ## 5. Lo que hace Kerfy Studio
@@ -84,6 +94,10 @@ emergencia (112).**
 - **Fin de la suscripción**: por un incumplimiento grave o repetido, Kerfy Studio puede poner fin a la suscripción,
   después de haberte requerido que cese, salvo urgencia o incumplimiento de especial gravedad (condiciones de la
   oferta, sección 11).
+- **Denuncias hechas en la app**: Kerfy Studio no puede ni leer ni borrar un contenido en el servidor o la plaza de
+  una persona. Puede responderte, avisar a la persona que creó el agente de la familia, advertir a la persona afectada
+  y, ante un incumplimiento grave, tomar las medidas anteriores, hasta poner fin a la suscripción a la oferta, con sus
+  motivos. La persona que creó un agente de la familia también puede retirar a un miembro.
 - **Autoridades**: Kerfy Studio responde a las órdenes y requerimientos de las autoridades previstos por la ley, y les
   informa sin demora si conoce un delito que amenaza la vida o la seguridad de una persona (artículo 18 del Reglamento
   (UE) 2022/2065).

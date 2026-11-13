@@ -2,7 +2,7 @@
 
 # Politique d'usage acceptable de l'offre tout compris
 
-> Dernière mise à jour : 28 octobre 2026.
+> Dernière mise à jour : 13 novembre 2026.
 
 ## 1. À quoi elle sert
 
@@ -41,6 +41,12 @@ Tu t'engages à ne pas utiliser ta place, tes agents ou ton crédit d'IA, ni lai
 Quand tes agents naviguent ou utilisent un service en ligne, ils doivent **respecter les conditions d'utilisation de
 ce site ou de ce service** et les droits des autres : c'est toi qui en réponds.
 
+**Entre personnes.** Dans la conversation commune d'un agent de la famille, chaque membre lit ce que les autres
+écrivent ; un agent partagé en lecture montre tes conversations à tes proches
+([politique de confidentialité](privacy.fr.md), section 2 bis). Ce que tu y écris ou y montres suit les mêmes règles
+que tout le reste : pas de harcèlement, de menaces ni de haine, pas de contenu illicite, pas de données privées d'une
+autre personne sans son accord, pas d'usurpation d'identité (conditions d'utilisation, section 10).
+
 ## 3. Ta responsabilité
 
 Tu réponds de ce que tu fais et de ce que tes agents font depuis ta place, avec ton accord ou parce que ta
@@ -64,8 +70,12 @@ hébergeurs et les autorités.
   - une déclaration confirmant que tu crois, de bonne foi, ces informations exactes et complètes.
 - **Ensuite** : nous accusons réception sans tarder et te disons ce que nous avons décidé.
 
-Pour une réponse de tes propres agents qui te pose problème, utilise plutôt « Signaler cette réponse » dans l'app
-(conditions d'utilisation, section 11). **En cas de menace pour la vie ou la sécurité d'une personne, appelle d'abord
+**Dans l'app**, c'est plus simple : **appui long › Signaler ce message** sur le message d'un proche, ou **Signaler
+cette réponse** sur une réponse d'un agent. Le signalement part par le relais de Kerfy Studio, puis par e-mail pour le
+message d'un proche, à Kerfy Studio seulement, avec le texte signalé. Son auteur n'en est pas prévenu. Ton e-mail est
+facultatif et ne sert qu'à te répondre. Ce qui est envoyé et combien de temps c'est gardé :
+[politique de confidentialité](privacy.fr.md), section 4.2 ; voir aussi les conditions d'utilisation, section 11.
+**En cas de menace pour la vie ou la sécurité d'une personne, appelle d'abord
 les secours (112).**
 
 ## 5. Ce que fait Kerfy Studio
@@ -84,6 +94,10 @@ les secours (112).**
 - **Fin de l'abonnement** : pour un manquement grave ou répété, Kerfy Studio peut mettre fin à l'abonnement, après
   t'avoir mis en demeure de cesser, sauf urgence ou manquement d'une particulière gravité (conditions de l'offre,
   section 11).
+- **Signalements faits dans l'app** : Kerfy Studio ne peut ni lire ni effacer un contenu sur le serveur ou la place
+  d'une personne. Il peut te répondre, prévenir la personne qui a créé l'agent de la famille, avertir la personne
+  visée et, pour un manquement grave, prendre les mesures ci-dessus, jusqu'à la fin de l'abonnement à l'offre, avec
+  ses motifs. La personne qui a créé un agent de la famille peut aussi retirer un membre.
 - **Autorités** : Kerfy Studio répond aux injonctions et aux réquisitions des autorités prévues par la loi, et les
   prévient sans tarder s'il apprend qu'une infraction menace la vie ou la sécurité d'une personne (article 18 du
   règlement (UE) 2022/2065).
