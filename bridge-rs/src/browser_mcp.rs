@@ -303,9 +303,10 @@ pub fn terms_box(label: &str) -> bool {
 
 static SENDS: LazyLock<Regex> = LazyLock::new(|| {
     // a form sent, or a button clicked (an app without a form sends on its button's click: third review 13/11)
-    // jQuery's `.trigger('submit')` too (fifth review 13/11: many shops load it)
+    // jQuery's `.trigger('submit')` too (fifth review 13/11: many shops load it); `submit.call(form)`, `form['submit']()`
+    // (seventh)
     Regex::new(
-        r#"(?i)requestsubmit|\.submit\s*\(|\.click\s*\(|new\s+(submit|mouse|pointer)?event\s*\(\s*["'`](submit|click)|\.trigger(handler)?\s*\(\s*["'`](submit|click)"#,
+        r#"(?i)requestsubmit|\.submit\s*\(|\.click\s*\(|new\s+(submit|mouse|pointer)?event\s*\(\s*["'`](submit|click)|\.trigger(handler)?\s*\(\s*["'`](submit|click)|\b(submit|click)\b\s*(\.\s*(call|apply|bind)\b|["'`]\s*\]\s*\()"#,
     )
     .expect("valid regex")
 });

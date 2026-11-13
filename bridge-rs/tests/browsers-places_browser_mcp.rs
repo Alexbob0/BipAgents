@@ -1362,3 +1362,23 @@ fn review6_a_password_read_as_the_focused_field_is_refused() {
     let script = "btoa(document.activeElement.value)";
     assert!(browser_mcp::script_reads_password(script, Some(&page)), "{script}");
 }
+
+// --- seventh review of fix-signup-hold (e2070a5d6): a remark, not blocking ------------------------------------------
+
+#[test]
+fn review7_a_form_sent_through_the_prototype_after_one_click_is_refused() {
+    // one click (the terms' label found by its text), then the form sent without `.submit(` / `requestSubmit` words
+    let page = json!({"pw": {}, "known": [], "boxes": ["#cgu"]});
+    let passed = [
+        "[...document.querySelectorAll('label')].find((l) => l.innerText.includes(\"J'accepte\")).click(); \
+         HTMLFormElement.prototype.submit.call(document.getElementById('register-form'));",
+        "[...document.querySelectorAll('label')].find((l) => l.innerText.includes(\"J'accepte\")).click(); \
+         document.getElementById('register-form')['submit']();",
+    ]
+    .into_iter()
+    .filter(|script| !browser_mcp::script_fills_and_sends(script, Some(&page)))
+    .collect::<Vec<_>>();
+    assert!(passed.is_empty(), "not refused: {passed:#?}");
+    // a submit button found by its selector is no sending
+    assert!(!browser_mcp::script_fills_and_sends("document.querySelector('button[type=submit]').innerText", Some(&page)));
+}
