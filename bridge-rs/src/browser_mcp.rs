@@ -451,9 +451,10 @@ pub fn never_relayed(method: &str, params: Option<&Value>) -> Option<Value> {
 
 /// Addresses the agent's browser never opens for it (security audit 11/11): a file of the container
 /// (`file:///run/bipagents/…` holds the screen's password and the DevTools secret), a page's source, Chrome's own
-/// pages and DevTools, an extension's page. Chrome's managed policy blocks them too (browser/policies.json).
-pub const REFUSED_SCHEMES: [&str; 6] =
-    ["file:", "view-source:", "chrome:", "devtools:", "chrome-devtools:", "chrome-extension:"];
+/// pages and DevTools, an extension's page. Chrome's managed policy blocks them too (browser/policies.json), but
+/// chrome-untrusted: (Chrome's reading mode and Google Lens, which the person may open, are pages of it).
+pub const REFUSED_SCHEMES: [&str; 7] =
+    ["file:", "view-source:", "chrome:", "chrome-untrusted:", "devtools:", "chrome-devtools:", "chrome-extension:"];
 
 /// A tool's call to an address of `REFUSED_SCHEMES` (its `url` argument: `navigate`, `new_tab`; Chrome drops tabs,
 /// newlines and spaces from an address, so they are dropped here too): the refusal for the agent, else None.
@@ -1726,5 +1727,15 @@ out of your reach";
             assert!(refused_address("navigate", &args(url)).is_none(), "{url}");
         }
         assert!(refused_address("click_element", json!({"selector": "a"}).as_object().unwrap()).is_none());
+    }
+
+    /// Review of 13/11: chrome-untrusted: is Chrome's own pages too. Neither the bridge nor the policy stopped it, and
+    /// a tab sent there keeps that address (an error page): one that looks like Chrome's UI to the top-chrome filters.
+    #[test]
+    fn chrome_untrusted_addresses_are_refused() {
+        let args = |url: &str| json!({"url": url}).as_object().unwrap().clone();
+        assert!(refused_address("navigate", &args("chrome-untrusted://foo.top-chrome/")).is_some());
+        assert!(refused_address("new_tab", &args("CHROME-UNTRUSTED://tab-search.top-chrome/")).is_some());
+        assert!(refused_address("navigate", &args(" chrome-untrusted://new-tab-page/one-google-bar")).is_some());
     }
 }

@@ -182,3 +182,63 @@ def test_the_persons_browser_and_two_servers_share_one_chrome(container):
     out = subprocess.run([ENGINE, "exec", container, "pgrep", "-a", "-f", "--", "--remote-debugging-port=9222"],
                          capture_output=True, text=True).stdout
     assert len([line for line in out.splitlines() if "--type=" not in line]) == 1   # one Chrome, never two
+
+
+# Run in the container (the server's Python has websockets): addresses sent to a new tab, what Chrome answers; and
+# where the new tab page's own frames are.
+ASK = """
+import asyncio, json, sys, urllib.request
+import websockets
+async def main():
+    version = json.load(urllib.request.urlopen("http://127.0.0.1:9222/json/version"))
+    async with websockets.connect(version["webSocketDebuggerUrl"], max_size=None) as ws:
+        n = 0
+        async def call(method, params=None, session=None):
+            nonlocal n
+            n += 1
+            await ws.send(json.dumps({"id": n, "method": method, "params": params or {},
+                                      **({"sessionId": session} if session else {})}))
+            while True:
+                answer = json.loads(await ws.recv())
+                if answer.get("id") == n:
+                    return answer.get("result", {})
+        out = {}
+        for url in sys.argv[1:]:
+            tab = (await call("Target.createTarget", {"url": "about:blank"}))["targetId"]
+            session = (await call("Target.attachToTarget", {"targetId": tab, "flatten": True}))["sessionId"]
+            out[url] = (await call("Page.navigate", {"url": url}, session)).get("errorText")
+        await asyncio.sleep(3)
+        frames = []
+        for target in (await call("Target.getTargets"))["targetInfos"]:
+            if target["type"] == "iframe":
+                attached = await call("Target.attachToTarget", {"targetId": target["targetId"], "flatten": True})
+                session = attached["sessionId"]
+                href = await call("Runtime.evaluate", {"expression": "location.href", "returnByValue": True}, session)
+                frames.append(href["result"]["value"])
+        out["frames"] = frames
+        print(json.dumps(out))
+asyncio.run(main())
+"""
+
+
+def test_chrome_reads_the_images_policies(container):
+    """policies.json as Chrome reads it in the image. Chrome says nothing, even in its log, of a policy file it could
+    not read (tried 13/11): what it refuses shows the file was read (chrome://version). The new tab page renders with
+    its own frame (its Gmail / Images / apps bar, chrome-untrusted://new-tab-page: never blocked)."""
+    subprocess.run([ENGINE, "exec", "-d", container, "/opt/stealth/open_browser.sh"], check=True)
+    listing = "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:9222/json/list').read().decode())"
+    for _ in range(100):
+        out = subprocess.run([ENGINE, "exec", container, "python3.11", "-I", "-c", listing],
+                             capture_output=True, text=True).stdout
+        if any(t["type"] == "page" for t in json.loads(out or "[]")):
+            break
+        time.sleep(0.2)
+    asked = ["chrome://version/", "chrome://newtab/"]
+    answer = subprocess.run([ENGINE, "exec", container, "/opt/stealth/venv/bin/python", "-I", "-c", ASK, *asked],
+                            capture_output=True, text=True, check=True).stdout
+    seen = json.loads(answer)
+    assert seen["chrome://version/"] == "net::ERR_BLOCKED_BY_ADMINISTRATOR", seen
+    assert seen["chrome://newtab/"] is None
+    assert any(f.startswith("chrome-untrusted://new-tab-page/") for f in seen["frames"]), seen["frames"]
+    assert not any(f.startswith("chrome-error://") for f in seen["frames"]), seen["frames"]
+

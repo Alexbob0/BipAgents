@@ -21,6 +21,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import urllib.parse
 from pathlib import Path
 
 import httpx
@@ -41,6 +42,17 @@ CANDIDATES = [os.environ.get("BIP_CHROME", ""),
               shutil.which("chromium") or "", shutil.which("google-chrome") or ""]
 CHROME = next((c for c in CANDIDATES if c and os.path.exists(c)), None)
 pytestmark = pytest.mark.skipif(CHROME is None, reason="no Chromium on this machine")
+
+
+LOOKALIKE = "chrome-untrusted://foo.top-chrome/"   # no page of Chrome behind it: an error page, in a real tab
+
+
+def tab(target):
+    """A tab of the browser: a page target but Chrome's own UI (since Chrome 157 its address bar's suggestion popup,
+    chrome://omnibox-popup.top-chrome/, is a page with no window; the bridge leaves those alone)."""
+    parts = urllib.parse.urlsplit(target["url"])
+    return target["type"] == "page" and not (parts.scheme in ("chrome", "chrome-untrusted")
+                                             and (parts.hostname or "").endswith(".top-chrome"))
 
 
 # What an agent's `execute_script` could plant before pay_with_card: card fields of its own (found first), a listener
@@ -108,7 +120,7 @@ class Browser:
                         return answer.get("result", {})
 
             for target in call("Target.getTargets")["targetInfos"]:
-                if target["type"] not in ("page", "iframe"):
+                if not (tab(target) or target["type"] == "iframe"):
                     continue
                 session = call("Target.attachToTarget", {"targetId": target["targetId"], "flatten": True})["sessionId"]
                 got = call("Runtime.evaluate", {"returnByValue": True, "expression":
@@ -145,7 +157,7 @@ class Browser:
         return got["result"].get("value")
 
     def pages(self):
-        return [t["url"] for t in self.call("Target.getTargets")["targetInfos"] if t["type"] == "page"]
+        return [t["url"] for t in self.call("Target.getTargets")["targetInfos"] if tab(t)]
 
     def open(self, url, wait=1.5):
         """The agent's tab (the only one, or the one given) sent to `url`."""
@@ -173,6 +185,8 @@ def test_a_providers_frame_on_another_site(bridges, fakes):
         assert browser.run(PLANT, "elements.html") == '["marker"]'
         browser.call("Target.createTarget", {"url": f"http://127.0.0.1:{shop.server_port}/done.html?other",
                                              "background": True})
+        # and one on an address like Chrome's own UI (review of 13/11): an error page in a real tab, closed all the same
+        browser.call("Target.createTarget", {"url": LOOKALIKE, "background": True})
         time.sleep(1)
         targets = browser.call("Target.getTargets")["targetInfos"]
         agents_tab = next(t["targetId"] for t in targets if t["type"] == "page" and "elements.html" in t["url"])
@@ -182,6 +196,7 @@ def test_a_providers_frame_on_another_site(bridges, fakes):
         assert result["isError"] is False, result
         assert " on 127.0.0.1 with card " in asked
         assert [u.split("?")[0].split("/")[-1] for u in browser.pages()] == ["elements.html"]   # the other tab closed
+        assert LOOKALIKE not in [t["url"] for t in browser.call("Target.getTargets")["targetInfos"]]
         values = browser.values()
         # Typed into the page reloaded under the hold: the agent's own fields are gone with the old document.
         assert values["elements.html"] == {"holder": "Alex Martin", "ship": ""}    # the shipping postcode left alone
