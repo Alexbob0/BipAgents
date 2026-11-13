@@ -64,8 +64,9 @@ pub fn tool() -> Value {
 /// Finds, in one frame, the box not ticked whose label holds `box` (or is held in it), accents, case and punctuation
 /// aside: its `<label>`, the text it is labelled by (`aria-labelledby`), else the text right after it up to the next
 /// field or line break (second review 13/11: a box whose text is a span beside it; third: two boxes in one paragraph;
-/// fourth: a `<label>` tied to nothing right after it), or its parent's when that holds this box only, and its aria-label; among several, the one shown (a form's hidden
-/// mobile copy left out). With `apply`, ticks it if it is a terms or consent box (a cookie banner's choice is not,
+/// fourth: a `<label>` tied to nothing right after it), or its parent's when that holds this box only, or a web
+/// component's text (the box in its open shadow root: fifth), and its aria-label; among several, the one shown (a
+/// form's hidden mobile copy left out). With `apply`, ticks it if it is a terms or consent box (a cookie banner's choice is not,
 /// unless it also names the terms). Run in an isolated world: it reads no value, and its click is the page's own `click`.
 pub fn box_script(wanted: &str, apply: bool) -> String {
     let wanted = serde_json::to_string(wanted).unwrap_or_else(|_| "\"\"".into());
@@ -75,15 +76,17 @@ const norm = (t) => (t || '').toLowerCase().normalize('NFD').replace(/[\\u0300-\
 const TERMS = /\\b(cgu|cgv|agb|rgpd|gdpr)\\b|terms|conditions|consent|privacy|confidentialit|datenschutz|terminos|condiciones|politique de/; \
 const STRONG = /\\b(cgu|cgv|agb)\\b|conditions|terms|terminos|condiciones|nutzungsbedingungen/; \
 const want = norm({wanted}); \
-const label = (e) => {{ const own = [...(e.labels || [])].map((l) => l.innerText).join(' '); \
-const by = ((e.getAttribute && e.getAttribute('aria-labelledby')) || '').split(/\\s+/).map((i) => ((document.getElementById(i) || {{}}).innerText || '')).join(' '); \
+const label = (e) => {{ const root = e.getRootNode(); const own = [...(e.labels || [])].map((l) => l.innerText).join(' ').trim(); \
+const by = ((e.getAttribute && e.getAttribute('aria-labelledby')) || '').split(/\\s+/).filter(Boolean).map((i) => ((((root.getElementById ? root : document).getElementById(i)) || {{}}).innerText || '')).join(' '); \
 let around = ''; if (!own && !by.trim()) {{ for (let n = e.nextSibling; n && around.length < 300; n = n.nextSibling) {{ \
 if (n.nodeType === 1 && n.matches('label') && !n.control) {{ around += ' ' + n.textContent; break; }} \
 if (n.nodeType === 1 && n.matches('input, select, textarea, button, br, label')) break; around += ' ' + n.textContent; }} \
-const p = e.parentElement; if (!around.trim() && p && p.innerText.length <= 300 && p.querySelectorAll('input').length === 1) around = p.innerText; }} \
+const p = e.parentElement; if (!around.trim() && p && p.innerText.length <= 300 && p.querySelectorAll('input').length === 1) around = p.innerText; \
+if (!around.trim() && root.host) around = (root.host.innerText || root.host.textContent || '').slice(0, 300); }} \
 return [own, by, around, (e.getAttribute && e.getAttribute('aria-label')) || ''].join(' ').replace(/\\s+/g, ' ').trim(); }}; \
+const roots = []; const walk = (r) => {{ roots.push(r); for (const e of r.querySelectorAll('*')) if (e.shadowRoot) walk(e.shadowRoot); }}; walk(document); \
 const seen = (e) => e.getClientRects().length > 0 || [...(e.labels || [])].some((l) => l.getClientRects().length > 0); \
-let found = [...document.querySelectorAll('input[type=checkbox]')].filter((e) => !e.disabled && !e.checked).filter((e) => {{ const t = norm(label(e)); return t && want && (t.includes(want) || want.includes(t)); }}); \
+let found = roots.flatMap((r) => [...r.querySelectorAll('input[type=checkbox]')]).filter((e) => !e.disabled && !e.checked).filter((e) => {{ const t = norm(label(e)); return t && want && (t.includes(want) || want.includes(t)); }}); \
 if (found.length > 1) {{ const shownOnes = found.filter(seen); if (shownOnes.length >= 1) found = shownOnes; }} \
 if (found.length !== 1) return JSON.stringify({{count: found.length}}); \
 const box = found[0]; const shown = label(box).slice(0, 300); const all = norm(shown + ' ' + (box.name || '') + ' ' + (box.id || '')); \

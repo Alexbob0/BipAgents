@@ -684,7 +684,10 @@ characters of this page. To read on, run execute_script with: "
     );
     assert_eq!(answer["result"]["structuredContent"]["html"], json!(""));
     assert_eq!(answer["result"]["structuredContent"]["url"], json!("https://mail.example.test/inbox"));
-    assert_eq!(calls(tmp).iter().map(|c| c["name"].as_str().unwrap()).collect::<Vec<_>>(), ["execute_script"]);
+    // the readable text, then the check that it holds no password (fifth review 13/11: one put in the page's title)
+    let scripts = calls(tmp);
+    assert_eq!(scripts.iter().map(|c| c["name"].as_str().unwrap()).collect::<Vec<_>>(), ["execute_script"; 2]);
+    assert!(scripts[1]["arguments"]["script"].as_str().unwrap().starts_with("/* bipagents guard: shown */"));
     // with its frames: the real tool
     proxy.handle(tool(2, "get_page_content", json!({"instance_id": "319ceedb", "include_frames": true}))).await;
     assert_eq!(out.messages().last().unwrap()["result"]["content"][0]["text"], "did get_page_content");
@@ -1079,7 +1082,8 @@ async fn what_slips_past_the_checks_before_a_call_is_undone_after_it() {
     let script = json!({"instance_id": "i", "script": "const e = document.querySelector(arguments[0]); e.value = arguments[1];",
                         "args": ["#register-password", "Provisoire123!"]});
     proxy.handle(tool(3, "execute_script", script)).await;
-    assert_eq!(text_of(&last(&out)), browser_mcp::PASSWORD_UNDONE);
+    // the page's password field named in its args: refused before it runs (fifth review 13/11)
+    assert_eq!(text_of(&last(&out)), browser_mcp::SCRIPT_PASSWORD_REFUSED);
     // the panel opened, then at once its password field: waited for, then refused, never typed
     proxy.handle(tool(4, "click_element", json!({"instance_id": "i", "selector": "#open-register"}))).await;
     let late = json!({"instance_id": "i", "selector": "#late-password", "text": "Provisoire123!"});
@@ -1280,4 +1284,63 @@ fn a_scripts_answer_holding_a_password_is_checked_in_the_page() {
     assert!(script.starts_with("/* bipagents guard: shown */"));
     assert!(script.contains("'password'") && script.contains("A.includes(f)"));
     assert!(!script.contains("return e.value") && !script.contains("JSON.stringify({"));
+}
+
+// --- fifth review of fix-signup-hold (80be896d5) ----------------------------------------------------------------------
+
+#[test]
+fn review5_jquery_setting_a_password_or_ticking_the_terms_then_clicking_is_refused() {
+    // many shops load jQuery (PrestaShop, WooCommerce, Magento): `.val()` writes a value, `.prop('checked', true)` and
+    // `.attr('checked', …)` tick a box, on a page with a password field and the terms not ticked yet
+    let page = json!({"pw": {"#pass1": ""}, "known": [], "boxes": ["#cgu"]});
+    let passed = [
+        "$('#pass1').val('Provisoire123!'); $('#pass2').val('Provisoire123!'); $('#create').click();",
+        "$('#cgu').prop('checked', true); $('#create').click();",
+        "jQuery('#cgu').attr('checked', 'checked'); jQuery('#signup-form').trigger('submit');",
+    ]
+    .into_iter()
+    .filter(|script| !browser_mcp::script_fills_and_sends(script, Some(&page)))
+    .collect::<Vec<_>>();
+    assert!(passed.is_empty(), "not refused: {passed:#?}");
+}
+
+#[test]
+fn a_drop_down_of_the_sites_own_opened_and_chosen_by_one_script_goes_on() {
+    // fifth review: signup.html's « Civilité » (a button and a list, not a <select>): two clicks, none on a box
+    let page = signup_page();
+    let script = "document.querySelector('#civility').click(); \
+                  document.querySelector('#civility-options li[data-value=\"M\"]').click(); 'ok';";
+    assert!(!browser_mcp::script_fills_and_sends(script, Some(&page)));
+    // a box clicked by its label's words, then the button: refused
+    let by_words = "[...document.querySelectorAll('label')].find((l) => l.innerText.includes('conditions')).click(); \
+                    document.querySelector('#create').click();";
+    assert!(browser_mcp::script_fills_and_sends(by_words, Some(&page)));
+    // a box known by its rank only (no id, no name): any two clicks
+    let unnamed = json!({"pw": {}, "known": [], "boxes": ["input@4"]});
+    assert!(browser_mcp::script_fills_and_sends(script, Some(&unnamed)));
+}
+
+#[test]
+fn a_script_reading_a_password_field_by_its_id_or_all_the_forms_values_is_refused() {
+    // fifth review: `#pass1` read (then encoded, or put in the page's title); every field's value while one holds text
+    let filled = json!({"pw": {"#pass1": "9f3a01bc", "INPUT|pass2|0": "9f3a01bc"}, "known": ["9f3a01bc"], "boxes": []});
+    for script in [
+        "btoa(document.querySelector('#pass1').value)",
+        "document.title = document.getElementsByName('pass2')[0].value; 'ok'",
+        "JSON.stringify([...document.querySelectorAll('input')].map((e) => e.value))",
+        "JSON.stringify([...new FormData(document.forms[0])])",
+        "$('#register-form').serialize()",
+    ] {
+        assert!(browser_mcp::script_reads_password(script, Some(&filled)), "{script}");
+    }
+    for script in [
+        "document.getElementById('email').value",
+        "document.querySelector('#password-rules').innerText",
+        "document.querySelector('#pass1').getBoundingClientRect().top",
+    ] {
+        assert!(!browser_mcp::script_reads_password(script, Some(&filled)), "{script}");
+    }
+    // nothing typed in it yet: listing the fields' values goes on
+    let empty = json!({"pw": {"#pass1": ""}, "known": [], "boxes": []});
+    assert!(!browser_mcp::script_reads_password("[...document.querySelectorAll('input')].map((e) => e.value)", Some(&empty)));
 }

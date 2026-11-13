@@ -156,7 +156,8 @@ def test_a_password_written_by_a_scripts_arguments_is_erased(browser):
     said = browser.tool("execute_script", script="const e = document.querySelector(arguments[0]); e.value = arguments[1];",
                         args=["#register-password", "Provisoire123!"])
     typed = browser.page("document.getElementById('register-password').value")
-    assert typed == "" and said.startswith(PASSWORD_UNDONE), (typed, said)
+    # refused before it ran since the fifth review (the page's password field named in its args), else erased after
+    assert typed == "" and (said.startswith(PASSWORD_UNDONE) or said.startswith(SCRIPT_PASSWORD_REFUSED)), (typed, said)
 
 
 def test_a_password_field_rendered_a_moment_later_is_never_typed_into(browser):

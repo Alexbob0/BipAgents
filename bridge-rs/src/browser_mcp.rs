@@ -273,7 +273,7 @@ static PASSWORD_TARGET: LazyLock<Regex> = LazyLock::new(|| {
 static VALUE_ACCESS: LazyLock<Regex> = LazyLock::new(|| {
     // the native setter frameworks need (`getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set`) too
     Regex::new(
-        r#"(?i)\.value\b|setattribute\s*\(\s*["'`]value|getownpropertydescriptor|inserttext|execcommand|setrangetext|keyboardevent|inputevent"#,
+        r#"(?i)\.value\b|setattribute\s*\(\s*["'`]value|getownpropertydescriptor|inserttext|execcommand|setrangetext|keyboardevent|inputevent|\.val\s*\("#,
     )
     .expect("valid regex")
 });
@@ -303,18 +303,23 @@ pub fn terms_box(label: &str) -> bool {
 
 static SENDS: LazyLock<Regex> = LazyLock::new(|| {
     // a form sent, or a button clicked (an app without a form sends on its button's click: third review 13/11)
-    Regex::new(r#"(?i)requestsubmit|\.submit\s*\(|\.click\s*\(|new\s+(submit|mouse|pointer)?event\s*\(\s*["'`](submit|click)"#)
-        .expect("valid regex")
+    // jQuery's `.trigger('submit')` too (fifth review 13/11: many shops load it)
+    Regex::new(
+        r#"(?i)requestsubmit|\.submit\s*\(|\.click\s*\(|new\s+(submit|mouse|pointer)?event\s*\(\s*["'`](submit|click)|\.trigger(handler)?\s*\(\s*["'`](submit|click)"#,
+    )
+    .expect("valid regex")
 });
 static WRITES: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r#"(?i)\.value\s*\+?=[^=]|\[\s*["'`]value["'`]\s*\]\s*\+?=[^=]|setattribute\s*\(\s*["'`]value|getownpropertydescriptor|object\.assign|inserttext|execcommand|setrangetext|keyboardevent|inputevent"#,
+        r#"(?i)\.value\s*\+?=[^=]|\[\s*["'`]value["'`]\s*\]\s*\+?=[^=]|setattribute\s*\(\s*["'`]value|getownpropertydescriptor|object\.assign|inserttext|execcommand|setrangetext|keyboardevent|inputevent|\.val\s*\(\s*[^)\s]|\.(prop|attr)\s*\(\s*["'`]value"#,
     )
     .expect("valid regex")
 });
 static TICKS_BOX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)\.checked\s*=[^=]|\[\s*["'`]checked["'`]\s*\]\s*=[^=]|(set|toggle)attribute\s*\(\s*["'`]checked"#)
-        .expect("valid regex")
+    Regex::new(
+        r#"(?i)\.checked\s*=[^=]|\[\s*["'`]checked["'`]\s*\]\s*=[^=]|(set|toggle)attribute\s*\(\s*["'`]checked|\.(prop|attr)\s*\(\s*["'`]checked"#,
+    )
+    .expect("valid regex")
 });
 static LOOPS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\bfor\s*\(|\bwhile\s*\(|\.(forEach|map|flatMap|some|every|reduce)\s*\(").expect("valid regex")
@@ -329,16 +334,70 @@ pub fn page_holds(before: Option<&Value>) -> (bool, bool) {
     (passwords, terms)
 }
 
+static ROOT_PREFIX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^r\d+:").expect("valid regex"));
+static CHECKBOX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)checkbox").expect("valid regex"));
+static ALL_FIELDS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)queryselectorall|getelementsbytagname|\.elements\b|\.forms\b|\$\s*\(\s*["'`]:?input"#)
+        .expect("valid regex")
+});
+static FORM_DATA: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\bformdata\b|serializearray|\.serialize\s*\(").expect("valid regex")
+});
+
+/// The id or name of an input as `guard_before` keys it (`#cgu`, `INPUT|cgu|0`, `r2:#cgu`); None for one known by its
+/// rank only.
+fn name_of(key: &str) -> Option<String> {
+    let key = ROOT_PREFIX.replace(key, "");
+    if let Some(id) = key.strip_prefix('#') {
+        return Some(id.to_string());
+    }
+    let mut parts = key.split('|');
+    match (parts.next(), parts.next()) {
+        (Some(_), Some(name)) if !name.is_empty() => Some(name.to_string()),
+        _ => None,
+    }
+}
+
+/// Whether a script names an input (its id or name as a whole word of a selector or a string).
+fn mentions(script: &str, name: &str) -> bool {
+    Regex::new(&format!(r"(^|[^\w-]){}($|[^\w-])", regex::escape(name))).map_or(true, |r| r.is_match(script))
+}
+
+/// Whether a script names one of the inputs `before` lists under `field` (`pw` keys, `boxes`); one known by its rank
+/// only counts as named when `unnamed` says so; the page couldn't say: named.
+fn names_one(script: &str, before: Option<&Value>, field: &str, unnamed: bool) -> bool {
+    let Some(before) = before else { return true };
+    let keys: Vec<String> = match before.get(field) {
+        Some(Value::Object(map)) => map.keys().cloned().collect(),
+        Some(Value::Array(list)) => list.iter().filter_map(|k| k.as_str().map(str::to_string)).collect(),
+        _ => Vec::new(),
+    };
+    keys.iter().any(|k| name_of(k).map_or(unnamed, |name| mentions(script, &name)))
+}
+
+/// A script that reads what a password field holds, on a page that has one (`before`): one it names by its id or name
+/// (`#pass1`: fifth review 13/11, then encoded or put in the page's title), or all of a form's values while a password
+/// field holds text (the vault typed it).
+pub fn script_reads_password(script: &str, before: Option<&Value>) -> bool {
+    let holds_text = before.is_none_or(|b| {
+        b.get("pw").and_then(Value::as_object).is_some_and(|pw| pw.values().any(|v| v.as_str().is_some_and(|f| !f.is_empty())))
+    });
+    VALUE_ACCESS.is_match(script) && names_one(script, before, "pw", false)
+        || holds_text && (FORM_DATA.is_match(script) || ALL_FIELDS.is_match(script) && VALUE_ACCESS.is_match(script))
+}
+
 /// A script that would change what a page sends and send it at once, the site getting it before the check after the
 /// call: on a page with a password field, it writes a value and sends the form or clicks (second review 13/11: set from
 /// a table, then `requestSubmit()`; third: the app's button clicked; fourth: fields named otherwise, `#pass1`); on a page
-/// whose terms aren't ticked, it ticks a box, or clicks twice or in a loop (fourth: the box ticked by its own `.click()`),
-/// and sends. Decided from the page, not the script's words (`before`, `page_holds`): a shop's filters or a « mot de
-/// passe oublié » e-mail sent by a script go on (fourth review).
+/// whose terms aren't ticked, it ticks a box, clicks in a loop, or clicks twice with one click on a box (fourth: the box
+/// ticked by its own `.click()`; fifth: jQuery's `.val()`, `.prop('checked')`, `.trigger('submit')`; a drop-down list
+/// of the site's own opened and chosen goes on), and sends. Decided from the page, not the script's words (`before`,
+/// `page_holds`): a shop's filters or a « mot de passe oublié » e-mail sent by a script go on (fourth review).
 pub fn script_fills_and_sends(script: &str, before: Option<&Value>) -> bool {
     let (passwords, terms) = page_holds(before);
     let actions = SENDS.find_iter(script).count();
-    let several = actions > 1 || actions == 1 && LOOPS.is_match(script);
+    let at_a_box = TERMS.is_match(script) || CHECKBOX.is_match(script) || names_one(script, before, "boxes", true);
+    let several = actions > 1 && at_a_box || actions >= 1 && LOOPS.is_match(script);
     actions > 0 && (passwords && WRITES.is_match(script) || terms && (TICKS_BOX.is_match(script) || several))
 }
 
@@ -349,22 +408,22 @@ Do it step by step with your browser's tools: type_text, select_option… for th
 password (the vault types it), accept_terms for the terms (your person says « Oui »), then click_element on the \
 form's button. Nothing was run.";
 
-/// After a script: the script that tells whether its answer (`answer`, as the agent would read it) holds what a password
-/// field of the page holds (the vault typed it, or the person: a script reading the form's values would hand it to the
+/// After a script or a page read: the script that tells whether its answer (`answer`, as the agent would read it) holds
+/// what a password field of the page holds (fifth review 13/11: put in the page's title, then read) (the vault typed it, or the person: a script reading the form's values would hand it to the
 /// model). The answer is checked in the page, as is and JSON-escaped up to three times (the script's own JSON, the
 /// server's, the answer's); the values never leave it.
 pub fn shows_password(answer: &str) -> String {
     let answer = serde_json::to_string(answer).unwrap_or_else(|_| "\"\"".into());
     format!(
-        "/* bipagents guard: shown */ (() => {{ const A = {answer}; \
+        "/* bipagents guard: shown */ (() => {{ const A = {answer}; {GUARD_JS}\
 const esc = (v) => JSON.stringify(v).slice(1, -1); const forms = (v) => [v, esc(v), esc(esc(v)), esc(esc(esc(v)))]; \
-return [...document.querySelectorAll('input')].some((e) => (e.getAttribute('type') || '').toLowerCase() === 'password' \
-&& e.value.length >= 4 && forms(e.value).some((f) => A.includes(f))); }})()"
+return inputs.some(({{e}}) => kind(e) === 'password' && e.value.length >= 4 && new Set(e.value).size > 1 \
+&& forms(e.value).some((f) => A.includes(f))); }})()"
     )
 }
 
 /// What the agent reads when its script's answer held a password (`shows_password`).
-pub const PASSWORD_SHOWN: &str = "Not shown: your script's answer held what a password field holds, and you never \
+pub const PASSWORD_SHOWN: &str = "Not shown: that answer held what a password field holds, and you never \
 read a password. Read the other fields by their selectors, never all of a form's values. The vault fills and keeps \
 passwords (vault_create_login, browser_vault).";
 
@@ -383,8 +442,8 @@ pub fn presses_a_character(args: &Dict) -> bool {
 /// The script that tells what a call's `selector` (none: the focused element) is: a password field (`type=password`
 /// only: `autocomplete="new-password"` also keeps Chrome's list off an address field, review 13/11), or a box not ticked
 /// yet with its label (from the box, its label, or anything inside its label: a box drawn in its label; read as `LABEL_JS`
-/// reads it, a label tied to nothing after the box included: fourth review 13/11). `invalid`: a selector the page can't
-/// read. Read only; the selector passed as a JSON string.
+/// reads it, a label tied to nothing after the box included: fourth review 13/11; a web component: its one input in its
+/// shadow root, fifth). `invalid`: a selector the page can't read. Read only; the selector passed as a JSON string.
 pub fn target_script(selector: &str) -> String {
     let selector = serde_json::to_string(selector).unwrap_or_else(|_| "\"\"".into());
     format!(
@@ -395,6 +454,7 @@ if (!el) return JSON.stringify({{found: false}}); \
 const holder = el.tagName === 'LABEL' ? el : (el.closest && el.closest('label')); \
 const link = el.closest && el.closest('a, button'); \
 if (el.tagName !== 'INPUT' && !link && holder && holder.control) el = holder.control; \
+if (el.tagName !== 'INPUT' && el.shadowRoot) {{ const inner = el.shadowRoot.querySelectorAll('input'); if (inner.length === 1) el = inner[0]; }} \
 const attr = (n) => ((el.getAttribute && el.getAttribute(n)) || '').toLowerCase(); \
 const password = el.tagName === 'INPUT' && attr('type') === 'password'; \
 let terms = ''; \
@@ -411,24 +471,29 @@ pub const LATE_FIELD_TRIES: u32 = 12;
 pub const GUARDED: [&str; 5] = ["click_element", "type_text", "paste_text", "press_key", "execute_script"];
 
 /// What makes a box the site's terms in the page's scripts (as `terms_box`): its label, the text it is labelled by, the
-/// short text around a box without a label (a `<label>` tied to nothing right after it included: fourth review 13/11),
-/// its aria-label, name and id.
+/// short text around a box without a label (a `<label>` tied to nothing right after it included: fourth review 13/11;
+/// a web component's text, the box in its shadow root: fifth), its aria-label, name and id.
 pub const LABEL_JS: &str = "const TERMS = /\\b(cgu|cgv|agb|rgpd|gdpr)\\b|terms|conditions|consent|privacy|confidentialit|datenschutz|t[ée]rminos|condiciones|politique de/i; \
 const STRONG = /\\b(cgu|cgv|agb)\\b|conditions|terms|t[ée]rminos|condiciones|nutzungsbedingungen/i; \
-const label = (e) => { const own = [...(e.labels || [])].map((l) => l.innerText).join(' '); \
-const by = (e.getAttribute('aria-labelledby') || '').split(/\\s+/).map((i) => ((document.getElementById(i) || {}).innerText || '')).join(' '); \
+const label = (e) => { const root = e.getRootNode(); const own = [...(e.labels || [])].map((l) => l.innerText).join(' ').trim(); \
+const by = (e.getAttribute('aria-labelledby') || '').split(/\\s+/).filter(Boolean).map((i) => (((root.getElementById ? root : document).getElementById(i) || {}).innerText || '')).join(' '); \
 let around = ''; if (!own && !by.trim()) { for (let n = e.nextSibling; n && around.length < 300; n = n.nextSibling) { if (n.nodeType === 1 && n.matches('label') && !n.control) { around += ' ' + n.textContent; break; } \
 if (n.nodeType === 1 && n.matches('input, select, textarea, button, br, label')) break; around += ' ' + n.textContent; } \
-const p = e.parentElement; if (!around.trim() && p && p.innerText.length <= 300 && p.querySelectorAll('input').length === 1) around = p.innerText; } \
+const p = e.parentElement; if (!around.trim() && p && p.innerText.length <= 300 && p.querySelectorAll('input').length === 1) around = p.innerText; \
+if (!around.trim() && root.host) around = (root.host.innerText || root.host.textContent || '').slice(0, 300); } \
 return [own, by, around, e.getAttribute('aria-label') || '', e.name || '', e.id || ''].join(' ').replace(/\\s+/g, ' ').trim(); }; \
 const isTerms = (t) => TERMS.test(t) && (!/cookie/i.test(t) || STRONG.test(t)); ";
 
-/// How the checks around a call name an input (its id; else its tag, name and rank among that name's; else its rank) and
-/// fingerprint a value (FNV-1a, 32 bits: the value never leaves the page).
+/// How the checks around a call find the inputs (the page's, its open shadow roots' and its own site's frames': fifth
+/// review 13/11, a web component's box, a sign-up form in a frame), name one (its id; else its tag, name and rank among
+/// that name's; else its rank; `r<n>:` before it in the n-th shadow root or frame) and fingerprint a value (FNV-1a, 32
+/// bits: the value never leaves the page).
 const GUARD_JS: &str = "const h = (v) => { let x = 0x811c9dc5; for (let i = 0; i < v.length; i++) { x ^= v.charCodeAt(i); \
 x = Math.imul(x, 0x01000193) >>> 0; } return x.toString(16); }; \
-const inputs = [...document.querySelectorAll('input')]; \
-const key = (e, i) => e.id ? '#' + e.id : (e.name ? e.tagName + '|' + e.name + '|' + inputs.filter((x) => x.name === e.name).indexOf(e) : 'input@' + i); \
+const roots = []; const walk = (r) => { roots.push(r); for (const e of r.querySelectorAll('*')) { if (e.shadowRoot) walk(e.shadowRoot); \
+if (e.tagName === 'IFRAME' || e.tagName === 'FRAME') { let d = null; try { d = e.contentDocument; } catch (x) {} if (d) walk(d); } } }; walk(document); \
+const inputs = []; roots.forEach((r, ri) => { const own = [...r.querySelectorAll('input')]; own.forEach((e, i) => inputs.push({e: e, \
+k: (ri ? 'r' + ri + ':' : '') + (e.id ? '#' + e.id : (e.name ? e.tagName + '|' + e.name + '|' + own.filter((x) => x.name === e.name).indexOf(e) : 'input@' + i))})); }); \
 const kind = (e) => (e.getAttribute('type') || '').toLowerCase(); ";
 
 /// Before a guarded call: a fingerprint of what each password field holds and the terms or consent boxes not ticked,
@@ -442,8 +507,8 @@ pub const GUARD_BEFORE: &str = "/* bipagents guard: before */ (() => { ";
 pub fn guard_before() -> String {
     format!(
         "{GUARD_BEFORE}{LABEL_JS}{GUARD_JS}const pw = {{}}, known = [], boxes = []; \
-inputs.forEach((e, i) => {{ if (kind(e) === 'password') {{ pw[key(e, i)] = e.value ? h(e.value) : ''; if (e.value) known.push(h(e.value)); }} \
-else if (kind(e) === 'checkbox' && !e.checked && isTerms(label(e))) boxes.push(key(e, i)); }}); \
+inputs.forEach(({{e, k}}) => {{ if (kind(e) === 'password') {{ pw[k] = e.value ? h(e.value) : ''; if (e.value) known.push(h(e.value)); }} \
+else if (kind(e) === 'checkbox' && !e.checked && isTerms(label(e))) boxes.push(k); }}); \
 return JSON.stringify({{pw: pw, known: known, boxes: boxes}}); }})()"
     )
 }
@@ -454,12 +519,12 @@ pub fn guard_after(before: &Value) -> String {
     let before = serde_json::to_string(before).unwrap_or_else(|_| "{}".into());
     format!(
         "/* bipagents guard: after */ (() => {{ const B = {before}; {GUARD_JS}\
-const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; \
+const set = (e, v) => Object.getOwnPropertyDescriptor(e.ownerDocument.defaultView.HTMLInputElement.prototype, 'value').set.call(e, v); \
 const pw = B.pw || {{}}, known = B.known || [], boxes = B.boxes || []; let passwords = 0, terms = 0; \
-inputs.forEach((e, i) => {{ const k = key(e, i); \
+inputs.forEach(({{e, k}}) => {{ \
 if (kind(e) === 'password' && e.value) {{ const now = h(e.value); const had = k in pw ? pw[k] : null; \
 if (had === now || (had === null && known.includes(now))) return; \
-set.call(e, ''); e.dispatchEvent(new Event('input', {{bubbles: true}})); e.dispatchEvent(new Event('change', {{bubbles: true}})); passwords++; }} \
+set(e, ''); e.dispatchEvent(new Event('input', {{bubbles: true}})); e.dispatchEvent(new Event('change', {{bubbles: true}})); passwords++; }} \
 else if (kind(e) === 'checkbox' && e.checked && boxes.includes(k)) {{ e.click(); \
 if (e.checked) {{ e.checked = false; e.dispatchEvent(new Event('change', {{bubbles: true}})); }} terms++; }} }}); \
 return JSON.stringify({{passwords: passwords, terms: terms}}); }})()"
@@ -1379,7 +1444,7 @@ impl Proxy {
             // review 13/11: a « mot de passe oublié » e-mail asked for by a script)
             let script = args.get("script").and_then(Value::as_str).unwrap_or("");
             let with_args = format!("{script} {}", args.get("args").map(Value::to_string).unwrap_or_default());
-            if page_holds(before).0 && script_touches_password(&with_args) {
+            if page_holds(before).0 && (script_touches_password(&with_args) || script_reads_password(&with_args, before)) {
                 return Some(refused(SCRIPT_PASSWORD_REFUSED));
             }
             return script_fills_and_sends(script, before).then(|| refused(SCRIPT_SENDS_REFUSED));
@@ -1474,13 +1539,14 @@ impl Proxy {
                         other => other.clone(),
                     };
                     let field = |k: &str| page.get(k).cloned().unwrap_or(json!(""));
-                    return Ok(json!({"jsonrpc": "2.0", "result": {
+                    let readable = json!({"jsonrpc": "2.0", "result": {
                         "content": [{"type": "text", "text": text}],
                         "structuredContent": {"html": "", "text": "(the page's readable text is in this answer)",
                                               "url": field("url"), "title": field("title")}}})
                     .as_object()
                     .cloned()
-                    .unwrap_or_default());
+                    .unwrap_or_default();
+                    return Ok(self.unless_shown(&instance, readable).await);
                 }
             }
         }
@@ -1533,14 +1599,23 @@ impl Proxy {
             }
         }
         if tool == "execute_script" && !instance.is_empty() && script_result(&response).is_some() {
-            let answer = serde_json::to_string(&response).unwrap_or_default();
-            let shown = self.script(&instance, &shows_password(&answer)).await;
-            if matches!(&shown, Some(Value::Bool(true))) || matches!(&shown, Some(Value::String(t)) if t == "true") {
-                log("a script's answer held a password: not passed on");
-                return Ok(refused(PASSWORD_SHOWN));
-            }
+            return Ok(self.unless_shown(&instance, response).await);
+        }
+        if tool == "get_page_content" && !instance.is_empty() {
+            return Ok(self.unless_shown(&instance, response).await);
         }
         Ok(response)
+    }
+
+    /// An answer that holds what a password field of the page holds (`shows_password`) is not passed on.
+    async fn unless_shown(&self, instance: &str, response: Dict) -> Dict {
+        let answer = serde_json::to_string(&response).unwrap_or_default();
+        let shown = self.script(instance, &shows_password(&answer)).await;
+        if matches!(&shown, Some(Value::Bool(true))) || matches!(&shown, Some(Value::String(t)) if t == "true") {
+            log("an answer held a password: not passed on");
+            return refused(PASSWORD_SHOWN);
+        }
+        response
     }
 
     /// What the page holds before a guarded call (`guard_before`); None when it can't say.
@@ -2484,7 +2559,9 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         assert!(!before.contains("window[") && !before.contains("defineProperty") && !before.contains("prototype.submit"));
         assert!(before.contains("isTerms(label(e))") && before.contains("JSON.stringify({pw: pw, known: known, boxes: boxes})"));
         assert!(after.contains("const B = {") && after.contains("\"boxes\":[\"#cgu\"]") && after.contains("\"#pw\":\"1a2b\""), "{after}");
-        assert!(!after.contains("window[") && after.contains("set.call(e, '')"));
+        assert!(!after.contains("window[") && after.contains("set(e, '')"));
+        // the page's open shadow roots and its own site's frames looked into (fifth review 13/11)
+        assert!(before.contains("e.shadowRoot") && before.contains("contentDocument") && after.contains("contentDocument"));
     }
 
     #[test]

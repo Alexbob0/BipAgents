@@ -108,10 +108,15 @@ def test_a_script_reading_the_forms_values_never_hands_back_a_password(browser):
     # the vault typed it; a script listing every field's value would give it to the model
     browser.tool("navigate", url=f"{browser.api}/login_filled.html")
     password = browser.page("document.getElementById('pass1').value")
+    listed = browser.tool("execute_script",
+                          script="JSON.stringify([...document.querySelectorAll('input')].map((e) => e.value))")
+    assert password and password not in listed and "Vx9" not in listed, listed
+    assert listed.startswith(guard_chrome.SCRIPT_PASSWORD_REFUSED), listed
+    # read another way the script's words don't show: its answer is looked at in the page
     said = browser.tool("execute_script",
-                        script="JSON.stringify([...document.querySelectorAll('input')].map((e) => e.value))")
-    assert password and password not in said and "Vx9" not in said, said
-    assert said.startswith("Not shown: your script's answer held what a password field holds"), said
+                        script="JSON.stringify([...document.getElementById('login').children].map((e) => e.value || ''))")
+    assert password not in said and "Vx9" not in said, said
+    assert said.startswith("Not shown: that answer held what a password field holds"), said
     # the other fields can still be read
     email = browser.tool("execute_script", script="document.getElementById('email').value")
     assert "camille@example.org" in email, email
