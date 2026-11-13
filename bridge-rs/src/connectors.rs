@@ -123,6 +123,23 @@ pub struct Watch {
     pub every: String,
     /// `on_change` or `on_condition`.
     pub notify: String,
+    /// A watcher made for a purchase (« préviens-moi quand les billets sont en vente »): what, where, the price
+    /// expected; its detail shows « Prêt à acheter » (urgent_pay.rs `purchase_view`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub purchase: Option<Purchase>,
+}
+
+/// What a purchase watcher is for.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Purchase {
+    /// The shop's host (« ticketmaster.fr »).
+    pub site: String,
+    /// What to buy, in a few words.
+    pub what: String,
+    /// The price expected, in cents (0: not known).
+    pub cents: i64,
+    pub currency: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -857,6 +874,12 @@ pub fn tools() -> Vec<Value> {
         Leave schedule out.", "properties": {
         "every": {"type": "string", "description": "how often it checks: « 15m » (the least, only for a slot to grab), « 30m », « 1h », « 6h », « 1d »: the longest that still works"},
         "notify": {"type": "string", "enum": ["on_change", "on_condition"], "description": "on_change: wake you when its state changes; on_condition: when its \"condition\" is true (a balance under a threshold)"},
+        "purchase": {"type": "object", "description": "when it watches something to BUY as soon as it is there (tickets on sale, back in stock): the person then gets ready in the app (account, card, alarm, a rehearsal) and, when it fires, you go to the payment page and pay_with_card at once: they approve in seconds", "properties": {
+            "site": {"type": "string", "description": "the shop's site, e.g. ticketmaster.fr"},
+            "what": {"type": "string", "description": "what to buy, a few words, e.g. « 2 billets Stromae, Paris 12/03 »"},
+            "price": {"type": "string", "description": "the price expected, e.g. 45.00 (leave out if unknown)"},
+            "currency": {"type": "string", "description": "e.g. EUR"},
+        }, "required": ["site", "what"]},
     }, "required": ["every", "notify"]});
     let fields = json!({
         "name": {"type": "string", "description": "its name for the person, e.g. « Garmin »"},
@@ -1494,7 +1517,13 @@ pub fn view(state: &AppState, config: &Config, agent: &AgentConfig, conn: &Conne
         "sites": conn.sites, "secrets": secrets_view(Some(state), &agent.name, conn), "tools": tools,
         "schedule": conn.schedule.as_ref().map(|s| json!({"when": s.when, "text": schedule_text(&conn.schedule),
                                                           "mechanical": s.mechanical, "tool": s.tool})),
-        "watch": conn.watch.as_ref().map(|w| crate::watchers::detail_view(config, &agent.name, conn, w)),
+        "watch": conn.watch.as_ref().map(|w| {
+            let mut view = crate::watchers::detail_view(config, &agent.name, conn, w);
+            if let (Some(purchase), Some(map)) = (&w.purchase, view.as_object_mut()) {
+                map.insert("purchase".into(), crate::urgent_pay::purchase_view(state, config, &agent.name, conn, purchase));
+            }
+            view
+        }),
         "last_run": conn.last_run.as_ref().map(|r| json!({"at": r.at, "ok": r.ok, "message": r.message})),
         "unofficial": conn.unofficial, "from_template": conn.from_template,
         "card_run_id": conn.card.as_ref().map(|c| format!("{RUN_PREFIX}{}", c.id)),

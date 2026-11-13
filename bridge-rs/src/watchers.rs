@@ -194,7 +194,35 @@ pub fn parse_watch(map: &Dict) -> Result<Watch, String> {
     if notify != ON_CHANGE && notify != ON_CONDITION {
         return Err("watch.notify: on_change or on_condition.".into());
     }
-    Ok(Watch { every: every_label(minutes), notify })
+    let purchase = match map.get("purchase") {
+        Some(Value::Object(p)) => Some(parse_purchase(p)?),
+        None | Some(Value::Null) => None,
+        Some(_) => return Err("watch.purchase: an object {site, what, price, currency}.".into()),
+    };
+    Ok(Watch { every: every_label(minutes), notify, purchase })
+}
+
+/// A purchase watcher's `purchase` checked: the shop's host, what, the price expected.
+pub fn parse_purchase(map: &Dict) -> Result<connectors::Purchase, String> {
+    let site = crate::urgent_pay::bare_host(&map.get("site").map(py::py_str).unwrap_or_default());
+    if site.is_empty() || !site.contains('.') {
+        return Err("watch.purchase.site: the shop's site, e.g. ticketmaster.fr.".into());
+    }
+    let what = crate::cards::quoted(&map.get("what").map(py::py_str).unwrap_or_default(), 80);
+    if what.is_empty() {
+        return Err("watch.purchase.what: what to buy, in a few words.".into());
+    }
+    let cents = match map.get("price").filter(|v| !v.is_null() && py::py_str(v).trim() != "") {
+        Some(price) => crate::cards::amount_cents(price).map_err(|why| format!("watch.purchase.price: {why}"))?,
+        None => 0,
+    };
+    let given = map.get("currency").map(py::py_str).unwrap_or_default();
+    let currency = if given.trim().is_empty() {
+        "EUR".to_string()
+    } else {
+        crate::cards::currency(&given).ok_or("watch.purchase.currency: its 3-letter code, e.g. EUR.")?
+    };
+    Ok(connectors::Purchase { site, what, cents, currency })
 }
 
 /// The card's `bip_connector_watch`.
@@ -248,6 +276,9 @@ pub struct Runtime {
     /// Its conversation in the agent's Hermes.
     pub session: String,
     pub runs: Vec<RunRecord>,
+    /// A purchase watcher's last rehearsal (urgent_pay.rs).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rehearsal: Option<crate::urgent_pay::Rehearsed>,
 }
 
 static LOCK: Mutex<()> = Mutex::new(());
@@ -528,7 +559,7 @@ pub fn template(lang: &str, name: &str, summary: &str, broken: bool) -> String {
 }
 
 /// The title of its conversation (« Veilleur : Prix du vélo »).
-fn session_title(lang: &str, name: &str) -> String {
+pub fn session_title(lang: &str, name: &str) -> String {
     match lang {
         "de" => format!("Wächter: {name}"),
         "es" => format!("Vigilante: {name}"),
@@ -882,10 +913,10 @@ mod tests {
         assert_eq!(every_text(60), "toutes les heures");
         assert_eq!(every_text(360), "toutes les 6 h");
         assert_eq!(every_text(1440), "tous les jours");
-        let watch = Watch { every: "15m".into(), notify: ON_CHANGE.into() };
+        let watch = Watch { every: "15m".into(), notify: ON_CHANGE.into(), purchase: None };
         assert_eq!(card_text(&watch), "Vérifie toutes les 15 min, ne réveille l'agent que si ça change");
         let map = json!({"every": "2 h", "notify": "on_condition"}).as_object().cloned().unwrap();
-        assert_eq!(parse_watch(&map), Ok(Watch { every: "2h".into(), notify: ON_CONDITION.into() }));
+        assert_eq!(parse_watch(&map), Ok(Watch { every: "2h".into(), notify: ON_CONDITION.into(), purchase: None }));
         let bad = json!({"every": "1h", "notify": "always"}).as_object().cloned().unwrap();
         assert!(parse_watch(&bad).unwrap_err().contains("notify"));
     }
@@ -943,7 +974,7 @@ mod tests {
     #[test]
     fn the_notes_carry_before_and_after() {
         let conn = Connector { name: "Prix du vélo".into(), description: "Le prix du vélo chez Decathlon".into(), ..Default::default() };
-        let watch = Watch { every: "1h".into(), notify: ON_CHANGE.into() };
+        let watch = Watch { every: "1h".into(), notify: ON_CHANGE.into(), purchase: None };
         let after = Observation { state: json!({"price": 1199}), summary: "1 199 €".into(), condition: None };
         let note = change_note(&conn, &watch, Some(("1 299 €", &json!({"price": 1299}))), &after);
         assert!(note.starts_with("<!--bip:watch\nYour watcher « Prix du vélo »") && note.ends_with("\n-->"));
@@ -962,7 +993,7 @@ mod tests {
 
     #[test]
     fn next_check_and_settings() {
-        let watch = Watch { every: "15m".into(), notify: ON_CHANGE.into() };
+        let watch = Watch { every: "15m".into(), notify: ON_CHANGE.into(), purchase: None };
         let settings = Settings::default();
         let mut rt = Runtime { due_at: 50.0, ..Default::default() };
         assert_eq!(next_check(&rt, &watch, &settings), 50.0);

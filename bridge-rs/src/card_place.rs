@@ -164,6 +164,8 @@ pub fn bridge_cards(state: &AppState, config: &Config, agent: Option<&str>) -> V
     items.extend(crate::routines::pending_items(config, agent));
     items.extend(crate::agent_hops::pending_items(config, agent));
     items.extend(crate::held_approvals::pending_items(config, agent));
+    items.extend(crate::card_pay::pending_items(agent));
+    items.extend(crate::urgent_pay::pending_items(config, agent));
     // the kinds a « Toujours » may cover offer it (approval_level.rs)
     items.into_iter().map(|item| crate::approval_level::with_always(config, item)).collect()
 }

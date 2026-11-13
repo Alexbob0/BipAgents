@@ -218,6 +218,8 @@ pub struct Event {
     pub from: Option<BoiteFrom>,
     /// What an approval's or a question's buttons need (`run_id`, `request_id`, `choices`).
     pub extra: Dict,
+    /// What `aps` gets besides its usual keys (an urgent payment's category and interruption level).
+    pub aps: Dict,
     /// The collapse id of a notification that replaces an earlier one (an approval's request); None for the others.
     pub collapse: Option<String>,
     /// When it happened, when not now: a Boîte message's arrival (its row's `created_at`, the order the Boîte shows).
@@ -241,6 +243,7 @@ impl Event {
             key: key.into(),
             from: None,
             extra: Dict::new(),
+            aps: Dict::new(),
             collapse: None,
             at: None,
         }
@@ -642,6 +645,27 @@ impl PushService {
     /// `secret_request`, `connector_request` or `mail_request`, with the card's request id.
     pub async fn notify_bridge_card(&self, agent: &str, line: &str, key: &str, id: &str) -> usize {
         self.notify(agent, Notice::Card { line: line.into(), key: key.into(), id: id.into() }).await
+    }
+
+    /// A card payment that waits for the person in a turn nobody follows (card_pay.rs `urgent`), or its test
+    /// (« Faire un essai »): pushed urgent, « Payer » opening the card.
+    pub async fn notify_payment_urgent(
+        &self,
+        agent: &str,
+        run_id: &str,
+        request_id: &str,
+        line: &str,
+        session_id: Option<&str>,
+        test: bool,
+    ) -> usize {
+        let notice = Notice::PaymentUrgent {
+            run_id: run_id.into(),
+            request_id: request_id.into(),
+            line: line.into(),
+            session_id: own(session_id),
+            test,
+        };
+        self.notify(agent, notice).await
     }
 
     /// A date to find with a relative's household (meet.rs): tapping opens the Boîte, where the card is.

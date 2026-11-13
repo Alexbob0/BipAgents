@@ -73,8 +73,12 @@ pub const PLACE_IDLE_SOON: &str =
 /// `place_parked`: the place was freed on day 7, its copy kept 30 days.
 pub const PLACE_PARKED: &str = "Ta place a été libérée : personne n’a écrit à tes agents pendant 7 jours. Tes données sont gardées 30 jours : ouvre l’app pour la reprendre.";
 pub const MAX_PAYLOAD_BYTES: usize = 4096;
-/// The values the apps use; anything else is dropped (no « time-sensitive », no custom sound).
-const CATEGORIES: &[&str] = &["MESSAGE", "APPROVAL"];
+/// The values the apps use; anything else is dropped (no custom sound). « time-sensitive » passes only with the urgent
+/// payment's category (`PAYMENT`: a watcher found the ticket, the person has minutes to approve; the bridge's
+/// card_pay.rs `urgent`).
+const CATEGORIES: &[&str] = &["MESSAGE", "APPROVAL", "PAYMENT"];
+const URGENT_CATEGORY: &str = "PAYMENT";
+const URGENT_LEVEL: &str = "time-sensitive";
 const SOUNDS: &[&str] = &["default"];
 const INTERRUPTION_LEVELS: &[&str] = &["active", "passive"];
 const VALUE_MAX: usize = 256;
@@ -140,8 +144,13 @@ pub fn scrub(payload: &Value, aud: Audience) -> Result<Value, &'static str> {
     if let Some(aps) = object.get("aps") {
         let aps = aps.as_object().ok_or("aps must be an object")?;
         let mut clean = Map::new();
+        let urgent = aps.get("category").and_then(Value::as_str) == Some(URGENT_CATEGORY);
         for (key, value) in aps {
             if !APS_KEYS.contains(&key.as_str()) {
+                continue;
+            }
+            if key == "interruption-level" && urgent && value.as_str() == Some(URGENT_LEVEL) {
+                clean.insert(key.clone(), Value::String(URGENT_LEVEL.into()));
                 continue;
             }
             let allowed = match key.as_str() {
@@ -337,6 +346,17 @@ mod tests {
             (&json!("APPROVAL"), &json!("default"), &json!("passive"))
         );
         assert!(clean["aps"]["alert"].get("title").is_none());
+        // time-sensitive only for an urgent payment
+        let urgent = json!({"aps": {"alert": {"loc-key": "notif.approval"}, "category": "PAYMENT",
+                                    "interruption-level": "time-sensitive", "relevance-score": 1}});
+        let clean = scrub(&urgent, Audience::Bridge).unwrap();
+        assert_eq!(
+            (&clean["aps"]["category"], &clean["aps"]["interruption-level"], &clean["aps"]["relevance-score"]),
+            (&json!("PAYMENT"), &json!("time-sensitive"), &json!(1))
+        );
+        let sneaky = json!({"aps": {"alert": {"loc-key": "notif.reply"}, "category": "MESSAGE",
+                                    "interruption-level": "time-sensitive"}});
+        assert!(scrub(&sneaky, Audience::Bridge).unwrap()["aps"].get("interruption-level").is_none());
     }
 
     #[test]
