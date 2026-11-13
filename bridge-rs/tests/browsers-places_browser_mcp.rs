@@ -891,7 +891,7 @@ for line in sys.stdin:
         if os.path.exists(os.path.join(here, "held")):
             r = text(GATE, True)
         elif name == "execute_script" and "bipagents guard: before" in script:
-            r = script_answer(json.dumps({"pw": {}, "known": [], "boxes": ["#cgu"]}))
+            r = script_answer(json.dumps({"pw": {"#register-password": ""}, "known": [], "boxes": ["#cgu"]}))
         elif name == "execute_script" and "bipagents guard: after" in script:
             r = script_answer(json.dumps({"passwords": page["typed"], "terms": page["ticked"]}))
             page["typed"] = page["ticked"] = 0
@@ -1187,32 +1187,97 @@ fn a_terms_box_that_also_names_cookies_is_the_terms() {
     assert!(!browser_mcp::terms_box("Accepter les cookies de mesure d'audience (consentement) cookie-consent"));
 }
 
+/// What `guard_before` answers on a sign-up page (a password field, the terms not ticked) and on a page with neither.
+fn signup_page() -> Value {
+    json!({"pw": {"#register-password": "", "#pass1": "", "#pass2": ""}, "known": [], "boxes": ["#cgu"]})
+}
+fn plain_page() -> Value {
+    json!({"pw": {}, "known": [], "boxes": []})
+}
+
 #[test]
 fn a_script_that_fills_a_form_and_sends_it_is_refused() {
     // second review 13/11: the fields (the password among them) set from a table, the terms ticked, then sent, in one
     // script: the site got everything before the check after the call
+    let page = signup_page();
     let script = "const data = {'#lastname': 'Testeur', '#register-password': 'Provisoire123!'}; \
         for (const [s, v] of Object.entries(data)) document.querySelector(s).value = v; \
         document.querySelector('#cgu').checked = true; document.getElementById('register-form').requestSubmit();";
-    assert!(browser_mcp::script_fills_and_sends(script));
+    assert!(browser_mcp::script_fills_and_sends(script, Some(&page)));
     // third review: an app without a form, its button clicked by the same script
     let app = "const data = {'#email': 'c@example.org', '#password': 'Provisoire123!'}; \
         for (const [s, v] of Object.entries(data)) document.querySelector(s).value = v; document.querySelector('#create').click();";
-    assert!(browser_mcp::script_fills_and_sends(app));
-    assert!(browser_mcp::script_fills_and_sends("document.querySelector('#cgu').checked = true; document.querySelector('#go').click()"));
-    assert!(!browser_mcp::script_fills_and_sends("document.querySelector('#lastname').value = 'Testeur'"));
-    assert!(!browser_mcp::script_fills_and_sends("document.getElementById('register-form').requestSubmit()"));
+    assert!(browser_mcp::script_fills_and_sends(app, Some(&page)));
+    assert!(browser_mcp::script_fills_and_sends(
+        "document.querySelector('#cgu').checked = true; document.querySelector('#go').click()",
+        Some(&page)
+    ));
+    // one step at a time goes on: a field set, the form sent
+    assert!(!browser_mcp::script_fills_and_sends("document.querySelector('#lastname').value = 'Testeur'", Some(&page)));
+    assert!(!browser_mcp::script_fills_and_sends(
+        "document.getElementById('register-form').requestSubmit()",
+        Some(&page)
+    ));
+    // the page can't say: as a sign-up page
+    assert!(browser_mcp::script_fills_and_sends(app, None));
 }
 
 #[test]
 fn a_search_typed_and_sent_by_a_script_goes_on() {
     // third review 13/11: a site's search box filled and sent in one script: no password, no box
+    let page = plain_page();
     let refused = [
         "document.querySelector('input[name=q]').value = 'doliprane'; document.querySelector('#search-form').submit();",
         "const f = document.forms[0]; f.elements.q.value = 'horaires'; f.requestSubmit(); 'ok'",
     ]
     .into_iter()
-    .filter(|script| browser_mcp::script_fills_and_sends(script))
+    .filter(|script| browser_mcp::script_fills_and_sends(script, Some(&page)))
     .collect::<Vec<_>>();
     assert!(refused.is_empty(), "refused: {refused:#?}");
+}
+
+// --- fourth review of fix-signup-hold (81c8cbdbf) ---------------------------------------------------------------------
+
+#[test]
+fn review4_a_box_clicked_or_a_password_named_otherwise_then_a_button_clicked_is_refused() {
+    // decided from the page (a password field, the terms not ticked), not the script's words
+    let page = signup_page();
+    let passed = [
+        // ticking a box is a click on it
+        "document.querySelector('#cgu').click(); document.querySelector('#create').click(); 'sent';",
+        // in a loop
+        "[document.querySelector('#cgu'), document.querySelector('#create')].forEach((e) => e.click());",
+        // WordPress's password fields (pass1, pass2), set from a table
+        "const data = {'#email': 'camille@example.org', '#pass1': 'Provisoire123!', '#pass2': 'Provisoire123!'}; \
+         for (const [s, v] of Object.entries(data)) document.querySelector(s).value = v; \
+         document.querySelector('#create').click(); 'sent';",
+    ]
+    .into_iter()
+    .filter(|script| !browser_mcp::script_fills_and_sends(script, Some(&page)))
+    .collect::<Vec<_>>();
+    assert!(passed.is_empty(), "not refused: {passed:#?}");
+}
+
+#[test]
+fn review4_a_shop_filter_or_a_reset_e_mail_sent_by_a_script_goes_on() {
+    // no password field, no terms box on the page: a product filter applied, a « mot de passe oublié » e-mail asked for
+    let page = plain_page();
+    let refused = [
+        "document.querySelector('#filter-bio').checked = true; document.querySelector('#apply-filters').click();",
+        "document.querySelector('#forgot-password-email').value = 'camille@example.org'; \
+         document.querySelector('#send-reset-link').click();",
+    ]
+    .into_iter()
+    .filter(|script| browser_mcp::script_fills_and_sends(script, Some(&page)))
+    .collect::<Vec<_>>();
+    assert!(refused.is_empty(), "refused: {refused:#?}");
+}
+
+#[test]
+fn a_scripts_answer_holding_a_password_is_checked_in_the_page() {
+    // the value never leaves the page: the answer goes in, true or false comes back
+    let script = browser_mcp::shows_password("{\"result\": \"[\\\"camille\\\", \\\"Xy7-secret\\\"]\"}");
+    assert!(script.starts_with("/* bipagents guard: shown */"));
+    assert!(script.contains("'password'") && script.contains("A.includes(f)"));
+    assert!(!script.contains("return e.value") && !script.contains("JSON.stringify({"));
 }

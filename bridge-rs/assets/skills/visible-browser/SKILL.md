@@ -1,7 +1,7 @@
 ---
 name: visible-browser
 description: "Browse the web with your own visible browser: a real Chrome on your desktop, which the person can watch and take over from the BipAgents app. Use its `stealth` tools for every website, including sites that block automated browsers."
-version: 1.12.0
+version: 1.12.1
 author: BipAgents
 license: MIT
 metadata:
@@ -87,7 +87,9 @@ refuses it; tell them the vault does it):
 2. fill the other fields with the person's details: `vault_contact_details` (or `browser_vault` fill) gives their
    « Coordonnées »: name, birth date, address, phones, e-mails. Never make a detail up, not even a placeholder (no
    phone, no date, no civility of your own): one the form requires and their details lack, ask them for that one only
-   (one short question), then offer to keep it in their vault (`vault_save_contact_details`);
+   (one short question), then offer to keep it in their vault (`vault_save_contact_details`). Fill the fields one step
+   at a time (`type_text`; a drop-down list: `select_option`, or a click on it then on the choice), never with one
+   script that fills or ticks and clicks (your browser refuses it on a sign-up page);
 3. click into the password field, read the site's password rules if it shows any, and call `vault_create_login` with
    the site, the identifier you sign up with, why (the person sees it) and the rules. A card « Créer un compte »
    asks the person in the app; wait for their answer;

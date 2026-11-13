@@ -238,7 +238,8 @@ pub fn own_refusal(response: &Dict) -> bool {
         .and_then(|b| b.get("text"))
         .and_then(Value::as_str)
         .unwrap_or("");
-    [PASSWORD_REFUSED, SCRIPT_PASSWORD_REFUSED, SCRIPT_SENDS_REFUSED, TERMS_REFUSED, RESCUE_REFUSED, crate::credit::BROWSER_REFUSED]
+    [PASSWORD_REFUSED, SCRIPT_PASSWORD_REFUSED, SCRIPT_SENDS_REFUSED, PASSWORD_SHOWN, TERMS_REFUSED, RESCUE_REFUSED,
+     crate::credit::BROWSER_REFUSED]
         .contains(&text)
 }
 
@@ -306,29 +307,66 @@ static SENDS: LazyLock<Regex> = LazyLock::new(|| {
         .expect("valid regex")
 });
 static WRITES: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)\.value\s*=[^=]|setattribute\s*\(\s*["'`]value|getownpropertydescriptor"#).expect("valid regex")
+    Regex::new(
+        r#"(?i)\.value\s*\+?=[^=]|\[\s*["'`]value["'`]\s*\]\s*\+?=[^=]|setattribute\s*\(\s*["'`]value|getownpropertydescriptor|object\.assign|inserttext|execcommand|setrangetext|keyboardevent|inputevent"#,
+    )
+    .expect("valid regex")
 });
 static TICKS_BOX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)\.checked\s*=\s*(true|1|!0)|setattribute\s*\(\s*["'`]checked"#).expect("valid regex")
-});
-static PASSWORD_NAMED: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)["'`][^"'`]*(password|passwd|passwort|mot.?de.?passe|motdepasse|\bmdp\b|\bpwd\b|kennwort|contrase)"#)
+    Regex::new(r#"(?i)\.checked\s*=[^=]|\[\s*["'`]checked["'`]\s*\]\s*=[^=]|(set|toggle)attribute\s*\(\s*["'`]checked"#)
         .expect("valid regex")
 });
+static LOOPS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\bfor\s*\(|\bwhile\s*\(|\.(forEach|map|flatMap|some|every|reduce)\s*\(").expect("valid regex")
+});
 
-/// A script that sets a password field (named anywhere in it, a table of selectors included) or ticks a box, and sends
-/// the form or clicks (second review 13/11: set from a table, then `requestSubmit()`; third: then the app's button
-/// clicked): the site would get them before the check after the call. A search filled and sent is not one.
-pub fn script_fills_and_sends(script: &str) -> bool {
-    SENDS.is_match(script)
-        && (TICKS_BOX.is_match(script)
-            || WRITES.is_match(script) && (PASSWORD_NAMED.is_match(script) || PASSWORD_TARGET.is_match(script)))
+/// What the page held before a call (`guard_before`'s answer): password fields, terms boxes not ticked yet. None (the
+/// page couldn't say): both, to be safe.
+pub fn page_holds(before: Option<&Value>) -> (bool, bool) {
+    let Some(before) = before else { return (true, true) };
+    let passwords = before.get("pw").and_then(Value::as_object).is_some_and(|pw| !pw.is_empty());
+    let terms = before.get("boxes").and_then(Value::as_array).is_some_and(|boxes| !boxes.is_empty());
+    (passwords, terms)
+}
+
+/// A script that would change what a page sends and send it at once, the site getting it before the check after the
+/// call: on a page with a password field, it writes a value and sends the form or clicks (second review 13/11: set from
+/// a table, then `requestSubmit()`; third: the app's button clicked; fourth: fields named otherwise, `#pass1`); on a page
+/// whose terms aren't ticked, it ticks a box, or clicks twice or in a loop (fourth: the box ticked by its own `.click()`),
+/// and sends. Decided from the page, not the script's words (`before`, `page_holds`): a shop's filters or a « mot de
+/// passe oublié » e-mail sent by a script go on (fourth review).
+pub fn script_fills_and_sends(script: &str, before: Option<&Value>) -> bool {
+    let (passwords, terms) = page_holds(before);
+    let actions = SENDS.find_iter(script).count();
+    let several = actions > 1 || actions == 1 && LOOPS.is_match(script);
+    actions > 0 && (passwords && WRITES.is_match(script) || terms && (TICKS_BOX.is_match(script) || several))
 }
 
 /// A script that would both fill and send a form (`script_fills_and_sends`).
-pub const SCRIPT_SENDS_REFUSED: &str = "Not done: a script never sets a password or ticks a box and sends the form (or \
-clicks) at once. Fill the fields with your browser's steps (type_text, select_option…), let the vault type the password (vault_create_login) and your person \
-accept the terms (accept_terms), then click the form's button yourself. Nothing was run.";
+pub const SCRIPT_SENDS_REFUSED: &str = "Not done: on a page with a password field or terms not accepted yet, a script \
+never changes a field or a box and clicks or sends in the same run (the site would get it before the app's check). \
+Do it step by step with your browser's tools: type_text, select_option… for the fields, vault_create_login for the \
+password (the vault types it), accept_terms for the terms (your person says « Oui »), then click_element on the \
+form's button. Nothing was run.";
+
+/// After a script: the script that tells whether its answer (`answer`, as the agent would read it) holds what a password
+/// field of the page holds (the vault typed it, or the person: a script reading the form's values would hand it to the
+/// model). The answer is checked in the page, as is and JSON-escaped up to three times (the script's own JSON, the
+/// server's, the answer's); the values never leave it.
+pub fn shows_password(answer: &str) -> String {
+    let answer = serde_json::to_string(answer).unwrap_or_else(|_| "\"\"".into());
+    format!(
+        "/* bipagents guard: shown */ (() => {{ const A = {answer}; \
+const esc = (v) => JSON.stringify(v).slice(1, -1); const forms = (v) => [v, esc(v), esc(esc(v)), esc(esc(esc(v)))]; \
+return [...document.querySelectorAll('input')].some((e) => (e.getAttribute('type') || '').toLowerCase() === 'password' \
+&& e.value.length >= 4 && forms(e.value).some((f) => A.includes(f))); }})()"
+    )
+}
+
+/// What the agent reads when its script's answer held a password (`shows_password`).
+pub const PASSWORD_SHOWN: &str = "Not shown: your script's answer held what a password field holds, and you never \
+read a password. Read the other fields by their selectors, never all of a form's values. The vault fills and keeps \
+passwords (vault_create_login, browser_vault).";
 
 /// `press_key` typing a character (« a », « P » with Shift), not a key (« Enter », « Tab ») nor a shortcut.
 pub fn presses_a_character(args: &Dict) -> bool {
@@ -344,22 +382,23 @@ pub fn presses_a_character(args: &Dict) -> bool {
 
 /// The script that tells what a call's `selector` (none: the focused element) is: a password field (`type=password`
 /// only: `autocomplete="new-password"` also keeps Chrome's list off an address field, review 13/11), or a box not ticked
-/// yet with its label (from the box, its label, or anything inside its label: a box drawn in its label). `invalid`: a
-/// selector the page can't read. Read only; the selector passed as a JSON string.
+/// yet with its label (from the box, its label, or anything inside its label: a box drawn in its label; read as `LABEL_JS`
+/// reads it, a label tied to nothing after the box included: fourth review 13/11). `invalid`: a selector the page can't
+/// read. Read only; the selector passed as a JSON string.
 pub fn target_script(selector: &str) -> String {
     let selector = serde_json::to_string(selector).unwrap_or_else(|_| "\"\"".into());
     format!(
-        "(() => {{ const sel = {selector}; let el = null; \
+        "(() => {{ const sel = {selector}; let el = null; {LABEL_JS}\
 if (sel) {{ try {{ el = document.querySelector(sel); }} catch (e) {{ return JSON.stringify({{found: false, invalid: true}}); }} }} \
 else {{ el = document.activeElement; while (el && el.shadowRoot && el.shadowRoot.activeElement) el = el.shadowRoot.activeElement; }} \
 if (!el) return JSON.stringify({{found: false}}); \
-const label = el.tagName === 'LABEL' ? el : (el.closest && el.closest('label')); \
+const holder = el.tagName === 'LABEL' ? el : (el.closest && el.closest('label')); \
 const link = el.closest && el.closest('a, button'); \
-if (el.tagName !== 'INPUT' && !link && label && label.control) el = label.control; \
+if (el.tagName !== 'INPUT' && !link && holder && holder.control) el = holder.control; \
 const attr = (n) => ((el.getAttribute && el.getAttribute(n)) || '').toLowerCase(); \
 const password = el.tagName === 'INPUT' && attr('type') === 'password'; \
 let terms = ''; \
-if (el.tagName === 'INPUT' && attr('type') === 'checkbox' && !el.checked) terms = [...(el.labels || [])].map((l) => l.innerText).join(' ') + ' ' + attr('aria-labelledby').split(/\\s+/).map((i) => ((document.getElementById(i) || {{}}).innerText || '')).join(' ') + ' ' + attr('aria-label') + ' ' + (el.name || '') + ' ' + (el.id || ''); \
+if (el.tagName === 'INPUT' && attr('type') === 'checkbox' && !el.checked) terms = label(el); \
 return JSON.stringify({{found: true, password: password, terms: terms.slice(0, 300)}}); }})()"
     )
 }
@@ -372,12 +411,14 @@ pub const LATE_FIELD_TRIES: u32 = 12;
 pub const GUARDED: [&str; 5] = ["click_element", "type_text", "paste_text", "press_key", "execute_script"];
 
 /// What makes a box the site's terms in the page's scripts (as `terms_box`): its label, the text it is labelled by, the
-/// short text around a box without a label, its aria-label, name and id.
+/// short text around a box without a label (a `<label>` tied to nothing right after it included: fourth review 13/11),
+/// its aria-label, name and id.
 pub const LABEL_JS: &str = "const TERMS = /\\b(cgu|cgv|agb|rgpd|gdpr)\\b|terms|conditions|consent|privacy|confidentialit|datenschutz|t[ée]rminos|condiciones|politique de/i; \
 const STRONG = /\\b(cgu|cgv|agb)\\b|conditions|terms|t[ée]rminos|condiciones|nutzungsbedingungen/i; \
 const label = (e) => { const own = [...(e.labels || [])].map((l) => l.innerText).join(' '); \
 const by = (e.getAttribute('aria-labelledby') || '').split(/\\s+/).map((i) => ((document.getElementById(i) || {}).innerText || '')).join(' '); \
-let around = ''; if (!own && !by.trim()) { for (let n = e.nextSibling; n && around.length < 300; n = n.nextSibling) { if (n.nodeType === 1 && n.matches('input, select, textarea, button, br, label')) break; around += ' ' + n.textContent; } \
+let around = ''; if (!own && !by.trim()) { for (let n = e.nextSibling; n && around.length < 300; n = n.nextSibling) { if (n.nodeType === 1 && n.matches('label') && !n.control) { around += ' ' + n.textContent; break; } \
+if (n.nodeType === 1 && n.matches('input, select, textarea, button, br, label')) break; around += ' ' + n.textContent; } \
 const p = e.parentElement; if (!around.trim() && p && p.innerText.length <= 300 && p.querySelectorAll('input').length === 1) around = p.innerText; } \
 return [own, by, around, e.getAttribute('aria-label') || '', e.name || '', e.id || ''].join(' ').replace(/\\s+/g, ' ').trim(); }; \
 const isTerms = (t) => TERMS.test(t) && (!/cookie/i.test(t) || STRONG.test(t)); ";
@@ -1332,14 +1373,16 @@ impl Proxy {
     /// (`TERMS_REFUSED`). Checked before the call (the page asked what its target is, `target_script`; a field typed
     /// into that isn't there yet waited for a moment, as the real server waits for it); what slips past is undone
     /// after it (`undone`). The refusal, or None to go on.
-    async fn guard(&self, tool: &str, args: &Dict, instance: &str) -> Option<Dict> {
+    async fn guard(&self, tool: &str, args: &Dict, instance: &str, before: Option<&Value>) -> Option<Dict> {
         if tool == "execute_script" {
+            // decided from what the page holds (`before`): no password field, nothing to write or read (fourth
+            // review 13/11: a « mot de passe oublié » e-mail asked for by a script)
             let script = args.get("script").and_then(Value::as_str).unwrap_or("");
             let with_args = format!("{script} {}", args.get("args").map(Value::to_string).unwrap_or_default());
-            if script_touches_password(&with_args) {
+            if page_holds(before).0 && script_touches_password(&with_args) {
                 return Some(refused(SCRIPT_PASSWORD_REFUSED));
             }
-            return script_fills_and_sends(script).then(|| refused(SCRIPT_SENDS_REFUSED));
+            return script_fills_and_sends(script, before).then(|| refused(SCRIPT_SENDS_REFUSED));
         }
         let typing = matches!(tool, "type_text" | "paste_text") || (tool == "press_key" && presses_a_character(args));
         let selector = args.get("selector").and_then(Value::as_str).unwrap_or("");
@@ -1411,7 +1454,12 @@ impl Proxy {
             log(&format!("{tool}: an address of the container itself refused"));
             return Ok(refused);
         }
-        if let Some(refusal) = self.guard(tool, &args, &instance).await {
+        // what the page holds before a script, for its check before (`guard`) and after (`undone`)
+        let early = match tool == "execute_script" && !instance.is_empty() {
+            true => self.page_before(&instance).await,
+            false => None,
+        };
+        if let Some(refusal) = self.guard(tool, &args, &instance, early.as_ref()).await {
             log(&format!("{tool}: refused (a password field, or the site's terms)"));
             return Ok(refusal);
         }
@@ -1466,12 +1514,10 @@ impl Proxy {
                 arguments.insert("timeout".into(), json!(CLICK_TIMEOUT_MS));
             }
         }
-        let before = match GUARDED.contains(&tool) && !instance.is_empty() {
-            true => match self.script(&instance, &guard_before()).await {
-                Some(Value::String(text)) => serde_json::from_str::<Value>(&text).ok(),
-                _ => None,
-            },
-            false => None,
+        let before = match (early, GUARDED.contains(&tool) && !instance.is_empty()) {
+            (Some(early), _) => Some(early),
+            (None, true) => self.page_before(&instance).await,
+            (None, false) => None,
         };
         let response = self.request("tools/call", sent.as_ref()).await?;
         if loads_a_page(tool) && !instance.is_empty() {
@@ -1486,7 +1532,23 @@ impl Proxy {
                 return Ok(refused(text));
             }
         }
+        if tool == "execute_script" && !instance.is_empty() && script_result(&response).is_some() {
+            let answer = serde_json::to_string(&response).unwrap_or_default();
+            let shown = self.script(&instance, &shows_password(&answer)).await;
+            if matches!(&shown, Some(Value::Bool(true))) || matches!(&shown, Some(Value::String(t)) if t == "true") {
+                log("a script's answer held a password: not passed on");
+                return Ok(refused(PASSWORD_SHOWN));
+            }
+        }
         Ok(response)
+    }
+
+    /// What the page holds before a guarded call (`guard_before`); None when it can't say.
+    async fn page_before(&self, instance: &str) -> Option<Value> {
+        match self.script(instance, &guard_before()).await {
+            Some(Value::String(text)) => serde_json::from_str::<Value>(&text).ok(),
+            _ => None,
+        }
     }
 
     /// A script run in the page through the real server's `execute_script`: its result, None when it failed.
@@ -2207,7 +2269,7 @@ out of your reach";
     fn the_skill_gives_the_same_script() {
         let skill = crate::browsers::skill();
         assert!(skill.contains(&format!("`{AROUND_A_WORD}`")), "visible-browser/SKILL.md § 2 and AROUND_A_WORD");
-        assert!(skill.contains("version: 1.12.0"));
+        assert!(skill.contains("version: 1.12.1"));
         // never an argument the relay takes off (tame_call): the agent would say it quit the browser, and it did not
         assert!(!skill.contains("quit_browser:") && !skill.contains("browser_args"), "visible-browser/SKILL.md");
     }
