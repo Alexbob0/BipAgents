@@ -396,10 +396,13 @@ pub fn purchase_view(state: &AppState, config: &Config, agent: &str, conn: &Conn
 pub fn account_note(purchase: &Purchase) -> String {
     format!(
         "<!--bip:purchase\nNot from a site: your person gets ready to buy « {} » on {} as soon as your watcher sees \
-it. Create their customer account on {} now with vault_create_login (one card for them; the password is generated \
-and kept in the vault). Fill the profile and delivery address the shop needs from their « Coordonnées » (browser_vault \
-list shows each entry with when to use it); ask only for what is missing, in your last message (nobody follows this \
-turn live: no clarify question), and offer to keep it in their vault. Don't buy anything. End with one short sentence: what is ready, what is missing.\n-->",
+it. Create their customer account on {} now with vault_create_login: open the shop's sign-up page in your own \
+browser, fill the e-mail and the other fields from their « Coordonnées » (browser_vault list shows each entry with \
+when to use it), focus the password field, then call vault_create_login (tool_search finds it if you don't see it): \
+it makes and types the password, they approve one card. Never ask them for a password (no ask_secret) and never type \
+one yourself. Fill the profile and delivery address the shop needs from the same entry; ask only for what is \
+missing, in your last message (nobody follows this turn live: no clarify question), and offer to keep it in their \
+vault. Don't buy anything. End with one short sentence: what is ready, what is missing.\n-->",
         crate::tools_knowledge::in_note_line(&purchase.what),
         purchase.site,
         purchase.site
