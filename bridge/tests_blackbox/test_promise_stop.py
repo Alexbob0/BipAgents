@@ -598,3 +598,37 @@ def test_an_offer_or_a_request_for_their_yes_is_not_continued(bridges, fakes, re
     events = follow(bridge, "run_vie")
     hidden = {r: s["input"][:120] for r, s in fakes.hermes.started.items()}
     assert notices(events) == [] and hidden == {}, f"a hidden turn told to do it now: {hidden}"
+
+
+# -- fifth review of 13/11 (failed before its fix) ----------------------------------------------------------------------
+
+WAITS_FOR_THEIR_YES = [
+    "Voici trois options : A, B ou C. Tu choisis et je lance la commande.",
+    "OK pour la taille M ? Je lance la commande.",
+    "Le panier est prêt : 3 articles, 4,85 € livraison comprise. Si tu es d'accord, je lance la commande.",
+    "Le panier est prêt : 3 articles, 4,85 € livraison comprise. Tu me confirmes et je lance la commande.",
+    "Here's the draft. If it looks good to you, I'll send it right away.",
+]
+
+
+@pytest.mark.parametrize("reply", WAITS_FOR_THEIR_YES)
+def test_their_yes_asked_otherwise_is_not_continued(bridges, fakes, reply):
+    bridge = bridges.new().start()
+    fakes.hermes.runs["run_vie"] = turn("run_vie", reply)
+    fakes.hermes.runs["r1"] = turn("r1", "C'est fait : commande passée.", tools=["mcp__stealth__navigate"])
+    events = follow(bridge, "run_vie")
+    hidden = {r: s["input"][:120] for r, s in fakes.hermes.started.items()}
+    assert notices(events) == [] and hidden == {}, f"a hidden turn told to do it now: {hidden}"
+
+
+@pytest.mark.parametrize("reply", [
+    "Je te prépare 2-3 trouvailles pour 5 € : c'est parfait pour un achat test.",
+    "Je reviens dans quelques minutes avec le lien et le meilleur prix : le panier est presque prêt.",
+])
+def test_a_promise_explained_after_a_colon_goes_on(bridges, fakes, reply):
+    bridge = bridges.new().start()
+    fakes.hermes.runs["run_vie"] = turn("run_vie", reply)
+    fakes.hermes.runs["r1"] = turn("r1", FOUND, tools=["web_search"])
+    events = follow(bridge, "run_vie")
+    assert [n["code"] for n in notices(events)] == ["loop_rescue_started"], "the turn ended on its promise, nothing done"
+    assert events[-1][1]["output"] == FOUND
