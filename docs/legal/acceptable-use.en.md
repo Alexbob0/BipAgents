@@ -2,7 +2,7 @@ English · [Français](acceptable-use.fr.md) · [Deutsch](acceptable-use.de.md) 
 
 # Acceptable use policy of the all-included offer
 
-> Last updated: 28 October 2026.
+> Last updated: 13 November 2026.
 
 ## 1. What it is for
 
@@ -38,6 +38,11 @@ You agree not to use your place, your agents or your AI credit, nor let anyone d
 When your agents browse or use an online service, they must **respect that website's or service's terms of use** and
 the rights of others: you are answerable for it.
 
+**Between people.** In a family agent's common conversation, every member reads what the others write; an agent
+shared read-only shows your conversations to your relatives ([privacy policy](privacy.en.md), section 2 bis). What you
+write or show there follows the same rules as everything else: no harassment, threats or hate, no illegal content, no
+one else's private data without their consent, no impersonation (terms of use, section 10).
+
 ## 3. Your responsibility
 
 You are answerable for what you do and what your agents do from your place, with your approval or because your
@@ -61,8 +66,11 @@ and authorities.
   - a statement confirming that you believe, in good faith, that this information is accurate and complete.
 - **Then**: we acknowledge receipt without delay and tell you what we decided.
 
-For a reply from your own agents that bothers you, use "Report this reply" in the app instead (terms of use,
-section 11). **If someone's life or safety is threatened, first call emergency services (112 in Europe).**
+**In the app** it is simpler: **long press › Report this message** on a relative's message, or **Report this reply**
+on an agent's reply. The report goes through Kerfy Studio's relay, then by email for a relative's message, to Kerfy
+Studio only, with the reported text. Its author isn't told. Your email is optional and only used to answer you. What is
+sent and how long it is kept: [privacy policy](privacy.en.md), section 4.2; see also the terms of use, section 11.
+**If someone's life or safety is threatened, first call emergency services (112 in Europe).**
 
 ## 5. What Kerfy Studio does
 
@@ -79,6 +87,10 @@ section 11). **If someone's life or safety is threatened, first call emergency s
 - **End of the subscription**: for a serious or repeated breach, Kerfy Studio may end the subscription, after giving
   you formal notice to stop, except in an emergency or for a particularly serious breach (terms of the offer,
   section 11).
+- **Reports made in the app**: Kerfy Studio can neither read nor delete content on a person's server or place. It can
+  answer you, tell the person who created the family agent, warn the person concerned and, for a serious breach, take
+  the measures above, up to ending the subscription to the offer, with its reasons. The person who created a family
+  agent can also remove a member.
 - **Authorities**: Kerfy Studio answers the orders and requests from authorities that the law provides for, and tells
   them without delay if it learns of an offence that threatens someone's life or safety (article 18 of Regulation (EU)
   2022/2065).
