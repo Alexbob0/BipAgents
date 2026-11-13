@@ -115,10 +115,24 @@ it back (« Rendre la main »), then stop there. Once they do, your browser answ
 /// So many failed browser steps in a row get `STREAK_HINT` (and every so many after).
 pub const FAILURE_STREAK: u32 = 3;
 
-pub const STREAK_HINT: &str = "Several browser steps in a row did not work. Read the page once (get_page_content) to \
-see where you are: a field inside a panel that unfolds only appears after a click on that panel's title, and some \
-fields come a moment later. If it still doesn't work, stop and tell your person in plain words what blocks you (no \
-technical words: no selectors, field names or tool names).";
+pub const STREAK_HINT: &str = "Several browser steps in a row did not work: don't repeat them as they were. Use the \
+page's real fields (listed below when the page has some; else query_elements, or a short execute_script listing the \
+form's fields). A panel that unfolds opens with one click on its title: don't click it again (a second click may close \
+it). If it still doesn't work, stop and tell your person in plain words what blocks you (no technical words: no \
+selectors, field names or tool names).";
+
+/// The page's visible form fields for `STREAK_HINT` (lab 13/11, GLM-5.3 Flash: three fields typed into under guessed
+/// names, then the sign-up panel clicked open again and again): a selector, the kind and the label of each, never a
+/// value; honeypots (`tabindex=-1`, hidden) left out.
+pub const FIELDS_SCRIPT: &str = "(() => { const out = []; \
+for (const e of document.querySelectorAll('input, select, textarea')) { \
+const kind = (e.getAttribute('type') || e.tagName).toLowerCase(); \
+if (['hidden', 'submit', 'button', 'image', 'reset'].includes(kind) || e.getAttribute('tabindex') === '-1' || e.closest('[aria-hidden=true]')) continue; \
+if (!e.getClientRects().length || getComputedStyle(e).visibility === 'hidden') continue; \
+const label = ([...(e.labels || [])].map((l) => l.innerText).join(' ') || e.getAttribute('aria-label') || e.getAttribute('placeholder') || '').replace(/\\s+/g, ' ').trim().slice(0, 60); \
+const sel = e.id ? '#' + CSS.escape(e.id) : (e.name ? e.tagName.toLowerCase() + '[name=\"' + e.name + '\"]' : ''); \
+if (!sel) continue; out.push(sel + ' (' + kind + (label ? ', ' + label : '') + ')'); if (out.length >= 40) break; } \
+return out.join('; '); })()";
 
 /// Typing into a password field (`guard`): the vault's job, never the agent's (Alex, 13/11: Vie typed « a provisional
 /// password » itself).
@@ -1059,7 +1073,9 @@ impl Proxy {
             if method == "tools/call" {
                 let tool = message.get("params").and_then(|p| p.get("name")).and_then(Value::as_str).unwrap_or("");
                 if let Some(map) = answer.as_object_mut() {
-                    self.answered_call(tool, false, map);
+                    if self.answered_call(tool, false, map) {
+                        self.add_hint("", map).await;
+                    }
                 }
             }
             answer["id"] = ident;
@@ -1086,7 +1102,9 @@ impl Proxy {
         if calling && self.credit_used() {
             // The month's AI credit used (credit.rs): the browser isn't started, the agent told plainly (chat goes on).
             let mut answer = refused(crate::credit::BROWSER_REFUSED);
-            self.answered_call(&named, named != tool, &mut answer);
+            if self.answered_call(&named, named != tool, &mut answer) {
+                self.add_hint("", &mut answer).await;
+            }
             answer.insert("id".into(), ident);
             self.to_client(&Value::Object(answer));
             return;
@@ -1095,7 +1113,9 @@ impl Proxy {
             // The brake's rescue turn: answered with what the agent has, never a page it couldn't read (nor a hang).
             log(&format!("{tool} refused: the brake's rescue turn"));
             let mut answer = refused(RESCUE_REFUSED);
-            self.answered_call(&named, named != tool, &mut answer);
+            if self.answered_call(&named, named != tool, &mut answer) {
+                self.add_hint("", &mut answer).await;
+            }
             answer.insert("id".into(), ident);
             self.to_client(&Value::Object(answer));
             return;
@@ -1128,7 +1148,16 @@ impl Proxy {
                     log(&format!("{tool}: a result too large, plain guidance instead of its file"));
                 }
                 self.phone_exit_lines(params.as_ref(), &mut response).await;
-                self.answered_call(&named, named != tool, &mut response);
+                if self.answered_call(&named, named != tool, &mut response) {
+                    let instance = params
+                        .as_ref()
+                        .and_then(|p| p.get("arguments"))
+                        .and_then(|a| a.get("instance_id"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string();
+                    self.add_hint(&instance, &mut response).await;
+                }
             }
             self.to_client(&Value::Object(response));
             Ok(())
@@ -1138,7 +1167,9 @@ impl Proxy {
             if calling && !ident.is_null() {
                 // never a JSON-RPC error for a tool call: Hermes counts one against the whole server (review 13/11)
                 let mut answer = refused(&could_not_start(&exc));
-                self.answered_call(&named, named != tool, &mut answer);
+                if self.answered_call(&named, named != tool, &mut answer) {
+                    self.add_hint("", &mut answer).await;
+                }
                 answer.insert("id".into(), ident.clone());
                 self.to_client(&Value::Object(answer));
             } else {
@@ -1157,7 +1188,9 @@ impl Proxy {
     /// (`soften`) and, then, with a structured copy that fits the tool's output schema (`fitting`), and after
     /// `FAILURE_STREAK` failures in a row (the person's hold not counted) what to do next (`STREAK_HINT`).
     /// `tool`: the name Hermes called (its schema is the one checked); `rerouted`: it ran as execute_script.
-    pub fn answered_call(&self, tool: &str, rerouted: bool, response: &mut Dict) {
+    /// True when the answer completes a streak of failures (`FAILURE_STREAK`): the caller adds `STREAK_HINT` and the
+    /// page's fields (`add_hint`).
+    pub fn answered_call(&self, tool: &str, rerouted: bool, response: &mut Dict) -> bool {
         let held = person_holds_text(response) || gate_holds(response);
         let failed = soften(response);
         if held || failed {
@@ -1166,18 +1199,29 @@ impl Proxy {
             self.refit_called(tool, response);
         }
         if held || own_refusal(response) {
-            return; // not a step that failed on the page: the streak stays as it was
+            return false; // not a step that failed on the page: the streak stays as it was
         }
         if !failed {
             self.failures.store(0, Ordering::SeqCst);
-            return;
+            return false;
         }
         let streak = self.failures.fetch_add(1, Ordering::SeqCst) + 1;
-        if streak.is_multiple_of(FAILURE_STREAK) {
-            log(&format!("{streak} failed calls in a row: guidance added"));
-            if let Some(Value::Array(content)) = response.get_mut("result").and_then(|r| r.get_mut("content")) {
-                content.push(json!({"type": "text", "text": STREAK_HINT}));
-            }
+        streak.is_multiple_of(FAILURE_STREAK)
+    }
+
+    /// `STREAK_HINT` added to an answer, with the page's visible fields (`FIELDS_SCRIPT`) when `instance` has some.
+    async fn add_hint(&self, instance: &str, response: &mut Dict) {
+        log("failed calls in a row: guidance added");
+        let fields = match instance {
+            "" => None,
+            _ => self.script(instance, FIELDS_SCRIPT).await.and_then(|v| v.as_str().map(str::to_string)),
+        };
+        let text = match fields.filter(|f| !f.is_empty()) {
+            Some(fields) => format!("{STREAK_HINT}\nThe page's fields now (selector, kind, label): {fields}"),
+            None => STREAK_HINT.to_string(),
+        };
+        if let Some(Value::Array(content)) = response.get_mut("result").and_then(|r| r.get_mut("content")) {
+            content.push(json!({"type": "text", "text": text}));
         }
     }
 
@@ -2237,6 +2281,9 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         assert!(person_holds_text(&mut held));
         assert_eq!(held["result"]["content"][0]["text"], PERSON_HOLDS);
         assert!(PERSON_HOLDS.contains("Rendre la main") && PERSON_HOLDS.contains("at once"));
+        // the hint after failed steps never sends the agent back to the panel's title (lab 13/11)
+        assert!(STREAK_HINT.contains("don't click it again") && !STREAK_HINT.contains("only appears after a click"));
+        assert!(FIELDS_SCRIPT.contains("tabindex") && !FIELDS_SCRIPT.contains(".value"));
         let mut other = dict(json!({"result": {"content": [{"type": "text", "text": "A card payment is going on"}]}}));
         assert!(!person_holds_text(&mut other));
     }

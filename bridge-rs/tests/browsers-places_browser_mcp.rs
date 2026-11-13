@@ -904,6 +904,8 @@ for line in sys.stdin:
             r = script_answer(json.dumps(target))
         elif name == "execute_script" and script == "document.readyState":
             r = script_answer("complete")
+        elif name == "execute_script" and "querySelectorAll('input, select, textarea')" in script:
+            r = script_answer("#lastname (text, Nom); #phone (tel, Téléphone)")
         elif name == "click_element" and selector == "#folded":
             r = text("Error calling tool 'click_element': Failed to click element: DOM Error while querying [code: -32000]", True)
         else:
@@ -979,6 +981,9 @@ async fn handed_back_the_browser_answers_at_once_and_nothing_pauses_it() {
         assert_eq!(answer["result"].get("isError"), None, "{answer}");
         assert!(text_of(&answer).starts_with("Error calling tool 'click_element'"));
         assert_eq!(text_of(&answer).contains(browser_mcp::STREAK_HINT), id == 8, "{answer}");
+        // with the page's real fields (lab 13/11: guessed names, then the panel clicked open again and again)
+        let fields = "The page's fields now (selector, kind, label): #lastname (text, Nom); #phone (tel, Téléphone)";
+        assert_eq!(text_of(&answer).contains(fields), id == 8, "{answer}");
         assert_eq!(answer["result"]["structuredContent"], json!({"result": false}));
     }
     assert_eq!(proxy.failures.load(Ordering::SeqCst), 3);
