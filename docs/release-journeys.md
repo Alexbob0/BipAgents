@@ -242,7 +242,8 @@ Les paiements par carte d'un veilleur (paiement urgent, « Prêt à acheter ») 
 pas de vrai modèle) : la batterie les passe avec `--lab`, sur un vrai labo avec cartes et le vrai modèle
 (`scripts/release-battery/cards_lab.py`, `internal/notes/release-process.md` §1 ; ses six vérifications et son coût
 dans le rapport de la batterie). Seul : `BIPAGENTS_LAB_DIR=/tmp/bb-cards BIPAGENTS_LAB_TAG=bipagents-cards-<nom>
-python3 scripts/release-battery/cards_lab.py --sha <commit> --out <dossier>`.
+python3 scripts/release-battery/cards_lab.py --sha <commit> --out <dossier>` (les deux variables sont obligatoires :
+`lab.py down --yes` supprime tous les serveurs de ce label).
 
 Le simulateur joint le pont par un tunnel ssh sur le `127.0.0.1` du Mac : lancé depuis Claude Code, le script doit
 tourner HORS du bac à sable de Claude (le simulateur n'atteint pas un port ouvert dans le bac à sable : la requête
