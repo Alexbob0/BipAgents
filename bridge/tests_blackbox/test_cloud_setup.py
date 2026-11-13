@@ -219,6 +219,23 @@ def test_claiming_sets_the_model_once_and_creates_the_agents_left(bridges, fakes
     assert sum(1 for c in again if c[:2] == ["profile", "create"]) == 1
 
 
+def test_a_claim_retried_after_its_profile_was_left_makes_the_agent_under_another_id(bridges, fakes):
+    """13/11 (lab, public beta): the first try made the agent's profile, then failed; every retry then met « A profile
+    named 'quotidien' already exists ». The profiles' folders count when the id is chosen: the retry succeeds."""
+    bridge, cloud = cloud_bridge(bridges, fakes)
+    cloud.done()
+    bridge.commands.rule("hermes", ["-p", "quotidien", "tools"], exit=1, stderr="gateway gone", times=1)
+    failed = bridge.post("/v1/setup/claim", json=claim_body(cloud.challenge()))
+    assert failed.status_code == 502
+    assert (bridge.root / ".hermes" / "profiles" / "quotidien" / "config.yaml").is_file()   # what it left
+    bridge.commands.clear()
+    agents = bridge.post("/v1/setup/claim", json=claim_body(cloud.challenge()))
+    assert agents.status_code == 200, agents.text
+    assert agents.json()["agents"] == [{"id": "quotidien-2", "name": "Quotidien"}]
+    creates = [c[2] for c in bridge.commands.of("hermes") if c[:2] == ["profile", "create"]]
+    assert creates == ["quotidien-2"]
+
+
 def test_a_place_of_the_reserve_is_claimed_in_seconds_its_first_agent_made_before(bridges, fakes):
     """A place with no agent yet makes its first one once installed (the Rust bridge says it: `prepared`); the claim
     then writes files only and answers at once, with no gateway restart (Hermes reads a profile's model and key at each

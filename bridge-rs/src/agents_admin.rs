@@ -652,9 +652,22 @@ pub fn plan_agent(config: &Config, body: &NewAgent) -> anyhow::Result<PlannedAge
     } else {
         return Err(AgentError("a kind or a custom description is needed".into()).into());
     };
-    let taken: Vec<String> = config.agents.keys().cloned().collect();
-    let profile = crate::souls::profile_name(&name, &taken);
+    let profile = crate::souls::profile_name(&name, &taken_profiles(config));
     Ok(PlannedAgent { profile, name, soul, description })
+}
+
+/// The profile ids a new agent can't get: this bridge's agents, and every folder in the hub's `profiles/` (one left
+/// by a creation cut short, a profile the person made on the server, a spare). `hermes profile create` refuses an id
+/// whose folder exists: a claim whose first try made « quotidien » and then failed met « A profile named
+/// 'quotidien' already exists » at every retry (lab, 13/11).
+fn taken_profiles(config: &Config) -> Vec<String> {
+    let mut taken: Vec<String> = config.agents.keys().cloned().collect();
+    if config.hermes.enabled() {
+        if let Ok(entries) = std::fs::read_dir(PathBuf::from(install_home(config)).join("profiles")) {
+            taken.extend(entries.flatten().map(|e| e.file_name().to_string_lossy().into_owned()));
+        }
+    }
+    taken
 }
 
 /// The agent as this bridge serves it, in the hub, with its key (its profile may not exist yet).

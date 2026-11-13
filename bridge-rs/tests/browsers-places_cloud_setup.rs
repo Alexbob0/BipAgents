@@ -504,6 +504,53 @@ async fn claiming_sets_the_model_and_creates_agents_reached_through_the_door() {
     );
 }
 
+/// 13/11 (lab of the public beta): a claim whose first try made the agent's profile and then failed (the gateway did
+/// not serve it) met « A profile named 'quotidien' already exists » at every retry: the new agent's id was planned from
+/// the bridge's agents only. The profiles' folders count too: the retry makes its agent under another id and succeeds.
+#[tokio::test]
+async fn a_claim_retried_after_a_profile_was_left_makes_its_agent_under_another_id() {
+    use axum::routing::{any, get};
+    let gateway = common::spawn_fake(
+        Router::new()
+            .route("/p/{profile}/v1/capabilities", get(|| async { axum::Json(json!({})) }))
+            .fallback(any(|| async { (axum::http::StatusCode::CREATED, axum::Json(json!({"id": "s1"}))) })),
+    )
+    .await;
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = cloud(dir.path());
+    config.hermes.hub_url = gateway.clone();
+    let home = std::path::PathBuf::from(bipbridge::agents_admin::install_home(&config));
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("config.yaml"), "model:\n  default: x\n").unwrap();
+    std::fs::write(home.join(".env"), "").unwrap();
+    let shared = bipbridge::config::SharedConfig::new(config.clone());
+    let commands: Arc<Mutex<Vec<Vec<String>>>> = Arc::default();
+    let hermes = fake_hermes(home.clone(), commands.clone());
+    let failing = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let fail = failing.clone();
+    // the first try: its profile made (a real `profile create` leaves its folder), then a later step fails
+    let run: bipbridge::agents_admin::Run = Arc::new(move |args: Vec<String>, env| {
+        let after_create = args.get(1) == Some(&"-p".to_string()) && args.get(3) == Some(&"tools".to_string());
+        if after_create && fail.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            return Box::pin(async { anyhow::bail!("the gateway did not pick the agent up") });
+        }
+        hermes(args, env)
+    });
+    let wanted = ClaimRequest::from_value(&json!({
+        "model": {"provider": "custom", "name": "glm-5.3", "key": "sk-eu-0123456789", "base_url": "https://api.eurouter.example/v1"},
+        "agents": [{"name": "Quotidien", "kind": "daily"}], "language": "fr"}))
+    .unwrap();
+    let http = reqwest::Client::new();
+    assert!(cloud_setup::claim_server(&shared, &wanted, &http, Some(run.clone())).await.is_err());
+    assert!(home.join("profiles/quotidien/config.yaml").is_file()); // what the first try left
+    assert!(!failing.load(std::sync::atomic::Ordering::SeqCst));
+    let agents = cloud_setup::claim_server(&shared, &wanted, &http, Some(run)).await.unwrap();
+    assert_eq!(agents, vec![json!({"id": "quotidien-2", "name": "Quotidien"})]);
+    let ran = commands.lock().unwrap().clone();
+    assert!(ran.iter().any(|c| is_create(c, "quotidien-2")));
+    assert_eq!(ran.iter().filter(|c| is_create(c, "quotidien")).count(), 1); // never made twice
+}
+
 fn is_restart(c: &[String]) -> bool {
     c.ends_with(&["gateway".into(), "restart".into()])
         || c.get(..3) == Some(&["systemctl".to_string(), "--user".to_string(), "restart".to_string()][..])
