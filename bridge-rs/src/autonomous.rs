@@ -32,7 +32,11 @@
 //!                 `notify`, `last_check`, `last_change` (Unix seconds or null), `broken` (« en panne »), `summary`
 //!                 (what it saw last, plain words), `wakes`, `pending`, `description`, `icon`
 //!
-//!     GET  /v1/autonomous[?agent=]    {items, budgets_eur, budgets_tokens}
+//!     GET  /v1/autonomous[?agent=]    {items, approved, budgets_eur, budgets_tokens}
+//!
+//! `approved`: « Validé pour toi », what went through without asking (a « Toujours », « Seulement le critique »), one
+//! row per run and kind (« 12 e-mails rangés »), each line with « Annuler » while it can be undone
+//! (`POST /v1/approvals/auto/{id}/undo`); approval_level.rs `groups`. Never in the Boîte (Alex 13/11).
 //!
 //! No Python counterpart.
 
@@ -54,6 +58,8 @@ use crate::{py, Dict};
 /// A finished task or scan stays in the list this long (seconds).
 pub const RECENT_SECONDS: f64 = 3.0 * 86400.0;
 pub const GROUPS: [&str; 3] = ["schedule", "on_change", "now"];
+/// At most this many « Validé pour toi » rows (the newest; lines are kept `approval_level::KEEP_DAYS`).
+const APPROVED_ROWS: usize = 60;
 
 const DAYS_FR: [&str; 7] = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
 
@@ -551,8 +557,17 @@ async fn list_route(State(state): State<AppState>, q: web::QueryMap) -> ApiResul
         _ => None,
     };
     let items = listing(&state, only.as_deref()).await;
-    let (euros, tokens) = crate::jobs::budgets(&state.config());
-    Ok(web::ok(json!({"items": items, "budgets_eur": euros, "budgets_tokens": tokens, "groups": GROUPS})))
+    let config = state.config();
+    let (euros, tokens) = crate::jobs::budgets(&config);
+    // what went through without asking (a « Toujours », « Seulement le critique »), folded per run: here, never in the
+    // Boîte (approval_level.rs `groups`)
+    let c = config.clone();
+    let approved = tokio::task::spawn_blocking(move || crate::approval_level::groups(&c, only.as_deref(), APPROVED_ROWS))
+        .await
+        .unwrap_or_default();
+    Ok(web::ok(json!({
+        "items": items, "approved": approved, "budgets_eur": euros, "budgets_tokens": tokens, "groups": GROUPS,
+    })))
 }
 
 /// A connector's scheduled call now (« Lancer maintenant »), in the background: its last run says how it went.

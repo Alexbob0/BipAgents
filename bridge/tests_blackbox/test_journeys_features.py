@@ -2,8 +2,8 @@
 apps do them over HTTP, each page and line checked as the person SEES it (bbkit/displayable_people.py,
 bbkit/displayable.py):
 
-- « Seulement le critique »: a choice that is not critical is made for the person (« Validé pour toi » in the Boîte,
-  « Annuler »), a critical one is still asked;
+- « Seulement le critique »: a choice that is not critical is made for the person (« Validé pour toi » in « Ce que
+  tes agents font tout seuls », never in the Boîte, « Annuler »), a critical one is still asked;
 - a routine the agent makes is off until one question: « … a créé la routine « X » : … La démarrer ? », all it will
   run behind « i »;
 - « Étapes »: built from the agent's actions while it works, then its own list wins;
@@ -64,7 +64,8 @@ def waiting_card(journey, prefix, timeout=30):
 
 def test_j39_only_the_critical_a_small_task_is_validated_for_the_person_with_annuler(journey):
     """« Seulement le critique »: Vie starts a small background task without asking; no card, no notification, a
-    « Validé pour toi » line in the Boîte saying what was started, and « Annuler » pauses it (then « Annulé »)."""
+    « Validé pour toi » line in « Ce que tes agents font tout seuls » (`/v1/autonomous`'s `approved`, never the Boîte)
+    saying what was started, and « Annuler » pauses it (then « Annulé »)."""
     assert level(journey.bridge, "critical")["level"] == "critical"
     journey.model.calls["task"] = lambda run: mcp_as(journey.bridge, journey.token, "/v1/agent-tools/mcp", "propose_task", {
         "title": "Dossier location", "prompt": "Prépare le dossier de location #lent", "budget": "small"})
@@ -78,6 +79,8 @@ def test_j39_only_the_critical_a_small_task_is_validated_for_the_person_with_ann
     line = lines[0]
     assert not shown.auto_line_problems(line), shown.auto_line_problems(line)
     assert "Dossier location" in line["summary"] and line["undo"] is True and line["undone"] is False, line
+    approved = journey.bridge.get("/v1/autonomous", headers=AUTH).json()["approved"]
+    assert [r for r in approved if any(i["id"] == line["id"] for i in r["items"])], approved   # the history's row
     rows = journey.bridge.get("/v1/notifications", headers=AUTH, params={"limit": 50}).json()["notifications"]
     assert not [r for r in rows if "Dossier location" in str(r)], rows   # no notification for it
     def task():

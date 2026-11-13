@@ -306,7 +306,6 @@ impl AppState {
         self.spawn(crate::space_tidy::run_forever(self.clone()));
         self.spawn(crate::mail_tidy::run_forever(self.clone())); // mail tidy jobs a restart left behind
         self.spawn(crate::mail_rules::run_forever(self.clone())); // standing mail rules: resumes, weekly line
-        self.spawn(crate::approval_level::run_forever(self.clone())); // the auto approvals' daily message
         crate::held_approvals::start(self); // what turns nobody follows ask: kept as cards, never waited for
         self.spawn(crate::door_tls::announce_forever(self.clone())); // our door's certificate to linked households
         // a household that can't be reached (a home) and one that can (a place): the calls kept for it, fetched by it

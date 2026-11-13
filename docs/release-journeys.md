@@ -120,7 +120,7 @@ la bêta.
 
 | N° | Parcours | Ce que la personne doit voir | Automatisé |
 |---|---|---|---|
-| J39 | « Seulement le critique » : validé pour toi | Une petite tâche de fond lancée sans carte ni notification ; dans la Boîte, « Validé pour toi » dit ce qui a été fait, « Annuler » → « Annulé » (la tâche en pause) | P, i, A |
+| J39 | « Seulement le critique » : validé pour toi | Une petite tâche de fond lancée sans carte ni notification ; rien dans la Boîte ; dans « Ce que tes agents font tout seuls », « Validé pour toi » dit ce qui a été fait, « Annuler » → « Annulé » (la tâche en pause) | P, i, A |
 | J40 | « Seulement le critique » : le critique reste demandé | La carte d'une commande qui supprime (ce qu'elle fait), « Oui, vas-y », l'agent continue ; rien validé à sa place | P |
 | J41 | Une routine créée, puis une question | La routine en marche tout de suite ; UNE carte dans la conversation : « Veux-tu être au courant de ce que cette routine trouve ? », « Oui, préviens-moi » ; elle s'en va, la routine reste en marche | P, i, A |
 | J42 | Les « Étapes » | Pendant le travail, les étapes viennent de ce que fait l'agent ; dès qu'il écrit sa liste, c'est la sienne : une carte pour le tour, ses lignes et leur état (fait, en cours) | P, i, A |
