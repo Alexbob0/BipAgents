@@ -61,7 +61,8 @@ their place on the all-included offer. Everything personal goes here, with that 
 - **Secrets the person enters:** e-mail account passwords (`/v1/mail/accounts`, and an agent's own mailbox at the
   person's provider in `/v1/agents/{id}/email`), vault items (`/v1/vault`; on the person's own server, a payment card's number, expiry, holder and postcode go
   there too, `bridge-rs/src/cards.rs`; on a place of the offer they stay on the phone and are sent, with the security
-  code typed, only for a payment the person approves), SSH public keys (`/v1/ssh/keys`), voice
+  code (typed, or remembered on that phone behind Face ID / fingerprint when the person chose so: Keychain / Android
+  Keystore, `App/Model/CardCodes.swift`, `CardCodeStore.kt`), only for a payment the person approves), SSH public keys (`/v1/ssh/keys`), voice
   server settings.
 - **Health ("Santé")** (`App/Features/Settings/HealthSync.swift`, `android/.../health/HealthSync.kt`): one summary a
   day, sent with `PUT /v1/health-data/days` to every bridge where at least one agent has "Santé" turned on, with only

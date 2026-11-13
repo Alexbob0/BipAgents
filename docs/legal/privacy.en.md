@@ -73,7 +73,9 @@ With your own computer or your own server:
 - **A payment card for your agents.** « Payments by your agents » is off by default. On your own server, if you turn
   it on and add a card (a virtual card with a cap, never your main card), its number, expiry date, cardholder name and
   postcode go into your server's encrypted vault, where only the bridge reads them, to fill in a payment you approved.
-  The security code is never kept: you type it at each payment. The agent (the AI model) never sees these numbers, and
+  The security code is never kept on your server nor at Kerfy Studio: you type it at each payment, or, if you choose
+  (« Remember the code on this phone »), your phone keeps it for you behind Face ID or your fingerprint and sends it
+  with each payment you approve. The agent (the AI model) never sees these numbers, and
   Kerfy Studio receives none of it. With the all-included offer, the card stays on your phone (section 5.10).
 - **Several people on one server** (the family feature): each person has their own install and their own agents,
   separate from the others, except family agents and shared agents (section 2 bis), which are shared by choice.
@@ -677,8 +679,8 @@ it, on the sites you allow:
   protected storage (iOS Keychain, Android Keystore), behind Face ID, your fingerprint or your passcode. Your place
   keeps only the name you gave the card, its network, its last 4 digits, the cap you set, the sites and agents
   allowed, and the payments made with it (amount, site, agent, date).
-- **For each payment you approve** in the app, your phone sends this data and the security code you just typed to
-  your place, over the app's encrypted connection. Your place's software keeps them in memory just long enough to fill
+- **For each payment you approve** in the app, your phone sends this data and the security code (typed, or remembered on that phone if you chose
+  so) to your place, over the app's encrypted connection. Your place's software keeps them in memory just long enough to fill
   in the payment form in the agent's browser, then erases them. They are never written to disk, logs or backups, and
   the agent (the AI model) never sees them.
 - The payment log (without any card number) is kept for 3 years on your place.

@@ -73,8 +73,9 @@ Con tu propio ordenador o tu propio servidor:
 - **Una tarjeta de pago para tus agentes.** «Pagos de tus agentes» está desactivado por defecto. En tu propio servidor,
   si lo activas y añades una tarjeta (una tarjeta virtual con límite, nunca tu tarjeta principal), su número, su fecha
   de caducidad, el nombre del titular y el código postal van a la caja fuerte cifrada de tu servidor, donde solo el
-  bridge los lee, para rellenar un pago que has aprobado. El código de seguridad nunca se guarda: lo escribes en cada
-  pago. El agente (el modelo de IA) nunca ve esos números, y Kerfy Studio no recibe nada. Con la oferta todo incluido,
+  bridge los lee, para rellenar un pago que has aprobado. El código de seguridad nunca se guarda en tu servidor ni en
+  Kerfy Studio: lo escribes en cada pago, o, si lo eliges (« Recordar el código en este teléfono »), tu teléfono lo
+  guarda para ti, protegido por Face ID o tu huella, y lo envía con cada pago que apruebas. El agente (el modelo de IA) nunca ve esos números, y Kerfy Studio no recibe nada. Con la oferta todo incluido,
   la tarjeta se queda en tu teléfono (sección 5.10).
 - **Varias personas en un mismo servidor** (función familia): cada persona tiene su propia instalación y sus propios
   agentes, separados de los de las demás, salvo los agentes de la familia y los agentes compartidos (sección 2 bis), que
@@ -698,8 +699,8 @@ en los sitios que permitas:
   donde la añadiste**, en su almacenamiento protegido (Llavero de iOS, Keystore de Android), tras Face ID, tu huella o
   tu código. Tu plaza solo guarda el nombre que le diste a la tarjeta, su red, sus 4 últimos dígitos, el límite que
   fijaste, los sitios y agentes permitidos y los pagos hechos con ella (importe, sitio, agente, fecha).
-- **En cada pago que apruebas** en la app, tu teléfono envía estos datos y el código de seguridad que acabas de
-  escribir a tu plaza, por la conexión cifrada de la app. El software de tu plaza los guarda en memoria el tiempo de
+- **En cada pago que apruebas** en la app, tu teléfono envía estos datos y el código de seguridad (escrito, o
+  recordado en ese teléfono si lo elegiste) a tu plaza, por la conexión cifrada de la app. El software de tu plaza los guarda en memoria el tiempo de
   rellenar el formulario de pago en el navegador del agente y luego los borra. Nunca se escriben en el disco, en los
   registros ni en las copias de seguridad, y el agente (el modelo de IA) no los ve.
 - El registro de pagos (sin ningún número de tarjeta) se guarda 3 años en tu plaza.

@@ -96,8 +96,8 @@ def urgent_pushes(fakes):
     return [p for p in fakes.apns.payloads() if p.get("urgent") == 1]
 
 
-def setup(bridges, fakes, window=None):
-    chrome = FakeChrome()
+def setup(bridges, fakes, window=None, chrome=None):
+    chrome = chrome or FakeChrome()
 
     def prepare(bridge):
         with_device(bridge)
