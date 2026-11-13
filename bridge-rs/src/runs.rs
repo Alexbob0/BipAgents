@@ -135,6 +135,23 @@ pub struct RunProgress {
     pub capped: bool,
 }
 
+/// A run whose end on a promise may be continued (runs.rs `go_on`): a person's conversation turn an app started and
+/// follows, not a background task's, a routine's or any unattended turn, a group discussion's, the brake's rescue
+/// turn or a continuation itself, nor a turn the brake stopped, that handed work over or hit its token limit.
+fn go_on_fits(st: &SubscriptionState) -> bool {
+    !st.background
+        && !st.unattended
+        && st.rescue_of.is_none()
+        && st.go_on_of.is_none()
+        && !st.braked
+        && !st.handed_off
+        && !st.rescued
+        && !st.capped
+        && st.end_push
+        && st.room_id.is_none()
+        && (st.watched || st.ever_followed)
+}
+
 fn handoff_tool(tool: &str) -> bool {
     HANDOFF_TOOLS.iter().any(|t| tool == *t || tool.ends_with(&format!("_{t}")))
 }
@@ -464,6 +481,8 @@ pub struct SubscriptionState {
     pub loop_rescue: Option<(crate::loop_brake::Over, String)>,
     /// This run is the rescue turn of that run (its limits: `rescue_limits`; never rescued itself).
     pub rescue_of: Option<String>,
+    /// This run is the continuation of that run, which ended on a promise (`go_on`; never continued itself).
+    pub go_on_of: Option<String>,
     /// Followed for the brake whoever looks (`keep`: a run started or followed through the door's Hermes relay, a
     /// peer's message): kept alive like a watched run, without its pushes.
     pub kept: bool,
@@ -526,6 +545,7 @@ impl Default for SubscriptionState {
             braked: false,
             loop_rescue: None,
             rescue_of: None,
+            go_on_of: None,
             kept: false,
             ever_followed: false,
             last_tool: String::new(),
@@ -1264,6 +1284,8 @@ impl RunHub {
                                     self.rescue(sub, &event).await;
                                     // a turn the brake stopped: its rescue turn's end instead (loop_rescue)
                                     let event = self.loop_rescue(sub, event).await;
+                                    // a turn that ended on a promise: its continuation's end instead (go_on.rs)
+                                    let event = self.go_on(sub, event).await;
                                     // what the turn made and the files its reply cites, as attachments
                                     self.hand_over(sub, event).await
                                 } else {
@@ -1697,7 +1719,7 @@ impl RunHub {
         let rescue = settings.rescue
             && !st.background
             && !rescuing
-            && st.end_push
+            && (st.end_push || st.go_on_of.is_some())
             && st.room_id.is_none()
             && (st.watched || st.ever_followed);
         let data = crate::loop_brake::notice(&over, &lang, rescue);
@@ -1896,6 +1918,147 @@ impl RunHub {
             self.spawn(async move {
                 push.notify_reply(&agent, &run_id, &text, session.as_deref()).await;
             });
+        }
+    }
+
+    /// A person's conversation turn that ended on a promise with no work done (go_on.rs; Alex 13/11: « Je te prépare
+    /// 2-3 trouvailles », the turn over with no search): ONE continuation of the same agent in the same conversation,
+    /// told out of sight to do it now or to start a background task (`go_on::input`). Its events go on in this run's
+    /// stream after a `loop_rescue_started` notice with its run id (the apps adopt it: its stop, its checks), and its
+    /// end is this run's end (the « reply ready » push, when nobody looks, is its reply). It has the conversation's
+    /// limits and the brake's rescue, and is never continued itself. When it can't start, fails or says nothing:
+    /// this run's own end.
+    async fn go_on(self: &Arc<Self>, sub: &Arc<RunSubscription>, terminal: SSEEvent) -> SSEEvent {
+        if terminal.r#type != "run.completed" {
+            return terminal;
+        }
+        let Some(shared) = self.config.clone() else { return terminal };
+        if !shared.get().brake.go_on {
+            return terminal;
+        }
+        let (session, watched, followed) = {
+            let st = lock(&sub.state);
+            let tools: Vec<String> = st
+                .backlog
+                .iter()
+                .filter(|e| e.r#type == "tool.started")
+                .map(|e| as_str(e.data.get("tool")).or_else(|| as_str(e.data.get("name"))).unwrap_or_default())
+                .collect();
+            if !go_on_fits(&st) || !crate::go_on::did_nothing(tools.iter().map(String::as_str)) {
+                return terminal;
+            }
+            (st.session_id.clone(), st.watched, st.ever_followed)
+        };
+        let said = terminal.final_text();
+        // their next words already wait (words steered into the turn): they say what comes next
+        let steered = as_str(terminal.data.get("pending_steer")).is_some_and(|p| !p.trim().is_empty());
+        if !crate::go_on::promises(&said) || steered || self.someone_elses(&sub.run_id) {
+            return terminal;
+        }
+        let agent = sub.agent.clone();
+        let session = match session.filter(|s| !s.is_empty()) {
+            Some(s) => s,
+            None => match self.hermes.run(&agent, &sub.run_id).await.ok().and_then(|r| as_str(r.get("session_id"))) {
+                Some(s) => s,
+                None => return terminal,
+            },
+        };
+        // a message of theirs waits in line for this conversation: it says what comes next
+        let waiting = self
+            .queues
+            .get()
+            .and_then(std::sync::Weak::upgrade)
+            .is_some_and(|queues| queues.waits_in(&agent.name, &session));
+        if waiting {
+            return terminal;
+        }
+        let input = crate::dates::now::stamped(&shared.get(), &agent, &crate::go_on::input(&said));
+        let mut started = None;
+        // Hermes may still be closing the turn (the conversation busy for a moment)
+        for attempt in 0..4u64 {
+            match self.hermes.start_run(&agent, &input, &session, None).await {
+                Ok(id) if crate::app::RUN_ID.is_match(&id) => {
+                    started = Some(id);
+                    break;
+                }
+                Ok(_) => break,
+                Err(err) => {
+                    tracing::info!(agent = %agent.name, run_id = %sub.run_id, error = %err, attempt = attempt,
+                        "promise with no work: continuation not started yet");
+                    if attempt < 3 {
+                        tokio::time::sleep(Duration::from_millis(500 * (attempt + 1))).await;
+                    }
+                }
+            }
+        }
+        let Some(next_id) = started else {
+            tracing::warn!(agent = %agent.name, run_id = %sub.run_id, "promise with no work: no continuation");
+            return terminal;
+        };
+        tracing::info!(agent = %agent.name, run_id = %sub.run_id, continuation = %next_id,
+            "promise with no work: continuation started");
+        {
+            let mut inner = lock(&self.inner);
+            let next = self.get_or_start(&mut inner, &agent, &next_id);
+            let mut st = lock(&next.state);
+            st.kept = true;
+            // watched like the turn it follows (its approvals pushed when nobody looks), without the app's /v1/watch
+            st.watched = watched;
+            st.ever_followed = followed;
+            st.end_push = false; // this run's end tells it
+            st.session_id = Some(session.clone());
+            st.go_on_of = Some(sub.run_id.clone());
+        }
+        let mut listener = self.subscribe(&agent, &next_id, "forward", false);
+        let mut data = Map::new();
+        data.insert("type".into(), json!(NOTICE));
+        data.insert("code".into(), json!("loop_rescue_started"));
+        data.insert("run_id".into(), json!(next_id));
+        let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+        self.forward(sub, &SSEEvent::new(NOTICE, data, raw));
+        // its words start on a line of their own under the promise already shown
+        let gap = json!({"event": "message.delta", "run_id": next_id, "delta": "\n\n"});
+        let raw = crate::py::Dumps::new().unicode().dumps(&gap);
+        self.forward(sub, &SSEEvent::new("message.delta", gap.as_object().cloned().unwrap_or_default(), raw));
+        let deadline = tokio::time::Instant::now() + Duration::from_secs_f64(crate::go_on::MAX_SECONDS);
+        let (mut end, mut words) = (None, String::new());
+        loop {
+            match tokio::time::timeout_at(deadline, listener.next()).await {
+                Ok(Some(event)) if is_terminal(&event.r#type) => {
+                    end = Some(event);
+                    break;
+                }
+                Ok(Some(event)) if event.r#type == "bridge.error" => {}
+                Ok(Some(event)) => {
+                    if is_delta(&event.r#type) {
+                        words.push_str(&event.text());
+                    }
+                    self.forward(sub, &event);
+                }
+                Ok(None) => break,
+                Err(_) => {
+                    tracing::warn!(agent = %agent.name, run_id = %next_id, "continuation followed too long: let go");
+                    break;
+                }
+            }
+        }
+        listener.close();
+        match end {
+            Some(end)
+                if end.r#type == "run.completed"
+                    && !(words.trim().is_empty()
+                        && end.final_text().trim().is_empty()
+                        && end.data.get("attachments").and_then(Value::as_array).is_none_or(Vec::is_empty)) =>
+            {
+                tracing::info!(agent = %agent.name, run_id = %sub.run_id, continuation = %next_id,
+                    "promise with no work: the continuation answered");
+                end
+            }
+            _ => {
+                tracing::warn!(agent = %agent.name, run_id = %sub.run_id, continuation = %next_id,
+                    "promise with no work: the continuation did not answer");
+                terminal
+            }
         }
     }
 

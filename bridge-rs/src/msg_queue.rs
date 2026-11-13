@@ -559,6 +559,12 @@ impl Queues {
         queue
     }
 
+    /// A message of the agent's waits in line for that conversation (only what was read already: inside the hub's
+    /// locks, no file read).
+    pub fn waits_in(&self, agent: &str, session_id: &str) -> bool {
+        lock(&self.state).get(agent).is_some_and(|q| q.waits_in(session_id))
+    }
+
     /// The run going on in a conversation, as the hub follows it.
     pub fn running_run(&self, agent: &str, session_id: &str) -> Option<String> {
         self.hub.session_run(agent, session_id)
