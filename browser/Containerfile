@@ -33,7 +33,9 @@ RUN echo "packages of ${BROWSER_REFRESH}" && dnf -y upgrade --refresh && dnf -y 
 # them, and they stay in it), and opens no file:// page, page source, chrome:// page (its new tab aside) nor DevTools
 # page: the container's own files are the browser's secrets (/run/bipagents: the screen's password, the DevTools
 # secret), its profile's session files hold what was typed in its tabs, and Chrome's own pages install extensions or
-# open DevTools (security audit 11/11). The bridge refuses those addresses too (browser_mcp.rs).
+# open DevTools (security audit 11/11). The bridge refuses those addresses too (browser_mcp.rs). No remote experiments
+# (ChromeVariations 1: Google's « variations » only for critical fixes): Chrome behaves the same from one day and one
+# place to another until a new version (13/11: Chrome 157 had changed which pages it lists to the agent's server).
 COPY policies.json /opt/stealth/policies.json
 RUN for dir in /etc/opt/chrome/policies/managed /etc/chromium/policies/managed; do \
         mkdir -p "$dir" && cp /opt/stealth/policies.json "$dir/bipagents.json"; \

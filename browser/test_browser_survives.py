@@ -182,3 +182,40 @@ def test_the_persons_browser_and_two_servers_share_one_chrome(container):
     out = subprocess.run([ENGINE, "exec", container, "pgrep", "-a", "-f", "--", "--remote-debugging-port=9222"],
                          capture_output=True, text=True).stdout
     assert len([line for line in out.splitlines() if "--type=" not in line]) == 1   # one Chrome, never two
+
+
+# Run in the container (the server's Python has websockets): the first tab sent to chrome://version, Chrome's answer.
+NAVIGATE = """
+import asyncio, json, urllib.request
+import websockets
+async def main():
+    tabs = [t for t in json.load(urllib.request.urlopen("http://127.0.0.1:9222/json/list")) if t["type"] == "page"]
+    async with websockets.connect(tabs[0]["webSocketDebuggerUrl"], max_size=None) as ws:
+        await ws.send(json.dumps({"id": 1, "method": "Page.navigate", "params": {"url": "chrome://version/"}}))
+        while True:
+            answer = json.loads(await ws.recv())
+            if answer.get("id") == 1:
+                print(json.dumps(answer.get("result")))
+                return
+asyncio.run(main())
+"""
+
+
+def test_chrome_reads_the_images_policies(container):
+    """policies.json as Chrome reads it in the image, Google's remote experiments off but for critical fixes
+    (ChromeVariations 1, 13/11). Chrome says nothing, even in its log, of a policy file it could not read (tried
+    13/11): its URL blocklist, from the same file, still refusing chrome:// pages shows the file was read."""
+    managed = subprocess.run([ENGINE, "exec", container, "cat", "/etc/opt/chrome/policies/managed/bipagents.json"],
+                             capture_output=True, text=True, check=True).stdout
+    assert json.loads(managed)["ChromeVariations"] == 1
+    subprocess.run([ENGINE, "exec", "-d", container, "/opt/stealth/open_browser.sh"], check=True)
+    listing = "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:9222/json/list').read().decode())"
+    for _ in range(100):
+        out = subprocess.run([ENGINE, "exec", container, "python3.11", "-I", "-c", listing],
+                             capture_output=True, text=True).stdout
+        if any(t["type"] == "page" for t in json.loads(out or "[]")):
+            break
+        time.sleep(0.2)
+    answer = subprocess.run([ENGINE, "exec", container, "/opt/stealth/venv/bin/python", "-I", "-c", NAVIGATE],
+                            capture_output=True, text=True, check=True).stdout
+    assert json.loads(answer).get("errorText") == "net::ERR_BLOCKED_BY_ADMINISTRATOR", answer

@@ -3,6 +3,7 @@
   "AutofillAddressEnabled": false,
   "AutofillCreditCardEnabled": false,
   "PasswordLeakDetectionEnabled": false,
+  "ChromeVariations": 1,
   "URLBlocklist": ["file://*", "view-source:*", "chrome://*", "devtools://*", "chrome-devtools://*"],
   "URLAllowlist": ["chrome://newtab", "chrome://new-tab-page"]
 }

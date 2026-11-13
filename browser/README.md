@@ -26,7 +26,9 @@ not a way around websites' rules: an agent that meets a captcha asks you, it nev
   the pages and leaves Chrome; only `quit_browser` quits it (the bridge's relay never passes it on from an agent).
 - **The vault** fills passwords in this same Chrome: Hermes reaches its DevTools port (`browser.cdp_url`) and fills
   the field on the exact site the item was saved for, without the agent ever seeing the password. Chrome's own
-  password manager and autofill are turned off (policies in the image): the vault keeps them.
+  password manager and autofill are turned off (policies in the image): the vault keeps them. Google's remote
+  experiments too, but for critical fixes (`ChromeVariations` 1): Chrome behaves the same everywhere until a new
+  version.
 - **The desktop**: the container's VNC server has a password of its own; the bridge logs in and relays the screen to
   the app. The DevTools and VNC ports listen on 127.0.0.1 only, never on the tailnet.
 
