@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Continuer</title></head><body>
+<!-- what a bot-detection script checks while the agent clicks: native functions left native, no unknown window names -->
+<script>const before = new Set(Object.getOwnPropertyNames(window));</script>
+<button id="go" onclick="window.seen = JSON.stringify({native: HTMLFormElement.prototype.submit.toString().includes('[native code]'),
+  added: Object.getOwnPropertyNames(window).filter((n) => !before.has(n) && n !== 'seen')})">Continuer</button>
+</body></html>

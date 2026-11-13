@@ -83,7 +83,8 @@
     "gpu": "auto",
     "language": "",
     "timezone": "",
-    "idle_minutes": 10
+    "idle_minutes": 10,
+    "consent_seconds": 330
    },
    "push_service_url": null,
    "model_health_url": null,
@@ -189,7 +190,8 @@
     "gpu": "auto",
     "language": "",
     "timezone": "",
-    "idle_minutes": 10
+    "idle_minutes": 10,
+    "consent_seconds": 330
    },
    "push_service_url": null,
    "model_health_url": null,
@@ -297,7 +299,8 @@
     "gpu": "auto",
     "language": "",
     "timezone": "",
-    "idle_minutes": 10
+    "idle_minutes": 10,
+    "consent_seconds": 330
    },
    "push_service_url": null,
    "model_health_url": null,
@@ -406,7 +409,8 @@
     "gpu": "auto",
     "language": "",
     "timezone": "",
-    "idle_minutes": 10
+    "idle_minutes": 10,
+    "consent_seconds": 330
    },
    "push_service_url": null,
    "model_health_url": null,
@@ -514,7 +518,8 @@
     "gpu": "auto",
     "language": "",
     "timezone": "",
-    "idle_minutes": 10
+    "idle_minutes": 10,
+    "consent_seconds": 330
    },
    "push_service_url": null,
    "model_health_url": null,
@@ -623,7 +628,8 @@
     "gpu": "auto",
     "language": "",
     "timezone": "",
-    "idle_minutes": 10
+    "idle_minutes": 10,
+    "consent_seconds": 330
    },
    "push_service_url": null,
    "model_health_url": null,
@@ -750,7 +756,8 @@
     "gpu": "auto",
     "language": "",
     "timezone": "",
-    "idle_minutes": 10
+    "idle_minutes": 10,
+    "consent_seconds": 330
    },
    "push_service_url": null,
    "model_health_url": null,
@@ -856,7 +863,8 @@
     "gpu": "auto",
     "language": "",
     "timezone": "",
-    "idle_minutes": 10
+    "idle_minutes": 10,
+    "consent_seconds": 330
    },
    "push_service_url": null,
    "model_health_url": null,
@@ -989,7 +997,8 @@
     "gpu": "auto",
     "language": "",
     "timezone": "",
-    "idle_minutes": 10
+    "idle_minutes": 10,
+    "consent_seconds": 330
    },
    "push_service_url": "https://push.example",
    "model_health_url": "http://model/v1/models",
@@ -1104,7 +1113,8 @@
     "gpu": "auto",
     "language": "",
     "timezone": "",
-    "idle_minutes": 10
+    "idle_minutes": 10,
+    "consent_seconds": 330
    },
    "push_service_url": null,
    "model_health_url": null,
@@ -1222,7 +1232,8 @@
     "gpu": "auto",
     "language": "",
     "timezone": "",
-    "idle_minutes": 10
+    "idle_minutes": 10,
+    "consent_seconds": 330
    },
    "push_service_url": null,
    "model_health_url": null,
@@ -1335,7 +1346,8 @@
     "gpu": "auto",
     "language": "",
     "timezone": "",
-    "idle_minutes": 10
+    "idle_minutes": 10,
+    "consent_seconds": 330
    },
    "push_service_url": null,
    "model_health_url": null,
@@ -1563,7 +1575,8 @@
     "gpu": "auto",
     "language": "",
     "timezone": "",
-    "idle_minutes": 10
+    "idle_minutes": 10,
+    "consent_seconds": 330
    },
    "push_service_url": null,
    "model_health_url": null,
@@ -1737,7 +1750,8 @@
     "gpu": "auto",
     "language": "",
     "timezone": "",
-    "idle_minutes": 10
+    "idle_minutes": 10,
+    "consent_seconds": 330
    },
    "push_service_url": null,
    "model_health_url": null,
@@ -1846,7 +1860,8 @@
     "gpu": "auto",
     "language": "",
     "timezone": "",
-    "idle_minutes": 10
+    "idle_minutes": 10,
+    "consent_seconds": 330
    },
    "push_service_url": null,
    "model_health_url": null,
@@ -1964,7 +1979,8 @@
     "gpu": "auto",
     "language": "",
     "timezone": "",
-    "idle_minutes": 10
+    "idle_minutes": 10,
+    "consent_seconds": 330
    },
    "push_service_url": null,
    "model_health_url": null,
@@ -2074,7 +2090,8 @@
     "gpu": "auto",
     "language": "",
     "timezone": "",
-    "idle_minutes": 10
+    "idle_minutes": 10,
+    "consent_seconds": 330
    },
    "push_service_url": null,
    "model_health_url": null,
@@ -2197,7 +2214,8 @@
     "gpu": "none",
     "language": "fr-FR",
     "timezone": "Europe/Paris",
-    "idle_minutes": 0
+    "idle_minutes": 0,
+    "consent_seconds": 330
    },
    "push_service_url": null,
    "model_health_url": null,
@@ -2315,7 +2333,8 @@
     "gpu": "auto",
     "language": "",
     "timezone": "",
-    "idle_minutes": 10
+    "idle_minutes": 10,
+    "consent_seconds": 330
    },
    "push_service_url": null,
    "model_health_url": null,
@@ -2438,7 +2457,8 @@
     "gpu": "auto",
     "language": "",
     "timezone": "",
-    "idle_minutes": 10
+    "idle_minutes": 10,
+    "consent_seconds": 330
    },
    "push_service_url": null,
    "model_health_url": null,

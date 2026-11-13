@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Se connecter / S'inscrire | Pharmacie des Essais</title>
+<style>
+  body { font-family: sans-serif; margin: 0; background: #fff; color: #222; }
+  header { position: sticky; top: 0; background: #0b6b5d; color: #fff; padding: 12px 24px; display: flex; gap: 24px; align-items: center; }
+  header form { flex: 1; display: flex; }
+  header input { flex: 1; padding: 8px; }
+  main { max-width: 1100px; margin: 24px auto; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 0 16px; }
+  section { border: 1px solid #ddd; border-radius: 12px; padding: 20px; }
+  label { display: block; font-size: 14px; margin: 10px 0 4px; }
+  input[type=text], input[type=email], input[type=tel], input[type=password], select { width: 100%; padding: 8px; box-sizing: border-box; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .panel { overflow: hidden; max-height: 0; transition: max-height .35s ease; }
+  .panel.open { max-height: 2000px; }
+  .panel[hidden] { display: none; }
+  .combo { position: relative; }
+  .combo button { width: 100%; text-align: left; padding: 8px; background: #fff; border: 1px solid #999; }
+  .combo ul { position: absolute; z-index: 5; left: 0; right: 0; margin: 0; padding: 0; list-style: none; background: #fff; border: 1px solid #999; display: none; }
+  .combo.open ul { display: block; }
+  .combo li { padding: 8px; cursor: pointer; }
+  .combo li:hover { background: #eef; }
+  .error { color: #b00; font-size: 13px; }
+  .hp { position: absolute; left: -9999px; }
+  .btn { margin-top: 16px; padding: 10px 18px; background: #0b6b5d; color: #fff; border: 0; border-radius: 8px; cursor: pointer; }
+  .eye { width: auto; }
+</style>
+</head>
+<body>
+<header>
+  <strong>Pharmacie des Essais</strong>
+  <form action="/recherche" method="get"><input type="search" name="q" placeholder="Recherche par mot-clé : Doliprane, SVR…"><button class="btn" type="submit" aria-label="Rechercher">🔍</button></form>
+  <a href="/connexion" style="color:#fff">Connexion</a> <a href="/panier" style="color:#fff">Panier (0)</a>
+</header>
+<main id="contenu">
+  <section>
+    <h2>Déjà client ?</h2>
+    <form id="login-form" action="/connexion" method="post">
+      <input type="hidden" name="_token" value="t0ken">
+      <div class="hp" id="my_name_login_wrap"><input type="text" name="my_name_login" id="my_name_login" tabindex="-1" autocomplete="nope"><input type="text" name="valid_from" value="enc-123" tabindex="-1" autocomplete="off"></div>
+      <label for="login-email">Adresse e-mail</label>
+      <input type="email" name="email" id="login-email" autocomplete="username" placeholder="Votre adresse e-mail" required>
+      <label for="login-password">Mot de passe</label>
+      <div><input type="password" name="password" id="login-password" autocomplete="current-password" placeholder="Votre mot de passe" required></div>
+      <button class="btn" type="submit">Se connecter</button>
+    </form>
+  </section>
+  <section>
+    <h2>Pas encore de compte ?</h2>
+    <p>Créez votre compte en quelques secondes pour suivre vos commandes.</p>
+    <button class="btn" type="button" id="open-register" aria-expanded="false" aria-controls="register-panel">Créer un compte</button>
+    <div class="panel" id="register-panel" hidden>
+      <form id="register-form" action="/inscription" method="post" novalidate>
+        <input type="hidden" name="_token" value="t0ken">
+        <div class="hp" id="my_name_reg_wrap"><input type="text" name="my_name_reg" id="my_name_reg" tabindex="-1" autocomplete="nope"><input type="text" name="valid_from" value="enc-456" tabindex="-1" autocomplete="off"></div>
+        <label id="civility-label">Civilité</label>
+        <div class="combo" id="civility-combo">
+          <button type="button" id="civility" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="civility-label">Choisir…</button>
+          <ul role="listbox" id="civility-options">
+            <li role="option" data-value="M">Monsieur</li>
+            <li role="option" data-value="Mme">Madame</li>
+          </ul>
+          <input type="hidden" name="civility" id="civility-value" value="">
+        </div>
+        <div class="error" data-for="civility"></div>
+        <div class="grid">
+          <div><label for="lastname">Nom</label><input type="text" name="lastname" id="lastname" autocomplete="family-name" placeholder="Votre nom" required><div class="error" data-for="lastname"></div></div>
+          <div><label for="firstname">Prénom</label><input type="text" name="firstname" id="firstname" autocomplete="given-name" placeholder="Votre prénom" required><div class="error" data-for="firstname"></div></div>
+          <div><label for="phone">Téléphone</label><input type="tel" name="phone" id="phone" autocomplete="tel" placeholder="Votre numéro de téléphone" required><div class="error" data-for="phone"></div></div>
+          <div><label for="register-email">Adresse e-mail</label><input type="email" name="email" id="register-email" autocomplete="username" placeholder="Votre adresse e-mail" required><div class="error" data-for="email"></div></div>
+        </div>
+        <div class="grid" id="password-slot"><p class="loading">Chargement…</p></div>
+        <p id="password-rules">Votre mot de passe doit contenir au moins 10 caractères, dont une majuscule, une minuscule et un chiffre.</p>
+        <label>Date de naissance</label>
+        <div class="grid3">
+          <select name="birthday[0]" id="birthday-day" autocomplete="bday-day" required><option value="">Jour</option></select>
+          <select name="birthday[1]" id="birthday-month" autocomplete="bday-month" required><option value="">Mois</option></select>
+          <select name="birthday[2]" id="birthday-year" autocomplete="bday-year" required><option value="">Année</option></select>
+        </div>
+        <div class="error" data-for="birthday"></div>
+        <p><label><input type="checkbox" name="newsletter" id="newsletter" value="1"> Je souhaite recevoir la newsletter</label></p>
+        <p><label><input type="checkbox" name="cgu" id="cgu" value="1" required> J'accepte les conditions générales de vente</label></p>
+        <div class="error" data-for="cgu"></div>
+        <div style="text-align:right"><button class="btn" type="submit">S'inscrire</button></div>
+      </form>
+    </div>
+  </section>
+</main>
+<template id="password-fields">
+  <div><label for="register-password">Mot de passe</label><input type="password" name="password" id="register-password" autocomplete="new-password" placeholder="Votre mot de passe" required><div class="error" data-for="password"></div></div>
+  <div><label for="register-password-confirmation">Confirmation</label><input type="password" name="password_confirmation" id="register-password-confirmation" autocomplete="new-password" placeholder="Confirmez votre mot de passe" required></div>
+</template>
+<script>
+(() => {
+  const months = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+  const day = document.getElementById("birthday-day"), month = document.getElementById("birthday-month"), year = document.getElementById("birthday-year");
+  for (let d = 1; d <= 31; d++) day.add(new Option(String(d).padStart(2, "0"), String(d).padStart(2, "0")));
+  months.forEach((m, i) => month.add(new Option(m, String(i + 1).padStart(2, "0"))));
+  for (let y = 2026; y >= 1920; y--) year.add(new Option(String(y), String(y)));
+
+  // The panel unfolds on « Créer un compte »; its password fields come a moment later, built from a template (a
+  // framework rendering them once the panel shows).
+  const panel = document.getElementById("register-panel"), opener = document.getElementById("open-register");
+  opener.addEventListener("click", () => {
+    if (!panel.hidden) return;
+    panel.hidden = false;
+    requestAnimationFrame(() => panel.classList.add("open"));
+    opener.setAttribute("aria-expanded", "true");
+    setTimeout(() => {
+      const slot = document.getElementById("password-slot");
+      slot.innerHTML = "";
+      slot.append(document.getElementById("password-fields").content.cloneNode(true));
+    }, 600);
+  });
+
+  // A custom « Civilité » dropdown: a button and a list, the value in a hidden input.
+  const combo = document.getElementById("civility-combo"), button = document.getElementById("civility");
+  button.addEventListener("click", () => { combo.classList.toggle("open"); button.setAttribute("aria-expanded", combo.classList.contains("open")); });
+  combo.querySelectorAll("li").forEach((li) => li.addEventListener("click", () => {
+    document.getElementById("civility-value").value = li.dataset.value;
+    button.textContent = li.textContent;
+    combo.classList.remove("open");
+    button.setAttribute("aria-expanded", "false");
+  }));
+
+  const form = document.getElementById("register-form");
+  form.addEventListener("submit", (event) => {
+    form.querySelectorAll(".error").forEach((e) => (e.textContent = ""));
+    const say = (name, text) => { const e = form.querySelector(`.error[data-for="${name}"]`); if (e) e.textContent = text; };
+    let ok = true;
+    const need = (name, el, text) => { if (!el || !el.value.trim()) { say(name, text); ok = false; } };
+    need("civility", document.getElementById("civility-value"), "La civilité est obligatoire.");
+    need("lastname", form.lastname, "Le nom est obligatoire.");
+    need("firstname", form.firstname, "Le prénom est obligatoire.");
+    need("phone", form.phone, "Le téléphone est obligatoire.");
+    need("email", form.email, "L'adresse e-mail est obligatoire.");
+    const pw = document.getElementById("register-password"), confirm = document.getElementById("register-password-confirmation");
+    if (!pw || pw.value.length < 10 || !/[A-Z]/.test(pw.value) || !/[a-z]/.test(pw.value) || !/[0-9]/.test(pw.value)) { say("password", "Le mot de passe ne respecte pas les règles."); ok = false; }
+    else if (!confirm || confirm.value !== pw.value) { say("password", "Les mots de passe ne correspondent pas."); ok = false; }
+    if (!day.value || !month.value || !year.value) { say("birthday", "La date de naissance est obligatoire."); ok = false; }
+    if (!document.getElementById("cgu").checked) { say("cgu", "Vous devez accepter les conditions générales de vente."); ok = false; }
+    if (!ok) event.preventDefault();
+  });
+})();
+</script>
+</body>
+</html>

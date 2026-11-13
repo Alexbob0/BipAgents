@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Créer un compte</title></head><body>
+<!-- a single-page app's sign-up whose password fields are named as WordPress names them (pass1, pass2) -->
+<div id="signup">
+  <label for="email">Adresse e-mail</label><input type="email" id="email">
+  <label for="pass1">Mot de passe</label><input type="password" id="pass1">
+  <label for="pass2">Confirmation</label><input type="password" id="pass2">
+  <button type="button" id="create">Créer mon compte</button>
+</div>
+<script>
+document.getElementById("create").addEventListener("click", () => {
+  const pw = document.getElementById("pass1").value;
+  fetch("collect?password_length=" + pw.length + "&cgu=false");   // the site's API, as received
+});
+</script>
+</body></html>

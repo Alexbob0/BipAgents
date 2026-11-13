@@ -385,6 +385,8 @@ pub struct BrowserConfig {
     pub timezone: String,
     /// Started when the agent uses it, stopped after this long unused; 0: always on.
     pub idle_minutes: u32,
+    /// How long an agent's turn waits for the person's « Oui / Non » to a site's terms (terms_consent.rs), seconds.
+    pub consent_seconds: u32,
 }
 
 impl Default for BrowserConfig {
@@ -400,6 +402,7 @@ impl Default for BrowserConfig {
             language: String::new(),
             timezone: String::new(),
             idle_minutes: 10,
+            consent_seconds: 330,
         }
     }
 }
@@ -1666,6 +1669,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         language: s(browser_t, "language", ""),
         timezone: s(browser_t, "timezone", ""),
         idle_minutes: narrow(i(browser_t, "idle_minutes", 10)?.max(0), "browser.idle_minutes")?,
+        consent_seconds: narrow(i(browser_t, "consent_seconds", 330)?.clamp(1, 540), "browser.consent_seconds")?,
     };
     if !["", "podman", "docker"].contains(&browser.runtime.as_str())
         || !["auto", "none"].contains(&browser.gpu.as_str())

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Produits</title></head><body>
+<!-- a shop's filters and a « mot de passe oublié » form: no password field, no terms box -->
+<div id="filters">
+  <label><input type="checkbox" id="filter-bio"> Bio</label>
+  <button type="button" id="apply-filters">Appliquer</button>
+</div>
+<div id="forgot">
+  <label for="forgot-password-email">Adresse e-mail</label><input type="email" id="forgot-password-email">
+  <button type="button" id="send-reset-link">Recevoir un lien</button>
+</div>
+<script>
+document.getElementById("apply-filters").addEventListener("click", () => {
+  fetch("collect?filter_bio=" + document.getElementById("filter-bio").checked);
+});
+document.getElementById("send-reset-link").addEventListener("click", () => {
+  fetch("collect?reset_for=" + encodeURIComponent(document.getElementById("forgot-password-email").value));
+});
+</script>
+</body></html>

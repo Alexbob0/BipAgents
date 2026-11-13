@@ -1179,6 +1179,15 @@ async fn bridge_card(
             Err(HttpError::new(404, "no such request (answered already?)"))
         }?));
     }
+    // a site's terms or consent box (terms_consent.rs): « Oui » ticks that one box, « Non » stops that sign-up
+    if let Some(id) = run_id.strip_prefix(crate::terms_consent::RUN_PREFIX) {
+        let allow = crate::card_place::allowed(&body.choice); // an unknown word: refused
+        return Ok(Some(if crate::terms_consent::answer(&state.config(), &agent.name, id, allow, "notification") {
+            Ok(web::ok(json!({"ok": true, "choice": if allow { "once" } else { "deny" }})))
+        } else {
+            Err(HttpError::new(404, "no such request (answered already?)"))
+        }?));
+    }
     // a secret card (secrets.rs): refused here; the value only comes through the app's secure field
     if let Some(id) = run_id.strip_prefix(crate::secrets::RUN_PREFIX) {
         if body.choice.trim().to_lowercase() != "deny" {
