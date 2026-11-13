@@ -3,6 +3,7 @@
 turn, so the bridge starts ONE continuation in the same conversation, told out of sight to do it now; its events follow
 in the turn's stream after a `loop_rescue_started` notice, and its end is the turn's end. `[brake] go_on` in
 bridge.toml."""
+import asyncio
 import threading
 import time
 
@@ -492,3 +493,85 @@ def test_ok_the_continuations_question_is_pushed_once_the_app_leaves(bridges, fa
     before = leave_with_a_card(bridges, fakes, sse("clarify.request", run_id="r1", request_id="q_1",
                                                    question="Quel budget ?", choices=["5 €", "10 €"]))
     assert before == []
+
+
+# -- third review of 13/11 (each failed before its fix, but the `ok_` one) ---------------------------------------------
+
+def test_words_sent_while_the_continuation_starts_are_not_paused_behind_it(bridges, fakes, monkeypatch):
+    """The person writes while the continuation's POST /v1/runs is on its way: go_on's check after the start sees their
+    message waiting and stops the continuation (as it should), but Hermes then ends that continuation `run.cancelled`,
+    and the queue reads a cancelled run with a message waiting as the person's Stop: paused, their message never
+    starts (until « Reprendre »)."""
+    bridge = bridges.new().start()
+    fakes.hermes.steer_status = 409   # Hermes: a run that ended takes no more words
+    thread = thread_of(bridge, fakes)
+    fakes.hermes.runs["run_vie"] = turn("run_vie", PROMISE)
+    # the continuation, stopped by the bridge right after its start: Hermes ends it cancelled
+    fakes.hermes.runs["r1"] = [sse("run.cancelled", run_id="r1")]
+    fakes.hermes.runs["r2"] = turn("r2", FOUND)
+    posted = threading.Event()
+    real = fakes.hermes._runs
+
+    async def slow_start(seen, agent, parts, method):
+        body = seen.json() if method == "POST" and len(parts) == 2 else None
+        if body and "[bipagents:go_on]" in str(body.get("input")):
+            posted.set()
+            await asyncio.sleep(1.5)   # Hermes takes a moment to start it (the turn still closing)
+        return await real(seen, agent, parts, method)
+
+    monkeypatch.setattr(fakes.hermes, "_runs", slow_start)
+    watch = {"agent": "wellness", "run_id": "run_vie", "session_id": "api_c"}
+    assert bridge.post("/v1/watch", headers=AUTH, json=watch).status_code == 200
+    assert posted.wait(10), "no continuation started"
+    sent = bridge.post(f"/v1/threads/{thread}/messages", headers=AUTH,
+                       json={"agent": "wellness", "client_id": "C0FFEE00-0000-4000-8000-0000000000F9",
+                             "text": "Non laisse tomber, j'irai en magasin"})
+    assert sent.status_code == 200 and sent.json()["state"] == "queued", sent.text
+    assert wait_until(lambda: bridge.logged("promise with no work: the person stepped in, continuation stopped"),
+                      timeout=10)
+    # their message is the next turn, as after any turn that ended
+    began = wait_until(lambda: any("laisse tomber" in str(s["input"]) for s in fakes.hermes.started.values()),
+                       timeout=8)
+    queue = bridge.get("/v1/agents/wellness/queue", headers=AUTH).json()
+    assert began, (f"the person's message never started: paused={queue.get('paused')}, "
+                   f"waiting={[i.get('text') for i in queue.get('items', [])]}, started={list(fakes.hermes.started)}")
+
+
+def test_after_a_restart_a_routines_turn_is_never_continued(bridges, fakes):
+    """A routine's run going on while the bridge restarts: `resume()` watches it again like a person's turn (end_push,
+    not unattended: only background tasks are followed again by their pipeline); a run followed again is never
+    continued (runs.rs `resumed`)."""
+    bridge = bridges.new().start()
+    fakes.hermes.rounds = 1000   # the routine's run still going for Hermes when the bridge comes back
+    gate = threading.Event()
+    made = bridge.post("/v1/agents/wellness/routines", headers=AUTH,
+                       json={"name": "Point du matin", "schedule": "every day at 7:30", "prompt": "Résume mes e-mails."})
+    assert made.status_code in (200, 201), made.text
+    rid = made.json()["job"]["id"]
+    fakes.hermes.runs["r1"] = [gate, sse("message.delta", run_id="r1", delta=PROMISE),
+                               sse("run.completed", run_id="r1", output=PROMISE)]
+    assert bridge.post(f"/v1/routines/{rid}/run", headers=AUTH).status_code == 200
+    assert wait_until(lambda: fakes.hermes.seen("/v1/runs/r1/events"), timeout=20), list(fakes.hermes.started)
+    assert "<!--bip:routine" in fakes.hermes.started["r1"]["input"]
+    time.sleep(0.5)
+    bridge.restart()
+    assert wait_until(lambda: bridge.logged("run watch resumed"), timeout=15)
+    gate.set()
+    time.sleep(3)
+    continued = [r for r, s in fakes.hermes.started.items() if "[bipagents:go_on]" in str(s["input"])]
+    assert continued == [], f"a routine's turn continued after a restart: {continued}"
+
+
+def test_ok_words_sent_before_the_start_do_start(bridges, fakes):
+    """Control (passes): the same words caught by the check before the start (Hermes still closing the turn) start as
+    the next turn: what the test above expects."""
+    bridge = bridges.new().start()
+    fakes.hermes.steer_status = 409
+    thread = window(bridge, fakes)
+    sent = bridge.post(f"/v1/threads/{thread}/messages", headers=AUTH,
+                       json={"agent": "wellness", "client_id": "C0FFEE00-0000-4000-8000-0000000000FA",
+                             "text": "Non laisse tomber, j'irai en magasin"})
+    assert sent.status_code == 200 and sent.json()["state"] == "queued", sent.text
+    fakes.hermes.start_failures = 0   # Hermes takes runs again (else the queue's own start meets the fake's 502)
+    assert wait_until(lambda: any("laisse tomber" in str(s["input"]) for s in fakes.hermes.started.values()), timeout=8)
+    assert not bridge.get("/v1/agents/wellness/queue", headers=AUTH).json().get("paused")

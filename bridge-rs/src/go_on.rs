@@ -50,14 +50,16 @@ static PROMISE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(concat!(
         r"(?i)",
         // French
-        r"\bje (?:te |t'|vous )?(?:pr[ée]pare|cherche|regarde|lance|compare|fouille|d[ée]gote|d[ée]niche|reviens|m'en occupe|m'y mets|m'en charge)\b",
+        r"\bje (?:te |t'|vous )?(?:pr[ée]pare|cherche|regarde|v[ée]rifie|lance|compare|fouille|d[ée]gote|d[ée]niche|envoie|reviens|m'en occupe|m'y mets|m'en charge)\b",
+        r"|\bj'envoie\b|\bje (?:te |vous )fais (?:une|un|la|le|les|ta|ton|tes)\b",
         r"|\bje vais (?:te |t'|vous )?(?:chercher|regarder|trouver|comparer|voir|fouiller|lancer|pr[ée]parer|d[ée]nicher|faire une recherche|m'en occuper)\b",
         r"|\bje (?:te |vous )?(?:tiens au courant|recontacte|reviens)\b",
-        r"|\blaisse-moi (?:chercher|regarder|v[ée]rifier)\b|\bdonne-moi (?:quelques|deux|trois|cinq|\d+) minutes\b",
+        r"|\blaisse-moi (?:chercher|regarder|v[ée]rifier)\b",
+        r"|\bdonne-moi (?:un instant|une minute|une seconde|deux secondes|(?:quelques|deux|trois|cinq|\d+) minutes)\b",
         // English
-        r"|\bi(?:'ll| will) (?:look (?:for|into|up|around)|search|check|find|get back|come back|be back|get [^.!?\n]{0,30}ready|prepare|put together|dig|compare|report back|hunt)\b",
+        r"|\bi(?:'ll| will) (?:look (?:for|into|up|around)|search|check|find|get back|come back|be back|get [^.!?\n]{0,30}ready|prepare|put together|pull together|send|dig|compare|report back|hunt)\b",
         r"|\bi'm (?:on it|looking (?:for|into|up)|searching|checking|preparing|putting together|digging)\b",
-        r"|\blet me (?:look|search|check|find|dig)\b|\bgive me (?:a few|a couple of|\d+) minutes\b",
+        r"|\blet me (?:look|search|check|find|dig)\b|\bgive me (?:a (?:moment|sec|second|minute)|(?:a few|a couple of|\d+) minutes)\b",
         // Spanish
         r"|\b(?:te )?(?:preparo|busco)\b|\bvuelvo (?:con|en)\b|\bvoy a (?:buscar|mirar|preparar|comparar)\b",
         // German
@@ -76,8 +78,11 @@ static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://\S+").expe
 static HIDDEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)<!--.*?-->|```.*?(?:```|$)").expect("valid regex"));
 
 /// Quoted words (an example, a line of a story, a quoted message): someone else's « je cherche ».
-static QUOTED: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"(?m)«[^»]*»|“[^”]*”|"[^"\n]*"|^[ \t]*>.*$"#).expect("valid regex"));
+static QUOTED: LazyLock<Regex> = LazyLock::new(|| {
+    // a straight quote opens after a space, a bracket or the line's start, and closes before a non-letter (never
+    // inches: « la TV 55" … la 65" »)
+    Regex::new(r#"(?m)«[^»]*»|“[^”]*”|(?:^|[\s(\[])"[^"\n]*"(?:$|[^\w])|^[ \t]*>.*$"#).expect("valid regex")
+});
 
 /// A letter's closing line (a reply drafted for the person to send): what comes before it is the draft's.
 static SIGNED: LazyLock<Regex> = LazyLock::new(|| {
@@ -113,19 +118,35 @@ fn own_words(reply: &str) -> String {
     LINK.replace_all(&text, "").to_string()
 }
 
-/// A promise followed on its line by `:` and what it gives (« Let me check the math: 3 × 4.99 € = 14.97 € »): done.
+/// A promise followed on its line by `:` and the result it gives (« Let me check the math: 3 × 4.99 € = 14.97 € »):
+/// done. What only describes the work to come (« Je regarde trois enseignes : Sephora, Marionnaud et Nocibé ») is not.
 fn delivered(after: &str) -> bool {
     let line = after.lines().next().unwrap_or("");
-    line.split_once(':').is_some_and(|(_, given)| given.chars().filter(|c| c.is_alphanumeric()).count() >= 3)
+    line.split_once(':').is_some_and(|(_, given)| given.contains('='))
 }
 
 /// The person is asked to say or choose something (lower case; apostrophes made straight first): the work waits for
 /// their answer, it was offered, not promised. Bench 13/11 (DeepSeek): « Dis-moi lequel et je m'y mets tout de suite ».
+/// Followed by « si / if / ob / of » it is optional (« Dis-moi si tu as une enseigne préférée »): the work does not wait.
 static ASKS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(concat!(
-        r"(?i)\b(?:dis-moi|dites-moi|tu me dis|choisis|pr[ée]cise-moi|r[ée]ponds-moi|confirme-moi|si tu veux|si tu pr[ée]f[èe]res",
-        r"|tell me|let me know|pick one|choose|if you(?:'d)? (?:like|want|prefer)",
+        r"(?i)\b(?:dis-moi|dites-moi|tu me dis|choisis|pr[ée]cise-moi|r[ée]ponds-moi|confirme-moi",
+        r"|tell me|let me know|pick one|choose",
         r"|dime|av[íi]same|sag mir|lass mich wissen|laat me weten|zeg maar)\b",
+    ))
+    .expect("valid regex")
+});
+
+/// An optional request (« dis-moi si… », « let me know if… »).
+static OPTIONAL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^[\s,]*(?:si|s'|if|whether|ob|of)\b").expect("valid regex"));
+
+/// The work offered on the person's condition (« Si tu veux, je te prépare le panier ») when it comes before the
+/// promise; after it (« … Si tu préfères un autre site, dis-le-moi »), the promise stands.
+static OFFER: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"(?i)\b(?:si tu (?:veux|pr[ée]f[èe]res|le souhaites)|si vous (?:voulez|pr[ée]f[ée]rez)",
+        r"|if you(?:'d)? (?:like|want|prefer)|si quieres|wenn du (?:willst|m[öo]chtest)|als je (?:wilt|wil))\b",
     ))
     .expect("valid regex")
 });
@@ -151,10 +172,12 @@ pub fn promises(reply: &str) -> bool {
     let chars: Vec<char> = text.chars().collect();
     let tail: String = chars[chars.len().saturating_sub(TAIL_CHARS)..].iter().collect();
     // it asks the person something (« Tu veux que je… ? », « Dis-moi lequel et je m'y mets »): they answer first
-    if tail.contains('?') || ASKS.is_match(&tail) {
+    if tail.contains('?') || ASKS.find_iter(&tail).any(|m| !OPTIONAL.is_match(&tail[m.end()..])) {
         return false;
     }
-    PROMISE.find_iter(&tail).any(|m| !delivered(&tail[m.end()..]))
+    let Some(last) = PROMISE.find_iter(&tail).filter(|m| !delivered(&tail[m.end()..])).last() else { return false };
+    // offered on their condition before it (« Si tu veux, je te prépare le panier »): it waits for their yes
+    !OFFER.find_iter(&tail).any(|m| m.start() < last.start())
 }
 
 /// The continuation's input (in English, like the brake's: the agent answers in its person's language).
@@ -256,6 +279,33 @@ mod tests {
         assert!(promises(
             "Je regarde Sephora et Nocibé :\n\n- miniatures\n- échantillons\n\nJe reviens dans 5 minutes."
         ));
+    }
+
+    #[test]
+    fn a_promise_followed_by_a_colon_inches_or_an_optional_line_is_still_one() {
+        // third review 13/11: what follows « : » only describes the work; inches are no quote; « dis-moi si… » asks
+        // nothing the work waits for
+        let said = [
+            "Je te prépare ça : 2-3 trouvailles autour de 5 € avec les liens.",
+            "Je regarde trois enseignes : Sephora, Marionnaud et Nocibé.",
+            "Je reviens dans quelques minutes : le temps de trouver le lien et le meilleur prix.",
+            "Je lance la recherche : miniatures et échantillons autour de 5 €.",
+            "I'll check three shops: Sephora, Boots and Superdrug.",
+            "Pour la TV 55\", je te prépare un comparatif avec la 65\" de Boulanger.",
+            "Je te prépare 2-3 trouvailles pour 5 €. Dis-moi si tu as une enseigne préférée.",
+            "I'll look for two or three finds around €5 and get back to you. Let me know if you have a favourite shop.",
+            "Je regarde Sephora et Nocibé et je reviens vers toi avec le lien. Si tu préfères un autre site, dis-le-moi.",
+            "Je vérifie les stocks et les prix, je te dis ça dans quelques minutes.",
+            "Donne-moi un instant, je te fais une petite sélection à 5 €.",
+            "Give me a moment to pull together a few options under €5.",
+            "I'll send you the link and the best price in a few minutes.",
+        ];
+        let missed: Vec<&str> = said.iter().copied().filter(|s| !promises(s)).collect();
+        assert!(missed.is_empty(), "real promises not caught: {missed:#?}");
+        // still no promise: an offer on their condition, a real request, a straight-quoted example
+        assert!(!promises("Si tu veux, je te prépare le panier jusqu'à la page de paiement."));
+        assert!(!promises("Dis-moi lequel et je m'y mets tout de suite."));
+        assert!(!promises("En anglais, \"I'll look into it\" veut dire « je vais regarder ». Bonne soirée !"));
     }
 
     #[test]

@@ -150,17 +150,8 @@ fn go_on_fits(st: &SubscriptionState) -> bool {
         && st.end_push
         && st.room_id.is_none()
         && !st.guest
+        && !st.resumed
         && (st.watched || st.ever_followed)
-}
-
-/// The conversation's last input was the bridge's own (a continuation, a rescue turn, a hand-over: a `[bipagents:…]`
-/// mark starting a line, after the notes), not the person's words: its turn is never continued (go_on.rs).
-fn last_input_is_the_bridges(rows: &[Dict]) -> bool {
-    rows.iter().rev().find(|m| m.get("role").and_then(Value::as_str) == Some("user")).is_some_and(|m| {
-        let text = crate::cronwatch::message_text(m);
-        let text = crate::live_brief::visible(&text);
-        text.contains("[bipagents:") && crate::threads::timeline::before_bridge_mark(&text).trim().is_empty()
-    })
 }
 
 fn handoff_tool(tool: &str) -> bool {
@@ -506,6 +497,12 @@ pub struct SubscriptionState {
     pub stop_asked: bool,
     /// A message of another household's agent (peers.rs): a guest's turn, never continued (`go_on`).
     pub guest: bool,
+    /// Followed again after a bridge restart (`resume`): what started it (a person, a routine, a continuation…) is
+    /// not known any more, so it is never continued (`go_on`).
+    pub resumed: bool,
+    /// A continuation the bridge stopped right after its start (the person stepped in): its end is no Stop of theirs
+    /// for the queue (msg_queue.rs `run_ended` pauses behind a stopped turn).
+    pub dropped: bool,
     /// The turn's own instructions (a shared conversation's, read_shares.rs) and options (its thinking), for its
     /// continuation (`go_on`).
     pub instructions: Option<String>,
@@ -576,6 +573,8 @@ impl Default for SubscriptionState {
             continued_by: None,
             stop_asked: false,
             guest: false,
+            resumed: false,
+            dropped: false,
             instructions: None,
             model_options: None,
             kept: false,
@@ -885,6 +884,8 @@ impl RunHub {
                 let session =
                     as_str(row.get("session_id")).filter(|s| !s.is_empty()).or_else(|| as_str(run.get("session_id")));
                 let sub = self.watch(agent, &run_id, session.as_deref(), true);
+                // who started it is not known any more: never continued if it ends on a promise (go_on.rs)
+                lock(&sub.state).resumed = true;
                 for asked in crate::hermes_prompts::pending_requests(&run_id, &run) {
                     self.dispatch(&sub, asked);
                 }
@@ -1629,6 +1630,8 @@ impl RunHub {
             // the agent's message queue: what waits starts now, and while more follows here no « reply ready »
             let follows = self.queues.get().and_then(std::sync::Weak::upgrade).is_some_and(|queues| {
                 let pending = as_str(event.data.get("pending_steer"));
+                // a continuation the bridge stopped (the person wrote while it started): not their Stop, nothing paused
+                let kind = if st.dropped { "run.completed" } else { kind };
                 queues.run_ended(&sub.agent.name, &sub.run_id, st.session_id.as_deref(), kind, pending.as_deref())
             });
             if let (true, Some(push)) = (st.watched && st.end_push && st.followers() == 0 && !follows, self.push.clone()) {
@@ -2014,7 +2017,7 @@ impl RunHub {
     /// stream after a `loop_rescue_started` notice with its run id (the apps adopt it: its stop, its checks), and its
     /// end is this run's end (the « reply ready » push, when nobody looks, is its reply). It has the conversation's
     /// limits, the long-work net's hand-over and the brake's rescue, and is never continued itself. Never in a family
-    /// agent's conversation, a guest's turn, a turn the bridge started itself, nor once the person stepped in (Stop,
+    /// agent's conversation, a guest's turn, a run followed again after a restart, nor once the person stepped in (Stop,
     /// words steered, a message waiting), checked again while it starts. It has the turn's instructions and options.
     /// Returns the end, and this run's own end when that one is the continuation's (handed over already; this run's
     /// files are merged in: `with_own_files`). When it can't start, fails or says nothing: this run's own end.
@@ -2077,13 +2080,6 @@ impl RunHub {
         if stepped_in() {
             return (terminal, None);
         }
-        // the turn was the bridge's own (a continuation or a rescue turn the hub followed again after a restart, a
-        // hand-over…): never continued (the conversation unreadable: the person's, as the hub saw it)
-        let bridges =
-            self.hermes.session_messages(&agent, &session).await.is_ok_and(|rows| last_input_is_the_bridges(&rows));
-        if bridges {
-            return (terminal, None);
-        }
         let input = crate::dates::now::stamped(&shared.get(), &agent, &crate::go_on::input(&said));
         let mut started = None;
         // Hermes may still be closing the turn (the conversation busy for a moment)
@@ -2137,6 +2133,9 @@ impl RunHub {
             tracing::info!(agent = %agent.name, run_id = %sub.run_id, continuation = %next_id,
                 "promise with no work: the person stepped in, continuation stopped");
             lock(&sub.state).continued_by = None;
+            if let Some(next) = self.subscription(&agent.name, &next_id) {
+                lock(&next.state).dropped = true;
+            }
             if let Err(err) = self.hermes.stop_run(&agent, &next_id).await {
                 tracing::warn!(agent = %agent.name, run_id = %next_id, error = %err, "continuation: stop refused");
             }
@@ -3122,28 +3121,19 @@ mod tests {
         assert_eq!(hub.asking_session("vie").as_deref(), Some("api_c"));
     }
 
-    /// Second review 13/11: the iOS app watches the continuation it adopts, so after a restart the hub follows it as a
-    /// fresh turn; the conversation's last input, the bridge's note, says it is not the person's. A household's
-    /// message (peers.rs) is a guest's turn: never continued either.
+    /// Reviews 13/11: after a restart the hub follows again every watched run (a continuation the iOS app adopted, a
+    /// routine's turn) as if a person started it: never continued. A household's message (peers.rs) is a guest's
+    /// turn: never continued either.
     #[test]
-    fn a_turn_the_bridge_started_or_a_guests_is_never_continued() {
-        let row = |role: &str, content: &str| {
-            let mut m = Dict::new();
-            m.insert("role".into(), json!(role));
-            m.insert("content".into(), json!(content));
-            m
+    fn a_run_followed_again_after_a_restart_or_a_guests_is_never_continued() {
+        let fits = |set: fn(&mut SubscriptionState)| {
+            let mut st = SubscriptionState { watched: true, ..Default::default() };
+            set(&mut st);
+            go_on_fits(&st)
         };
-        let person = row("user", "<!--bip:now vendredi 13 novembre, 12 h 27-->\nTrouve-moi un achat test à 5 €.");
-        let reply = row("assistant", "Je te prépare 2-3 trouvailles pour 5 €.");
-        let note =
-            row("user", "<!--bip:now vendredi 13 novembre, 12 h 28-->\n[bipagents:go_on]\n\n(A note from the app…)");
-        assert!(!last_input_is_the_bridges(&[person.clone(), reply.clone()]));
-        assert!(last_input_is_the_bridges(&[person.clone(), reply.clone(), note, reply.clone()]));
-        assert!(!last_input_is_the_bridges(&[]));
-        let mut st = SubscriptionState { watched: true, ..Default::default() };
-        assert!(go_on_fits(&st));
-        st.guest = true;
-        assert!(!go_on_fits(&st));
+        assert!(fits(|_| {}));
+        assert!(!fits(|st| st.guest = true));
+        assert!(!fits(|st| st.resumed = true));
     }
 
     #[tokio::test]
