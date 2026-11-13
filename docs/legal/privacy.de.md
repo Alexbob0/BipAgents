@@ -78,7 +78,7 @@ Mit deinem eigenen Computer oder deinem eigenen Server:
   Tresor deines Servers, wo nur die Bridge sie liest, um eine Zahlung auszufüllen, die du freigegeben hast. Der
   Sicherheitscode wird weder auf deinem Server noch bei Kerfy Studio gespeichert: Du tippst ihn bei jeder Zahlung ein,
   oder, wenn du es wählst (« Code auf diesem Telefon merken »), behält ihn dein Telefon für dich, geschützt durch Face
-  ID oder deinen Fingerabdruck, und sendet ihn mit jeder Zahlung, die du freigibst. Der Agent (das KI-Modell) sieht diese
+  ID, deinen Fingerabdruck oder den Code deines Telefons, und sendet ihn mit jeder Zahlung, die du freigibst. Der Agent (das KI-Modell) sieht diese
   Nummern nie, und Kerfy Studio erhält nichts davon. Beim Alles-inklusive-Angebot bleibt die Karte auf deinem Telefon
   (Abschnitt 5.10).
 - **Mehrere Personen auf einem Server** (Familienfunktion): Jede Person hat ihre eigene Installation und ihre eigenen

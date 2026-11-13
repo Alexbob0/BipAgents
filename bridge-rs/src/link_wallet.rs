@@ -646,6 +646,9 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
     let Some(currency) = cards::currency(&arg(arguments, "currency")) else {
         return Ok(refusal("Give the currency as its 3-letter code, e.g. USD."));
     };
+    if crate::urgent_pay::refuses_payment(state, &agent.name, PAY) {
+        return Ok(refusal(crate::urgent_pay::REHEARSAL_NO_PAY));
+    }
     let merchant_url = arg(arguments, "merchant_url");
     let wanted = url::Url::parse(&merchant_url).ok().and_then(|u| u.host_str().map(bare)).unwrap_or_default();
     let (mut page, port, url, host) = match crate::card_pay::payment_page(&config, agent).await {

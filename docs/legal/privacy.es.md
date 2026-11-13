@@ -75,7 +75,7 @@ Con tu propio ordenador o tu propio servidor:
   de caducidad, el nombre del titular y el código postal van a la caja fuerte cifrada de tu servidor, donde solo el
   bridge los lee, para rellenar un pago que has aprobado. El código de seguridad nunca se guarda en tu servidor ni en
   Kerfy Studio: lo escribes en cada pago, o, si lo eliges (« Recordar el código en este teléfono »), tu teléfono lo
-  guarda para ti, protegido por Face ID o tu huella, y lo envía con cada pago que apruebas. El agente (el modelo de IA) nunca ve esos números, y Kerfy Studio no recibe nada. Con la oferta todo incluido,
+  guarda para ti, protegido por Face ID, tu huella o el código de tu teléfono, y lo envía con cada pago que apruebas. El agente (el modelo de IA) nunca ve esos números, y Kerfy Studio no recibe nada. Con la oferta todo incluido,
   la tarjeta se queda en tu teléfono (sección 5.10).
 - **Varias personas en un mismo servidor** (función familia): cada persona tiene su propia instalación y sus propios
   agentes, separados de los de las demás, salvo los agentes de la familia y los agentes compartidos (sección 2 bis), que

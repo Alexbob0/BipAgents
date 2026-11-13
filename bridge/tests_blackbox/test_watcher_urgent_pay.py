@@ -9,6 +9,7 @@ Only the payment networks' published test numbers are used (test_card_payments.p
 import json
 import re
 import threading
+import time
 
 import httpx
 
@@ -216,5 +217,86 @@ def test_a_no_ends_the_payment_and_a_test_alert_is_urgent_too(bridges, fakes):
         assert wait_until(lambda: [p for p in urgent_pushes(fakes) if p.get("test") == 1], timeout=10)
         [test] = [p for p in urgent_pushes(fakes) if p.get("test") == 1]
         assert test["run_id"].startswith("bip-paytest-") and test["aps"]["category"] == "PAYMENT"
+    finally:
+        chrome.stop()
+
+
+def test_a_second_payment_asked_with_the_first_is_refused_at_once_never_asked_after_a_no(bridges, fakes):
+    bridge, chrome = setup(bridges, fakes)
+    try:
+        first = HermesSide(bridge, ARGS)
+        assert first.got_question.wait(30)
+        payment = re.search(r"Card payment (pay_[0-9a-f]{12}):", first.asked).group(1)
+        # the same agent's second pay_with_card a moment later (two calls of one model step): the first is asked,
+        # not yet the bridge's urgent card
+        second = HermesSide(bridge, ARGS)
+        time.sleep(2)
+        gate = unattended_ask(fakes, bridge, first.asked, "r1")
+        assert wait_until(lambda: answered(fakes, "r1") == ["once"], timeout=20), fakes.hermes.approvals
+        first.answer("accept")
+        assert wait_until(lambda: [c for c in approvals(bridge) if c["run_id"] == f"bip-pay-{payment}"], timeout=10)
+        # while the first waits for the person: the second should be refused at once (« already waits »)
+        refused_at_once = second.done.wait(10)
+        # the person says « Non » to the first
+        assert bridge.post(f"/v1/vault/payments/{payment}/deny", headers=AUTH).status_code == 204
+        assert first.done.wait(30) and "did not approve" in first.result["content"][0]["text"], first.result
+        asked_again = second.got_question.wait(15)
+        assert refused_at_once and not asked_again, (
+            f"second pay_with_card refused at once: {refused_at_once}; the person asked again after their « Non »: "
+            f"{asked_again} ({second.asked!r})")
+        gate.set()
+    finally:
+        chrome.stop()
+
+
+def resumed_turns(fakes):
+    """Turns of the agent started by card_place.rs `settle`: a card's answer told after its turn ended."""
+    return [r["input"] for r in fakes.hermes.started.values() if "<!--bip:card" in (r.get("input") or "")]
+
+
+def test_a_paid_urgent_payment_never_resumes_the_agent_told_it_is_allowed(bridges, fakes):
+    bridge, chrome = setup(bridges, fakes)
+    try:
+        side = HermesSide(bridge, ARGS)
+        assert side.got_question.wait(30)
+        payment = re.search(r"Card payment (pay_[0-9a-f]{12}):", side.asked).group(1)
+        gate = unattended_ask(fakes, bridge, side.asked, "r1")
+        assert wait_until(lambda: answered(fakes, "r1") == ["once"], timeout=20), fakes.hermes.approvals
+        side.answer("accept")
+        assert wait_until(lambda: [c for c in approvals(bridge) if c["run_id"] == f"bip-pay-{payment}"], timeout=10)
+        # « Oui, payer »: the code, then the card's answer; the watcher's turn types the card and goes on
+        assert bridge.post(f"/v1/vault/payments/{payment}/approve", headers=AUTH, json={"code": CODE}).status_code == 204
+        yes = bridge.post("/v1/approve", headers=AUTH, json={"agent": "vie", "run_id": f"bip-pay-{payment}",
+                                                             "request_id": payment, "choice": "once"})
+        assert yes.status_code == 200, yes.text
+        assert side.done.wait(60) and side.result["isError"] is False, side.result
+        # the watcher's turn ends (it confirmed the payment and said so)
+        gate.set()
+        wait_until(lambda: resumed_turns(fakes), timeout=20)
+        told = resumed_turns(fakes)
+        assert not told, f"a new turn of the agent after the payment was made, told it is ALLOWED: {told[0][:700]}"
+    finally:
+        chrome.stop()
+
+
+def test_a_cart_put_away_never_resumes_the_agent_told_it_is_allowed(bridges, fakes):
+    bridge, chrome = setup(bridges, fakes, window=3)
+    try:
+        side = HermesSide(bridge, ARGS)
+        assert side.got_question.wait(30)
+        gate = unattended_ask(fakes, bridge, side.asked, "r1")
+        assert wait_until(lambda: answered(fakes, "r1") == ["once"], timeout=20)
+        side.answer("accept")
+        assert side.done.wait(30) and "Panier prêt" in side.result["content"][0]["text"], side.result
+        gate.set()
+        assert wait_until(lambda: [c for c in approvals(bridge) if c["run_id"].startswith("bip-cart-")], timeout=10)
+        [cart] = [c for c in approvals(bridge) if c["run_id"].startswith("bip-cart-")]
+        # the person opens the shop from « Panier prêt » (the app puts the card away)
+        done = bridge.post("/v1/approve", headers=AUTH, json={"agent": "vie", "run_id": cart["run_id"],
+                                                              "request_id": cart["request_id"], "choice": "once"})
+        assert done.status_code == 200, done.text
+        wait_until(lambda: resumed_turns(fakes), timeout=20)
+        told = resumed_turns(fakes)
+        assert not told, f"a new turn of the agent after the cart was put away, told it is ALLOWED: {told[0][:700]}"
     finally:
         chrome.stop()

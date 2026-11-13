@@ -20,7 +20,7 @@
 //!
 //! No Python counterpart.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex};
 
@@ -215,6 +215,8 @@ pub async fn too_late(state: &AppState, agent: &AgentConfig, about: &About, run:
     let Ok(cart) = tokio::task::spawn_blocking(move || keep(&c, &name, &a, s.as_deref())).await else { return };
     let card = format!("{CART_PREFIX}{}", cart.id);
     crate::card_place::place_for(state, agent, &card, run).await;
+    // put away by the person, who buys it themselves: nothing to tell the agent (never resumed with « ALLOWED »)
+    crate::card_place::taken(&config, &card);
     let line = late_line(&crate::handback::language_of(&config, agent), about);
     state.push.notify_bridge_card(&agent.name, &line, "mail_request", &card).await;
     tracing::info!(target: "bipbridge::urgent_pay", agent = %agent.name, card = %card, "too late to pay: the cart waits");
@@ -222,18 +224,40 @@ pub async fn too_late(state: &AppState, agent: &AgentConfig, about: &About, run:
 
 // --- « Prêt à acheter » ------------------------------------------------------------------------------------------------
 
-/// The agents rehearsing a purchase now (`pay_with_card` refused).
-static REHEARSING: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
+/// The agents rehearsing a purchase now: the rehearsal's run once its turn started (None: asked, waiting for the
+/// watcher's conversation). Only that run's `pay_with_card` is refused (`refuses_payment`).
+static REHEARSING: LazyLock<Mutex<HashMap<String, Option<String>>>> = LazyLock::new(Default::default);
 
+/// A rehearsal of `agent` asked or running (the checklist's « Répétition en cours… »).
 pub fn rehearsing(agent: &str) -> bool {
-    REHEARSING.lock().unwrap_or_else(|e| e.into_inner()).contains(agent)
+    REHEARSING.lock().unwrap_or_else(|e| e.into_inner()).contains_key(agent)
+}
+
+/// A payment tool (`tool`: pay_with_card, pay_with_link) of `agent` is refused as a rehearsal's: its rehearsal's turn
+/// runs and the call is that turn's (the run the hub sees inside the tool), or no turn of the agent is seen to make
+/// it. Another turn of the agent (the watcher's own, a person's conversation) pays as usual, and nothing is refused
+/// while the rehearsal only waits.
+pub fn refuses_payment(state: &AppState, agent: &str, tool: &str) -> bool {
+    let run = REHEARSING.lock().unwrap_or_else(|e| e.into_inner()).get(agent).cloned().flatten();
+    let Some(run) = run else { return false };
+    state.hub.turn_of(agent, tool).is_none_or(|turn| turn.run_id == run)
 }
 
 struct Rehearsal(String);
 
 impl Rehearsal {
     fn start(agent: &str) -> Option<Rehearsal> {
-        REHEARSING.lock().unwrap_or_else(|e| e.into_inner()).insert(agent.to_string()).then(|| Rehearsal(agent.into()))
+        let mut table = REHEARSING.lock().unwrap_or_else(|e| e.into_inner());
+        if table.contains_key(agent) {
+            return None;
+        }
+        table.insert(agent.to_string(), None);
+        Some(Rehearsal(agent.into()))
+    }
+
+    /// Its turn started: `run` is the rehearsal's.
+    fn running(&self, run: &str) {
+        REHEARSING.lock().unwrap_or_else(|e| e.into_inner()).insert(self.0.clone(), Some(run.to_string()));
     }
 }
 
@@ -266,7 +290,9 @@ fn same_site(origin: &str, site: &str) -> bool {
     !site.is_empty() && (host == site || host.ends_with(&format!(".{site}")))
 }
 
-/// The card step: ok, missing (no card for this agent), other_site, cap_low, off (payments not allowed or suspended).
+/// The card step: ok, missing (no card for this agent), other_site, cap_low, renew (the card on the site can't pay as
+/// it is: expired, single use already used, no longer on the person's phone: its new numbers to enter), off (payments
+/// not allowed or suspended). « ok » only for a card pay_with_card would type (card_pay.rs `usable`).
 fn card_step(config: &Config, cards: &[crate::vault::Item], agent: &str, purchase: &Purchase) -> Value {
     if !cards::allowed(config) || !cards::enabled(config) {
         return json!({"id": "card", "state": "off"});
@@ -289,11 +315,15 @@ fn card_step(config: &Config, cards: &[crate::vault::Item], agent: &str, purchas
         let meta = i.card.clone().unwrap_or(Value::Null);
         purchase.cents == 0 || cards::over_cap(&meta, &i.label, purchase.cents, &purchase.currency).is_none()
     };
-    if let Some(card) = on_site.iter().find(|i| fits(i)) {
+    let usable = |i: &crate::vault::Item| crate::card_pay::usable(config, i.card.as_ref().unwrap_or(&Value::Null));
+    if let Some(card) = on_site.iter().find(|i| usable(i) && fits(i)) {
         return view(card, "ok");
     }
-    if let Some(card) = on_site.first() {
+    if let Some(card) = on_site.iter().find(|i| usable(i)) {
         return view(card, "cap_low");
+    }
+    if let Some(card) = on_site.first() {
+        return view(card, "renew");
     }
     match mine.first() {
         Some(card) => view(card, "other_site"),
@@ -353,8 +383,8 @@ pub fn account_note(purchase: &Purchase) -> String {
         "<!--bip:purchase\nNot from a site: your person gets ready to buy « {} » on {} as soon as your watcher sees \
 it. Create their customer account on {} now with vault_create_login (one card for them; the password is generated \
 and kept in the vault). Fill the profile and delivery address the shop needs from their « Coordonnées » (browser_vault \
-list shows each entry with when to use it); ask only for what is missing, and offer to keep it in their vault. Don't \
-buy anything. End with one short sentence: what is ready, what is missing.\n-->",
+list shows each entry with when to use it); ask only for what is missing, in your last message (nobody follows this \
+turn live: no clarify question), and offer to keep it in their vault. Don't buy anything. End with one short sentence: what is ready, what is missing.\n-->",
         crate::tools_knowledge::in_note_line(&purchase.what),
         purchase.site,
         purchase.site
@@ -397,9 +427,15 @@ pub fn read_rehearsal(text: &str) -> Option<(bool, String, String)> {
     Some((false, blocked, rest))
 }
 
-/// One turn of the agent with `note` in the watcher's conversation; its words for the person (without a verdict line)
-/// put there. Returns its reply (None: no turn).
-async fn setup_turn(state: &AppState, agent: &AgentConfig, conn: &Connector, note: String) -> Option<String> {
+/// One turn of the agent with `note` in the watcher's conversation (`started` told its run once Hermes took it); its
+/// words for the person (without a verdict line) put there. Returns its reply (None: no turn).
+async fn setup_turn(
+    state: &AppState,
+    agent: &AgentConfig,
+    conn: &Connector,
+    note: String,
+    started: impl FnOnce(&str),
+) -> Option<String> {
     let config = state.config();
     let pipeline = Pipeline::of(state);
     let kept = crate::watchers::load(&config, &agent.name, &conn.id).session;
@@ -411,7 +447,7 @@ async fn setup_turn(state: &AppState, agent: &AgentConfig, conn: &Connector, not
     let mut turn = Turn::new(agent, Kind::Watcher, &session, note);
     turn.max_seconds = SETUP_MAX_SECONDS;
     turn.busy_wait = 120.0;
-    let ran = pipeline.run(&turn).await.ok().filter(|r| r.answered())?;
+    let ran = pipeline.run_then(&turn, started).await.ok().filter(|r| r.answered())?;
     let shown = read_rehearsal(&ran.text).map(|(_, _, rest)| rest).unwrap_or_else(|| ran.text.clone());
     if !shown.trim().is_empty() {
         let delivery = Delivery {
@@ -446,7 +482,7 @@ async fn account_route(State(state): State<AppState>, Path((agent, id)): Path<(S
     let (agent, conn, purchase) = purchase_of(&state.config(), &agent, &id)?;
     let note = account_note(&purchase);
     tokio::spawn(async move {
-        setup_turn(&state, &agent, &conn, note).await;
+        setup_turn(&state, &agent, &conn, note, |_| {}).await;
     });
     Ok(web::json_response(202, &json!({"ok": true})))
 }
@@ -459,8 +495,8 @@ async fn rehearse_route(State(state): State<AppState>, Path((agent, id)): Path<(
     };
     let note = rehearsal_note(&purchase, &crate::handback::language_of(&config, &agent));
     tokio::spawn(async move {
-        let _marked = marked;
-        let text = setup_turn(&state, &agent, &conn, note).await;
+        // pay_with_card refused to the rehearsal's own turn only, from its start (`refuses_payment`)
+        let text = setup_turn(&state, &agent, &conn, note, |run| marked.running(run)).await;
         let (ok, blocked) = match text.as_deref().and_then(read_rehearsal) {
             Some((ok, blocked, _)) => (ok, blocked),
             None => (false, String::new()),
@@ -469,6 +505,7 @@ async fn rehearse_route(State(state): State<AppState>, Path((agent, id)): Path<(
         crate::watchers::change(&config, &agent.name, &conn.id, |rt| {
             rt.rehearsal = Some(Rehearsed { at: py::time_time(), ok, blocked: blocked.clone() })
         });
+        drop(marked); // its verdict kept first: the checklist never shows « never » in between
         tracing::info!(target: "bipbridge::urgent_pay", agent = %agent.name, watcher = %conn.id, ok, "rehearsal done");
     });
     Ok(web::json_response(202, &json!({"ok": true})))
@@ -571,6 +608,45 @@ mod tests {
         assert_eq!(step, json!({"id": "address", "state": "ok", "entries": 1, "entry": "Perso", "entry_id": "item_b"}));
         let step = address_step(&[entry("item_a", "Bureau", full.clone()), entry("item_b", "Perso", full)]);
         assert_eq!(step, json!({"id": "address", "state": "ok", "entries": 2}));
+    }
+
+    /// « Carte prête » (card step `ok`) only for a card pay_with_card would type (review 13/11). A single-use card
+    /// already used, or an expired card, is refused at the checkout (card_pay.rs `card_state`): « renew », opening the
+    /// card for its new numbers, never « ready » for a ticket that would then be lost.
+    #[test]
+    fn the_card_step_is_not_ready_for_a_card_pay_with_card_refuses() {
+        if cards::on_offer() {
+            return; // a place of the offer: no cards here
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = config_in(&dir);
+        config.hermes.isolated = true;
+        cards::set_enabled(&config, true).unwrap();
+        assert!(cards::enabled(&config));
+        let purchase =
+            Purchase { site: "ticketmaster.fr".into(), what: "Billet".into(), cents: 4500, currency: "EUR".into() };
+        let card = |id: &str, meta: Value| crate::vault::Item {
+            id: id.into(),
+            kind: cards::KIND.into(),
+            label: "Petits achats".into(),
+            agents: [("vie".to_string(), "h_vie".to_string())].into_iter().collect(),
+            card: Some(meta),
+            ..Default::default()
+        };
+        let ready = card("item_ready000001", json!({"last4": "4242", "exp_month": 12, "exp_year": 2030}));
+        assert_eq!(card_step(&config, &[ready], "vie", &purchase)["state"], "ok", "a card that can pay: ready");
+        let used = card(
+            "item_used0000001",
+            json!({"last4": "4242", "exp_month": 12, "exp_year": 2030, "single_use": true, "used": true}),
+        );
+        let expired = card("item_expired0001", json!({"last4": "4242", "exp_month": 1, "exp_year": 2020}));
+        let shown: Vec<Value> =
+            [used, expired].iter().map(|c| card_step(&config, std::slice::from_ref(c), "vie", &purchase)).collect();
+        assert!(
+            shown.iter().all(|s| s["state"] == "renew"),
+            "« Carte prête » for cards pay_with_card refuses (single use already used, expired): {shown:?}"
+        );
+        assert_eq!(shown[0]["card_id"], "item_used0000001");
     }
 
     #[test]

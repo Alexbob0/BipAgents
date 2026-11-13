@@ -13,6 +13,8 @@ only there), the card ready for that site and price, the rehearsal. Its actions:
 Only the payment networks' published test numbers are used."""
 import hashlib
 import json
+import threading
+import time
 
 from bbkit.common import AUTH, boite_items
 from bbkit.servers import wait_until
@@ -194,7 +196,8 @@ def test_a_rehearsal_never_pays_and_its_verdict_is_kept(bridges, fakes):
     assert "A rehearsal your person asked for: go once through shop.example" in note and "€45.00" in note
     assert "NEVER pay: pay_with_card is refused during a rehearsal" in note and "REHEARSAL OK" in note
     assert step(bridge, conn, "rehearsal")["state"] == "running"
-    # meanwhile: never a payment (refused before the person is asked), never a second rehearsal
+    time.sleep(1)   # the bridge learns the run's id as Hermes answers its start
+    # meanwhile: never a payment from the rehearsal's turn (refused before the person is asked), never a second one
     refused = pay_tool(bridge, PAY_ARGS)
     assert refused["isError"] is True and "This is a rehearsal: never pay" in refused["content"][0]["text"], refused
     outcomes = [e["outcome"] for e in bridge.get("/v1/vault/payments", headers=AUTH).json()["journal"]]
@@ -247,3 +250,38 @@ def test_a_test_alert_is_the_urgent_payment_push_marked_test(bridges, fakes):
                 if c["run_id"].startswith(("bip-pay", "bip-cart-"))]
     assert bridge.post("/v1/agents/nobody/urgent-test", headers=AUTH).status_code == 404
     assert bridge.post("/v1/agents/vie/urgent-test").status_code == 401
+
+
+def test_a_rehearsal_waiting_for_the_watchers_conversation_never_refuses_its_real_payment(bridges, fakes):
+    """Review 13/11: a rehearsal tapped while the watcher's own turn runs (the tickets went on sale) waits for that
+    conversation; meanwhile the watcher's real payment is never refused as a rehearsal's (only the rehearsal's own
+    turn's pay_with_card is)."""
+    bridge, conn, _ = setup(bridges, fakes)
+    assert bridge.post("/v1/vault/payments", headers=AUTH, json={"enabled": True}).status_code == 200
+    vault_item(bridge, CARD)
+    value = bridge.root / "value.txt"
+    run = f"/v1/agents/vie/connectors/{conn['id']}/run"
+    baseline = bridge.post(run, headers=AUTH, params={"wait": "true"}, timeout=120)
+    assert baseline.status_code == 200, baseline.text
+    # the tickets go on sale: the watcher wakes the agent in its conversation; that turn goes on (to the checkout),
+    # its events followed as Hermes streams them
+    going = threading.Event()
+    fakes.hermes.runs[f"r{len(fakes.hermes.started) + 1}"] = [going]
+    fakes.hermes.rounds = 10**6
+    value.write_text("en vente")
+    assert bridge.post(run, headers=AUTH).status_code in (200, 202)
+    watch_turns = lambda: [r for r in fakes.hermes.started.values() if "<!--bip:watch" in (r.get("input") or "")]
+    assert wait_until(watch_turns, timeout=30), fakes.hermes.started
+    try:
+        # meanwhile the person taps « Répétition » in the checklist: its turn waits for the conversation
+        started = bridge.post(f"/v1/agents/vie/connectors/{conn['id']}/purchase/rehearse", headers=AUTH)
+        assert started.status_code == 202, started.text
+        time.sleep(3)
+        assert not purchase_turns(fakes), "the rehearsal's turn waits for the watcher's"
+        assert step(bridge, conn, "rehearsal")["state"] == "running"
+        # the watcher's real turn reaches the payment page and pays: never refused as a rehearsal
+        paid = pay_tool(bridge, PAY_ARGS)
+        said_ = paid["content"][0]["text"]
+        assert "rehearsal" not in said_.lower(), f"the watcher's real payment refused as a rehearsal: {said_}"
+    finally:
+        going.set()

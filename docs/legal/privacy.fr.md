@@ -77,7 +77,7 @@ Avec ton propre ordinateur ou ton propre serveur :
   numéro, sa date d'expiration, le nom du titulaire et le code postal vont dans le coffre chiffré de ton serveur, où seul
   le bridge les lit pour remplir un paiement que tu as validé. Le code de sécurité n'est jamais gardé sur ton serveur ni
   chez Kerfy Studio : tu le tapes à chaque paiement, ou, si tu le choisis (« Retenir le code sur ce téléphone »), ton
-  téléphone le garde pour toi, protégé par Face ID ou ton empreinte, et l'envoie avec chaque paiement que tu valides. L'agent (le modèle d'IA) ne voit jamais ces numéros, et Kerfy Studio n'en reçoit rien. Avec l'offre
+  téléphone le garde pour toi, protégé par Face ID, ton empreinte ou le code de ton téléphone, et l'envoie avec chaque paiement que tu valides. L'agent (le modèle d'IA) ne voit jamais ces numéros, et Kerfy Studio n'en reçoit rien. Avec l'offre
   tout compris, la carte reste sur ton téléphone (section 5.10).
 - **Plusieurs personnes sur un même serveur** (fonction famille) : chaque personne a sa propre installation et ses
   propres agents, séparés des autres, sauf les agents de la famille et les agents partagés (section 2 bis), qui sont

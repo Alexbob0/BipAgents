@@ -51,7 +51,7 @@
 //! card's cap (euros, spent so far included) is checked before the person is asked. The person's own typing into card
 //! fields in the live view stays blocked there (desktop_page.rs): only this fill, the browser held, writes into them.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, Mutex};
@@ -773,10 +773,32 @@ pub fn urgent_waiting(agent: &str) -> bool {
     pending().values().any(|p| p.agent == agent && p.urgent.is_some() && !p.approved && !p.denied)
 }
 
-/// A payment of `agent` is asked, waits for the person or holds its browser: its turn is kept going
-/// (background_turn.rs `wait`).
+/// The agents with a `pay_with_card` call going on, from its first check to its end (asked, waiting for the person,
+/// approved and holding the browser, typing): a second call meanwhile is refused at once (`Paying`), never queued
+/// behind the first to ask the person again after their « Non » or after the window.
+static PAYING_NOW: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
+
+/// One `pay_with_card` call of an agent going on (`PAYING_NOW`), for as long as it lives.
+struct Paying(String);
+
+impl Paying {
+    fn start(agent: &str) -> Option<Paying> {
+        PAYING_NOW.lock().unwrap_or_else(|e| e.into_inner()).insert(agent.to_string()).then(|| Paying(agent.into()))
+    }
+}
+
+impl Drop for Paying {
+    fn drop(&mut self) {
+        PAYING_NOW.lock().unwrap_or_else(|e| e.into_inner()).remove(&self.0);
+    }
+}
+
+/// A payment of `agent` is asked, waits for the person, is being made or holds its browser: its turn is kept going
+/// (background_turn.rs `wait`), with no gap between the person's « Oui, payer » and the browser held.
 pub fn in_progress(agent: &str) -> bool {
-    holding(agent) || pending().values().any(|p| p.agent == agent)
+    holding(agent)
+        || PAYING_NOW.lock().unwrap_or_else(|e| e.into_inner()).contains(agent)
+        || pending().values().any(|p| p.agent == agent)
 }
 
 /// The payment id in a card payment's approval text (`Card payment pay_…:`).
@@ -804,6 +826,8 @@ pub async fn urgent(state: &AppState, agent: &AgentConfig, run_id: &str, session
     let Some((id, about)) = found else { return false };
     let card = format!("{URGENT_PREFIX}{id}");
     crate::card_place::place_for(state, agent, &card, Some(run_id)).await;
+    // pay_with_card, waiting, tells the turn the answer itself: never a turn resumed with « ALLOWED » (card_place.rs)
+    crate::card_place::taken(&state.config(), &card);
     let line = crate::urgent_pay::found_line(&crate::handback::language_of(&state.config(), agent), &about);
     state.push.notify_payment_urgent(&agent.name, &card, &id, &line, session.as_deref(), false).await;
     true
@@ -931,6 +955,18 @@ fn card_state(meta: &Value) -> &'static str {
     }
 }
 
+/// A card `pay_with_card` would type now (« Prêt à acheter »'s card step): its state ready, and on a place of the offer
+/// its numbers on the person's phone.
+pub fn usable(config: &Config, meta: &Value) -> bool {
+    if cards::phone_rules(config).is_some() && !cards::is_on_phone(meta) {
+        return false;
+    }
+    matches!(card_state(meta), "ready" | "single use, ready")
+}
+
+/// A second `pay_with_card` while one goes on (`Paying`).
+const ANOTHER_PAYMENT: &str = "Another payment of yours already waits for the person or is being made: don't pay this \
+one; tell them what you found in one sentence.";
 const NO_CARD: &str = "No card is allowed for you. The person adds one in the app (Réglages › Coffre des agents).";
 const OFF: &str =
     "Payments by the agents are off: the person turns « Paiements par tes agents » on in the app (Réglages \
@@ -1097,15 +1133,13 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
     let Some(currency) = cards::currency(&arg(arguments, "currency")) else {
         return Ok(refusal("Give the currency as its 3-letter code, e.g. EUR."));
     };
-    if crate::urgent_pay::rehearsing(&agent.name) {
+    if crate::urgent_pay::refuses_payment(state, &agent.name, PAY) {
         return Ok(refusal(crate::urgent_pay::REHEARSAL_NO_PAY));
     }
-    if urgent_waiting(&agent.name) {
-        return Ok(refusal(
-            "Another payment of yours already waits for the person: don't pay this one; tell them what you found in \
-             one sentence.",
-        ));
-    }
+    // one call at a time, the second refused at once (never queued to ask the person again after the first)
+    let Some(_paying) = Paying::start(&agent.name) else {
+        return Ok(refusal(ANOTHER_PAYMENT));
+    };
     let _one_at_a_time = lock_of(&agent.name).lock_owned().await;
     if held().contains_key(&agent.name) {
         return Ok(refusal("A payment is already in progress: confirm_payment or cancel_payment first."));
@@ -2377,6 +2411,31 @@ mod tests {
         assert!(matches!(task.await.unwrap(), Err("too_late")));
         let turn = LATE.lock().unwrap().remove("pay_urgent000003");
         assert_eq!(turn, Some(("run_late".to_string(), Some("s_late".to_string()))));
+    }
+
+    /// pay_with_card's own claim (`Paying`) keeps the agent « in progress » from its first check to its end: no gap
+    /// between the person's « Oui, payer » (the payment leaves PENDING) and the browser held (HELD), when a watcher's
+    /// turn past its own limit would be stopped (background_turn.rs `wait`) before confirm_payment (review 13/11).
+    #[tokio::test]
+    async fn an_approved_urgent_payment_stays_in_progress_until_its_browser_is_held() {
+        let agent = "review_gap";
+        let paying = Paying::start(agent).unwrap(); // pay() claims it first
+        assert!(Paying::start(agent).is_none(), "a second call meanwhile is refused at once");
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let asker = Asker { agent: agent.into(), out: Some(tx) };
+        let task = tokio::spawn(async move { approval("pay_reviewgap001", &asker, "Card payment …", None, Some(about())).await });
+        let question = rx.recv().await.unwrap()["id"].as_str().unwrap().to_string();
+        mark_urgent("pay_reviewgap001", agent, "run_w", None, URGENT_WINDOW).unwrap();
+        let yes = json!({"jsonrpc": "2.0", "id": question, "result": {"action": "accept"}});
+        assert!(answered(agent, yes.as_object().unwrap()));
+        assert!(in_progress(agent), "waiting for the person: the turn is kept");
+        accept("pay_reviewgap001", Zeroized(json!({"code": "737"}))).unwrap();
+        assert!(matches!(task.await.unwrap(), Ok(Approved::Code(_))), "the person approved with the code");
+        // `pay` goes on from here to hold the browser and type the card: nothing is held yet, still in progress
+        assert!(!holding(agent));
+        assert!(in_progress(agent), "approved by the person, browser not held yet: the turn must not be cut");
+        drop(paying);
+        assert!(!in_progress(agent) && Paying::start(agent).is_some(), "the call over: the next may come");
     }
 
     #[tokio::test]
