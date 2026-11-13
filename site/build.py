@@ -443,9 +443,16 @@ def bipagents(version: str) -> Path:
             f'<option value="{code}"{" selected" if code == default_currency else ""}>{html.escape(c["symbol"])} {code}</option>'
             for code, c in currencies.items())
         default_url = checkout_url(cfg, "famille", "year", lang)
-        badges = store_badges(cfg["stores"]["bipagents"], t["store"]["soon"], t["store"]["get"])
         # The public beta (site/config.json « beta »): TestFlight and Google Play's testing links once they are set.
         beta = cfg.get("beta", {})
+        # Every page's footer badges: the stores once the app is out there; until then, during the beta, its links
+        # (« La bêta sur TestFlight / Google Play »), never a « coming soon » while the beta is open.
+        stores = cfg["stores"]["bipagents"]
+        if not (stores.get("appStore") or stores.get("googlePlay")) and (beta.get("testflight") or beta.get("play")):
+            badges = store_badges({"appStore": beta.get("testflight", ""), "googlePlay": beta.get("play", "")},
+                                  t["beta"]["storeSoon"], t["beta"]["storeGet"], "TestFlight")
+        else:
+            badges = store_badges(stores, t["store"]["soon"], t["store"]["get"])
         cap = beta.get("cap") or ""
         cap = (cap.get(lang) or "") if isinstance(cap, dict) else cap
 
