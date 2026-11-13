@@ -33,6 +33,7 @@ pub mod hermes_prompts;
 pub mod lan;
 pub mod logs;
 pub mod loop_brake;
+pub mod go_on;
 pub mod main_cli;
 pub mod storage_watch;
 pub mod space_tidy;

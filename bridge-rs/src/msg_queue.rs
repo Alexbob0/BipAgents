@@ -581,6 +581,17 @@ impl Queues {
         queue
     }
 
+    /// A message of the agent's waits in line for that conversation (only what was read already: inside the hub's
+    /// locks, no file read).
+    pub fn waits_in(&self, agent: &str, session_id: &str) -> bool {
+        lock(&self.state).get(agent).is_some_and(|q| q.waits_in(session_id))
+    }
+
+    /// Words of the person went into that run while it went on (`steer`; read like `waits_in`).
+    pub fn steered_into(&self, agent: &str, run_id: &str) -> bool {
+        lock(&self.state).get(agent).is_some_and(|q| q.steers.iter().any(|s| s.run_id == run_id))
+    }
+
     /// The run going on in a conversation, as the hub follows it.
     pub fn running_run(&self, agent: &str, session_id: &str) -> Option<String> {
         self.hub.session_run(agent, session_id)
@@ -694,7 +705,8 @@ impl Queues {
         let input = item.input.clone().or_else(|| again.map(|(i, _)| i)).unwrap_or_else(|| Value::String(item.text.clone()));
         let options = crate::turn_thinking::turn_options(&config, agent, &item.text, item.thinking);
         let thinks = crate::turn_thinking::thought(options.as_ref());
-        let started = self.hermes.start_run_input(agent, input, &item.session_id, instructions.as_deref(), options).await;
+        let started =
+            self.hermes.start_run_input(agent, input, &item.session_id, instructions.as_deref(), options.clone()).await;
         let run_id = match started {
             Ok(run_id) => run_id,
             Err(exc) => {
@@ -711,6 +723,7 @@ impl Queues {
         self.hub.watch(agent, &run_id, Some(&item.session_id), true);
         self.hub.keep(agent, &run_id, Some(&item.session_id));
         self.hub.set_phone(&agent.name, &run_id, item.phone.as_deref());
+        self.hub.set_turn(&agent.name, &run_id, instructions.as_deref(), options);
         let started = crate::store::iso(crate::store::utcnow());
         self.update(&agent.name, |q| {
             q.items.retain(|i| i.id != item.id);

@@ -62,6 +62,12 @@ static RENAMED: LazyLock<Regex> =
 /// A bridge mark (`[bipagents:…]`) starting a line: from there on, words for the agent only.
 static BRIDGE_MARK: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^[ \t]*\[bipagents:[a-z_]+\]").expect("valid regex"));
+/// A person's row up to the bridge's words for the agent only (a `[bipagents:…]` mark starting a line: a continuation's
+/// note, a steer): what search may find of it (message_search.rs).
+pub(crate) fn before_bridge_mark(words: &str) -> &str {
+    BRIDGE_MARK.find(words).map_or(words, |m| &words[..m.start()])
+}
+
 /// A steer of the bridge's in Hermes' out-of-band wrapper, inside other words (a tool result it was joined to).
 static BRIDGE_STEER_BLOCK: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\[OUT-OF-BAND USER MESSAGE[^\]\n]*\]\s*\[bipagents:[\s\S]*?(?:\[/OUT-OF-BAND USER MESSAGE\]|$)")

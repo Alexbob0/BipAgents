@@ -392,7 +392,7 @@ class ScriptedModel:
             if run.documents:
                 what.append(f"{len(run.documents)} document{'s' if len(run.documents) > 1 else ''}")
             lines.append("Bien reçu" + (f" : {' et '.join(what)}." if what else ".")
-                         + " Merci, je regarde ça tout de suite et je te réponds en détail très bientôt.")
+                         + " Merci, c'est noté, et je reste là si tu as besoin d'autre chose.")
         body = " ".join(lines)
         said = self.say_real(run, body) if "#reel" in words else self.say(run, body, gap=0.25 if "#lent" in words else None)
         thought = {"reasoning": "Une réponse courte et utile."} if "#reel" in words or "#jours" in words else {}

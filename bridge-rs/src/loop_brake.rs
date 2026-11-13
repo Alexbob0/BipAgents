@@ -124,6 +124,8 @@ pub struct Settings {
     pub rescue_tool_calls: u32,
     /// … and this long at most before it is stopped too.
     pub rescue_seconds: f64,
+    /// A person's turn that ends on a promise with no work done gets one continuation (runs.rs `go_on`, go_on.rs).
+    pub go_on: bool,
 }
 
 impl Default for Settings {
@@ -160,6 +162,7 @@ impl Default for Settings {
             rescue: true,
             rescue_tool_calls: 5,
             rescue_seconds: 180.0,
+            go_on: true,
         }
     }
 }
@@ -198,6 +201,7 @@ impl Settings {
                 .and_then(Value::as_f64)
                 .unwrap_or(d.rescue_seconds)
                 .clamp(20.0, 1_800.0),
+            go_on: table.get("go_on").and_then(Value::as_bool).unwrap_or(d.go_on),
         }
     }
 
