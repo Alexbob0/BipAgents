@@ -551,7 +551,12 @@ the error's technical words, file names or tool names. No URGENT.\n-->",
 pub fn read_reply(text: &str) -> Option<(bool, String)> {
     let text = tk::strip(text);
     let bare = |s: &str| s.trim_matches(|c: char| !c.is_alphanumeric()).to_uppercase();
-    if text.is_empty() || ["NOTHING", "RIEN", "NICHTS", "NADA"].contains(&bare(text).as_str()) {
+    // NOTHING, its translations, or the background turns' own code word (lab 13/11: GLM answered « [SILENT] » to a
+    // purchase watcher's wake-up, which went to the person as a message)
+    if text.is_empty()
+        || ["NOTHING", "RIEN", "NICHTS", "NADA"].contains(&bare(text).as_str())
+        || crate::background_turn::is_silent(text)
+    {
         return None;
     }
     let mut lines = text.lines();
@@ -1000,6 +1005,8 @@ mod tests {
     fn the_agents_reply() {
         assert_eq!(read_reply("NOTHING"), None);
         assert_eq!(read_reply("  Rien. "), None);
+        assert_eq!(read_reply("[SILENT]"), None);
+        assert_eq!(read_reply("**[SILENT]**"), None);
         assert_eq!(read_reply("URGENT\nUn créneau mardi à 10 h : réserve vite."), Some((true, "Un créneau mardi à 10 h : réserve vite.".into())));
         assert_eq!(read_reply("**URGENT**\nVite."), Some((true, "Vite.".into())));
         assert_eq!(read_reply("URGENT: ton solde est à 80 €."), Some((true, "ton solde est à 80 €.".into())));
