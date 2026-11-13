@@ -199,7 +199,8 @@ pub fn read_only_refused(config: &Config) -> HttpError {
 
 
 static LOCK: Mutex<()> = Mutex::new(());
-/// Approvals waiting for this person in agents shared with her: (shared id, run_id, request_id) → the approval.
+/// Approvals and questions waiting for this person in agents shared with her (her own turns): (shared id, run_id,
+/// request_id, or `q:<request_id>` for a question) → the approval, or the question (`kind: "question"`).
 type PendingKey = (String, String, String);
 static PENDING: LazyLock<Mutex<HashMap<PendingKey, Dict>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -1555,16 +1556,23 @@ pub(crate) async fn follow_from_here(state: AppState, id: String, cid: String, r
         let hers = |card: &&Value| card.get("by").and_then(|b| b.get("mine")) != Some(&Value::Bool(false));
         let approvals: Vec<Value> =
             pending.get("approvals").and_then(Value::as_array).into_iter().flatten().filter(hers).cloned().collect();
+        let questions: Vec<Value> =
+            pending.get("questions").and_then(Value::as_array).into_iter().flatten().filter(hers).cloned().collect();
         {
             let mut pending = PENDING.lock().unwrap_or_else(|e| e.into_inner());
             pending.retain(|(a, r, _), _| !(*a == id && *r == run_id));
-            for a in &approvals {
-                let rid = str_of(a, "request_id");
-                let mut item = a.as_object().cloned().unwrap_or_default();
+            // her questions too (the Boîte's list, and their rows kept while they wait: card_place.rs `waiting_refs`)
+            for (card, question) in approvals.iter().map(|a| (a, false)).chain(questions.iter().map(|q| (q, true))) {
+                let rid = str_of(card, "request_id");
+                let mut item = card.as_object().cloned().unwrap_or_default();
                 item.insert("agent".into(), json!(id));
                 item.insert("session_id".into(), json!(cid));
                 item.entry("created_at").or_insert(json!(now()));
-                pending.insert((id.clone(), run_id.clone(), rid), item);
+                if question {
+                    item.insert("kind".into(), json!("question"));
+                }
+                let key = if question { format!("q:{rid}") } else { rid };
+                pending.insert((id.clone(), run_id.clone(), key), item);
             }
         }
         let looking = state.presence.viewing(&id, &cid);
@@ -1589,7 +1597,7 @@ pub(crate) async fn follow_from_here(state: AppState, id: String, cid: String, r
                 )
                 .await;
         }
-        for q in pending.get("questions").and_then(Value::as_array).into_iter().flatten().filter(hers) {
+        for q in &questions {
             let rid = str_of(q, "request_id");
             if looking || !pushed.insert(format!("q:{rid}")) {
                 continue;
@@ -1786,14 +1794,33 @@ pub async fn approve_mine(
         PENDING
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .retain(|(a, r, q), _| !(a == id && r == run_id && request_id.is_none_or(|rid| rid == q)));
+            .retain(|(a, r, q), _| {
+                !(a == id && r == run_id && request_id.is_none_or(|rid| rid == q.strip_prefix("q:").unwrap_or(q)))
+            });
     }
     Ok(relayed(answer))
 }
 
+/// The approvals waiting for this person in her turns with agents shared with her (one agent's, or all of them).
 pub fn pending_mine(agent: Option<&str>) -> Vec<Dict> {
+    pending_mine_of(agent, false)
+}
+
+/// Her questions waiting there (the family conversation's turns she asked: hers to answer, 12/11).
+pub fn pending_questions_mine(agent: Option<&str>) -> Vec<Dict> {
+    pending_mine_of(agent, true)
+}
+
+fn pending_mine_of(agent: Option<&str>, questions: bool) -> Vec<Dict> {
     let pending = PENDING.lock().unwrap_or_else(|e| e.into_inner());
-    pending.iter().filter(|((a, _, _), _)| agent.is_none_or(|x| x == a)).map(|(_, item)| item.clone()).collect()
+    pending
+        .iter()
+        .filter(|((a, _, _), item)| {
+            agent.is_none_or(|x| x == a)
+                && (item.get("kind").and_then(Value::as_str) == Some("question")) == questions
+        })
+        .map(|(_, item)| item.clone())
+        .collect()
 }
 
 /// For the apps (mounted under /v1, bridge key): the owner's sharing and the relative's shared agents.

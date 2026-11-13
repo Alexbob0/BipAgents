@@ -1515,14 +1515,21 @@ async fn approvals(State(state): State<AppState>, q: QueryMap) -> ApiResult<Resp
     let mut questions = if shared.is_some() { Vec::new() } else { state.hub.pending_questions_of(name.as_deref()) };
     questions
         .retain(|i| !crate::agent_shares::relative_run(&config, i.get("run_id").and_then(Value::as_str).unwrap_or("")));
+    // hers in the turns she asked with agents relatives share with her (the family conversation: hers to answer)
+    if name.is_none() {
+        questions.extend(crate::agent_shares::pending_questions_mine(shared.as_deref()));
+    }
     for question in questions.iter_mut() {
         let id = crate::threads::answered_id(
             question.get("run_id").and_then(Value::as_str),
             question.get("request_id").and_then(Value::as_str),
         );
-        question.insert("id".into(), json!(id));
+        question.entry("id").or_insert(json!(id));
     }
     for item in items.iter_mut().chain(questions.iter_mut()) {
+        if item.get("created_at").is_some_and(Value::is_string) {
+            continue; // ISO already (a relayed card)
+        }
         let created = item.get("created_at").and_then(Value::as_f64).unwrap_or(0.0);
         let micros = (created * 1_000_000.0).round() as i64;
         let when = chrono::DateTime::<chrono::Utc>::from_timestamp_micros(micros).unwrap_or_default();
