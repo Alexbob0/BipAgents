@@ -318,6 +318,25 @@ def test_another_tab_in_front_is_shown_instead(bridges, fakes, chrome):
         assert wait_until(lambda: any(c[0] == "TAB2" for c in chrome.methods("Page.startScreencast")))
 
 
+def test_chromes_own_ui_is_never_the_page_shown(bridges, fakes, chrome):
+    """13/11 (Alex, aibox and an offer's place): Chrome 157 lists its address bar's suggestion popup as a page with no
+    window, first once the agent's first tab was closed, and « Bureau » showed a tab « null » there. Chrome's own UI
+    pages (chrome://…top-chrome/, chrome-untrusted://…top-chrome/) are never what the person watches or reads."""
+    chrome.tabs[:] = [{"id": "POPUP", "url": "chrome://omnibox-popup.top-chrome/", "title": "null"},
+                      {"id": "SIDE", "url": "chrome-untrusted://read-anything-side-panel.top-chrome/", "title": ""},
+                      {"id": "TAB1", "url": "https://www.lemonde.fr/economie/", "title": "Le Monde"}]
+    bridge, folder = browser_bridge(bridges, fakes, chrome.port)
+    assert {k: state(bridge)[k] for k in ("state", "site", "title")} == {
+        "state": "active", "site": "lemonde.fr", "title": "Le Monde"}
+    data = bridge.post("/v1/agents/vie/desktop", headers=AUTH).json()
+    assert bridge.get("/" + data["page_path"] + "reader").json()["site"] == "lemonde.fr"
+    with open_ws(bridge.ws_url("/" + data["page_path"] + "ws")) as ws:
+        recv_until(ws, lambda m: m == JPEG)
+    assert {c[0] for c in chrome.methods("Page.startScreencast")} == {"TAB1"}
+    chrome.tabs[:] = chrome.tabs[:2]                   # only Chrome's own UI left: nothing to show
+    assert {k: state(bridge)[k] for k in ("state", "site")} == {"state": "idle", "site": None}
+
+
 def test_an_old_browser_image_asks_for_an_update(bridges, fakes, chrome):
     chrome.old = True
     bridge, folder = browser_bridge(bridges, fakes, chrome.port)

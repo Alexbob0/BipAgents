@@ -954,6 +954,53 @@ mod tests {
         assert_eq!(address("  "), None);
     }
 
+    /// A DevTools answering `/json/list` with `list` (one request per connection, as reqwest makes them here).
+    async fn devtools_listing(list: Value) -> u16 {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let body = list.to_string();
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let body = body.clone();
+                tokio::spawn(async move {
+                    let mut head = [0u8; 4096];
+                    let _ = socket.read(&mut head).await;
+                    let answer = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = socket.write_all(answer.as_bytes()).await;
+                });
+            }
+        });
+        port
+    }
+
+    /// 13/11 (Alex, aibox and an offer's place): Chrome 157 lists its address bar's suggestion popup as a page with no
+    /// window, first once the agent's first tab was closed; « Bureau » showed a tab « null » there. Chrome's own UI
+    /// pages (`*.top-chrome`, chrome:// and chrome-untrusted://) are never a tab of the agent, whatever their order.
+    #[tokio::test]
+    async fn chromes_own_ui_pages_are_never_a_tab() {
+        let port = devtools_listing(json!([
+            {"id": "POPUP", "type": "page", "url": "chrome://omnibox-popup.top-chrome/", "title": "null"},
+            {"id": "SEARCH", "type": "page", "url": "chrome://tab-search.top-chrome/", "title": "Rechercher"},
+            {"id": "READ", "type": "page", "url": "chrome-untrusted://read-anything-side-panel.top-chrome/?x", "title": ""},
+            {"id": "SITE", "type": "page", "url": "https://www.lemonde.fr/", "title": "Le Monde"},
+            {"id": "TOOLS", "type": "page", "url": "devtools://devtools/bundled/inspector.html", "title": "DevTools"},
+            {"id": "FRAME", "type": "iframe", "url": "https://pay.example/", "title": ""},
+            {"id": "NEW", "type": "page", "url": "chrome://newtab/", "title": "Nouvel onglet"}
+        ]))
+        .await;
+        let list = tabs(port, None).await.unwrap();
+        assert_eq!(list.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["SITE", "NEW"]);
+        let only_ui = devtools_listing(json!([
+            {"id": "POPUP", "type": "page", "url": "chrome://omnibox-popup.top-chrome/", "title": "null"}
+        ]))
+        .await;
+        assert_eq!(tabs(only_ui, None).await.unwrap(), Vec::<Tab>::new());
+    }
+
     #[test]
     fn a_phone_renders_at_its_own_size_within_the_screen() {
         let phone = Phone { mobile: Some(1), w: Some(393.0), h: Some(852.0), dpr: Some(3.0), ..Phone::default() };
