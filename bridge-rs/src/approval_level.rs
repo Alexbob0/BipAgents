@@ -2,16 +2,14 @@
 //! l'utilisateur s'il est OK pour valider la plupart automatiquement. Il faut un bouton "me faire valider la plupart" /
 //! "que les critiques". » — and « Quand je parle des validations, je parle de manière générale dans toute l'app. »).
 //!
-//! The daily message's hour and the loop's period can be moved for the black-box tests (`BIPAGENTS_APPROVAL_DIGEST_HOUR`,
-//! `BIPAGENTS_APPROVAL_DIGEST_EVERY`).
-//!
 //! Two levels, for the person (every agent of this place), and per agent if they want:
 //!
 //! - **« Tout valider moi-même »** (`all`, the default, what every place did before): every card is asked.
 //! - **« Seulement le critique »** (`critical`): what is not critical is approved by the bridge at once, as the person's
 //!   « Oui » would be (the same code: the same caps, brakes, sandbox and undo), not pushed, and logged as an « auto »
-//!   line in the Boîte (what, which agent, when, « Annuler » when it can be undone); once a day, at `DIGEST_HOUR`, one
-//!   Boîte message sums the day's up for each agent that had some (the only push). The agents are told, in their
+//!   line (what, which agent, when, « Annuler » when it can be undone) listed in « Ce que tes agents font tout seuls »
+//!   › « Validé pour toi » (`groups`, in `GET /v1/autonomous`), never in the Boîte (Alex 13/11: « Rien dans la
+//!   Boîte »: no line, no daily message there). The agents are told, in their
 //!   personality (`RULE`), to go ahead without asking « shall I…? » for what is not critical: the confirmation questions
 //!   that are really validations go too.
 //!
@@ -21,8 +19,7 @@
 //! or goes past a budget. Everything the bridge asks is classified with it: its own cards (`classify_card`), Hermes'
 //! approvals (`classify_hermes`), and the steps that are not cards (`task_start`, `task_more`, `guide_proposal`…).
 //!
-//! An older app knows nothing of this: the level stays « Tout valider » until a newer app sets it (`chosen`), and the
-//! lines it can't show are summed up in the daily Boîte message it shows like any other.
+//! An older app knows nothing of this: the level stays « Tout valider » until a newer app sets it (`chosen`).
 //!
 //!     GET  /v1/approval-level                  {level, chosen, agents: {agent: level}, kinds: [{kind, critical, undo}]}
 //!     PUT  /v1/approval-level                  {level}                                  → the same
@@ -33,13 +30,13 @@
 //!
 //!     DELETE /v1/agents/{agent}/approval-always/{key}                    → the same (that « Toujours » gone)
 //!
-//!     data_dir/approval-level.json (0600)      the levels, the « Toujours », the auto lines (`KEEP_DAYS`), the digests
+//!     data_dir/approval-level.json (0600)      the levels, the « Toujours », the auto lines (`KEEP_DAYS`)
 //!
 //! **« Toujours »** (Alex 12/11: a night routine's mail moves never ran, nobody approves at 3 a.m.): on a card of a kind
 //! that is not critical (`ALWAYS_KINDS`: sorting mail, a sort rule, writing in one service the person connected —
 //! per service —, files in the agent's own space), one more answer « Toujours autoriser Vie à … » (`bip_always` on
 //! the card, the app sends `always`). Kept per agent and kind (`grant_always`), applied as « Seulement le critique »
-//! would (answered at once, in routines too, an « auto » line in the Boîte marked « toujours autorisé », with
+//! would (answered at once, in routines too, an « auto » line marked « toujours autorisé », with
 //! « Annuler » when it can be undone), listed in the agent's settings and taken back there (`revoke_always`). Only the
 //! person's own answer grants it (app.rs `approve`): never the bridge's own answers, a relative, nor any agent tool;
 //! never a critical kind, never a family agent's card.
@@ -49,7 +46,6 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex};
-use std::time::Duration;
 
 use axum::body::Bytes;
 use axum::extract::{Path as UrlPath, State};
@@ -68,8 +64,6 @@ use crate::{py, Dict};
 const FILE: &str = "approval-level.json";
 /// Auto lines kept this long.
 const KEEP_DAYS: f64 = 30.0;
-/// The daily message, from this local hour.
-pub const DIGEST_HOUR: u32 = 19;
 /// A background task an agent proposes starts by itself up to this budget (`jobs::BUDGETS` « medium »).
 pub const TASK_AUTO_MAX_EUR: f64 = 0.50;
 
@@ -81,7 +75,7 @@ pub struct Rule {
     pub kind: &'static str,
     /// Always asked, whatever the level.
     pub critical: bool,
-    /// An auto-approved one can be undone from its Boîte line.
+    /// An auto-approved one can be undone from its line in the history.
     pub undo: bool,
     /// Where it comes from (a card's run id prefix, Hermes, a route).
     pub from: &'static str,
@@ -252,7 +246,7 @@ fn level_word(text: &str) -> Option<&'static str> {
     }
 }
 
-/// An approved-by-itself line of the Boîte.
+/// An approved-by-itself line (« Ce que tes agents font tout seuls » › « Validé pour toi »).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Line {
     pub id: String,
@@ -269,9 +263,9 @@ pub struct Line {
     pub undo: Option<Undo>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub undone_at: Option<f64>,
-    /// Summed up in a daily message already.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub digested: bool,
+    /// How many e-mails its card handled (a mail kind's; None: one thing).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub count: Option<u64>,
     /// Approved by a « Toujours » of the person (not by the level).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub always: bool,
@@ -297,9 +291,6 @@ struct Book {
     agents: BTreeMap<String, String>,
     #[serde(default)]
     lines: Vec<Line>,
-    /// agent → the local day of its last daily message (« 2026-11-06 »).
-    #[serde(default)]
-    digests: BTreeMap<String, String>,
     /// agent → its « Toujours » (`always_key` → when the person granted it).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     always: BTreeMap<String, BTreeMap<String, f64>>,
@@ -615,7 +606,6 @@ pub fn forget(config: &Config, agent: &str) {
     change(config, |b| {
         b.agents.remove(agent);
         b.lines.retain(|l| l.agent != agent);
-        b.digests.remove(agent);
         b.always.remove(agent);
     });
 }
@@ -680,7 +670,7 @@ fn render_souls(config: &Config, agents: &[String]) {
 
 // -- the auto lines ------------------------------------------------------------------------------------------------------
 
-/// One approval made by the bridge at once: kept for the Boîte, logged.
+/// One approval made by the bridge at once: kept for the history (« Validé pour toi »), logged.
 pub fn record(config: &Config, line: Line) -> Line {
     let line = Line { id: if line.id.is_empty() { py::token_hex(6) } else { line.id }, at: py::time_time(), ..line };
     tracing::info!(target: "bipbridge::approval_level", agent = %line.agent, kind = %line.kind, summary = %line.summary, "approved by the level");
@@ -766,7 +756,7 @@ pub async fn undo(state: &AppState, id: &str) -> Result<Line, UndoRefused> {
 }
 
 /// A task forgotten (« Oublier cette tâche », jobs.rs `forget`): its « Tâche de fond lancée » line says « Annulé »,
-/// never an « Annuler » left on a task that is gone (9/11: the line kept it in the Boîte, the task seemed to stay).
+/// never an « Annuler » left on a task that is gone (9/11: the line kept it, the task seemed to stay).
 pub fn task_forgotten(config: &Config, job_id: &str) {
     let now = py::time_time();
     change(config, |b| {
@@ -810,7 +800,7 @@ pub fn auto_card(config: &Config, agent: &str, item: &Dict) -> bool {
 }
 
 /// After a tool call of `agent`: the cards it made (not in `before`) that are not critical, under « Seulement le
-/// critique », answered as the person's « Oui » would, logged in the Boîte, told to the agent by the call's result
+/// critique », answered as the person's « Oui » would, logged in the history, told to the agent by the call's result
 /// (`taken`: no turn resumed for them). Their sentences.
 pub async fn settle_new(
     state: &AppState,
@@ -849,7 +839,7 @@ pub async fn settle_card(state: &AppState, agent: &AgentConfig, run_id: &str) ->
     approve_item(state, agent, &item, None).await
 }
 
-/// One card answered as the person's « Oui » would, when not critical: logged in the Boîte, `taken` (no turn resumed
+/// One card answered as the person's « Oui » would, when not critical: logged in the history, `taken` (no turn resumed
 /// for it: the caller tells the agent). Its sentence; None: critical, or not answered.
 async fn approve_item(state: &AppState, agent: &AgentConfig, item: &Dict, session: Option<&str>) -> Option<String> {
     let config = state.config();
@@ -886,6 +876,7 @@ async fn approve_item(state: &AppState, agent: &AgentConfig, item: &Dict, sessio
             run_id: Some(run_id),
             session_id: session,
             undo: undo_of(item, kind),
+            count: item.get("bip_mail").and_then(|m| m.get("count")).and_then(Value::as_u64),
             always,
             ..Line::default()
         },
@@ -903,7 +894,7 @@ pub fn told(summaries: &[String]) -> String {
 }
 
 /// `propose_task` under « Seulement le critique » with a budget up to `TASK_AUTO_MAX_EUR`: the task started at once
-/// (the same start as the person's « Lancer »: credit, one task per agent, the place's room), logged in the Boîte.
+/// (the same start as the person's « Lancer »: credit, one task per agent, the place's room), logged in the history.
 /// None: asked as usual (the caller proposes it).
 pub async fn auto_task(jobs: &std::sync::Arc<crate::jobs::Jobs>, agent: &AgentConfig, arguments: &Dict) -> Option<Dict> {
     let config = jobs.config.get();
@@ -957,7 +948,7 @@ pub async fn auto_task(jobs: &std::sync::Arc<crate::jobs::Jobs>, agent: &AgentCo
     }
 }
 
-/// The Boîte line of a background task started at once: « Tâche de fond lancée : Tri des factures (0,50 €) ».
+/// The history line of a background task started at once: « Tâche de fond lancée : Tri des factures (0,50 €) ».
 fn task_line(lang: &str, title: &str, euros: &str) -> String {
     match crate::names::names(lang).lang {
         "fr" => format!("Tâche de fond lancée : {title} ({euros})"),
@@ -1014,155 +1005,92 @@ pub fn record_hermes(
     );
 }
 
-// -- the daily message ---------------------------------------------------------------------------------------------------
+// -- the history's rows ---------------------------------------------------------------------------------------------
 
-/// The day's message for `agent` when due (`now` local at or after `DIGEST_HOUR`, none sent today, lines not summed
-/// up yet): (its id, title, text); the lines then marked.
-pub fn take_digest(config: &Config, agent: &str, lang: &str, now: chrono::DateTime<chrono::Local>) -> Option<(String, String, String)> {
-    use chrono::Timelike;
-    if now.hour() < digest_hour() {
-        return None;
+/// The history's rows (« Ce que tes agents font tout seuls » › « Validé pour toi », `GET /v1/autonomous`'s
+/// `approved`; never the Boîte, Alex 13/11: « Rien dans la Boîte »): the lines of one agent, one kind, one conversation
+/// (a routine's run, a chat) and one local day folded into ONE row (« 12 e-mails rangés », its lines below, each with
+/// « Annuler » while it can be undone), newest first. A row of one line is that line.
+///
+///     {id, agent, kind, title, at, count, undo, undone, items: [line_view…]}
+pub fn groups(config: &Config, agent: Option<&str>, limit: usize) -> Vec<Value> {
+    let all = lines(config, agent, usize::MAX);
+    let mut rows: Vec<(String, Vec<&Line>)> = Vec::new();
+    for line in &all {
+        let day = chrono::DateTime::<chrono::Utc>::from_timestamp(line.at as i64, 0)
+            .unwrap_or_default()
+            .with_timezone(&chrono::Local)
+            .format("%Y-%m-%d")
+            .to_string();
+        let key = format!("{}|{}|{}|{day}", line.agent, line.kind, line.session_id.as_deref().unwrap_or(""));
+        match rows.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, members)) => members.push(line),
+            None => rows.push((key, vec![line])),
+        }
     }
-    let day = now.format("%Y-%m-%d").to_string();
-    let critical = level_for(config, agent) == CRITICAL;
-    let shown_agent = crate::mail_tidy::shown_agent(config, agent);
-    change(config, |b| {
-        if b.digests.get(agent) == Some(&day) {
-            return None;
-        }
-        let fresh: Vec<&mut Line> = b.lines.iter_mut().filter(|l| l.agent == agent && !l.digested).collect();
-        if fresh.is_empty() {
-            return None;
-        }
-        let shown: Vec<String> = fresh.iter().map(|l| format!("- {}", l.summary)).collect();
-        for l in fresh {
-            l.digested = true;
-        }
-        b.digests.insert(agent.to_string(), day.clone());
-        let n = shown.len();
-        // under « Seulement le critique » the level says why; else each line says « toujours autorisé »; not every
-        // line can be undone (data sent to a site, a file saved): « ce qui peut l'être »
-        let (title, head, tail) = match crate::names::names(lang).lang {
-            "fr" => {
-                let why = if critical { " (tu valides seulement le critique)" } else { "" };
-                (
-                    "Validé pour toi",
-                    if n == 1 {
-                        format!("Aujourd'hui, une chose a été validée sans te demander{why} :")
-                    } else {
-                        format!("Aujourd'hui, {n} choses ont été validées sans te demander{why} :")
-                    },
-                    if critical {
-                        "Tu peux annuler dans la Boîte ce qui peut l'être, ou tout valider toi-même dans Réglages › \
-                         Validations."
-                            .to_string()
-                    } else {
-                        format!(
-                            "Tu peux annuler dans la Boîte ce qui peut l'être, ou retirer « Toujours » dans les réglages \
-                             de {shown_agent}."
-                        )
-                    },
-                )
-            }
-            "de" => {
-                let why = if critical { " (du bestätigst nur das Wichtige)" } else { "" };
-                (
-                    "Für dich bestätigt",
-                    if n == 1 {
-                        format!("Heute wurde eine Sache ohne Nachfrage bestätigt{why}:")
-                    } else {
-                        format!("Heute wurden {n} Sachen ohne Nachfrage bestätigt{why}:")
-                    },
-                    if critical {
-                        "Was sich rückgängig machen lässt, machst du im Eingang rückgängig, oder du bestätigst alles \
-                         selbst in Einstellungen › Bestätigungen."
-                            .to_string()
-                    } else {
-                        format!(
-                            "Was sich rückgängig machen lässt, machst du im Eingang rückgängig, oder du entfernst „Immer“ \
-                             in den Einstellungen von {shown_agent}."
-                        )
-                    },
-                )
-            }
-            "es" => {
-                let why = if critical { " (solo validas lo importante)" } else { "" };
-                (
-                    "Validado para ti",
-                    if n == 1 {
-                        format!("Hoy se ha validado una cosa sin preguntarte{why}:")
-                    } else {
-                        format!("Hoy se han validado {n} cosas sin preguntarte{why}:")
-                    },
-                    if critical {
-                        "Puedes deshacer en el Buzón lo que se pueda, o validarlo todo tú en Ajustes › Validaciones."
-                            .to_string()
-                    } else {
-                        format!("Puedes deshacer en el Buzón lo que se pueda, o quitar «Siempre» en los ajustes de {shown_agent}.")
-                    },
-                )
-            }
-            _ => {
-                let why = if critical { " (you validate only what matters)" } else { "" };
-                (
-                    "Approved for you",
-                    format!("Today, {n} thing{} went through without asking you{why}:", if n == 1 { "" } else { "s" }),
-                    if critical {
-                        "You can undo what can be undone in the Inbox, or validate everything yourself in Settings › \
-                         Approvals."
-                            .to_string()
-                    } else {
-                        format!(
-                            "You can undo what can be undone in the Inbox, or remove « Always » in {shown_agent}'s \
-                             settings."
-                        )
-                    },
-                )
-            }
-        };
-        Some((format!("auto-digest:{agent}:{day}"), title.to_string(), format!("{head}\n{}\n\n{tail}", shown.join("\n"))))
-    })
-}
-
-/// The daily message's hour (`BIPAGENTS_APPROVAL_DIGEST_HOUR`: the black-box tests' 0).
-fn digest_hour() -> u32 {
-    std::env::var("BIPAGENTS_APPROVAL_DIGEST_HOUR").ok().and_then(|h| h.trim().parse().ok()).filter(|h| *h < 24).unwrap_or(DIGEST_HOUR)
-}
-
-/// Every ten minutes (`BIPAGENTS_APPROVAL_DIGEST_EVERY` seconds: the black-box tests'), for ever: the daily messages
-/// due.
-pub async fn run_forever(state: AppState) {
-    let every = std::env::var("BIPAGENTS_APPROVAL_DIGEST_EVERY").ok().and_then(|s| s.trim().parse().ok()).unwrap_or(600u64);
-    loop {
-        tokio::time::sleep(Duration::from_secs(every.max(1))).await;
-        digest_now(&state).await;
-    }
-}
-
-/// The daily messages due now, stored in the Boîte (pushed: the day's one notification). How many.
-pub async fn digest_now(state: &AppState) -> usize {
-    let config = state.config();
-    let c = config.clone();
-    let due = tokio::task::spawn_blocking(move || {
-        let now = chrono::Local::now();
-        c.agents
-            .values()
-            .filter_map(|agent| {
-                let lang = crate::handback::language_of(&c, agent);
-                take_digest(&c, &agent.name, &lang, now).map(|d| (agent.clone(), d))
+    rows.truncate(limit);
+    rows.into_iter()
+        .map(|(_, members)| {
+            let newest = members[0];
+            let title = if members.len() == 1 {
+                newest.summary.clone()
+            } else {
+                // e-mails: how many the cards handled (« 12 e-mails rangés »); else how many lines
+                let n: u64 = if newest.kind.starts_with("mail_") && newest.kind != "mail_rule" {
+                    members.iter().map(|l| l.count.unwrap_or(1).max(1)).sum()
+                } else {
+                    members.len() as u64
+                };
+                folded_title(&crate::mail_tidy::language(config, &newest.agent), &newest.kind, n)
+            };
+            json!({
+                "id": format!("approved:{}", newest.id),
+                "agent": newest.agent, "kind": newest.kind, "title": title, "at": iso(newest.at),
+                "count": members.len(),
+                "undo": members.iter().any(|l| l.undo.is_some() && l.undone_at.is_none()),
+                "undone": members.iter().all(|l| l.undone_at.is_some()),
+                "items": members.iter().map(|l| line_view(l)).collect::<Vec<_>>(),
             })
-            .collect::<Vec<_>>()
-    })
-    .await
-    .unwrap_or_default();
-    let n = due.len();
-    for (agent, (id, title, text)) in due {
-        let note = crate::outbox::BoiteMessage { id: Some(id), title: Some(title), ..crate::outbox::BoiteMessage::new(text) };
-        if let Err(e) = state.outbox.ingest(&agent, note, true).await {
-            tracing::warn!(agent = %agent.name, error = %format!("{e:#}"), "approvals' daily message not stored");
-        }
+        })
+        .collect()
+}
+
+/// A folded row's words (`n` > 1): « 12 e-mails rangés », « 3 tâches de fond lancées ».
+fn folded_title(lang: &str, kind: &str, n: u64) -> String {
+    match (crate::names::names(lang).lang, kind) {
+        ("fr", "mail_archive") => format!("{n} e-mails archivés"),
+        ("fr", "mail_mark_read") => format!("{n} e-mails marqués comme lus"),
+        ("fr", "mail_move") => format!("{n} e-mails rangés"),
+        ("fr", "mail_rule") => format!("{n} règles de tri ajoutées"),
+        ("fr", "task_start") => format!("{n} tâches de fond lancées"),
+        ("fr", "service_write") => format!("{n} changements dans tes services"),
+        ("fr", "files_write") => format!("{n} fichiers enregistrés"),
+        ("fr", _) => format!("{n} actions validées pour toi"),
+        ("de", "mail_archive") => format!("{n} E-Mails archiviert"),
+        ("de", "mail_mark_read") => format!("{n} E-Mails als gelesen markiert"),
+        ("de", "mail_move") => format!("{n} E-Mails einsortiert"),
+        ("de", "mail_rule") => format!("{n} Sortierregeln hinzugefügt"),
+        ("de", "task_start") => format!("{n} Hintergrundaufgaben gestartet"),
+        ("de", "service_write") => format!("{n} Änderungen in deinen Diensten"),
+        ("de", "files_write") => format!("{n} Dateien gespeichert"),
+        ("de", _) => format!("{n} Aktionen für dich bestätigt"),
+        ("es", "mail_archive") => format!("{n} correos archivados"),
+        ("es", "mail_mark_read") => format!("{n} correos marcados como leídos"),
+        ("es", "mail_move") => format!("{n} correos ordenados"),
+        ("es", "mail_rule") => format!("{n} reglas de orden añadidas"),
+        ("es", "task_start") => format!("{n} tareas en segundo plano iniciadas"),
+        ("es", "service_write") => format!("{n} cambios en tus servicios"),
+        ("es", "files_write") => format!("{n} archivos guardados"),
+        ("es", _) => format!("{n} acciones validadas para ti"),
+        (_, "mail_archive") => format!("{n} e-mails archived"),
+        (_, "mail_mark_read") => format!("{n} e-mails marked as read"),
+        (_, "mail_move") => format!("{n} e-mails filed"),
+        (_, "mail_rule") => format!("{n} sort rules added"),
+        (_, "task_start") => format!("{n} background tasks started"),
+        (_, "service_write") => format!("{n} changes in your services"),
+        (_, "files_write") => format!("{n} files saved"),
+        _ => format!("{n} actions approved for you"),
     }
-    n
 }
 
 // -- routes --------------------------------------------------------------------------------------------------------------
@@ -1401,7 +1329,7 @@ mod tests {
     }
 
     #[test]
-    fn lines_are_kept_newest_first_and_summed_up_once_a_day() {
+    fn lines_are_kept_newest_first() {
         let dir = tempfile::tempdir().unwrap();
         let config = config_in(&dir);
         record(&config, Line { agent: "vie".into(), kind: "mail_archive".into(), summary: "A".into(),
@@ -1414,26 +1342,39 @@ mod tests {
         let v = line_view(&mine[1]);
         assert_eq!((v["undo"].as_bool(), v["undone"].as_bool(), v["kind"].as_str()), (Some(true), Some(false), Some("mail_archive")));
         assert_eq!(line_view(&mine[0])["undo"], false);
-        use chrono::TimeZone;
-        let morning = chrono::Local.with_ymd_and_hms(2026, 11, 6, 9, 0, 0).unwrap();
-        let evening = chrono::Local.with_ymd_and_hms(2026, 11, 6, 19, 30, 0).unwrap();
-        assert!(take_digest(&config, "vie", "fr", morning).is_none());
-        let (id, title, text) = take_digest(&config, "vie", "fr", evening).unwrap();
-        assert_eq!((id.as_str(), title.as_str()), ("auto-digest:vie:2026-11-06", "Validé pour toi"));
-        assert!(text.contains("2 choses") && text.contains("- A") && text.contains("- B"), "{text}");
-        assert!(take_digest(&config, "vie", "fr", evening).is_none(), "once a day");
-        assert!(take_digest(&config, "coach", "en", evening).unwrap().2.contains("Today, 1 thing went"));
-        assert!(text.contains("annuler dans la Boîte ce qui peut l'être"), "not every line can be undone: {text}");
-        // German and Spanish say the same, in their words
-        record(&config, Line { agent: "lea".into(), kind: "mail_archive".into(), summary: "D".into(), ..Line::default() });
-        record(&config, Line { agent: "pablo".into(), kind: "mail_archive".into(), summary: "E".into(), ..Line::default() });
-        let (_, title, text) = take_digest(&config, "lea", "de", evening).unwrap();
-        assert!(title == "Für dich bestätigt" && text.contains("Heute wurde eine Sache ohne Nachfrage") && text.contains("Eingang"), "{text}");
-        let (_, title, text) = take_digest(&config, "pablo", "es", evening).unwrap();
-        assert!(title == "Validado para ti" && text.contains("sin preguntarte") && text.contains("Buzón"), "{text}");
         assert_eq!(task_line("es", "Facturas", "0,50 €"), "Tarea en segundo plano iniciada: Facturas (0,50 €)");
-        let next = chrono::Local.with_ymd_and_hms(2026, 11, 7, 20, 0, 0).unwrap();
-        assert!(take_digest(&config, "vie", "fr", next).is_none(), "nothing new");
+    }
+
+    /// Alex 13/11 (« Rien dans la Boîte », fold bulk approvals): one run's same-kind lines are ONE row of the history,
+    /// « 12 e-mails rangés », each line below with its own « Annuler »; another kind, conversation or agent: its own row.
+    #[test]
+    fn a_runs_same_kind_lines_fold_into_one_row() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(&dir);
+        let mv = |summary: &str, count: u64, session: &str| Line {
+            agent: "vie".into(), kind: "mail_move".into(), summary: summary.into(), count: Some(count),
+            session_id: Some(session.into()), undo: Some(Undo::MailJob { job: summary.into() }), ..Line::default()
+        };
+        record(&config, mv("Vie veut déplacer 5 e-mails vers « Archive »", 5, "routine-1"));
+        record(&config, mv("Vie veut déplacer 7 e-mails vers « Pub »", 7, "routine-1"));
+        record(&config, mv("Vie veut déplacer 1 e-mail vers « Archive »", 1, "chat"));
+        record(&config, Line { agent: "vie".into(), kind: "task_start".into(), summary: "Tâche".into(),
+                               session_id: Some("routine-1".into()), ..Line::default() });
+        record(&config, Line { agent: "coach".into(), kind: "mail_move".into(), summary: "Coach".into(), ..Line::default() });
+        let rows = groups(&config, Some("vie"), 50);
+        let titled: Vec<(&str, u64)> =
+            rows.iter().map(|r| (r["title"].as_str().unwrap(), r["count"].as_u64().unwrap())).collect();
+        assert_eq!(titled.len(), 3, "{rows:?}");
+        assert!(titled.contains(&("12 e-mails rangés", 2)), "{titled:?}");
+        assert!(titled.contains(&("Vie veut déplacer 1 e-mail vers « Archive »", 1)), "a row of one line is that line");
+        assert!(titled.contains(&("Tâche", 1)));
+        let folded = rows.iter().find(|r| r["count"] == 2).unwrap();
+        assert_eq!(folded["items"].as_array().unwrap().len(), 2);
+        assert!(folded["items"].as_array().unwrap().iter().all(|i| i["undo"] == true && i["id"].as_str().is_some()));
+        assert_eq!((folded["undo"].as_bool(), folded["undone"].as_bool()), (Some(true), Some(false)));
+        assert_eq!(groups(&config, None, 50).len(), 4, "another agent: its own row");
+        assert_eq!(folded_title("de", "mail_archive", 3), "3 E-Mails archiviert");
+        assert_eq!(folded_title("en", "task_start", 2), "2 background tasks started");
     }
 
     #[test]
@@ -1504,7 +1445,7 @@ mod tests {
         assert!(list[0]["label"].as_str().is_some_and(|l| !l.is_empty()));
         let soul = with_block(&config, "vie", "Tu es Vie.\n");
         assert!(soul.contains("move your e-mails") && soul.contains("write in Notion") && !soul.contains(RULE), "{soul}");
-        // its line in the Boîte says « toujours autorisé »
+        // its line says « toujours autorisé »
         record_hermes(&config, "vie", "service_write", "Vie veut créer dans Notion", "run_1", None, true);
         let line = &lines(&config, Some("vie"), 1)[0];
         assert!(line.always && (line.summary.ends_with("(always allowed)") || line.summary.ends_with("(toujours autorisé)")));

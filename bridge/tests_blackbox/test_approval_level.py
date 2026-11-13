@@ -2,7 +2,7 @@
 « que les critiques »; « je parle de manière générale dans toute l'app »). « Tout valider moi-même » (`all`, the
 default, what an older app gets) asks every card; « Seulement le critique » (`critical`) has the bridge approve what
 is not critical at once, as the person's « Oui » would (same code, same caps), with no notification, an « auto » line
-in the Boîte (`/v1/approvals/auto`, « Annuler » where it can be undone) and one daily Boîte message; what is critical
+in « Ce que tes agents font tout seuls » (`/v1/autonomous` `approved`, « Annuler » where it can be undone), never in the Boîte; what is critical
 is asked as before. Each kind × both levels: mail archive/move/mark read (undo: put back), mail trash (asked), a sort
 rule (undo: stopped), a trash rule (asked), a routine's question (the suggestion kept), a small background task
 (started; undo: paused), a big one (proposed), Hermes' approvals: a write in the person's own service (answered
@@ -224,22 +224,33 @@ def test_hermes_approvals_only_a_write_in_ones_own_service_goes_alone(bridges, f
         gate.set()
 
 
-def test_the_day_is_summed_up_in_one_boite_message(bridges, fakes):
-    bridge = with_device(bridges, BIPAGENTS_APPROVAL_DIGEST_HOUR="0", BIPAGENTS_APPROVAL_DIGEST_EVERY="1").start()
+def test_nothing_in_the_boite_the_history_lists_it_with_annuler(bridges, fakes):
+    """Alex 13/11 (« Rien dans la Boîte »): what went through without asking never reaches the Boîte (no line, no
+    daily message); « Ce que tes agents font tout seuls » lists it (`GET /v1/autonomous`'s `approved`) with
+    « Annuler »."""
+    bridge = with_device(bridges).start()
     give_token(bridge)
     level(bridge, "critical")
     # (a small background task: the routines' cards are asked at every level since 11/11, PI-6)
     small = call(bridge, "propose_task", {"title": "Dossier location", "prompt": "Prépare le dossier.", "budget": "small"})
     assert not small["isError"] and text_of(small).startswith("Started at once"), small
-    assert wait_until(lambda: [m for m in boite_items(bridge) if "auto-digest" in str(m) or
-                               "sans te demander" in m.get("text", "") or "without asking" in m.get("text", "")],
-                      timeout=15), boite_items(bridge)
-    [digest] = [m for m in boite_items(bridge) if "without asking" in m.get("text", "") or
-                "sans te demander" in m.get("text", "")]
-    assert "Dossier location" in digest["text"], digest
-    time.sleep(2.5)
-    assert len([m for m in boite_items(bridge) if "without asking" in m.get("text", "") or
-                "sans te demander" in m.get("text", "")]) == 1, "once a day"
+
+    def approved():
+        return bridge.get("/v1/autonomous", headers=AUTH).json().get("approved", [])
+
+    assert wait_until(lambda: [r for r in approved() if r["kind"] == "task_start"], timeout=15), approved()
+    [row] = [r for r in approved() if r["kind"] == "task_start"]
+    assert "Dossier location" in row["title"] and row["count"] == 1 and row["undo"] is True, row
+    [line] = row["items"]
+    assert line["undo"] is True and line["id"], line
+    time.sleep(1.5)
+    told = [m for m in boite_items(bridge) if "sans te demander" in m.get("text", "") or
+            "without asking" in m.get("text", "") or "Validé pour toi" in str(m)]
+    assert not told, told
+    undone = bridge.post(f"/v1/approvals/auto/{line['id']}/undo", headers=AUTH)
+    assert undone.status_code == 200, undone.text
+    [row] = [r for r in approved() if r["kind"] == "task_start"]
+    assert row["undo"] is False and row["undone"] is True and row["items"][0]["undone"] is True, row
 
 
 def test_sites_are_asked_of_the_person_at_every_level(bridges, fakes):
