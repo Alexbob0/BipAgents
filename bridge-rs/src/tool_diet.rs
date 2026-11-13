@@ -121,11 +121,12 @@ pub const CREDENTIALS_DIRECT: [&str; 2] =
 /// Flash, 20 sign-ups on a fake shop): `vault_create_login` was called in 10, the agent otherwise looking for the
 /// person's details in the Carnet until the brake stopped it, asking `ask_secret` or `browser_vault` to keep a password,
 /// typing one of its own, or asking the person to type it.
-pub const VAULT_DIRECT: [&str; 4] = [
+pub const VAULT_DIRECT: [&str; 5] = [
     "!mcp__bipagents_vault__vault_create_login",
     "!mcp__bipagents_vault__vault_confirm_login",
     "!mcp__bipagents_vault__vault_contact_details",
     "!mcp__bipagents_vault__vault_save_contact_details",
+    "!mcp__bipagents_vault__accept_terms",
 ];
 
 /// Reading one mail (mailbox.rs).
@@ -756,6 +757,7 @@ mod tests {
         assert_eq!(VAULT_DIRECT[1], entry(crate::vault_logins::CONFIRM));
         assert_eq!(VAULT_DIRECT[2], entry(crate::vault_contacts::READ));
         assert_eq!(VAULT_DIRECT[3], entry(crate::vault_contacts::SAVE));
+        assert_eq!(VAULT_DIRECT[4], entry(crate::terms_consent::TOOL));
         let tools: Vec<String> =
             crate::vault_logins::tools().iter().filter_map(|t| t["name"].as_str().map(str::to_string)).collect();
         for name in VAULT_DIRECT {

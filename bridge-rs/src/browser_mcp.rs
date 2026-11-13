@@ -123,7 +123,7 @@ technical words: no selectors, field names or tool names).";
 /// Typing into a password field (`guard`): the vault's job, never the agent's (Alex, 13/11: Vie typed « a provisional
 /// password » itself).
 pub const PASSWORD_REFUSED: &str = "Not done: this is a password field, and you never type a password yourself, not \
-even a temporary one. To create an account, call vault_create_login: the person's vault makes the password and types \
+even a temporary one, nor one your person wrote to you. To create an account, call vault_create_login: the person's vault makes the password and types \
 it here once they approve. To log in, use the vault's fill (browser_vault). Nothing was typed.";
 
 /// A script writing or reading a password field (`script_touches_password`).
@@ -132,14 +132,14 @@ account, call vault_create_login: the person's vault makes the password and type
 browser_vault fill. If your script only fills other fields, run it again without anything about passwords. Nothing \
 was run.";
 
-/// Ticking a terms or consent box (`guard`, `script_ticks_terms`): the person's, never the agent's.
-pub const TERMS_REFUSED: &str = "Not done: this box accepts the site's terms (or gives a consent), and ticking it is \
-your person's, never yours. Ask them to tick it themselves (they can take over your browser in the app), then go on. \
-Nothing was ticked.";
+/// Ticking a terms or consent box (`guard`, `TERMS_UNDONE`): the person's, never the agent's.
+pub const TERMS_REFUSED: &str = "Not done: this box accepts the site's terms (or gives a consent), and you never tick \
+it yourself. Call accept_terms with the site and the box's label (and the terms' link if the page has one): a card asks \
+your person « Oui / Non », and on « Oui » the box is ticked for you. Nothing was ticked.";
 
 /// Added to `type_text` and `paste_text` in the tool list (`tame_tool_list`).
-pub const NOT_PASSWORDS: &str = "Never into a password field, not even a temporary password: to sign up, \
-vault_create_login has the person's vault make and type it; to log in, browser_vault fill.";
+pub const NOT_PASSWORDS: &str = "Never into a password field, not even a temporary password nor one your person wrote \
+to you: to sign up, vault_create_login has the person's vault make and type it; to log in, browser_vault fill.";
 
 /// A tool call's answer as it goes to Hermes, never with `isError` nor as a JSON-RPC error (module doc above): true
 /// when it was a failure.
@@ -151,6 +151,25 @@ pub fn soften(response: &mut Dict) -> bool {
     }
     let Some(result) = response.get_mut("result").and_then(Value::as_object_mut) else { return false };
     result.remove("isError").and_then(|v| v.as_bool()) == Some(true)
+}
+
+/// The first text of an answer's result.
+fn first_text(result: &serde_json::Map<String, Value>) -> String {
+    result
+        .get("content")
+        .and_then(Value::as_array)
+        .and_then(|c| c.iter().find_map(|b| b.get("text").and_then(Value::as_str)))
+        .unwrap_or("")
+        .to_string()
+}
+
+/// hold_gate.py's other refusals (`GATE_HOLDS`): true when the answer is one.
+pub fn gate_holds(response: &Dict) -> bool {
+    response
+        .get("result")
+        .and_then(|r| r.get("content"))
+        .and_then(Value::as_array)
+        .is_some_and(|c| c.iter().any(|b| b.get("text").and_then(Value::as_str).is_some_and(|t| GATE_HOLDS.iter().any(|g| t.starts_with(g)))))
 }
 
 /// hold_gate.py's refusal while the person holds the browser, said plainly (`PERSON_HOLDS`): true when it was one.
@@ -209,6 +228,18 @@ pub fn own_refusal(response: &Dict) -> bool {
         .contains(&text)
 }
 
+/// The browser could not be started (or its server stopped): what the agent reads.
+pub fn could_not_start(exc: &str) -> String {
+    format!(
+        "the agent's browser could not start: {exc}\nTell your person simply, in their language: « I can't open web \
+pages right now; I'll try again in a moment. »"
+    )
+}
+
+/// The start of hold_gate.py's other refusals: a card payment (or the vault typing a password) holds the browser, or
+/// the gate can't count its calls. Like the person's hold, not a step that failed on the page.
+pub const GATE_HOLDS: [&str; 2] = ["A card payment is going on in this browser", "This browser can't keep track"];
+
 /// A refusal of the proxy's own, as the real server would answer (softened like any, `soften`).
 fn refused(text: &str) -> Dict {
     json!({"jsonrpc": "2.0", "result": {"content": [{"type": "text", "text": text}], "isError": true}})
@@ -218,17 +249,18 @@ fn refused(text: &str) -> Dict {
 }
 
 static PASSWORD_TARGET: LazyLock<Regex> = LazyLock::new(|| {
+    // « pass » alone is not a password (#passenger-firstname, passager_nom: review 13/11)
     Regex::new(
-        r#"(?i)(getelementbyid|queryselector(all)?|getelementsbyname|closest|matches)\s*\(\s*["'`][^"'`]*(pass|mot.?de.?passe|mdp|pwd|kennwort|contrase)|\btype\s*(=|:|===?)\s*["'`\\]*password|autocomplete\s*(=|:|===?)\s*["'`\\]*(new|current)-password"#,
+        r#"(?i)(getelementbyid|queryselector(all)?|getelementsbyname|closest|matches)\s*\(\s*["'`][^"'`]*(password|passwd|passwort|mot.?de.?passe|motdepasse|\bmdp\b|\bpwd\b|kennwort|contrase)|\btype\s*(=|:|===?)\s*["'`\\]*password|\.(password|passwd|pwd|motdepasse|mot_de_passe)\w*\b"#,
     )
     .expect("valid regex")
 });
 static VALUE_ACCESS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)\.value\b|setattribute\s*\(\s*["'`]value|inserttext|execcommand|setrangetext|keyboardevent|inputevent"#)
-        .expect("valid regex")
-});
-static TICKS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)\.checked\s*=[^=]|\.click\s*\(|setattribute\s*\(\s*["'`]checked"#).expect("valid regex")
+    // the native setter frameworks need (`getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set`) too
+    Regex::new(
+        r#"(?i)\.value\b|setattribute\s*\(\s*["'`]value|getownpropertydescriptor|inserttext|execcommand|setrangetext|keyboardevent|inputevent"#,
+    )
+    .expect("valid regex")
 });
 static TERMS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
@@ -237,44 +269,118 @@ static TERMS: LazyLock<Regex> = LazyLock::new(|| {
     .expect("valid regex")
 });
 
-/// A script that writes or reads a password field: it names one (by its id, name or type) and touches a field's value.
+/// A script that writes or reads a password field: it names one (by its id, name or type) and touches a field's value;
+/// its `args` read with it (execute_script runs `(function() { script })(args)`). Writes it misses are undone after it
+/// ran (`GUARD_AFTER`).
 pub fn script_touches_password(script: &str) -> bool {
     PASSWORD_TARGET.is_match(script) && VALUE_ACCESS.is_match(script)
 }
 
-/// A script that ticks a box and names the site's terms or a consent.
-pub fn script_ticks_terms(script: &str) -> bool {
-    TICKS.is_match(script) && TERMS.is_match(script)
-}
-
-/// A box whose label (or name, id) is the site's terms or a consent.
+/// A box whose label (or name, id) is the site's terms or a consent (a cookie banner's choices are not).
 pub fn terms_box(label: &str) -> bool {
-    TERMS.is_match(label)
+    TERMS.is_match(label) && !label.to_lowercase().contains("cookie")
 }
 
-/// `press_key` typing a character (« a »), not a key (« Enter », « Tab »): what a password field never gets.
+/// `press_key` typing a character (« a », « P » with Shift), not a key (« Enter », « Tab ») nor a shortcut.
 pub fn presses_a_character(args: &Dict) -> bool {
     let key = args.get("key").and_then(Value::as_str).unwrap_or("");
-    let modifiers = args.get("modifiers").is_some_and(|m| crate::py::truthy(m));
-    key.chars().count() == 1 && !modifiers
+    let shortcut = match args.get("modifiers") {
+        Some(Value::Array(list)) => list.iter().any(|m| m.as_str().is_none_or(|m| !m.eq_ignore_ascii_case("shift"))),
+        Some(Value::String(m)) => !m.is_empty() && !m.eq_ignore_ascii_case("shift"),
+        Some(other) => crate::py::truthy(other),
+        None => false,
+    };
+    key.chars().count() == 1 && !shortcut
 }
 
-/// The script that tells what a call's `selector` (none: the focused element) is: a password field, or a box not
-/// ticked yet with its label. Read only; the selector passed as a JSON string.
+/// The script that tells what a call's `selector` (none: the focused element) is: a password field (`type=password`
+/// only: `autocomplete="new-password"` also keeps Chrome's list off an address field, review 13/11), or a box not ticked
+/// yet with its label (from the box, its label, or anything inside its label: a box drawn in its label). `invalid`: a
+/// selector the page can't read. Read only; the selector passed as a JSON string.
 pub fn target_script(selector: &str) -> String {
     let selector = serde_json::to_string(selector).unwrap_or_else(|_| "\"\"".into());
     format!(
         "(() => {{ const sel = {selector}; let el = null; \
-if (sel) {{ try {{ el = document.querySelector(sel); }} catch (e) {{ return JSON.stringify({{found: false}}); }} }} \
+if (sel) {{ try {{ el = document.querySelector(sel); }} catch (e) {{ return JSON.stringify({{found: false, invalid: true}}); }} }} \
 else {{ el = document.activeElement; while (el && el.shadowRoot && el.shadowRoot.activeElement) el = el.shadowRoot.activeElement; }} \
 if (!el) return JSON.stringify({{found: false}}); \
-if (el.tagName === 'LABEL' && el.control) el = el.control; \
+const label = el.tagName === 'LABEL' ? el : (el.closest && el.closest('label')); \
+if (el.tagName !== 'INPUT' && label && label.control) el = label.control; \
 const attr = (n) => ((el.getAttribute && el.getAttribute(n)) || '').toLowerCase(); \
-const password = el.tagName === 'INPUT' && (attr('type') === 'password' || /(^|\\s)(new|current)-password(\\s|$)/.test(attr('autocomplete'))); \
+const password = el.tagName === 'INPUT' && attr('type') === 'password'; \
 let terms = ''; \
 if (el.tagName === 'INPUT' && attr('type') === 'checkbox' && !el.checked) terms = [...(el.labels || [])].map((l) => l.innerText).join(' ') + ' ' + attr('aria-label') + ' ' + (el.name || '') + ' ' + (el.id || ''); \
 return JSON.stringify({{found: true, password: password, terms: terms.slice(0, 300)}}); }})()"
     )
+}
+
+/// A field typed into that isn't on the page yet is looked for again so many times, every 250 ms (signup.html's password
+/// fields come 600 ms after the panel opens; the real server waits up to 10 s for its element).
+pub const LATE_FIELD_TRIES: u32 = 12;
+
+/// The tools whose effect on the page is checked (`GUARD_BEFORE`, `GUARD_AFTER`).
+pub const GUARDED: [&str; 5] = ["click_element", "type_text", "paste_text", "press_key", "execute_script"];
+
+/// Before a guarded call: the page's password fields with what they hold, and its terms or consent boxes not ticked,
+/// kept in the page (values never leave it). The checks before a call can't see everything (a click by its text, a
+/// framework's way of setting a value, a field drawn a moment later: review 13/11); what the call did is looked at
+/// after it.
+pub const GUARD_BEFORE: &str = "/* bipagents guard: before */ (() => { \
+const TERMS = /\\b(cgu|cgv|agb|rgpd|gdpr)\\b|terms|conditions|consent|privacy|confidentialit|datenschutz|t[ée]rminos|condiciones|politique de/i; \
+const label = (e) => [...(e.labels || [])].map((l) => l.innerText).join(' ') + ' ' + (e.getAttribute('aria-label') || '') + ' ' + (e.name || '') + ' ' + (e.id || ''); \
+const pw = [...document.querySelectorAll('input')].filter((e) => (e.getAttribute('type') || '').toLowerCase() === 'password'); \
+const boxes = [...document.querySelectorAll('input[type=checkbox]')].filter((e) => !e.checked && TERMS.test(label(e)) && !/cookie/i.test(label(e))); \
+window[Symbol.for('bipagents.guard')] = {values: new Map(pw.map((e) => [e, e.value])), known: new Set(pw.map((e) => e.value).filter(Boolean)), boxes: boxes}; \
+return 'ok'; })()";
+
+/// After it: a password field holding text it didn't hold before (not a value the page already had: a field drawn
+/// again) is given back what it held; a terms box ticked is unticked. How many of each.
+pub const GUARD_AFTER: &str = "/* bipagents guard: after */ (() => { \
+const K = Symbol.for('bipagents.guard'); const g = window[K]; \
+if (!g) return JSON.stringify({passwords: 0, terms: 0}); \
+delete window[K]; \
+const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; \
+let passwords = 0, terms = 0; \
+for (const e of document.querySelectorAll('input')) { \
+if ((e.getAttribute('type') || '').toLowerCase() !== 'password' || !e.value) continue; \
+const had = g.values.has(e) ? g.values.get(e) : null; \
+if (had === e.value || (had === null && g.known.has(e.value))) continue; \
+set.call(e, had || ''); e.dispatchEvent(new Event('input', {bubbles: true})); e.dispatchEvent(new Event('change', {bubbles: true})); passwords++; } \
+for (const b of g.boxes) { if (b.isConnected && b.checked) { b.click(); if (b.checked) { b.checked = false; b.dispatchEvent(new Event('change', {bubbles: true})); } terms++; } } \
+return JSON.stringify({passwords: passwords, terms: terms}); })()";
+
+/// What the agent reads when the check after its call undid it.
+pub const PASSWORD_UNDONE: &str = "Not done: that put text into a password field, and you never type a password \
+yourself, not even a temporary one: it was erased. To create an account, call vault_create_login: the person's vault \
+makes the password and types it here once they approve. To log in, use the vault's fill (browser_vault).";
+pub const TERMS_UNDONE: &str = "Not done: that ticked the site's terms (or a consent), and you never tick it \
+yourself: it was unticked. Call accept_terms with the site and the box's label (and the terms' link if the page has \
+one): a card asks your person « Oui / Non », and on « Oui » the box is ticked for you.";
+
+/// The `structuredContent` of an answer given under another tool's name (`script_meant`): Hermes' MCP client checks it
+/// against the schema of the tool it called (« Invalid structured content returned by tool take_screenshot », review
+/// 13/11). `structured`: the answer's own; `text`: its first text.
+pub fn refit(schema: &Value, structured: Option<&Value>, text: &str) -> Value {
+    fn one(want: &Value, structured: Option<&Value>, text: &str) -> Option<Value> {
+        Some(match want.get("type").and_then(Value::as_str)? {
+            "object" => structured.filter(|s| s.is_object()).cloned().unwrap_or_else(|| json!({})),
+            "string" => json!(text),
+            "boolean" => json!(structured.and_then(|s| s.get("success")).and_then(Value::as_bool).unwrap_or(false)),
+            "array" => json!([]),
+            "integer" | "number" => json!(0),
+            _ => Value::Null,
+        })
+    }
+    match schema.get("properties").and_then(|p| p.get("result")) {
+        Some(want) => {
+            let value = match want.get("anyOf").and_then(Value::as_array) {
+                Some(options) => options.iter().find_map(|o| one(o, structured, text)).unwrap_or(Value::Null),
+                None => one(want, structured, text).unwrap_or(Value::Null),
+            };
+            json!({"result": value})
+        }
+        None => structured.filter(|s| s.is_object()).cloned().unwrap_or_else(|| json!({"success": false})),
+    }
 }
 
 /// A call meant for `execute_script` under another tool's name (its `script` argument): 13/11, DeepSeek on the lab
@@ -953,7 +1059,7 @@ impl Proxy {
             if method == "tools/call" {
                 let tool = message.get("params").and_then(|p| p.get("name")).and_then(Value::as_str).unwrap_or("");
                 if let Some(map) = answer.as_object_mut() {
-                    self.answered_call(tool, map);
+                    self.answered_call(tool, false, map);
                 }
             }
             answer["id"] = ident;
@@ -980,7 +1086,7 @@ impl Proxy {
         if calling && self.credit_used() {
             // The month's AI credit used (credit.rs): the browser isn't started, the agent told plainly (chat goes on).
             let mut answer = refused(crate::credit::BROWSER_REFUSED);
-            self.answered_call(&tool, &mut answer);
+            self.answered_call(&named, named != tool, &mut answer);
             answer.insert("id".into(), ident);
             self.to_client(&Value::Object(answer));
             return;
@@ -989,7 +1095,7 @@ impl Proxy {
             // The brake's rescue turn: answered with what the agent has, never a page it couldn't read (nor a hang).
             log(&format!("{tool} refused: the brake's rescue turn"));
             let mut answer = refused(RESCUE_REFUSED);
-            self.answered_call(&tool, &mut answer);
+            self.answered_call(&named, named != tool, &mut answer);
             answer.insert("id".into(), ident);
             self.to_client(&Value::Object(answer));
             return;
@@ -1022,14 +1128,22 @@ impl Proxy {
                     log(&format!("{tool}: a result too large, plain guidance instead of its file"));
                 }
                 self.phone_exit_lines(params.as_ref(), &mut response).await;
-                self.answered_call(&tool, &mut response);
+                self.answered_call(&named, named != tool, &mut response);
             }
             self.to_client(&Value::Object(response));
             Ok(())
         }
         .await;
         if let Err(exc) = result {
-            self.fail(&ident, &exc);
+            if calling && !ident.is_null() {
+                // never a JSON-RPC error for a tool call: Hermes counts one against the whole server (review 13/11)
+                let mut answer = refused(&could_not_start(&exc));
+                self.answered_call(&named, named != tool, &mut answer);
+                answer.insert("id".into(), ident.clone());
+                self.to_client(&Value::Object(answer));
+            } else {
+                self.fail(&ident, &exc);
+            }
         }
         if calling {
             // one line per call with its time (the browser-speed measures read them in the gateway's log)
@@ -1042,11 +1156,14 @@ impl Proxy {
     /// A tool call's answer on its way to Hermes: the person's hold said plainly (`person_holds_text`), never an error
     /// (`soften`) and, then, with a structured copy that fits the tool's output schema (`fitting`), and after
     /// `FAILURE_STREAK` failures in a row (the person's hold not counted) what to do next (`STREAK_HINT`).
-    pub fn answered_call(&self, tool: &str, response: &mut Dict) {
-        let held = person_holds_text(response);
+    /// `tool`: the name Hermes called (its schema is the one checked); `rerouted`: it ran as execute_script.
+    pub fn answered_call(&self, tool: &str, rerouted: bool, response: &mut Dict) {
+        let held = person_holds_text(response) || gate_holds(response);
         let failed = soften(response);
         if held || failed {
             self.fit_schema(tool, response);
+        } else if rerouted {
+            self.refit_called(tool, response);
         }
         if held || own_refusal(response) {
             return; // not a step that failed on the page: the streak stays as it was
@@ -1056,7 +1173,7 @@ impl Proxy {
             return;
         }
         let streak = self.failures.fetch_add(1, Ordering::SeqCst) + 1;
-        if streak % FAILURE_STREAK == 0 {
+        if streak.is_multiple_of(FAILURE_STREAK) {
             log(&format!("{streak} failed calls in a row: guidance added"));
             if let Some(Value::Array(content)) = response.get_mut("result").and_then(|r| r.get_mut("content")) {
                 content.push(json!({"type": "text", "text": STREAK_HINT}));
@@ -1070,38 +1187,47 @@ impl Proxy {
     /// counts that as a failure of the whole server.
     fn fit_schema(&self, tool: &str, response: &mut Dict) {
         let Some(result) = response.get_mut("result").and_then(Value::as_object_mut) else { return };
-        if result.get("structuredContent").is_some_and(|s| !s.is_null()) {
-            return;
-        }
-        let schema = {
-            let cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-            cache
-                .get("tools/list")
-                .and_then(|l| l.get("tools"))
-                .and_then(Value::as_array)
-                .and_then(|tools| tools.iter().find(|t| t.get("name").and_then(Value::as_str) == Some(tool)).cloned())
-                .and_then(|t| t.get("outputSchema").cloned())
-        };
-        let Some(schema) = schema.filter(Value::is_object) else { return };
-        let text = result
-            .get("content")
-            .and_then(Value::as_array)
-            .and_then(|c| c.iter().find_map(|b| b.get("text").and_then(Value::as_str)))
-            .unwrap_or("")
-            .to_string();
+        let Some(schema) = self.schema_of(tool) else { return };
+        // a failure's answer, given under another tool's name, has the other tool's structured copy: replaced
+        let text = first_text(result);
         result.insert("structuredContent".into(), fitting(&schema, &text));
     }
 
+    /// An answer given under another tool's name (`script_meant`): its structured copy as the called tool's schema
+    /// wants it (`refit`).
+    fn refit_called(&self, tool: &str, response: &mut Dict) {
+        let Some(result) = response.get_mut("result").and_then(Value::as_object_mut) else { return };
+        let Some(schema) = self.schema_of(tool) else {
+            result.remove("structuredContent");
+            return;
+        };
+        let text = first_text(result);
+        let structured = result.get("structuredContent").cloned();
+        result.insert("structuredContent".into(), refit(&schema, structured.as_ref(), &text));
+    }
+
+    /// `tool`'s output schema as the real server listed it (the cached tool list).
+    fn schema_of(&self, tool: &str) -> Option<Value> {
+        let cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+        cache
+            .get("tools/list")
+            .and_then(|l| l.get("tools"))
+            .and_then(Value::as_array)
+            .and_then(|tools| tools.iter().find(|t| t.get("name").and_then(Value::as_str) == Some(tool)).cloned())
+            .and_then(|t| t.get("outputSchema").cloned())
+            .filter(Value::is_object)
+    }
+
     /// What the agent never does in its browser (fix-signup-hold, 13/11): type into a password field (its vault does,
-    /// `PASSWORD_REFUSED`), run a script on one, tick the site's terms or a consent (`TERMS_REFUSED`). The refusal, or
-    /// None to go on. The page is asked what the call's target is (`target_script`); unknown, the call goes on.
+    /// `PASSWORD_REFUSED`), run a script on one (`SCRIPT_PASSWORD_REFUSED`), tick the site's terms or a consent
+    /// (`TERMS_REFUSED`). Checked before the call (the page asked what its target is, `target_script`; a field typed
+    /// into that isn't there yet waited for a moment, as the real server waits for it); what slips past is undone
+    /// after it (`undone`). The refusal, or None to go on.
     async fn guard(&self, tool: &str, args: &Dict, instance: &str) -> Option<Dict> {
         if tool == "execute_script" {
             let script = args.get("script").and_then(Value::as_str).unwrap_or("");
-            if script_touches_password(script) {
-                return Some(refused(SCRIPT_PASSWORD_REFUSED));
-            }
-            return script_ticks_terms(script).then(|| refused(TERMS_REFUSED));
+            let with_args = format!("{script} {}", args.get("args").map(Value::to_string).unwrap_or_default());
+            return script_touches_password(&with_args).then(|| refused(SCRIPT_PASSWORD_REFUSED));
         }
         let typing = matches!(tool, "type_text" | "paste_text") || (tool == "press_key" && presses_a_character(args));
         let selector = args.get("selector").and_then(Value::as_str).unwrap_or("");
@@ -1109,15 +1235,44 @@ impl Proxy {
         if !(typing || ticking) || instance.is_empty() {
             return None;
         }
-        let target = match self.script(instance, &target_script(selector)).await? {
-            Value::String(text) => serde_json::from_str::<Value>(&text).ok()?,
-            other => other,
-        };
+        let script = target_script(selector);
+        let mut target = Value::Null;
+        for attempt in 0..=LATE_FIELD_TRIES {
+            target = match self.script(instance, &script).await? {
+                Value::String(text) => serde_json::from_str::<Value>(&text).ok()?,
+                other => other,
+            };
+            let missing = target.get("found").and_then(Value::as_bool) == Some(false)
+                && target.get("invalid").and_then(Value::as_bool) != Some(true);
+            if !(typing && missing && !selector.is_empty()) || attempt == LATE_FIELD_TRIES {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
         if typing && target.get("password").and_then(Value::as_bool) == Some(true) {
             return Some(refused(PASSWORD_REFUSED));
         }
         let label = target.get("terms").and_then(Value::as_str).unwrap_or("");
         (ticking && terms_box(label)).then(|| refused(TERMS_REFUSED))
+    }
+
+    /// After a guarded call: what it wrote into a password field erased, a terms box it ticked unticked
+    /// (`GUARD_AFTER`), and what the agent reads then; None when nothing had to be undone (or the page can't say).
+    async fn undone(&self, instance: &str) -> Option<&'static str> {
+        let report = match self.script(instance, GUARD_AFTER).await? {
+            Value::String(text) => serde_json::from_str::<Value>(&text).ok()?,
+            other => other,
+        };
+        let count = |k: &str| report.get(k).and_then(Value::as_u64).unwrap_or(0);
+        if count("passwords") > 0 {
+            log("a password field got text from the agent: erased");
+            Some(PASSWORD_UNDONE)
+        } else if count("terms") > 0 {
+            log("the agent ticked the site's terms: unticked");
+            Some(TERMS_UNDONE)
+        } else {
+            None
+        }
     }
 
     /// A tool call, as the real server answers it, except (browser-speed, 2026-11-09):
@@ -1199,12 +1354,18 @@ impl Proxy {
                 arguments.insert("timeout".into(), json!(CLICK_TIMEOUT_MS));
             }
         }
+        let watched = GUARDED.contains(&tool) && !instance.is_empty() && self.script(&instance, GUARD_BEFORE).await.is_some();
         let response = self.request("tools/call", sent.as_ref()).await?;
         if loads_a_page(tool) && !instance.is_empty() {
             let failed = response.contains_key("error")
                 || response.get("result").and_then(|r| r.get("isError")).and_then(Value::as_bool) == Some(true);
             if !failed {
                 self.settle(&instance, tool != "navigate").await;
+            }
+        }
+        if watched {
+            if let Some(text) = self.undone(&instance).await {
+                return Ok(refused(text));
             }
         }
         Ok(response)
@@ -1359,9 +1520,7 @@ impl Proxy {
     fn fail(&self, ident: &Value, exc: &str) {
         if !ident.is_null() {
             self.to_client(&json!({"jsonrpc": "2.0", "id": ident,
-                                   "error": {"code": -32603, "message": format!(
-                                       "the agent's browser could not start: {exc}\nTell your person simply, in \
-their language: « I can't open web pages right now; I'll try again in a moment. »")}}));
+                                   "error": {"code": -32603, "message": could_not_start(exc)}}));
         }
     }
 
@@ -2090,8 +2249,11 @@ themselves). Do not use the browser until they hand it back: tell them you are w
             "const p = document.querySelector('input[type=password]'); p.value = 'a';",
             "document.querySelector('input[type=\"password\"]').dispatchEvent(new InputEvent('input'))",
             "document.getElementsByName('motdepasse')[0].value = 'x'",
-            "return document.querySelector('[autocomplete=\"new-password\"]').value",
             "document.getElementById('pwd').focus(); document.execCommand('insertText', false, 'x')",
+            // review 13/11: a framework's native setter, a form's named field
+            "const p = document.querySelector('#register-password'); const set = \
+             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(p, 'x');",
+            "const f = document.getElementById('register-form'); f.password.value = 'x'; f.password_confirmation.value = 'x';",
         ] {
             assert!(script_touches_password(script), "{script}");
         }
@@ -2100,15 +2262,14 @@ themselves). Do not use the browser until they hand it back: tell them you are w
             "document.getElementById('lastname').value = 'Testeur'",
             "return document.querySelector('#password-rules').innerText",
             "JSON.stringify([...document.forms].map(f => f.id))",
+            // a train or plane ticket's passenger is no password (review 13/11)
+            "document.querySelector('#passenger-firstname').value = 'Camille'",
+            "document.querySelector('[name=passager_nom]').value = 'Testeur'",
         ] {
             assert!(!script_touches_password(script), "{script}");
         }
-        assert!(script_ticks_terms("document.getElementById('cgu').checked = true"));
-        assert!(script_ticks_terms("document.querySelector('#terms').click()"));
-        assert!(script_ticks_terms("const b = document.getElementById('accept-conditions'); b.click();"));
-        assert!(!script_ticks_terms("document.getElementById('newsletter').checked = false && 1"));
-        assert!(!script_ticks_terms("return document.getElementById('cgu').checked === true"));
         assert!(terms_box("J'accepte les conditions générales de vente  cgu cgu"));
+        assert!(!terms_box("Accepter les cookies de mesure d'audience (consentement) cookie-consent"));
         assert!(terms_box("I agree to the Terms of Service"));
         assert!(terms_box("Ich akzeptiere die AGB"));
         assert!(!terms_box("Je souhaite recevoir la newsletter  newsletter newsletter"));
@@ -2119,8 +2280,10 @@ themselves). Do not use the browser until they hand it back: tell them you are w
     fn a_character_typed_is_told_from_a_key() {
         assert!(presses_a_character(&dict(json!({"key": "a"}))));
         assert!(presses_a_character(&dict(json!({"key": "é", "modifiers": []}))));
+        assert!(presses_a_character(&dict(json!({"key": "p", "modifiers": ["Shift"]}))), "« P » (review 13/11)");
         assert!(!presses_a_character(&dict(json!({"key": "Enter"}))));
         assert!(!presses_a_character(&dict(json!({"key": "a", "modifiers": ["Control"]}))));
+        assert!(!presses_a_character(&dict(json!({"key": "v", "modifiers": ["Shift", "Meta"]}))));
         assert!(!presses_a_character(&dict(json!({}))));
     }
 
@@ -2129,7 +2292,12 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         let script = target_script("input[name=\"x\"]'); alert(1); ('");
         assert!(script.starts_with("(() => { const sel = \"input[name=\\\"x\\\"]'); alert(1); ('\";"), "{script}");
         assert!(target_script("").contains("const sel = \"\";"));
-        assert!(script.contains("new|current)-password") && script.contains("found: true"));
+        assert!(script.contains("closest('label')") && script.contains("found: true"));
+        // only `type=password` is a password field (an address field may say autocomplete="new-password")
+        assert!(script.contains("attr('type') === 'password'") && !script.contains("new-password"));
+        // the checks around a guarded call keep nothing but in the page, and say how many were undone
+        assert!(GUARD_BEFORE.contains("Symbol.for('bipagents.guard')") && GUARD_AFTER.contains("delete window[K]"));
+        assert!(GUARD_AFTER.contains("JSON.stringify({passwords: passwords, terms: terms})"));
     }
 
     #[test]
@@ -2156,6 +2324,12 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         let state = wrapped(json!({"anyOf": [{"type": "object", "additionalProperties": true}, {"type": "null"}]}));
         assert_eq!(fitting(&state, "x"), json!({"result": null}));
         assert_eq!(fitting(&json!({"type": "object", "additionalProperties": true}), "x"), json!({"success": false}));
+        // an answer given under another tool's name, as that tool's schema wants it (review 13/11)
+        let ran = json!({"success": true, "result": null, "error": null});
+        assert_eq!(refit(&shot, Some(&ran), "{}"), json!({"result": "{}"}));
+        assert_eq!(refit(&wrapped(json!({"type": "boolean"})), Some(&ran), "{}"), json!({"result": true}));
+        assert_eq!(refit(&json!({"type": "object", "additionalProperties": true}), Some(&ran), "{}"), ran);
+        assert_eq!(refit(&state, None, "x"), json!({"result": {}}));
     }
 
     #[test]

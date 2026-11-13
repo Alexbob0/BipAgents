@@ -2195,6 +2195,14 @@ impl RunHub {
             && !self.someone_elses(&sub.run_id)
     }
 
+    /// `agent`'s run `run_id` when nobody can answer it now (`nobody_there`): Some(its session), else None. A bridge
+    /// tool that would ask the person holds its card instead (terms_consent.rs, held_approvals.rs).
+    pub fn nobody_there_for(&self, agent: &str, run_id: &str) -> Option<Option<String>> {
+        let sub = lock(&self.inner).subs.get(&(agent.to_string(), run_id.to_string())).cloned()?;
+        let st = lock(&sub.state);
+        self.nobody_there(&sub, &st).then(|| st.session_id.clone())
+    }
+
     /// A question of a run nobody can answer now, handed to the bridge (answered at once). False: asked as usual.
     fn hold_question(&self, sub: &RunSubscription, st: &SubscriptionState, event: &SSEEvent) -> bool {
         if !self.nobody_there(sub, st) {

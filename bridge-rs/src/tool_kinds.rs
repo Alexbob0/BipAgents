@@ -93,7 +93,7 @@ pub const KINDS: &[Kind] = &[
     Kind { id: "renameSelf", names: &["rename_yourself"], prefixes: &[], step: Some("renameSelf") },
     Kind { id: "findTemplate", names: &["find_template"], prefixes: &[], step: Some("findTemplate") },
     Kind { id: "handOver", names: &["hand_over_payment"], prefixes: &[], step: Some("handOver") },
-    Kind { id: "account", names: &["vault_create_login", "vault_confirm_login"], prefixes: &[], step: Some("account") },
+    Kind { id: "account", names: &["vault_create_login", "vault_confirm_login", "accept_terms"], prefixes: &[], step: Some("account") },
     Kind { id: "contactDetailsRead", names: &["vault_contact_details"], prefixes: &[], step: Some("contactDetailsRead") },
     Kind { id: "contactDetailsSave", names: &["vault_save_contact_details"], prefixes: &[], step: Some("contactDetailsSave") },
     Kind { id: "phoneExit", names: &["ask_phone_exit"], prefixes: &[], step: Some("phoneExit") },

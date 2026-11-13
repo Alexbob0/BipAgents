@@ -269,7 +269,9 @@ async fn a_browser_that_cannot_start_is_said_to_the_agent() {
     proxy.handle(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "navigate"}})).await;
     let answer = out.messages().last().unwrap().clone();
     assert_eq!(answer["id"], 1);
-    assert!(answer["error"]["message"].as_str().unwrap().contains("could not start"), "{answer}");
+    // said in the answer, never a JSON-RPC error (Hermes' breaker counts one: browser_mcp `could_not_start`)
+    assert!(answer.get("error").is_none(), "{answer}");
+    assert!(answer["result"]["content"][0]["text"].as_str().unwrap().contains("could not start"), "{answer}");
     assert_eq!(proxy.calls.load(Ordering::SeqCst), 0);
 }
 
@@ -343,7 +345,10 @@ async fn a_slow_cold_start_is_waited_for_and_the_first_call_succeeds() {
     let started = std::time::Instant::now();
     proxy.handle(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "navigate"}})).await;
     assert!(started.elapsed() >= Duration::from_secs(1));
-    let message = out.messages().last().unwrap()["error"]["message"].as_str().unwrap().to_string();
+    // said in the answer, never a JSON-RPC error (Hermes counts one against the server: browser_mcp `could_not_start`)
+    let answer = out.messages().last().unwrap().clone();
+    assert!(answer.get("error").is_none(), "{answer}");
+    let message = answer["result"]["content"][0]["text"].as_str().unwrap().to_string();
     assert!(message.contains("did not start within 1 s"), "{message}");
 }
 
@@ -698,14 +703,16 @@ characters of this page. To read on, run execute_script with: "
     // a click too; a call without an instance waits for nothing
     std::fs::remove_file(tmp.join("calls.jsonl")).unwrap();
     proxy.handle(tool(4, "click_element", json!({"instance_id": "319ceedb", "selector": "a"}))).await;
-    // what the target is (never the site's terms box: browser_mcp `guard`), the click, then the page's state
-    assert_eq!(calls(tmp).len(), 3);
+    // what the target is (never the site's terms box), the page's state kept before (browser_mcp `GUARD_BEFORE`),
+    // the click, then the page's state
+    assert_eq!(calls(tmp).len(), 4);
     assert!(calls(tmp)[0]["arguments"]["script"].as_str().unwrap().contains("found: true"));
-    assert_eq!(calls(tmp)[1]["arguments"]["timeout"], json!(3000), "3 s to find it, not the real server's 10");
+    assert!(calls(tmp)[1]["arguments"]["script"].as_str().unwrap().contains("bipagents guard: before"));
+    assert_eq!(calls(tmp)[2]["arguments"]["timeout"], json!(3000), "3 s to find it, not the real server's 10");
     proxy.handle(tool(5, "list_tabs", json!({"instance_id": "319ceedb"}))).await;
     proxy.handle(tool(6, "click_element", json!({"selector": "a", "timeout": 8000}))).await;
-    assert_eq!(calls(tmp).len(), 5);
-    assert_eq!(calls(tmp)[4]["arguments"]["timeout"], json!(8000), "the agent's own time kept");
+    assert_eq!(calls(tmp).len(), 6);
+    assert_eq!(calls(tmp)[5]["arguments"]["timeout"], json!(8000), "the agent's own time kept");
 
     // a screenshot: an image block, the agent's path never passed on (it would land in the container)
     std::fs::remove_file(tmp.join("calls.jsonl")).unwrap();
@@ -841,15 +848,19 @@ fn a_list_cached_before_the_rule_is_tamed_too() {
 /// (`isError`); `#folded` can't be clicked (an error); the target script (browser_mcp `target_script`) says
 /// `#register-password` is a password field and `#cgu` a terms box. Every call written to `calls.jsonl`.
 const GUARD_SERVER: &str = r##"
-import json, os, sys
+import json, os, sys, time
 here = os.path.dirname(os.path.abspath(__file__))
 GATE = ("The person has taken over this browser in the BipAgents app (to log in, or to do something themselves). "
         "Do not use the browser until they hand it back: tell them you are waiting, or go on with something else.")
+page = {"typed": 0, "ticked": 0, "opened": None}
 def text(t, error=False):
     r = {"content": [{"type": "text", "text": t}]}
     if error:
         r["isError"] = True
     return r
+def script_answer(value):
+    answer = {"success": True, "result": value, "error": None}
+    return {"content": [{"type": "text", "text": json.dumps(answer)}], "structuredContent": answer}
 for line in sys.stdin:
     m = json.loads(line)
     if "id" not in m:
@@ -860,28 +871,54 @@ for line in sys.stdin:
     elif m["method"] == "tools/list":
         wrapped = {"type": "object", "properties": {"result": {"type": "boolean"}}, "required": ["result"],
                    "x-fastmcp-wrap-result": True}
+        shot = {"type": "object", "required": ["result"], "x-fastmcp-wrap-result": True,
+                "properties": {"result": {"anyOf": [{"type": "string"}, {"type": "object", "additionalProperties": True}]}}}
         r = {"tools": [{"name": "navigate", "inputSchema": {"type": "object"},
                         "outputSchema": {"type": "object", "additionalProperties": True}},
                        {"name": "click_element", "inputSchema": {"type": "object"}, "outputSchema": wrapped},
-                       {"name": "type_text", "inputSchema": {"type": "object"}, "outputSchema": wrapped}]}
+                       {"name": "type_text", "inputSchema": {"type": "object"}, "outputSchema": wrapped},
+                       {"name": "take_screenshot", "inputSchema": {"type": "object"}, "outputSchema": shot},
+                       {"name": "execute_script", "inputSchema": {"type": "object"},
+                        "outputSchema": {"type": "object", "additionalProperties": True}}]}
     else:
         name, args = m["params"]["name"], m["params"].get("arguments", {})
         with open(os.path.join(here, "calls.jsonl"), "a") as f:
             f.write(json.dumps({"name": name, "arguments": args}) + "\n")
         script = args.get("script", "")
+        selector = args.get("selector", "")
+        late_there = page["opened"] is not None and time.time() - page["opened"] >= 0.6
         if os.path.exists(os.path.join(here, "held")):
             r = text(GATE, True)
+        elif name == "execute_script" and "bipagents guard: before" in script:
+            r = script_answer("ok")
+        elif name == "execute_script" and "bipagents guard: after" in script:
+            r = script_answer(json.dumps({"passwords": page["typed"], "terms": page["ticked"]}))
+            page["typed"] = page["ticked"] = 0
         elif name == "execute_script" and "found: true" in script:
-            target = {"found": True, "password": "register-password" in script,
-                      "terms": "J'accepte les conditions générales de vente  cgu cgu" if '"#cgu"' in script else ""}
-            answer = {"success": True, "result": json.dumps(target), "error": None}
-            r = {"content": [{"type": "text", "text": json.dumps(answer)}], "structuredContent": answer}
+            if '"#late-password"' in script and not late_there:
+                target = {"found": False}
+            else:
+                target = {"found": True, "password": "password" in script.split(";")[0],
+                          "terms": "J'accepte les conditions générales de vente  cgu cgu"
+                                   if '"#cgu"' in script or "span.box" in script else ""}
+            r = script_answer(json.dumps(target))
         elif name == "execute_script" and script == "document.readyState":
-            answer = {"success": True, "result": "complete", "error": None}
-            r = {"content": [{"type": "text", "text": json.dumps(answer)}], "structuredContent": answer}
-        elif name == "click_element" and args.get("selector") == "#folded":
+            r = script_answer("complete")
+        elif name == "click_element" and selector == "#folded":
             r = text("Error calling tool 'click_element': Failed to click element: DOM Error while querying [code: -32000]", True)
         else:
+            if name == "click_element" and selector == "#open-register":
+                page["opened"] = time.time()
+            if name == "click_element" and "conditions" in args.get("text_match", ""):
+                page["ticked"] = 1            # the real server clicks by text, the selector unused
+            if name in ("type_text", "paste_text") and "password" in selector:
+                page["typed"] = 1
+            if name == "press_key" and "password" in selector and len(args.get("key", "")) == 1:
+                page["typed"] = 1
+            if name == "execute_script" and ("Provisoire" in script + json.dumps(args.get("args", []))):
+                page["typed"] = 1
+            if name == "execute_script" and "'cgu'" in script and ".checked = true" in script:
+                page["ticked"] = 1
             r = text("did " + name)
     print(json.dumps({"jsonrpc": "2.0", "id": m["id"], "result": r}), flush=True)
 "##;
@@ -902,7 +939,13 @@ fn last(out: &Out) -> Value {
 }
 
 fn text_of(answer: &Value) -> String {
-    answer["result"]["content"].as_array().unwrap().iter().filter_map(|c| c["text"].as_str()).collect::<Vec<_>>().join("\n")
+    answer["result"]["content"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|c| c["text"].as_str())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -985,17 +1028,139 @@ async fn the_agent_never_types_a_password_nor_ticks_the_terms() {
     proxy.handle(tool(7, "click_element", json!({"instance_id": "i", "selector": "#cgu"}))).await;
     assert_eq!(text_of(&last(&out)), browser_mcp::TERMS_REFUSED);
     proxy
-        .handle(tool(8, "execute_script", json!({"instance_id": "i", "script": "document.getElementById('cgu').checked = true"})))
+        .handle(tool(
+            8,
+            "execute_script",
+            json!({"instance_id": "i", "script": "document.getElementById('cgu').checked = true"}),
+        ))
         .await;
-    assert_eq!(text_of(&last(&out)), browser_mcp::TERMS_REFUSED);
+    assert_eq!(text_of(&last(&out)), browser_mcp::TERMS_UNDONE, "ticked by the script, unticked after it");
     proxy.handle(tool(9, "click_element", json!({"instance_id": "i", "selector": "#newsletter"}))).await;
     assert_eq!(text_of(&last(&out)), "did click_element");
     assert_eq!(typed(tmp), ["type_text #lastname", "press_key #register-password", "click_element #newsletter"]);
     // a script sent under another tool's name runs as a script (DeepSeek on the lab, 13/11)
     proxy
-        .handle(tool(10, "take_screenshot", json!({"instance_id": "i", "script": "return document.title", "full_page": true})))
+        .handle(tool(
+            10,
+            "take_screenshot",
+            json!({"instance_id": "i", "script": "return document.title", "full_page": true}),
+        ))
         .await;
-    let sent = calls(tmp).last().unwrap().clone();
-    assert_eq!(sent, json!({"name": "execute_script", "arguments": {"instance_id": "i", "script": "return document.title"}}));
+    let sent: Vec<Value> = calls(tmp).into_iter().filter(|c| c["name"] == "execute_script").collect();
+    assert!(sent.contains(
+        &json!({"name": "execute_script", "arguments": {"instance_id": "i", "script": "return document.title"}})
+    ));
+    // its answer fits take_screenshot's schema: Hermes' client checks the one of the tool it called (review 13/11)
+    assert_eq!(last(&out)["result"]["structuredContent"], json!({"result": "did execute_script"}));
     proxy.stop_child().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn what_slips_past_the_checks_before_a_call_is_undone_after_it() {
+    // review 13/11: a click on the terms' text (the real server finds it by `text_match`, the selector unused), the
+    // field and the password in a script's `args`; a password field drawn 600 ms after the panel opens, waited for
+    let dir = tempfile::tempdir().unwrap();
+    let tmp = dir.path();
+    let (proxy, out) = guarded(tmp).await;
+    let terms =
+        json!({"instance_id": "i", "selector": "label", "text_match": "J'accepte les conditions générales de vente"});
+    proxy.handle(tool(1, "click_element", terms)).await;
+    assert_eq!(text_of(&last(&out)), browser_mcp::TERMS_UNDONE);
+    assert_eq!(last(&out)["result"]["structuredContent"], json!({"result": false}));
+    // a box drawn inside the terms' label: refused before the click (its label's box looked at)
+    proxy.handle(tool(2, "click_element", json!({"instance_id": "i", "selector": ".custom-checkbox span.box"}))).await;
+    assert_eq!(text_of(&last(&out)), browser_mcp::TERMS_REFUSED);
+    let script = json!({"instance_id": "i", "script": "const e = document.querySelector(arguments[0]); e.value = arguments[1];",
+                        "args": ["#register-password", "Provisoire123!"]});
+    proxy.handle(tool(3, "execute_script", script)).await;
+    assert_eq!(text_of(&last(&out)), browser_mcp::PASSWORD_UNDONE);
+    // the panel opened, then at once its password field: waited for, then refused, never typed
+    proxy.handle(tool(4, "click_element", json!({"instance_id": "i", "selector": "#open-register"}))).await;
+    let late = json!({"instance_id": "i", "selector": "#late-password", "text": "Provisoire123!"});
+    proxy.handle(tool(5, "type_text", late)).await;
+    assert_eq!(text_of(&last(&out)), browser_mcp::PASSWORD_REFUSED);
+    assert!(!calls(tmp).iter().any(|c| c["name"] == "type_text"), "nothing typed");
+    // « P » with Shift is a character too
+    let shift = json!({"instance_id": "i", "selector": "#register-password", "key": "p", "modifiers": ["Shift"]});
+    proxy.handle(tool(6, "press_key", shift)).await;
+    assert_eq!(text_of(&last(&out)), browser_mcp::PASSWORD_REFUSED);
+    // refusing cookies is no terms box; a passenger's name no password
+    let cookies = "document.querySelector('.fc-cta-do-not-consent').click()";
+    proxy.handle(tool(7, "execute_script", json!({"instance_id": "i", "script": cookies}))).await;
+    assert_eq!(text_of(&last(&out)), "did execute_script");
+    let passenger = "document.querySelector('#passenger-firstname').value = 'Camille'";
+    proxy.handle(tool(8, "execute_script", json!({"instance_id": "i", "script": passenger}))).await;
+    assert_eq!(text_of(&last(&out)), "did execute_script");
+    // none of the proxy's own refusals counts as a step that failed
+    assert_eq!(proxy.failures.load(Ordering::SeqCst), 0);
+    proxy.stop_child().await;
+}
+
+/// hold_gate.py while a card payment (or the vault typing a password) holds the browser: `PAYING`, as an `isError`.
+const PAYING_SERVER: &str = r##"
+import json, sys
+PAYING = ("A card payment is going on in this browser (or the bridge is typing a saved password): nobody may read the "
+          "page. Your browser tools wait until it ends: if you started a payment, use confirm_payment (or "
+          "cancel_payment) from the BipAgents tools; otherwise wait a few minutes, the bridge gives the browser back "
+          "by itself.")
+for line in sys.stdin:
+    m = json.loads(line)
+    if "id" not in m:
+        continue
+    if m["method"] == "initialize":
+        r = {"protocolVersion": m["params"]["protocolVersion"], "capabilities": {"tools": {}},
+             "serverInfo": {"name": "stealth", "version": "1"}}
+    elif m["method"] == "tools/list":
+        r = {"tools": [{"name": "navigate", "inputSchema": {"type": "object"},
+                        "outputSchema": {"type": "object", "additionalProperties": True}}]}
+    else:
+        r = {"content": [{"type": "text", "text": PAYING}], "isError": True}
+    print(json.dumps({"jsonrpc": "2.0", "id": m["id"], "result": r}), flush=True)
+"##;
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_payment_holding_the_browser_is_no_streak_of_failed_steps() {
+    // review 13/11: like the person's hold, a payment's (or the vault fill's) is no step that failed on the page
+    let dir = tempfile::tempdir().unwrap();
+    let tmp = dir.path();
+    let config = config(tmp);
+    std::fs::write(tmp.join("server.py"), PAYING_SERVER).unwrap();
+    let out = Out::default();
+    let proxy = Proxy::new(config, Box::new(out.clone()));
+    proxy.handle(init()).await;
+    proxy.handle(json!({"jsonrpc": "2.0", "id": 99, "method": "tools/list"})).await;
+    for id in 1..=3 {
+        proxy.handle(tool(id, "navigate", json!({"instance_id": "i", "url": "https://shop.example/"}))).await;
+    }
+    let third = last(&out);
+    proxy.stop_child().await;
+    assert!(text_of(&third).starts_with("A card payment is going on"), "{third}");
+    assert!(!text_of(&third).contains(browser_mcp::STREAK_HINT), "{third}");
+    assert_eq!(third["result"].get("isError"), None);
+    assert_eq!(third["result"]["structuredContent"], json!({"success": false}));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_browser_that_cannot_start_is_never_a_json_rpc_error() {
+    // review 13/11: Hermes counts a JSON-RPC error (McpError) against the server, as `isError` (`_on_failure`)
+    let dir = tempfile::tempdir().unwrap();
+    let tmp = dir.path();
+    let mut config = config(tmp);
+    let init_result = json!({"protocolVersion": "2025-06-18", "capabilities": {"tools": {}},
+                             "serverInfo": {"name": "stealth", "version": "1"}});
+    let tools = json!({"tools": [{"name": "navigate", "inputSchema": {"type": "object"},
+                                  "outputSchema": {"type": "object", "additionalProperties": true}}]});
+    std::fs::write(tmp.join("cache.json"), json!({"initialize": init_result, "tools/list": tools}).to_string())
+        .unwrap();
+    config.insert("start".into(), json!(["false"])); // its container does not start
+    let out = Out::default();
+    let proxy = Proxy::new(config, Box::new(out.clone()));
+    proxy.handle(init()).await;
+    for id in 1..=3 {
+        proxy.handle(tool(id, "navigate", json!({"instance_id": "i", "url": "https://shop.example/"}))).await;
+        let answer = last(&out);
+        assert!(answer.get("error").is_none(), "a strike for Hermes' breaker: {answer}");
+        assert!(text_of(&answer).starts_with("the agent's browser could not start"), "{answer}");
+        assert_eq!(answer["result"]["structuredContent"], json!({"success": false}));
+    }
 }
