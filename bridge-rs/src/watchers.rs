@@ -182,7 +182,19 @@ pub fn minutes_of(watch: &Watch) -> u32 {
 /// The connector card's line: « Vérifie toutes les 15 min, ne réveille l'agent que si ça change ».
 pub fn card_text(watch: &Watch) -> String {
     let when = if watch.notify == ON_CONDITION { "que si sa condition est remplie" } else { "que si ça change" };
-    format!("Vérifie {}, ne réveille l'agent {when}", every_text(minutes_of(watch)))
+    let check = format!("Vérifie {}, ne réveille l'agent {when}", every_text(minutes_of(watch)));
+    match &watch.purchase {
+        // what the person approves: that this watcher buys, what, where (the agent wrote it: review 2, 13/11)
+        Some(p) => {
+            let price = if p.cents > 0 {
+                format!(" (≈ {})", crate::urgent_pay::money("fr", p.cents, &p.currency))
+            } else {
+                String::new()
+            };
+            format!("{check} ; dès que c'est possible, il achète « {} » sur {}{price} : tu valides le paiement", p.what, p.site)
+        }
+        None => check,
+    }
 }
 
 /// The agent's `watch` checked: Err is the refusal's text.
@@ -510,12 +522,14 @@ fn purchase_rule(purchase: &connectors::Purchase) -> String {
         String::new()
     };
     format!(
-        "Your person set this watcher up to BUY « {} » on {}{price}. If what it saw means it can be bought now, buy it \
-now, in your own browser, without asking first: put it in the cart, fill the delivery from their « Coordonnées », go \
-to the payment page and call pay_with_card at once (they approve it within minutes from an urgent notification; \
-never press the final pay button before their « Oui, payer »). If you may not pay here, prepare the cart up to the \
-payment page and hand_over_payment. Then your message says what you did.\n",
+        "Your person approved this watcher to BUY « {} » on {}{price}. If what it saw means it can be bought now and \
+this conversation shows you have not bought it yet, buy it now, in your own browser, on {} only, without asking first: \
+put it in the cart, fill the delivery from their « Coordonnées », go to the payment page and call pay_with_card at \
+once (they approve it within minutes from an urgent notification; never press the final pay button before their \
+« Oui, payer »). If you may not pay here, prepare the cart up to the payment page and hand_over_payment. Then your \
+message says what you did.\n",
         tk::in_note_line(&purchase.what),
+        tk::in_note_line(&purchase.site),
         tk::in_note_line(&purchase.site),
     )
 }
@@ -1004,7 +1018,8 @@ mod tests {
         let watch = Watch { every: "15m".into(), notify: ON_CHANGE.into(), purchase: Some(purchase) };
         let after = Observation { state: json!({"stock": "en stock"}), summary: "En stock".into(), condition: None };
         let note = change_note(&conn, &watch, Some(("Rupture", &json!({"stock": "rupture"}))), &after);
-        assert!(note.contains("set this watcher up to BUY « 2 billets Stromae » on shop.example, about 45.00 EUR"), "{note}");
+        assert!(note.contains("approved this watcher to BUY « 2 billets Stromae » on shop.example, about 45.00 EUR"), "{note}");
+        assert!(note.contains("you have not bought it yet") && note.contains("on shop.example only"));
         assert!(note.contains("call pay_with_card at once") && note.contains("hand_over_payment"));
         assert!(note.starts_with("<!--bip:watch\n") && note.ends_with("\n-->"));
         // a watcher for no purchase: no word of buying

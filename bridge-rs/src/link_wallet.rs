@@ -646,7 +646,7 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
     let Some(currency) = cards::currency(&arg(arguments, "currency")) else {
         return Ok(refusal("Give the currency as its 3-letter code, e.g. USD."));
     };
-    if crate::urgent_pay::refuses_payment(state, &agent.name, PAY) {
+    if crate::urgent_pay::refuses_payment(state, &agent.name, PAY).await {
         return Ok(refusal(crate::urgent_pay::REHEARSAL_NO_PAY));
     }
     let merchant_url = arg(arguments, "merchant_url");

@@ -1794,4 +1794,34 @@ mod tests {
         assert!(tools[1]["description"].as_str().unwrap().contains("sandbox_sites_request"));
         assert!(tools[1]["description"].as_str().unwrap().contains("never goes in a task's prompt"));
     }
+
+    /// A purchase watcher's wake-up tells the agent to buy at once (watchers.rs `purchase_rule`), and its
+    /// `watch.purchase` is the agent's own (connector_register / connector_update): the card the person approves says
+    /// that the watcher buys, what and where (review 2, 13/11).
+    #[test]
+    fn the_card_the_person_approves_says_the_watcher_buys_and_what() {
+        let config = Config::with_key("k");
+        let purchase =
+            Purchase { site: "shop.example".into(), what: "2 billets Stromae".into(), cents: 4500, currency: "EUR".into() };
+        let conn = Connector {
+            name: "Billets Stromae".into(),
+            sites: vec!["www.shop.example".into()],
+            description: "La mise en vente des billets".into(),
+            watch: Some(Watch { every: "15m".into(), notify: "on_change".into(), purchase: Some(purchase) }),
+            ..Default::default()
+        };
+        for change in ["new", "update"] {
+            let card = card_item(None, &config, "vie", &conn, &new_card(change));
+            let shown = serde_json::to_string(&card).unwrap();
+            assert!(
+                shown.contains("2 billets Stromae") && shown.contains("shop.example"),
+                "the {change} card of a purchase watcher never says it buys, nor what: {shown}"
+            );
+            assert_eq!(
+                card["bip_connector_schedule"],
+                "Vérifie toutes les 15 min, ne réveille l'agent que si ça change ; dès que c'est possible, il achète « 2 \
+billets Stromae » sur shop.example (≈ 45,00 €) : tu valides le paiement"
+            );
+        }
+    }
 }

@@ -234,14 +234,29 @@ pub fn rehearsing(agent: &str) -> bool {
 }
 
 /// A payment tool (`tool`: pay_with_card, pay_with_link) of `agent` is refused as a rehearsal's: its rehearsal's turn
-/// runs and the call is that turn's (the run the hub sees inside the tool), or no turn of the agent is seen to make
-/// it. Another turn of the agent (the watcher's own, a person's conversation) pays as usual, and nothing is refused
-/// while the rehearsal only waits.
-pub fn refuses_payment(state: &AppState, agent: &str, tool: &str) -> bool {
-    let run = REHEARSING.lock().unwrap_or_else(|e| e.into_inner()).get(agent).cloned().flatten();
-    let Some(run) = run else { return false };
-    state.hub.turn_of(agent, tool).is_none_or(|turn| turn.run_id == run)
+/// runs and the call is that turn's (the run the hub sees inside that very call: its `tool.started` may come a moment
+/// after the call, waited for up to `SEEN_WITHIN`), or no turn of the agent is seen making it. Another turn of the
+/// agent (the watcher's own, a person's conversation) pays as usual, and nothing is refused while the rehearsal only
+/// waits for its conversation.
+pub async fn refuses_payment(state: &AppState, agent: &str, tool: &str) -> bool {
+    let rehearsal = || REHEARSING.lock().unwrap_or_else(|e| e.into_inner()).get(agent).cloned().flatten();
+    let Some(run) = rehearsal() else { return false };
+    let until = tokio::time::Instant::now() + SEEN_WITHIN;
+    loop {
+        let calling = state.hub.runs_calling(agent, tool);
+        if !calling.is_empty() {
+            return calling.contains(&run);
+        }
+        if tokio::time::Instant::now() >= until {
+            // no turn seen in that call (the hub follows none): the rehearsal's, to be safe, while it runs
+            return rehearsal().as_deref() == Some(run.as_str());
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
 }
+
+/// How long `refuses_payment` waits for the hub to see the calling turn inside the payment tool.
+const SEEN_WITHIN: std::time::Duration = std::time::Duration::from_secs(2);
 
 struct Rehearsal(String);
 

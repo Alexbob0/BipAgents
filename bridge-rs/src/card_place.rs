@@ -121,7 +121,9 @@ fn keep(config: &Config, run_id: &str, place: Place) -> std::io::Result<()> {
     let mut all = load(config);
     let now = py::time_time();
     all.retain(|_, p| now - p.at < KEEP_DAYS * 86400.0);
-    all.insert(run_id.to_string(), Place { at: now, ..place });
+    // placed again (`watch` and the card's maker at the same moment): a card whose answer its tool call told stays so
+    let taken = place.taken || all.get(run_id).is_some_and(|p| p.taken);
+    all.insert(run_id.to_string(), Place { at: now, taken, ..place });
     save(config, &all)
 }
 
