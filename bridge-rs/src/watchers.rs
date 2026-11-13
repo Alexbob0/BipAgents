@@ -627,6 +627,8 @@ async fn wake(state: &AppState, agent: &AgentConfig, conn: &Connector, note: Str
     if let Some(s) = session.as_ref().filter(|s| **s != kept) {
         change(&config, &agent.name, &conn.id, |rt| rt.session = s.clone());
     }
+    // the brake's line when it stopped the turn
+    let mut stopped = None;
     let turn = match &session {
         Some(session) => {
             let mut turn = Turn::new(agent, Kind::Watcher, session, note);
@@ -634,7 +636,10 @@ async fn wake(state: &AppState, agent: &AgentConfig, conn: &Connector, note: Str
             turn.busy_wait = 120.0;
             match pipeline.run(&turn).await {
                 Ok(ran) if ran.answered() => Ok(ran.text),
-                Ok(ran) => Err(format!("the agent's turn ended {}", ran.status)),
+                Ok(ran) => {
+                    stopped = ran.stopped;
+                    Err(format!("the agent's turn ended {}", ran.status))
+                }
                 Err(why) => Err(why.to_string()),
             }
         }
@@ -644,6 +649,8 @@ async fn wake(state: &AppState, agent: &AgentConfig, conn: &Connector, note: Str
         Ok(text) => (true, read_reply(&text)),
         Err(why) => {
             tracing::info!(target: "bipbridge::watchers", agent = %agent.name, watcher = %conn.id, why = %why, "the agent did not write: template");
+            // a watcher with no words of its own: the brake's line rather than silence
+            let fallback = if fallback.is_empty() { stopped.unwrap_or_default() } else { fallback };
             (false, (!fallback.is_empty()).then_some((false, fallback)))
         }
     };

@@ -395,22 +395,34 @@ pub fn purchase_view(state: &AppState, config: &Config, agent: &str, conn: &Conn
     })
 }
 
-/// The note of an account set-up (hidden in the apps).
-pub fn account_note(purchase: &Purchase) -> String {
+/// The note of an account set-up (hidden in the apps). `email`: the first e-mail of the person's « Coordonnées » given to
+/// the agent, and that entry's label (13/11, the lab: without it the agent looked for their e-mail in the Carnet until
+/// the brake stopped it).
+pub fn account_note(purchase: &Purchase, email: Option<(&str, &str)>) -> String {
+    let email = match email {
+        Some((label, email)) if label.trim().is_empty() => format!("sign up with their e-mail {email}, from their « Coordonnées »"),
+        Some((label, email)) => format!("sign up with their e-mail {email}, from their « Coordonnées » « {label} »"),
+        None => "their « Coordonnées » have no e-mail: ask them for one in your last message".to_string(),
+    };
     format!(
         "<!--bip:purchase\nNot from a site: your person gets ready to buy « {} » on {} as soon as your watcher sees \
 it. Create their customer account on {} now with vault_create_login: open the shop's sign-up page in your own \
-browser, fill the e-mail and the other fields from their « Coordonnées » (browser_vault list shows each entry with \
-when to use it), focus the password field, then call vault_create_login (tool_search finds it if you don't see it): \
-it makes and types the password, they approve one card. Never ask them for a password (no ask_secret) and never type \
-one yourself. Fill the profile and delivery address the shop needs from the same entry; ask only for what is \
-missing, in your last message (nobody follows this turn live: no clarify question), and offer to keep it in their \
-vault. Don't buy anything. End with one short sentence: what is ready, what is missing.\n-->",
+browser and {email}. vault_contact_details reads the rest of their « Coordonnées »: never look for their details in \
+the Carnet, your memory or your files, and never make one up. Focus the password field, then call vault_create_login: \
+it makes and types the password, they approve one card; vault_confirm_login once the site took the account; a terms \
+box: accept_terms asks them. Never ask them for a password (no ask_secret) and never type one yourself. Fill the \
+profile and delivery address the shop needs from the same entry; ask only for what is missing, in your last message \
+(nobody follows this turn live: no clarify question), and offer to keep it in their vault. Don't buy anything. End \
+with one short sentence: what is ready, what is missing.\n-->",
         crate::tools_knowledge::in_note_line(&purchase.what),
         purchase.site,
         purchase.site
     )
 }
+
+/// The rehearsal's verdict, first line of its reply: a code word for the app, read by `read_rehearsal` and never shown.
+pub const REHEARSAL_OK: &str = "[REHEARSAL OK]";
+pub const REHEARSAL_BLOCKED: &str = "[REHEARSAL BLOCKED]";
 
 /// The note of a rehearsal (hidden in the apps).
 pub fn rehearsal_note(purchase: &Purchase, lang: &str) -> String {
@@ -423,40 +435,152 @@ pub fn rehearsal_note(purchase: &Purchase, lang: &str) -> String {
         "<!--bip:purchase\nA rehearsal your person asked for: go once through {} as if buying « {} »{price}: log in \
 (browser_vault_fill), put it in the cart (or a similar item if it is not on sale yet), fill the delivery details from \
 their « Coordonnées », and go up to the payment page where the card form shows. NEVER pay: pay_with_card is refused \
-during a rehearsal and you never press the final button. Then empty the cart. The first line of your reply is \
-exactly REHEARSAL OK, or REHEARSAL BLOCKED: <what blocked, in a few plain words for your person>; then one short \
-sentence for them.\n-->",
+during a rehearsal and you never press the final button. Then empty the cart. The first line of your reply is a code \
+word for the app, never translated, kept exactly as written (in English, in brackets), whatever the conversation's \
+language: {REHEARSAL_OK} when the card form showed, else {REHEARSAL_BLOCKED} followed by what blocked, in a few plain \
+words in your person's language. Then one short sentence for them (they never see the code word).\n-->",
         purchase.site,
         crate::tools_knowledge::in_note_line(&purchase.what),
     )
 }
 
-/// The rehearsal's reply read: (ok, what blocked, the words for the person). None: no verdict line.
-pub fn read_rehearsal(text: &str) -> Option<(bool, String, String)> {
-    let text = crate::tools_knowledge::strip(text).trim().to_string();
-    let (first, rest) = text.split_once('\n').unwrap_or((text.as_str(), ""));
-    let head = first.trim().trim_matches(|c: char| c == '*' || c == '`').trim();
-    let upper = head.to_uppercase();
-    let rest = rest.trim().to_string();
-    if upper.starts_with("REHEARSAL OK") {
-        return Some((true, String::new(), rest));
+/// What a rehearsal is called, in the languages its verdict comes back translated in (13/11, the lab: GLM-5.3 Flash
+/// wrote « RÉPÉTITION RÉUSSIE » once in three), accents and case aside.
+const REHEARSAL_WORDS: &[&str] =
+    &["REHEARSAL", "REPETITION", "PROBEDURCHLAUF", "PROBELAUF", "GENERALPROBE", "PROBE", "TESTLAUF", "ENSAYO", "SIMULACRO"];
+/// Its verdict, the same way: it went through, or it was blocked.
+const PASSED_WORDS: &[&str] = &[
+    "OK", "OKAY", "PASSED", "PASS", "SUCCESSFUL", "SUCCEEDED", "SUCCESS", "DONE", "REUSSIE", "REUSSI", "VALIDEE", "ERFOLGREICH",
+    "BESTANDEN", "EXITOSO", "EXITOSA", "SUPERADO",
+];
+const BLOCKED_WORDS: &[&str] = &[
+    "BLOCKED", "FAILED", "FAIL", "BLOQUEE", "BLOQUE", "ECHOUEE", "ECHEC", "BLOCKIERT", "GESCHEITERT", "FEHLGESCHLAGEN",
+    "BLOQUEADO", "BLOQUEADA", "FALLIDO", "FALLIDA", "FALLO",
+];
+
+/// `c` upper-case without its accent, one char for one (so a position in it is one in the original).
+fn plain_char(c: char) -> char {
+    let up = c.to_uppercase().next().unwrap_or(c);
+    match up {
+        'À' | 'Á' | 'Â' | 'Ã' | 'Ä' | 'Å' => 'A',
+        'È' | 'É' | 'Ê' | 'Ë' => 'E',
+        'Ì' | 'Í' | 'Î' | 'Ï' => 'I',
+        'Ò' | 'Ó' | 'Ô' | 'Õ' | 'Ö' => 'O',
+        'Ù' | 'Ú' | 'Û' | 'Ü' => 'U',
+        'Ç' => 'C',
+        'Ñ' => 'N',
+        '_' => ' ',
+        other => other,
     }
-    let blocked = upper.strip_prefix("REHEARSAL BLOCKED").map(|_| {
-        let why = &head["REHEARSAL BLOCKED".len()..];
-        why.trim_start_matches([':', ' ', '-', '—']).trim().chars().take(200).collect::<String>()
-    })?;
-    Some((false, blocked, rest))
 }
 
-/// One turn of the agent with `note` in the watcher's conversation (`started` told its run once Hermes took it); its
-/// words for the person (without a verdict line) put there. Returns its reply (None: no turn).
+/// One line read as a verdict: (ok, what blocked). None: not one.
+fn verdict_of(line: &str) -> Option<(bool, String)> {
+    let orig: Vec<char> = line.chars().collect();
+    let plain: Vec<char> = orig.iter().map(|c| plain_char(*c)).collect();
+    let noise = |c: char| c.is_whitespace() || "*`#>[(\u{2014}-:.!_".contains(c);
+    let mut at = plain.iter().position(|c| !noise(*c))?;
+    let word_at = |at: usize, words: &[&str]| -> Option<usize> {
+        words.iter().find_map(|w| {
+            let w: Vec<char> = w.chars().collect();
+            let end = at + w.len();
+            let whole = plain.get(at..end) == Some(&w[..]) && plain.get(end).is_none_or(|c| !c.is_alphanumeric());
+            whole.then_some(end)
+        })
+    };
+    at = word_at(at, REHEARSAL_WORDS)?;
+    // « REHEARSAL: OK », « Répétition — réussie », « Probe ist erfolgreich »
+    while plain.get(at).is_some_and(|c| c.is_whitespace() || ":\u{2014}-".contains(*c)) {
+        at += 1;
+    }
+    for filler in ["IST ", "EST ", "IS ", "ES "] {
+        let f: Vec<char> = filler.chars().collect();
+        if plain.get(at..at + f.len()) == Some(&f[..]) {
+            at += f.len();
+        }
+    }
+    if word_at(at, PASSED_WORDS).is_some() {
+        return Some((true, String::new()));
+    }
+    let end = word_at(at, BLOCKED_WORDS)?;
+    let why: String = orig[end..].iter().collect();
+    let why = why
+        .trim_start_matches(|c: char| c.is_whitespace() || "]*`):\u{2014}-".contains(c))
+        .trim_end_matches(|c: char| c.is_whitespace() || "]*`".contains(c))
+        .trim();
+    Some((false, why.chars().take(200).collect()))
+}
+
+/// The rehearsal's reply read: (ok, what blocked, its other lines: the words for the person). Its verdict, the code
+/// word or one of its translations, is the first line read as one (any line: a model may end with it), and never in
+/// the words. None: no verdict.
+pub fn read_rehearsal(text: &str) -> Option<(bool, String, String)> {
+    let text = crate::tools_knowledge::strip(text).trim().to_string();
+    let lines: Vec<&str> = text.lines().collect();
+    let (at, (ok, blocked)) = lines.iter().enumerate().find_map(|(i, l)| verdict_of(l).map(|v| (i, v)))?;
+    let rest = lines.iter().enumerate().filter(|(i, _)| *i != at).map(|(_, l)| *l).collect::<Vec<_>>().join("\n");
+    Some((ok, blocked, rest.trim().to_string()))
+}
+
+/// The person's line after a rehearsal that said nothing besides its verdict.
+pub fn rehearsal_line(lang: &str, site: &str, ok: bool, blocked: &str) -> String {
+    let blocked = if blocked.is_empty() { String::new() } else { format!(" : {blocked}") };
+    match (lang, ok) {
+        ("de", true) => format!("Probe auf {site} gemacht: Bis zur Bezahlung ist alles bereit."),
+        ("de", false) => format!("Probe auf {site} blockiert{}.", blocked.replacen(" :", ":", 1)),
+        ("es", true) => format!("Ensayo hecho en {site}: todo está listo hasta el pago."),
+        ("es", false) => format!("Ensayo bloqueado en {site}{}.", blocked.replacen(" :", ":", 1)),
+        ("en", true) => format!("Rehearsal done on {site}: everything is ready up to the payment."),
+        ("en", false) => format!("Rehearsal blocked on {site}{}.", blocked.replacen(" :", ":", 1)),
+        (_, true) => format!("Répétition faite sur {site} : tout est prêt jusqu'au paiement."),
+        (_, false) => format!("Répétition bloquée sur {site}{blocked}."),
+    }
+}
+
+/// What blocked a rehearsal the brake stopped, or that ended without a word (`stopped`: false), for the checklist.
+fn cut_reason(lang: &str, stopped: bool) -> &'static str {
+    match (lang, stopped) {
+        ("de", true) => "abgebrochen, ich habe mich im Kreis gedreht",
+        ("de", false) => "nicht zu Ende gebracht",
+        ("es", true) => "detenido, estaba dando vueltas",
+        ("es", false) => "no terminado",
+        ("en", true) => "stopped, I was going round in circles",
+        ("en", false) => "not finished",
+        (_, true) => "arrêtée, je tournais en rond",
+        (_, false) => "pas terminée",
+    }
+}
+
+/// The person's line after a set-up turn that ended without a word (failed, out of time, cut).
+pub fn unfinished_line(lang: &str, site: &str) -> String {
+    match lang {
+        "de" => format!("Ich konnte auf {site} nicht fertig werden. Versuch es gleich noch einmal."),
+        "es" => format!("No he podido terminar en {site}. Inténtalo de nuevo en un momento."),
+        "en" => format!("I couldn't finish on {site}. Try again in a moment."),
+        _ => format!("Je n'ai pas pu finir sur {site}. Réessaie dans un moment."),
+    }
+}
+
+/// What a set-up turn came to.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SetUp {
+    /// Its reply.
+    Words(String),
+    /// The brake stopped it: its plain line (runs.rs `stop_looping`).
+    Stopped(String),
+    /// It ended without a word, or never started.
+    Unfinished,
+}
+
+/// One turn of the agent with `note` in the watcher's conversation (`started` told its run once Hermes took it).
+/// Returns that conversation (None: none could be opened) and what the turn came to.
 async fn setup_turn(
     state: &AppState,
     agent: &AgentConfig,
     conn: &Connector,
     note: String,
     started: impl FnOnce(&str),
-) -> Option<String> {
+) -> Option<(String, SetUp)> {
     let config = state.config();
     let pipeline = Pipeline::of(state);
     let kept = crate::watchers::load(&config, &agent.name, &conn.id).session;
@@ -468,24 +592,43 @@ async fn setup_turn(
     let mut turn = Turn::new(agent, Kind::Watcher, &session, note);
     turn.max_seconds = SETUP_MAX_SECONDS;
     turn.busy_wait = 120.0;
-    let ran = pipeline.run_then(&turn, started).await.ok().filter(|r| r.answered())?;
-    let shown = read_rehearsal(&ran.text).map(|(_, _, rest)| rest).unwrap_or_else(|| ran.text.clone());
-    if !shown.trim().is_empty() {
-        let delivery = Delivery {
-            agent: agent.clone(),
-            session,
-            key: format!("purchase:{}:{}", conn.id, py::uuid4_hex()),
-            title: conn.name.clone(),
-            text: shown,
-            as_written: false,
-            run_id: None,
-            notify: false,
-            files: Vec::new(),
-        };
-        pipeline.deliver(&delivery).await;
+    let came = match pipeline.run_then(&turn, started).await {
+        // the brake's line rather than the loop's last words
+        Ok(ran) if ran.stopped.is_some() => SetUp::Stopped(ran.stopped.unwrap_or_default()),
+        Ok(ran) if ran.answered() => SetUp::Words(ran.text),
+        Ok(ran) => {
+            tracing::info!(target: "bipbridge::urgent_pay", agent = %agent.name, watcher = %conn.id, status = %ran.status,
+                "set-up turn ended without a word");
+            SetUp::Unfinished
+        }
+        Err(why) => {
+            tracing::info!(target: "bipbridge::urgent_pay", agent = %agent.name, watcher = %conn.id, why = %why,
+                "set-up turn not run");
+            SetUp::Unfinished
+        }
+    };
+    tracing::info!(target: "bipbridge::urgent_pay", agent = %agent.name, watcher = %conn.id,
+        stopped = matches!(came, SetUp::Stopped(_)), "set-up turn done");
+    Some((session, came))
+}
+
+/// `text` for the person in the watcher's conversation `session` (a Boîte message, pushed when `notify`).
+async fn tell(state: &AppState, agent: &AgentConfig, conn: &Connector, session: String, text: String, notify: bool) {
+    if text.trim().is_empty() {
+        return;
     }
-    tracing::info!(target: "bipbridge::urgent_pay", agent = %agent.name, watcher = %conn.id, "set-up turn done");
-    Some(ran.text)
+    let delivery = Delivery {
+        agent: agent.clone(),
+        session,
+        key: format!("purchase:{}:{}", conn.id, py::uuid4_hex()),
+        title: conn.name.clone(),
+        text,
+        as_written: false,
+        run_id: None,
+        notify,
+        files: Vec::new(),
+    };
+    Pipeline::of(state).deliver(&delivery).await;
 }
 
 fn purchase_of(config: &Config, agent: &str, id: &str) -> ApiResult<(AgentConfig, Connector, Purchase)> {
@@ -499,11 +642,31 @@ fn purchase_of(config: &Config, agent: &str, id: &str) -> ApiResult<(AgentConfig
     Ok((agent, conn, purchase))
 }
 
+/// The first e-mail of the « Coordonnées » `agent` may read (one complete for a delivery first), and its entry's label.
+fn signup_email(state: &AppState, config: &Config, agent: &str) -> Option<(String, String)> {
+    let mut entries = state.vault.contacts_for(config, agent).unwrap_or_default();
+    entries.sort_by_key(|e| crate::vault_contacts::missing_for_delivery(&e.secret).len());
+    entries.iter().find_map(|e| {
+        let email = crate::vault_contacts::hermes_secret(&e.secret).get("email").map(py::py_str)?;
+        Some((e.label.clone(), email)).filter(|(_, m)| !m.trim().is_empty())
+    })
+}
+
 async fn account_route(State(state): State<AppState>, Path((agent, id)): Path<(String, String)>) -> ApiResult<Response> {
-    let (agent, conn, purchase) = purchase_of(&state.config(), &agent, &id)?;
-    let note = account_note(&purchase);
+    let config = state.config();
+    let (agent, conn, purchase) = purchase_of(&config, &agent, &id)?;
+    let email = signup_email(&state, &config, &agent.name);
+    let note = account_note(&purchase, email.as_ref().map(|(l, m)| (l.as_str(), m.as_str())));
+    let lang = crate::handback::language_of(&config, &agent);
     tokio::spawn(async move {
-        setup_turn(&state, &agent, &conn, note, |_| {}).await;
+        let Some((session, came)) = setup_turn(&state, &agent, &conn, note, |_| {}).await else { return };
+        // never silence: its words, the brake's line, or that it could not finish (pushed: they tapped and wait)
+        let (text, notify) = match came {
+            SetUp::Words(text) => (text, false),
+            SetUp::Stopped(line) => (line, true),
+            SetUp::Unfinished => (unfinished_line(&lang, &purchase.site), true),
+        };
+        tell(&state, &agent, &conn, session, text, notify).await;
     });
     Ok(web::json_response(202, &json!({"ok": true})))
 }
@@ -514,13 +677,24 @@ async fn rehearse_route(State(state): State<AppState>, Path((agent, id)): Path<(
     let Some(marked) = Rehearsal::start(&agent.name) else {
         return Err(HttpError::json(409, json!({"code": "rehearsal_running"})));
     };
-    let note = rehearsal_note(&purchase, &crate::handback::language_of(&config, &agent));
+    let lang = crate::handback::language_of(&config, &agent);
+    let note = rehearsal_note(&purchase, &lang);
     tokio::spawn(async move {
         // pay_with_card refused to the rehearsal's own turn only, from its start (`refuses_payment`)
-        let text = setup_turn(&state, &agent, &conn, note, |run| marked.running(run)).await;
-        let (ok, blocked) = match text.as_deref().and_then(read_rehearsal) {
-            Some((ok, blocked, _)) => (ok, blocked),
-            None => (false, String::new()),
+        let came = setup_turn(&state, &agent, &conn, note, |run| marked.running(run)).await;
+        // the verdict line is the app's: never shown, the person's words only (or a plain line of ours)
+        let (ok, blocked, said) = match came.as_ref().map(|(_, c)| c) {
+            Some(SetUp::Words(text)) => match read_rehearsal(text) {
+                Some((ok, blocked, rest)) if rest.is_empty() => {
+                    let line = rehearsal_line(&lang, &purchase.site, ok, &blocked);
+                    (ok, blocked, line)
+                }
+                Some((ok, blocked, rest)) => (ok, blocked, rest),
+                None => (false, String::new(), text.clone()),
+            },
+            Some(SetUp::Stopped(line)) => (false, cut_reason(&lang, true).to_string(), line.clone()),
+            Some(SetUp::Unfinished) => (false, cut_reason(&lang, false).to_string(), unfinished_line(&lang, &purchase.site)),
+            None => (false, cut_reason(&lang, false).to_string(), String::new()),
         };
         let config = state.config();
         crate::watchers::change(&config, &agent.name, &conn.id, |rt| {
@@ -528,6 +702,10 @@ async fn rehearse_route(State(state): State<AppState>, Path((agent, id)): Path<(
         });
         drop(marked); // its verdict kept first: the checklist never shows « never » in between
         tracing::info!(target: "bipbridge::urgent_pay", agent = %agent.name, watcher = %conn.id, ok, "rehearsal done");
+        if let Some((session, came)) = came {
+            let notify = !matches!(came, SetUp::Words(_));
+            tell(&state, &agent, &conn, session, said, notify).await;
+        }
     });
     Ok(web::json_response(202, &json!({"ok": true})))
 }
@@ -686,6 +864,74 @@ mod tests {
         drop(marked);
         assert!(!rehearsing("vie"));
         let note = rehearsal_note(&Purchase { site: "ticketmaster.fr".into(), what: "Billet".into(), cents: 4500, currency: "EUR".into() }, "fr");
-        assert!(note.contains("NEVER pay") && note.contains("45,00 €") && note.contains("REHEARSAL OK"));
+        assert!(note.contains("NEVER pay") && note.contains("45,00 €") && note.contains(REHEARSAL_OK));
+        assert!(note.contains(REHEARSAL_BLOCKED) && note.contains("never translated"));
+    }
+
+    #[test]
+    fn a_rehearsal_verdict_is_read_translated_and_never_shown() {
+        let ok = read_rehearsal;
+        // the code word, as asked
+        assert_eq!(ok("[REHEARSAL OK]\nTout est prêt."), Some((true, String::new(), "Tout est prêt.".into())));
+        assert_eq!(
+            ok("[REHEARSAL BLOCKED] le site demande un code par SMS\nIl faudra ton téléphone."),
+            Some((false, "le site demande un code par SMS".into(), "Il faudra ton téléphone.".into()))
+        );
+        assert_eq!(ok("[REHEARSAL BLOCKED: rupture de stock]"), Some((false, "rupture de stock".into(), String::new())));
+        // translated anyway (13/11, the lab: « RÉPÉTITION RÉUSSIE » from GLM-5.3 Flash), any case, accents or none
+        for line in [
+            "RÉPÉTITION RÉUSSIE",
+            "**Répétition réussie** ✅",
+            "[RÉPÉTITION OK]",
+            "Repetition : reussie",
+            "PROBE OK",
+            "Probedurchlauf erfolgreich",
+            "Die Probe ist erfolgreich",
+            "ENSAYO OK",
+            "Ensayo exitoso",
+            "rehearsal passed",
+            "REHEARSAL_OK",
+        ] {
+            let read = ok(&format!("{line}\nTout est prêt jusqu'au paiement."));
+            if line.starts_with("Die ") {
+                assert_eq!(read, None, "{line}: a sentence, not a verdict");
+                continue;
+            }
+            assert_eq!(read, Some((true, String::new(), "Tout est prêt jusqu'au paiement.".into())), "{line}");
+        }
+        for (line, why) in [
+            ("RÉPÉTITION BLOQUÉE : le site demande un SMS", "le site demande un SMS"),
+            ("Répétition — bloquée", ""),
+            ("PROBE BLOCKIERT: Captcha", "Captcha"),
+            ("Ensayo bloqueado: sin stock", "sin stock"),
+            ("**[RÉPÉTITION ÉCHOUÉE : connexion refusée]**", "connexion refusée"),
+        ] {
+            assert_eq!(ok(&format!("{line}\nDésolé.")), Some((false, why.into(), "Désolé.".into())), "{line}");
+        }
+        // the verdict at the end: still read, still not shown
+        assert_eq!(
+            ok("Je suis allé jusqu'au formulaire de carte.\n\n[REHEARSAL OK]"),
+            Some((true, String::new(), "Je suis allé jusqu'au formulaire de carte.".into()))
+        );
+        // words that only look like one are the person's
+        assert_eq!(ok("La répétition est terminée, tout va bien."), None);
+        assert_eq!(ok("Répétitions OK pour demain"), None);
+        // a reply that is only its verdict: a plain line of ours
+        assert_eq!(rehearsal_line("fr", "shop.example", true, ""), "Répétition faite sur shop.example : tout est prêt jusqu'au paiement.");
+        assert_eq!(rehearsal_line("fr", "shop.example", false, "code SMS"), "Répétition bloquée sur shop.example : code SMS.");
+        assert_eq!(rehearsal_line("en", "shop.example", false, "SMS code"), "Rehearsal blocked on shop.example: SMS code.");
+        assert_eq!(rehearsal_line("de", "shop.example", false, ""), "Probe auf shop.example blockiert.");
+    }
+
+    #[test]
+    fn the_account_note_names_the_email_and_keeps_out_of_the_carnet() {
+        let purchase = Purchase { site: "shop.example".into(), what: "T-shirt".into(), cents: 0, currency: "EUR".into() };
+        let note = account_note(&purchase, Some(("Maison", "camille@example.org")));
+        assert!(note.contains("sign up with their e-mail camille@example.org, from their « Coordonnées » « Maison »"), "{note}");
+        assert!(note.contains("never look for their details in the Carnet") && note.contains("vault_contact_details"));
+        assert!(note.contains("vault_create_login") && note.contains("no ask_secret") && !note.contains("tool_search"));
+        let note = account_note(&purchase, None);
+        assert!(note.contains("have no e-mail: ask them for one"), "{note}");
+        assert_eq!(unfinished_line("fr", "shop.example"), "Je n'ai pas pu finir sur shop.example. Réessaie dans un moment.");
     }
 }

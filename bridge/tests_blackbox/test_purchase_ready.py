@@ -4,10 +4,13 @@ account (a login of the vault for that site, one the agent may use), the « Coor
 only there), the card ready for that site and price, the rehearsal. Its actions:
 
 - `POST …/connectors/<id>/purchase/account`: one turn of the agent in the watcher's conversation, told to create the
-  account with vault_create_login and to fill from the « Coordonnées », buying nothing;
+  account with vault_create_login and to fill from the « Coordonnées » (their e-mail named, never the Carnet), buying
+  nothing;
 - `POST …/connectors/<id>/purchase/rehearse`: one turn up to the payment page without paying; pay_with_card is refused
-  to that agent meanwhile, a second rehearsal too; its verdict (REHEARSAL OK / BLOCKED: …) is kept for the checklist,
-  its words for the person go to the conversation without the verdict line;
+  to that agent meanwhile, a second rehearsal too; its verdict (a code word, [REHEARSAL OK] / [REHEARSAL BLOCKED] …,
+  read translated too) is kept for the checklist, its words for the person go to the conversation without the verdict
+  line;
+- a set-up turn the brake stops, or that ends without a word, still leaves the person a plain line there (pushed);
 - `POST /v1/agents/<a>/urgent-test`: « Faire un essai », the urgent payment's push marked test, no card.
 
 Only the payment networks' published test numbers are used."""
@@ -16,7 +19,7 @@ import json
 import threading
 import time
 
-from bbkit.common import AUTH, boite_items
+from bbkit.common import AUTH, boite_items, sse
 from bbkit.servers import wait_until
 from conftest import profile, wait_registered
 from test_card_payments import CARD, PAY
@@ -194,7 +197,8 @@ def test_a_rehearsal_never_pays_and_its_verdict_is_kept(bridges, fakes):
     [(run, turn)] = purchase_turns(fakes).items()
     note = turn["input"]
     assert "A rehearsal your person asked for: go once through shop.example" in note and "€45.00" in note
-    assert "NEVER pay: pay_with_card is refused during a rehearsal" in note and "REHEARSAL OK" in note
+    assert "NEVER pay: pay_with_card is refused during a rehearsal" in note and "[REHEARSAL OK]" in note
+    assert "a code word for the app, never translated" in note
     assert step(bridge, conn, "rehearsal")["state"] == "running"
     time.sleep(1)   # the bridge learns the run's id as Hermes answers its start
     # meanwhile: never a payment from the rehearsal's turn (refused before the person is asked), never a second one
@@ -231,6 +235,84 @@ def test_a_rehearsal_never_pays_and_its_verdict_is_kept(bridges, fakes):
     assert wait_until(lambda: "J'ai regardé le site." in said(bridge), timeout=30)
     assert wait_until(lambda: step(bridge, conn, "rehearsal")["blocked"] == "", timeout=10)
     assert step(bridge, conn, "rehearsal")["state"] == "blocked"
+
+
+def test_a_rehearsal_verdict_translated_is_read_and_never_shown(bridges, fakes):
+    """13/11, the cards lab: GLM-5.3 Flash wrote « RÉPÉTITION RÉUSSIE » once in three; the checklist said « Répétition
+    bloquée » with no reason and the person got the raw text. Now the code word is never translated, its translations
+    are read anyway, and the verdict line never reaches the person."""
+    bridge, conn, _ = setup(bridges, fakes)
+    rehearse = f"/v1/agents/vie/connectors/{conn['id']}/purchase/rehearse"
+    fakes.hermes.rounds = 1
+    fakes.hermes.run_output = "**RÉPÉTITION RÉUSSIE**\nTout est prêt jusqu'à la page de paiement."
+    assert bridge.post(rehearse, headers=AUTH).status_code == 202
+    assert wait_until(lambda: step(bridge, conn, "rehearsal")["state"] == "ok", timeout=30)
+    assert wait_until(lambda: said(bridge), timeout=20)
+    assert said(bridge) == ["Tout est prêt jusqu'à la page de paiement."]
+    # blocked, in German, the verdict at the end of the reply
+    fakes.hermes.run_output = "Der Shop verlangt einen SMS-Code.\n\nPROBE BLOCKIERT: SMS-Code"
+    assert wait_until(lambda: bridge.post(rehearse, headers=AUTH).status_code == 202, timeout=20)
+    assert wait_until(lambda: step(bridge, conn, "rehearsal").get("blocked") == "SMS-Code", timeout=30)
+    assert wait_until(lambda: len(said(bridge)) == 2, timeout=20)
+    assert said(bridge)[-1] == "Der Shop verlangt einen SMS-Code."
+    # only the code word: a plain line of the bridge, never the code word
+    fakes.hermes.run_output = "[REHEARSAL OK]"
+    assert wait_until(lambda: bridge.post(rehearse, headers=AUTH).status_code == 202, timeout=20)
+    assert wait_until(lambda: step(bridge, conn, "rehearsal")["state"] == "ok", timeout=30)
+    assert wait_until(lambda: len(said(bridge)) == 3, timeout=20)
+    assert "shop.example" in said(bridge)[-1] and said(bridge)[-1].startswith(("Répétition faite", "Rehearsal done"))
+    assert not [t for t in said(bridge) if "REHEARSAL OK" in t.upper() or "RÉPÉTITION RÉUSSIE" in t.upper()
+                or "BLOCKIERT" in t.upper()]
+
+
+def notebook_loop(run_id, count):
+    # the cards lab's account turn, 13/11: the person's e-mail looked for in the Carnet, search after search
+    return ([sse("tool.started", run_id=run_id, tool="mcp_bipagents_notebook_search", preview=f"e-mail {i}")
+             for i in range(count)]
+            + [sse("run.completed", run_id=run_id, output="Je cherche encore ton e-mail.")])
+
+
+def test_a_set_up_turn_the_brake_stops_still_tells_its_person(bridges, fakes):
+    """13/11, the cards lab: « Créer un compte », the agent searched the Carnet for the person's e-mail until the brake
+    stopped its turn, and the person got nothing. Now the note names the e-mail of their « Coordonnées » and keeps the
+    agent out of the Carnet, and whatever the brake cuts, its plain line lands in the watcher's conversation, pushed."""
+    bridge, conn, _ = setup(bridges, fakes)
+    vault_item(bridge, {**HOME, "emails": ["camille@example.org"]})
+    account = f"/v1/agents/vie/connectors/{conn['id']}/purchase/account"
+    run = f"r{len(fakes.hermes.started) + 1}"
+    fakes.hermes.runs[run] = notebook_loop(run, 30)
+    fakes.hermes.rounds = 10**6   # the turn goes on until the brake stops it
+    assert bridge.post(account, headers=AUTH).status_code == 202
+    assert wait_until(lambda: purchase_turns(fakes), timeout=20)
+    note = purchase_turns(fakes)[run]["input"]
+    assert "sign up with their e-mail camille@example.org, from their « Coordonnées » « Perso »" in note, note
+    assert "never look for their details in the Carnet, your memory or your files" in note
+    assert "tool_search" not in note
+    assert wait_until(lambda: fakes.hermes.started[run]["status"] == "cancelled", timeout=30), "stopped by the brake"
+    assert wait_until(lambda: said(bridge), timeout=30)
+    [line] = said(bridge)
+    assert line.startswith(("Je me suis arrêté", "I stopped")) and ("Carnet" in line or "Notebook" in line), line
+    assert "Je cherche encore" not in line
+    item = next(i for i in boite_items(bridge) if i["title"] == "Billets Stromae")
+    assert wait_until(lambda: [p for p in fakes.apns.payloads() if p.get("m") == f"o_{item['id']}"], timeout=20), \
+        "pushed: they tapped « Créer un compte » and wait"
+
+    # a rehearsal the brake stops: blocked, its reason plain, the brake's line for the person
+    run = f"r{len(fakes.hermes.started) + 1}"
+    fakes.hermes.runs[run] = notebook_loop(run, 30)
+    assert bridge.post(f"/v1/agents/vie/connectors/{conn['id']}/purchase/rehearse", headers=AUTH).status_code == 202
+    assert wait_until(lambda: step(bridge, conn, "rehearsal")["state"] == "blocked", timeout=40)
+    assert step(bridge, conn, "rehearsal")["blocked"] in ("arrêtée, je tournais en rond", "stopped, I was going round in circles")
+    assert wait_until(lambda: len(said(bridge)) == 2, timeout=20)
+    assert said(bridge)[-1].startswith(("Je me suis arrêté", "I stopped"))
+
+    # a turn that ends without a word (out of time, failed): never silence either
+    run = f"r{len(fakes.hermes.started) + 1}"
+    fakes.hermes.run_info[run] = {"status": "failed", "output": ""}
+    assert bridge.post(account, headers=AUTH).status_code == 202
+    assert wait_until(lambda: len(said(bridge)) == 3, timeout=40)
+    assert said(bridge)[-1] in ("Je n'ai pas pu finir sur shop.example. Réessaie dans un moment.",
+                                "I couldn't finish on shop.example. Try again in a moment.")
 
 
 def test_a_test_alert_is_the_urgent_payment_push_marked_test(bridges, fakes):

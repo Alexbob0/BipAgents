@@ -173,6 +173,9 @@ pub struct Ran {
     /// Its final reply.
     pub text: String,
     pub tokens: i64,
+    /// The brake stopped it (runs.rs `stop_looping`): its plain line, what the person is told when the turn's own
+    /// words never come (`Pipeline::tell_stopped`).
+    pub stopped: Option<String>,
 }
 
 impl Ran {
@@ -446,7 +449,31 @@ impl Pipeline {
         let tokens = self.tokens(agent, run_id, session, end.usage.as_ref(), before).await;
         tracing::info!(target: "bipbridge::background_turn", agent = %agent.name, run_id = %run_id, status = %status,
             tokens = tokens, "background turn ended");
-        Ran { run_id: run_id.to_string(), session: session.to_string(), status, text, tokens }
+        let stopped = self.hub.as_ref().and_then(|h| h.brake_said(&agent.name, run_id));
+        Ran { run_id: run_id.to_string(), session: session.to_string(), status, text, tokens, stopped }
+    }
+
+    /// A turn the brake stopped whose person gets no other word (a set-up turn, a routine run by its link, the turn
+    /// after a call, a card's answer told): the brake's plain line in its conversation, as a Boîte message, pushed
+    /// (13/11: « Créer un compte » cut by the brake left the person with nothing). False: not stopped by the brake, or
+    /// nothing could be put there.
+    pub async fn tell_stopped(&self, agent: &AgentConfig, ran: &Ran, title: &str, key: &str) -> bool {
+        let Some(text) = ran.stopped.clone().filter(|t| !t.trim().is_empty()) else { return false };
+        let delivery = Delivery {
+            agent: agent.clone(),
+            session: ran.session.clone(),
+            key: format!("{key}:stopped:{}", ran.run_id),
+            title: title.to_string(),
+            text,
+            as_written: false,
+            run_id: None,
+            notify: true,
+            files: Vec::new(),
+        };
+        let told = self.deliver(&delivery).await;
+        tracing::info!(target: "bipbridge::background_turn", agent = %agent.name, run_id = %ran.run_id, told,
+            "a turn the brake stopped: its line told");
+        told
     }
 
     /// Starts the turn and follows it to its end.
@@ -540,6 +567,7 @@ mod tests {
             status: status.into(),
             text: text.into(),
             tokens: 0,
+            stopped: None,
         };
         assert!(ran("completed", "ok").answered() && ran("gone", "ok").answered());
         assert!(!ran("completed", "").answered() && !ran("timeout", "").answered() && !ran("failed", "x").answered());
