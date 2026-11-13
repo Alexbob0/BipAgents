@@ -866,6 +866,23 @@ mod tests {
     }
 
     #[test]
+    fn a_drop_down_list_is_picked_without_looking_for_its_tool() {
+        // 13/11 (sign-up bench on a copy of a shop's page, birth date in three <select>s): select_option behind the
+        // search, the agents typed into the lists or called get_page_content with {selector, value}; GLM-5.3 Flash
+        // got 2 accounts accepted out of 9
+        let tools = names(&["calendar_add", "create_page"]);
+        for kind in crate::souls::CATEGORIES.iter().chain(["guide", "custom"].iter()) {
+            let with = diet(kind, &tools, true, false, false);
+            assert!(with.defer.contains(&"!mcp__stealth__select_option".to_string()), "{kind}");
+            let without = diet(kind, &tools, false, false, false);
+            assert!(!without.defer.iter().any(|n| n.ends_with("select_option")), "{kind}");
+        }
+        // among the common tools at its sorted place, so every browsing agent's tool list starts the same
+        let at = COMMON_FIRST.iter().position(|n| *n == "mcp__stealth__select_option");
+        assert!(at.is_some_and(|i| COMMON_FIRST[i - 1] < COMMON_FIRST[i] && COMMON_FIRST[i] < COMMON_FIRST[i + 1]));
+    }
+
+    #[test]
     fn mail_read_comes_with_mail_search() {
         // 2026-10-29 (real-day bench, GLM-5.3 Flash): mail_read behind the search, mail_search called again and again
         let mail = names(&["notebook_search", "mail_search", "mail_read", "mail_draft"]);
