@@ -483,6 +483,13 @@ pub struct SubscriptionState {
     pub capped: bool,
     /// The reply's `MEDIA:` lines, out of what the apps get (media.rs).
     pub media: crate::media::MediaFilter,
+    /// The turn did something (a call that changes things, a card asked): a message sent now goes in at its next
+    /// step, never cutting it (turn_restart.rs).
+    pub acted: bool,
+    /// The person's words this run was stopped for, to start again with at its end (`restart`).
+    pub restart: Option<crate::turn_restart::Plan>,
+    /// The run that took over from this one (`restart`): this one is no longer the conversation's run.
+    pub restarted_as: Option<String>,
     listeners: Vec<Slot>,
     cancel: Option<CancellationToken>,
     task: Option<JoinHandle<()>>,
@@ -535,6 +542,9 @@ impl Default for SubscriptionState {
             cost_limit: None,
             capped: false,
             media: Default::default(),
+            acted: false,
+            restart: None,
+            restarted_as: None,
             listeners: Vec::new(),
             cancel: None,
             task: None,
@@ -561,6 +571,16 @@ impl RunSubscription {
 
     pub fn key(&self) -> (String, String) {
         (self.agent.name.clone(), self.run_id.clone())
+    }
+
+    /// The turn did something already (turn_restart.rs): a call that changes things, a card asked.
+    pub fn acted(&self) -> bool {
+        lock(&self.state).acted
+    }
+
+    /// The run is to start again with the person's new words at its end (`RunHub::interrupt`).
+    pub fn restarting(&self) -> bool {
+        lock(&self.state).restart.is_some()
     }
 
     /// Listeners showing the run to the user (voice WebSocket, app SSE).
@@ -989,7 +1009,11 @@ impl RunHub {
         let inner = lock(&self.inner);
         inner.subs.values().find_map(|sub| {
             let st = lock(&sub.state);
-            (sub.agent.name == agent && !st.finished && st.terminal.is_none() && st.session_id.as_deref() == Some(session_id))
+            (sub.agent.name == agent
+                && !st.finished
+                && st.terminal.is_none()
+                && st.restarted_as.is_none()
+                && st.session_id.as_deref() == Some(session_id))
                 .then(|| (sub.run_id.clone(), st.followed_since))
         })
     }
@@ -1262,6 +1286,8 @@ impl RunHub {
                                 let event = if terminal {
                                     self.flush_media(sub);
                                     self.rescue(sub, &event).await;
+                                    // a turn stopped for the person's new words: the end of the one restarted
+                                    let event = self.restart(sub, event).await;
                                     // a turn the brake stopped: its rescue turn's end instead (loop_rescue)
                                     let event = self.loop_rescue(sub, event).await;
                                     // what the turn made and the files its reply cites, as attachments
@@ -1466,6 +1492,11 @@ impl RunHub {
             if browser_tool(tool) {
                 st.used_browser = true;
             }
+            if !crate::turn_restart::read_only(&crate::loop_brake::event_tool(&event.data)) {
+                st.acted = true;
+            }
+        } else if matches!(kind, "approval.request" | "clarify.request" | SUBAGENT_START) {
+            st.acted = true;
         }
         if kind == "approval.request" {
             self.on_approval(&mut inner, sub, &mut st, &event);
@@ -1728,6 +1759,127 @@ impl RunHub {
                 tracing::warn!(agent = %agent.name, run_id = %run_id, error = %err, "going round in circles: stop refused");
             }
         });
+    }
+
+    /// The person wrote again while this conversation turn goes on (threads/send.rs): when it did nothing yet (it
+    /// only thought, wrote, or read: turn_restart.rs), it is to start again with the new words (`plan`), and the caller
+    /// stops it now. False when it acted already (the words go in at its next step: Hermes' steer), when it is not a
+    /// turn the person started (a routine's, a task's, a room's, a rescue), or when it already is to start again (the
+    /// words wait for the turn after).
+    pub fn interrupt(&self, agent: &str, run_id: &str, plan: crate::turn_restart::Plan) -> bool {
+        let Some(sub) = self.subscription(agent, run_id) else { return false };
+        let mut st = lock(&sub.state);
+        let person_turn = st.session_id.is_some()
+            && !st.unattended
+            && !st.background
+            && st.room_id.is_none()
+            && st.rescue_of.is_none()
+            && st.loop_rescue.is_none()
+            && !st.braked
+            && !st.capped
+            && st.token_limit.is_none()
+            && st.cost_limit.is_none();
+        if st.finished || st.terminal.is_some() || st.acted || !person_turn || st.restart.is_some() {
+            return false;
+        }
+        st.restart = Some(plan);
+        tracing::info!(agent = %agent, run_id = %run_id, "restart: new words before the turn did anything, it starts again");
+        true
+    }
+
+    /// The plan of `interrupt` withdrawn (the stop could not be asked): the words go the usual way.
+    pub fn withdraw_restart(&self, agent: &str, run_id: &str) -> Option<crate::turn_restart::Plan> {
+        let sub = self.subscription(agent, run_id)?;
+        let mut st = lock(&sub.state);
+        st.restart.take()
+    }
+
+    /// A run stopped for the person's new words (`interrupt`) ended: the same conversation's next turn starts at once
+    /// with them, told its answer was cut (`turn_restart::NOTE`; only the next message when the run ended by itself
+    /// meanwhile). Like the brake's rescue turn, its events go on in this run's stream after a `loop_rescue_started`
+    /// notice with its run id (`reason: restarted`; the apps adopt it, nothing shown), and its end is this run's
+    /// end (« reply ready », the queue). This run is no longer the conversation's (`restarted_as`): a stop, a steer or
+    /// another message goes to the new one. Hermes refusing the start: the words wait first in line in the queue.
+    async fn restart(self: &Arc<Self>, sub: &Arc<RunSubscription>, terminal: SSEEvent) -> SSEEvent {
+        let (plan, session, watched, phone, since) = {
+            let mut st = lock(&sub.state);
+            (st.restart.take(), st.session_id.clone(), st.watched, st.phone.clone(), st.followed_since)
+        };
+        let (Some(plan), Some(session)) = (plan, session) else { return terminal };
+        let agent = sub.agent.clone();
+        let cut = matches!(terminal.r#type.as_str(), "run.cancelled" | "run.canceled" | "run.interrupted");
+        let input = plan.input(cut);
+        let mut started = None;
+        // Hermes may still be closing the stopped turn (the conversation busy for a moment)
+        for attempt in 0..5u64 {
+            match self
+                .hermes
+                .start_run_input(&agent, input.clone(), &session, plan.instructions.as_deref(), plan.options.clone())
+                .await
+            {
+                Ok(id) if crate::app::RUN_ID.is_match(&id) => {
+                    started = Some(id);
+                    break;
+                }
+                Ok(_) => break,
+                Err(err) => {
+                    tracing::info!(agent = %agent.name, run_id = %sub.run_id, error = %err, attempt = attempt,
+                        "restart: new turn not started yet");
+                    if attempt < 4 {
+                        tokio::time::sleep(Duration::from_millis(400 * (attempt + 1))).await;
+                    }
+                }
+            }
+        }
+        let Some(next) = started else {
+            tracing::warn!(agent = %agent.name, run_id = %sub.run_id, "restart: no new turn, the words wait in line");
+            if let Some(queues) = self.queues.get().and_then(std::sync::Weak::upgrade) {
+                let sent = crate::msg_queue::Sent {
+                    client_id: plan.client_id.clone(),
+                    input: Some(input),
+                    phone: plan.phone.clone().or(phone.clone()),
+                    ..crate::msg_queue::Sent::default()
+                };
+                if queues.add_first(&agent, &session, &plan.said, sent).is_err() {
+                    tracing::warn!(agent = %agent.name, "restart: the queue is full, the words are lost");
+                }
+            }
+            return terminal;
+        };
+        tracing::info!(agent = %agent.name, run_id = %sub.run_id, next = %next, cut = cut, "restart: new turn started");
+        if crate::turn_thinking::thought(plan.options.as_ref()) {
+            crate::turn_thinking::thinking_run(&next);
+        }
+        {
+            let mut inner = lock(&self.inner);
+            let restarted = self.get_or_start(&mut inner, &agent, &next);
+            let mut st = lock(&restarted.state);
+            st.kept = true;
+            st.watched = watched;
+            st.end_push = false; // this run's end tells it
+            st.session_id = Some(session.clone());
+            st.phone = plan.phone.clone().or(phone);
+            st.followed_since = since; // the turn's clocks (the safety net's, the working line's) from its start
+            drop(st);
+            lock(&sub.state).restarted_as = Some(next.clone());
+        }
+        let mut listener = self.subscribe(&agent, &next, "forward", false);
+        let mut data = Map::new();
+        data.insert("type".into(), json!(NOTICE));
+        data.insert("code".into(), json!("loop_rescue_started"));
+        data.insert("reason".into(), json!("restarted"));
+        data.insert("run_id".into(), json!(next));
+        let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+        self.forward(sub, &SSEEvent::new(NOTICE, data, raw));
+        let end = loop {
+            match listener.next().await {
+                Some(event) if is_terminal(&event.r#type) => break Some(event),
+                Some(event) => self.forward(sub, &event),
+                None => break None,
+            }
+        };
+        listener.close();
+        end.unwrap_or(terminal)
     }
 
     /// The brake's rescue turn (2026-10-28, loop_brake.rs; Alex: a bare « I stopped » helps nobody): a person's
@@ -2691,6 +2843,65 @@ mod tests {
         assert_eq!(hub.session_run_since("vie", "api_bot"), Some(("run_1".into(), since)));
         assert_eq!(hub.session_run("vie", "api_bot").as_deref(), Some("run_1"));
         assert_eq!(hub.session_run_since("vie", "api_other"), None);
+    }
+
+    /// turn_restart.rs: a person's turn that did nothing yet is to start again with new words; one that acted, a
+    /// routine's, or one already restarting is not; a restarted run is no longer its conversation's run.
+    #[test]
+    fn new_words_restart_a_turn_only_before_it_acted() {
+        let hub = RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None);
+        let agent = AgentConfig { name: "vie".into(), ..Default::default() };
+        let add = |run: &str, session: &str, change: &dyn Fn(&mut SubscriptionState)| {
+            let sub = Arc::new(RunSubscription::new(agent.clone(), run));
+            {
+                let mut st = lock(&sub.state);
+                st.session_id = Some(session.into());
+                change(&mut st);
+            }
+            lock(&hub.inner).subs.insert(sub.key(), sub.clone());
+            sub
+        };
+        let plan = || crate::turn_restart::Plan { said: "Seulement les publiques".into(), ..Default::default() };
+        let thinking = add("r1", "api_1", &|_| {});
+        assert!(hub.interrupt("vie", "r1", plan()));
+        assert!(thinking.restarting());
+        assert!(!hub.interrupt("vie", "r1", plan()), "already to start again: the next words wait");
+        assert_eq!(hub.withdraw_restart("vie", "r1").map(|p| p.said), Some("Seulement les publiques".into()));
+        assert!(!thinking.restarting());
+        lock(&thinking.state).acted = true;
+        assert!(!hub.interrupt("vie", "r1", plan()), "it acted: steered at its next step");
+        add("r2", "api_2", &|st| st.unattended = true);
+        assert!(!hub.interrupt("vie", "r2", plan()), "a routine's turn is never cut");
+        add("r3", "api_3", &|st| st.room_id = Some("room".into()));
+        assert!(!hub.interrupt("vie", "r3", plan()));
+        assert!(!hub.interrupt("vie", "unknown", plan()));
+        // r5 restarted as r4: r4 is the conversation's run now
+        let cut = add("r5", "api_5", &|_| {});
+        assert_eq!(hub.session_run("vie", "api_5").as_deref(), Some("r5"));
+        add("r4", "api_5", &|_| {});
+        lock(&cut.state).restarted_as = Some("r4".into());
+        assert_eq!(hub.session_run("vie", "api_5").as_deref(), Some("r4"));
+    }
+
+    /// What makes a turn « acted » as its events come (dispatch).
+    #[tokio::test]
+    async fn a_call_that_changes_things_or_a_card_marks_the_turn_acted() {
+        let hub = RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None);
+        let agent = AgentConfig { name: "vie".into(), ..Default::default() };
+        let event = |kind: &str, data: Value| SSEEvent::new(kind, data.as_object().cloned().unwrap_or_default(), "");
+        for (events, acted) in [
+            (vec![event("reasoning.delta", json!({"text": "hmm"})), event("message.delta", json!({"delta": "Voici"}))], false),
+            (vec![event("tool.started", json!({"tool": "web_search"})), event("tool.completed", json!({"tool": "web_search"}))], false),
+            (vec![event("tool.started", json!({"tool": "mcp__bipagents__mail_send"}))], true),
+            (vec![event("approval.request", json!({"command": "ls"}))], true),
+        ] {
+            let sub = Arc::new(RunSubscription::new(agent.clone(), "r1"));
+            lock(&sub.state).session_id = Some("api_bot".into());
+            for e in events {
+                hub.dispatch(&sub, e);
+            }
+            assert_eq!(sub.acted(), acted);
+        }
     }
 
     #[tokio::test]

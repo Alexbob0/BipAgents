@@ -43,8 +43,9 @@ domaine, avec les modules (`bridge-rs/src/<nom>.rs`) qui le font, et ce qu'il la
   voient jamais ; `relay.rs` et le [`relay/`](../relay/) séparé transmettent les notifications de toutes les
   installations. `runs.rs` transforme une approbation que personne ne regarde en notification ; `agent_notify.rs`
   règle cela par agent ; `live_activities.rs` affiche un long travail sur l'écran verrouillé et la Dynamic Island.
-- **Messages pendant le travail.** `msg_queue.rs` : un message envoyé pendant que l'agent travaille entre dans le tour en
-  cours (le steer de Hermes, après ses appels d'outils du moment) ; « Après » le garde plutôt dans la file de l'agent, sur le
+- **Messages pendant le travail.** `msg_queue.rs`, `turn_restart.rs` : un message envoyé pendant que l'agent réfléchit,
+  écrit ou lit seulement relance son tour avec les deux messages (une seule réponse aux deux) ; une fois qu'il a agi
+  (envoyé, écrit, payé…), le message entre dans le tour en cours (le steer de Hermes, après ses appels d'outils du moment) ; « Après » le garde plutôt dans la file de l'agent, sur le
   pont, la même sur tous les appareils, lancée comme tour suivant à la fin du travail (ordre, retrait, envoi immédiat,
   pause), une seule notification à la fin.
 - **Rien de perdu.** `outbox.rs` et `cronwatch.rs` mettent les messages des agents et la réponse de chaque routine dans

@@ -43,8 +43,9 @@ solo programa en Rust, `bipbridge`). Esta página recoge lo que añade, área po
   `relay.rs` y el [`relay/`](../relay/) aparte reenvían los avisos de todas las instalaciones. `runs.rs` convierte en
   notificación una aprobación que nadie mira; `agent_notify.rs` lo ajusta por agente; `live_activities.rs` muestra un
   trabajo largo en la pantalla de bloqueo y la Dynamic Island.
-- **Mensajes durante el trabajo.** `msg_queue.rs`: un mensaje enviado mientras el agente trabaja entra en el turno en
-  curso (el steer de Hermes, tras sus llamadas a herramientas del momento); « Después » lo guarda en la cola del agente, en
+- **Mensajes durante el trabajo.** `msg_queue.rs`, `turn_restart.rs`: un mensaje enviado mientras el agente solo piensa,
+  escribe o lee reinicia su turno con los dos mensajes (una sola respuesta a ambos); si ya actuó (envió, escribió,
+  pagó…), entra en el turno en curso (el steer de Hermes, tras sus llamadas a herramientas del momento); « Después » lo guarda en la cola del agente, en
   el puente, igual en todos los dispositivos, lanzado como siguiente turno al terminar (orden, quitar, enviar ahora,
   pausa), una sola notificación al final.
 - **Nada se pierde.** `outbox.rs` y `cronwatch.rs` guardan los mensajes de los agentes y la respuesta de cada rutina en
