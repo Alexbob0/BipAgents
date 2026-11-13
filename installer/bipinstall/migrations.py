@@ -186,12 +186,36 @@ def clarify_hour(runner: hermes.Runner, home: Path) -> str:
     return f"a question waits an hour for your answer ({count} Hermes)"
 
 
+def hub_key(runner: hermes.Runner, home: Path) -> str:
+    """The hub's own key again (2026-11-13): an install made between 10/11 and 13/11 got « clarify.timeout » as its
+    hub's API_SERVER_KEY (setup_hub's clarify loop reused the name `key`), which Hermes 0.23 refuses (shorter than
+    16): its API server never started, so none of its agents was ever served (a claim answered 502 « the setup could
+    not finish »). Such a key, or none, is replaced by a new random one in ~/.hermes/.env, then the gateway restarted
+    to listen. Nothing else reads the hub's key (the agents have their own); a good key is left as it is."""
+    env = home / ".hermes" / ".env"
+    if not (home / ".hermes" / "config.yaml").is_file():
+        return "no Hermes of its own here: nothing to do"
+    current = ""
+    if env.is_file():
+        for line in env.read_text(encoding="utf-8", errors="replace").splitlines():
+            name, _, value = line.partition("=")
+            if name.strip().removeprefix("export ").strip() == "API_SERVER_KEY":
+                current = value.strip().strip("'\"")
+    if len(current) >= 16 and current not in {name for name, _ in hermes.CLARIFY_WAIT}:
+        return "the hub's key is its own already"
+    hermes.write_env_file(runner, env, "API_SERVER_KEY", hermes.new_key())
+    for unit in GATEWAY_UNITS:
+        runner.run(["systemctl", "--user", "try-restart", unit], check=False)
+    return "the hub's key made again: its agents are served (gateway restarted)"
+
+
 # In order; an id never changes once released. The ones from 2026-10-15 to 2026-11-02 left on 2026-11-04 (every
 # install had them from that day's release): their code is in git history.
 MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
     ("2026-11-04-push-relay-service", push_relay_service),
     ("2026-11-10-clarify-hour", clarify_hour),
     ("2026-11-12-push-service-everywhere", push_service_everywhere),
+    ("2026-11-13-hub-key", hub_key),
 ]
 
 # BipAgents' own settings (bridge.toml), never the person's Hermes: applied on an install over their own Hermes too.
