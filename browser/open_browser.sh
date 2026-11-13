@@ -47,4 +47,32 @@ if [ $# -eq 0 ]; then
         --disable-features=IsolateOrigins,site-per-process "$@" --no-sandbox \
         "--remote-debugging-host=127.0.0.1" "--remote-debugging-port=$port" "--user-data-dir=$profile"
 fi
+
+# Chrome reads only its last --disable-features: every one given (nodriver's own, the container's in
+# STEALTH_BROWSER_ARGS, where the bridge puts its own) merged into one, with WebUIOmniboxPopup. Chrome 157 lists its
+# address bar's suggestion popup (chrome://omnibox-popup.top-chrome/) as a page with no window of its own, which the
+# agent's server took for its tab once the first tab was closed: every call then failed (13/11).
+features=""
+add_features() {   # a comma-separated list: each feature once, in order
+    old_ifs=$IFS
+    IFS=,
+    set -f
+    for feature in $1; do
+        case ",$features," in
+            *",$feature,"*) ;;
+            *) [ -z "$feature" ] || features="${features:+$features,}$feature" ;;
+        esac
+    done
+    IFS=$old_ifs
+    set +f
+}
+for arg do
+    shift
+    case $arg in
+        --disable-features=*) add_features "${arg#--disable-features=}" ;;
+        *) set -- "$@" "$arg" ;;
+    esac
+done
+add_features WebUIOmniboxPopup
+set -- "$@" "--disable-features=$features"
 exec "$chrome" "$@" >/tmp/open-browser.log 2>&1

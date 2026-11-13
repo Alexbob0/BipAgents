@@ -110,8 +110,25 @@ static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
         .unwrap_or_default()
 });
 
-/// The page tabs of the Chrome behind `port`, most recently active first (Chrome's own order). `token`: the
-/// person's hold, which the container's relay lets through.
+/// Chrome's own UI drawn as a web page (« top-chrome » WebUI): its address bar's suggestion popup
+/// (`chrome://omnibox-popup.top-chrome/`, a `page` target since Chrome 157, with no window of its own), tab search,
+/// the side panels (`chrome-untrusted://…top-chrome/`). Never a tab of the agent: not shown, read, closed or blanked.
+/// The browser image starts Chrome without the popup page (browser/open_browser.sh); an older one still has it, and
+/// on 13/11 « Bureau » showed a tab « null » there once the agent's first tab was closed.
+pub fn chrome_ui(url: &str) -> bool {
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return false;
+    };
+    if !scheme.eq_ignore_ascii_case("chrome") && !scheme.eq_ignore_ascii_case("chrome-untrusted") {
+        return false;
+    }
+    let host = rest.split(['/', '?', '#', ':']).next().unwrap_or_default();
+    host.to_ascii_lowercase().ends_with(".top-chrome")
+}
+
+/// The page tabs of the Chrome behind `port`, most recently active first (Chrome's own order), neither DevTools,
+/// an extension's page nor Chrome's own UI (`chrome_ui`). `token`: the person's hold, which the container's relay lets
+/// through.
 pub async fn tabs(port: u16, token: Option<&str>) -> Result<Vec<Tab>, String> {
     let mut request = HTTP.get(format!("http://127.0.0.1:{port}/json/list"));
     if let Some(secret) = crate::browsers::devtools_secret(port) {
@@ -128,7 +145,7 @@ pub async fn tabs(port: u16, token: Option<&str>) -> Result<Vec<Tab>, String> {
         .filter(|t| t.get("type").and_then(Value::as_str) == Some("page"))
         .filter_map(|t| {
             let url = t.get("url").and_then(Value::as_str).unwrap_or_default();
-            if url.starts_with("devtools://") || url.starts_with("chrome-extension://") {
+            if url.starts_with("devtools://") || url.starts_with("chrome-extension://") || chrome_ui(url) {
                 return None;
             }
             Some(Tab {
@@ -966,10 +983,8 @@ mod tests {
                 tokio::spawn(async move {
                     let mut head = [0u8; 4096];
                     let _ = socket.read(&mut head).await;
-                    let answer = format!(
-                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                        body.len()
-                    );
+                    let head = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close";
+                    let answer = format!("{head}\r\nContent-Length: {}\r\n\r\n{body}", body.len());
                     let _ = socket.write_all(answer.as_bytes()).await;
                 });
             }
@@ -985,7 +1000,8 @@ mod tests {
         let port = devtools_listing(json!([
             {"id": "POPUP", "type": "page", "url": "chrome://omnibox-popup.top-chrome/", "title": "null"},
             {"id": "SEARCH", "type": "page", "url": "chrome://tab-search.top-chrome/", "title": "Rechercher"},
-            {"id": "READ", "type": "page", "url": "chrome-untrusted://read-anything-side-panel.top-chrome/?x", "title": ""},
+            {"id": "READ", "type": "page", "title": "",
+             "url": "chrome-untrusted://read-anything-side-panel.top-chrome/"},
             {"id": "SITE", "type": "page", "url": "https://www.lemonde.fr/", "title": "Le Monde"},
             {"id": "TOOLS", "type": "page", "url": "devtools://devtools/bundled/inspector.html", "title": "DevTools"},
             {"id": "FRAME", "type": "iframe", "url": "https://pay.example/", "title": ""},
@@ -999,6 +1015,31 @@ mod tests {
         ]))
         .await;
         assert_eq!(tabs(only_ui, None).await.unwrap(), Vec::<Tab>::new());
+    }
+
+    #[test]
+    fn chromes_own_ui_is_told_apart_from_pages() {
+        for url in [
+            "chrome://omnibox-popup.top-chrome/",
+            "chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html",
+            "CHROME://Tab-Search.Top-Chrome/",
+            "chrome-untrusted://read-anything-side-panel.top-chrome/?x=1",
+            "chrome://customize-chrome-side-panel.top-chrome",
+        ] {
+            assert!(chrome_ui(url), "{url}");
+        }
+        for url in [
+            "chrome://newtab/",
+            "chrome://settings/",
+            "about:blank",
+            "",
+            "https://www.lemonde.fr/",
+            "http://127.0.0.1:8765/x.top-chrome/",
+            "https://omnibox-popup.top-chrome.example/",
+            "chrome-extension://abc/x.top-chrome/",
+        ] {
+            assert!(!chrome_ui(url), "{url}");
+        }
     }
 
     #[test]
