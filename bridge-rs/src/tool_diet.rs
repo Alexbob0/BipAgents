@@ -115,6 +115,19 @@ pub const DIRECT_PAIRS: [(&str, &str); 1] = [("mail_search", "mail_read")];
 pub const CREDENTIALS_DIRECT: [&str; 2] =
     ["!mcp__bipagents_connectors__ask_secret", "!mcp__bipagents_files__sandbox_sites_request"];
 
+/// Creating an account and the person's « Coordonnées » (vault_logins.rs, vault_contacts.rs), in view for an agent with
+/// its browser that may keep logins (vault_logins.rs `offered`). Behind the search, 13/11 (Vie on aibox: no « Créer un
+/// compte » card, a password typed by the agent itself, a phone made up; then the lab, GLM-5.3 Flash and DeepSeek V4.1
+/// Flash, 20 sign-ups on a fake shop): `vault_create_login` was called in 10, the agent otherwise looking for the
+/// person's details in the Carnet until the brake stopped it, asking `ask_secret` or `browser_vault` to keep a password,
+/// typing one of its own, or asking the person to type it.
+pub const VAULT_DIRECT: [&str; 4] = [
+    "!mcp__bipagents_vault__vault_create_login",
+    "!mcp__bipagents_vault__vault_confirm_login",
+    "!mcp__bipagents_vault__vault_contact_details",
+    "!mcp__bipagents_vault__vault_save_contact_details",
+];
+
 /// Reading one mail (mailbox.rs).
 const MAIL_READ: &str = "mail_read";
 
@@ -592,6 +605,13 @@ pub fn current(config: &Config, agent: &AgentConfig) -> Option<Diet> {
             }
         }
     }
+    if browser && crate::vault_logins::offered(config, agent) {
+        for entry in VAULT_DIRECT {
+            if !out.defer.iter().any(|d| d == entry) {
+                out.defer.push(entry.to_string());
+            }
+        }
+    }
     // the connectors the person approved are called like any tool (connectors.rs)
     for entry in crate::connectors::direct_entries(config, agent) {
         if !out.defer.contains(&entry) {
@@ -726,6 +746,21 @@ mod tests {
         assert_eq!(CREDENTIALS_DIRECT[1], entry(crate::sandbox::SERVER_NAME, crate::sandbox_sites::REQUEST));
         assert!(crate::connectors::tools().iter().any(|t| t["name"] == crate::connectors::ASK_SECRET));
         assert!(crate::sandbox_sites::tools().iter().any(|t| t["name"] == crate::sandbox_sites::REQUEST));
+    }
+
+    #[test]
+    fn creating_an_account_and_the_persons_details_are_named_as_hermes_names_them() {
+        // 13/11: behind the search, no « Créer un compte » card and a password typed by the agent itself
+        let entry = |tool: &str| format!("!mcp__{}__{tool}", crate::vault_logins::SERVER_NAME);
+        assert_eq!(VAULT_DIRECT[0], entry(crate::vault_logins::CREATE));
+        assert_eq!(VAULT_DIRECT[1], entry(crate::vault_logins::CONFIRM));
+        assert_eq!(VAULT_DIRECT[2], entry(crate::vault_contacts::READ));
+        assert_eq!(VAULT_DIRECT[3], entry(crate::vault_contacts::SAVE));
+        let tools: Vec<String> =
+            crate::vault_logins::tools().iter().filter_map(|t| t["name"].as_str().map(str::to_string)).collect();
+        for name in VAULT_DIRECT {
+            assert!(tools.iter().any(|t| name.ends_with(&format!("__{t}"))), "{name}");
+        }
     }
 
     #[test]

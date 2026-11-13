@@ -6,6 +6,8 @@ only after the person's confirmation for it). All values are made up."""
 import json
 import threading
 
+import yaml
+
 from cryptography.fernet import Fernet
 
 from bbkit.common import AUTH, app_turn, follow_run, sse
@@ -83,7 +85,7 @@ def test_add_edit_and_list_contact_details(bridges, fakes):
     item = made.json()
     assert item["kind"] == "address" and item["label"] == "Kerfy Studio (pro)" and item["agents"] == ["vie"]
     assert item["hint"] == "pour tout ce qui concerne la société"
-    assert item["contact"] == {"full_name": "Camille Exemple", "address_line1": "1 rue de l'Essai",
+    assert item["contact"] == {"full_name": "Camille Exemple", "birth_date": "", "address_line1": "1 rue de l'Essai",
                                "address_line2": "Bât. B", "city": "Testville", "state": "", "postal_code": "00100",
                                "country": "FR", "phones": ["+33 6 00 00 00 01", "01 00 00 00 02"],
                                "emails": ["camille@example.org"]}
@@ -309,3 +311,57 @@ def test_contact_details_reach_the_agents_hermes_vault_only_while_its_browser_is
     bridge.commands.clear()
     assert bridge.patch(f"/v1/vault/{item['id']}", headers=AUTH, json={"agents": []}).status_code == 200
     assert [r["op"] for r in hermes_requests(bridge, "vie")] == ["remove"]
+
+
+def test_a_birth_date_is_kept_read_by_the_agent_and_never_put_in_the_browser_fill(bridges, fakes):
+    """Alex 13/11: a pharmacy's sign-up form required a birth date and the agent made data up. Optional, « YYYY-MM-DD »
+    from the apps (a real day from 1900 to today, "" clears it); the agent reads it with its other details and types
+    it; its Hermes vault (the browser fill, which has no such field) gets the name, the phone and the e-mail only."""
+    bridge = contacts_bridge(bridges, fakes)
+    made = bridge.post("/v1/vault", headers=AUTH, json={**PRO, "birth_date": "1991-03-14", "agents": ["vie"]})
+    assert made.status_code == 201, made.text
+    item = made.json()
+    assert item["contact"]["birth_date"] == "1991-03-14"
+    [request] = hermes_requests(bridge, "vie")
+    assert "birth_date" not in request["secret"]
+    # the phone reaches the browser fill (its first one), as the e-mail and the name
+    assert (request["secret"]["phone"], request["secret"]["email"]) == ("+33 6 00 00 00 01", "camille@example.org")
+    used, error = tool(bridge, VIE, "vault_contact_details", {"label": "Kerfy Studio (pro)"})
+    assert not error and "birth date (YYYY-MM-DD): 1991-03-14" in used and "phones: +33 6 00 00 00 01" in used
+    for bad in ("14/03/1991", "1991-02-30", "1899-12-31", "2999-01-01", "1991-3-14"):
+        resp = bridge.patch(f"/v1/vault/{item['id']}", headers=AUTH, json={"birth_date": bad})
+        assert resp.status_code == 400 and "birth date" in resp.json()["detail"], (bad, resp.text)
+    cleared = bridge.patch(f"/v1/vault/{item['id']}", headers=AUTH, json={"birth_date": ""})
+    assert cleared.status_code == 200 and cleared.json()["contact"]["birth_date"] == ""
+    assert cleared.json()["contact"]["city"] == "Testville"
+    # one the person gives the agent in the conversation: kept in an entry of the agent's
+    saved, error = tool(bridge, VIE, "vault_save_contact_details",
+                        {"label": "Naissance", "full_name": "Camille Exemple", "birth_date": "1991-03-14"})
+    assert not error, saved
+    mine = [i for i in bridge.get("/v1/vault", headers=AUTH).json()["items"] if i["label"] == "Naissance"]
+    assert mine and mine[0]["contact"]["birth_date"] == "1991-03-14"
+    # the agents' tools tell to never make a detail up
+    listing = bridge.post(VAULT, json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+                          headers={"Authorization": f"Bearer {VIE}"}).json()["result"]["tools"]
+    read = next(t for t in listing if t["name"] == "vault_contact_details")
+    assert "Never make a detail up" in read["description"] and "birth" in read["description"]
+    create = next(t for t in listing if t["name"] == "vault_create_login")
+    assert "you never type a password yourself, not even a temporary one" in create["description"]
+
+
+def test_a_browsing_agent_has_its_account_and_details_tools_in_view(bridges, fakes, tmp_path):
+    """13/11: behind Hermes' tool search, no « Créer un compte » card (the agent typed its own password, or asked the
+    person to type it) and the person's details looked for in the Carnet until the brake stopped the turn. An agent
+    with its browser that may keep logins has them in view (its profile's `tools.tool_search.defer`)."""
+    space = tmp_path / "spaces" / "vie"
+    bridge = contacts_bridge(bridges, fakes, vie_space=space)
+    wait_registered(bridge, ["vie"])
+    config = space / "profiles" / "vie" / "config.yaml"
+
+    def defer():
+        data = yaml.safe_load(config.read_text()) or {}
+        return ((data.get("tools") or {}).get("tool_search") or {}).get("defer") or []
+    assert wait_until(lambda: "!mcp__bipagents_vault__vault_create_login" in defer(), timeout=15), defer()
+    for name in ("vault_create_login", "vault_confirm_login", "vault_contact_details", "vault_save_contact_details"):
+        assert f"!mcp__bipagents_vault__{name}" in defer(), name
+    assert "!mcp__stealth__type_text" in defer()

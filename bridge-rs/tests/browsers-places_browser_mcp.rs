@@ -395,13 +395,14 @@ async fn while_the_month_s_credit_is_used_its_tools_are_refused_without_starting
     proxy.handle(init()).await;
     proxy.handle(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "navigate"}})).await;
     let answer = out.messages().last().unwrap().clone();
-    assert_eq!((answer["id"].clone(), answer["result"]["isError"].clone()), (json!(1), json!(true)));
+    // never `isError` (Hermes' breaker would pause the whole browser: browser_mcp.rs `soften`)
+    assert_eq!((answer["id"].clone(), answer["result"].get("isError")), (json!(1), None));
     assert!(answer["result"]["content"][0]["text"].as_str().unwrap().contains("credit is used up"), "{answer}");
     assert!(ran(tmp).is_empty() && !proxy.running());
     // stopped (the grace used too): the same
     std::fs::write(&credit, json!({"state": "stopped"}).to_string()).unwrap();
     proxy.handle(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "navigate"}})).await;
-    assert_eq!(out.messages().last().unwrap()["result"]["isError"], json!(true));
+    assert!(out.messages().last().unwrap()["result"]["content"][0]["text"].as_str().unwrap().contains("credit"));
     // the credit back: the next call starts it as usual
     std::fs::write(&credit, json!({"state": "ok"}).to_string()).unwrap();
     proxy.handle(json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "navigate"}})).await;
@@ -465,7 +466,7 @@ async fn a_page_too_large_to_come_back_is_said_plainly_and_a_rescue_turn_reads_n
         proxy.handle(json!({"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": {"name": name}})).await;
         let refused = out.messages().last().unwrap().clone();
         assert_eq!(refused["id"], json!(id));
-        assert_eq!(refused["result"]["isError"], json!(true));
+        assert_eq!(refused["result"].get("isError"), None, "never an error (Hermes' breaker): {refused}");
         assert_eq!(refused["result"]["content"][0]["text"], browser_mcp::RESCUE_REFUSED);
     }
     assert!(browser_mcp::RESCUE_REFUSED.contains("Answer your person now with what you already have"));
@@ -697,12 +698,14 @@ characters of this page. To read on, run execute_script with: "
     // a click too; a call without an instance waits for nothing
     std::fs::remove_file(tmp.join("calls.jsonl")).unwrap();
     proxy.handle(tool(4, "click_element", json!({"instance_id": "319ceedb", "selector": "a"}))).await;
-    assert_eq!(calls(tmp).len(), 2);
-    assert_eq!(calls(tmp)[0]["arguments"]["timeout"], json!(3000), "3 s to find it, not the real server's 10");
+    // what the target is (never the site's terms box: browser_mcp `guard`), the click, then the page's state
+    assert_eq!(calls(tmp).len(), 3);
+    assert!(calls(tmp)[0]["arguments"]["script"].as_str().unwrap().contains("found: true"));
+    assert_eq!(calls(tmp)[1]["arguments"]["timeout"], json!(3000), "3 s to find it, not the real server's 10");
     proxy.handle(tool(5, "list_tabs", json!({"instance_id": "319ceedb"}))).await;
     proxy.handle(tool(6, "click_element", json!({"selector": "a", "timeout": 8000}))).await;
-    assert_eq!(calls(tmp).len(), 4);
-    assert_eq!(calls(tmp)[3]["arguments"]["timeout"], json!(8000), "the agent's own time kept");
+    assert_eq!(calls(tmp).len(), 5);
+    assert_eq!(calls(tmp)[4]["arguments"]["timeout"], json!(8000), "the agent's own time kept");
 
     // a screenshot: an image block, the agent's path never passed on (it would land in the container)
     std::fs::remove_file(tmp.join("calls.jsonl")).unwrap();
@@ -832,4 +835,167 @@ fn a_list_cached_before_the_rule_is_tamed_too() {
     assert_eq!(call["arguments"], json!({"viewport_height": 900}));
     let mut other = json!({"name": "navigate", "arguments": {"proxy": "x"}});
     assert!(browser_mcp::tame_call("navigate", &mut other).is_empty());
+}
+
+/// A browser's server as stealth-browser-mcp behind hold_gate.py: while `held` exists every call gets the gate's refusal
+/// (`isError`); `#folded` can't be clicked (an error); the target script (browser_mcp `target_script`) says
+/// `#register-password` is a password field and `#cgu` a terms box. Every call written to `calls.jsonl`.
+const GUARD_SERVER: &str = r##"
+import json, os, sys
+here = os.path.dirname(os.path.abspath(__file__))
+GATE = ("The person has taken over this browser in the BipAgents app (to log in, or to do something themselves). "
+        "Do not use the browser until they hand it back: tell them you are waiting, or go on with something else.")
+def text(t, error=False):
+    r = {"content": [{"type": "text", "text": t}]}
+    if error:
+        r["isError"] = True
+    return r
+for line in sys.stdin:
+    m = json.loads(line)
+    if "id" not in m:
+        continue
+    if m["method"] == "initialize":
+        r = {"protocolVersion": m["params"]["protocolVersion"], "capabilities": {"tools": {}},
+             "serverInfo": {"name": "stealth", "version": "1"}}
+    elif m["method"] == "tools/list":
+        wrapped = {"type": "object", "properties": {"result": {"type": "boolean"}}, "required": ["result"],
+                   "x-fastmcp-wrap-result": True}
+        r = {"tools": [{"name": "navigate", "inputSchema": {"type": "object"},
+                        "outputSchema": {"type": "object", "additionalProperties": True}},
+                       {"name": "click_element", "inputSchema": {"type": "object"}, "outputSchema": wrapped},
+                       {"name": "type_text", "inputSchema": {"type": "object"}, "outputSchema": wrapped}]}
+    else:
+        name, args = m["params"]["name"], m["params"].get("arguments", {})
+        with open(os.path.join(here, "calls.jsonl"), "a") as f:
+            f.write(json.dumps({"name": name, "arguments": args}) + "\n")
+        script = args.get("script", "")
+        if os.path.exists(os.path.join(here, "held")):
+            r = text(GATE, True)
+        elif name == "execute_script" and "found: true" in script:
+            target = {"found": True, "password": "register-password" in script,
+                      "terms": "J'accepte les conditions générales de vente  cgu cgu" if '"#cgu"' in script else ""}
+            answer = {"success": True, "result": json.dumps(target), "error": None}
+            r = {"content": [{"type": "text", "text": json.dumps(answer)}], "structuredContent": answer}
+        elif name == "execute_script" and script == "document.readyState":
+            answer = {"success": True, "result": "complete", "error": None}
+            r = {"content": [{"type": "text", "text": json.dumps(answer)}], "structuredContent": answer}
+        elif name == "click_element" and args.get("selector") == "#folded":
+            r = text("Error calling tool 'click_element': Failed to click element: DOM Error while querying [code: -32000]", True)
+        else:
+            r = text("did " + name)
+    print(json.dumps({"jsonrpc": "2.0", "id": m["id"], "result": r}), flush=True)
+"##;
+
+/// The proxy over `GUARD_SERVER`, connected and its tool list (with their output schemas) learned, as Hermes does.
+async fn guarded(tmp: &Path) -> (Arc<Proxy>, Out) {
+    let config = config(tmp);
+    std::fs::write(tmp.join("server.py"), GUARD_SERVER).unwrap();
+    let out = Out::default();
+    let proxy = Proxy::new(config, Box::new(out.clone()));
+    proxy.handle(init()).await;
+    proxy.handle(json!({"jsonrpc": "2.0", "id": 99, "method": "tools/list"})).await;
+    (proxy, out)
+}
+
+fn last(out: &Out) -> Value {
+    out.messages().last().unwrap().clone()
+}
+
+fn text_of(answer: &Value) -> String {
+    answer["result"]["content"].as_array().unwrap().iter().filter_map(|c| c["text"].as_str()).collect::<Vec<_>>().join("\n")
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn handed_back_the_browser_answers_at_once_and_nothing_pauses_it() {
+    // 13/11 (Vie on aibox, then the lab): three calls refused while the person held the browser opened Hermes' breaker
+    // (« Paused for ~54s »), so the browser stayed paused a minute after « Rendre la main ». Never an error now.
+    let dir = tempfile::tempdir().unwrap();
+    let tmp = dir.path();
+    let (proxy, out) = guarded(tmp).await;
+    std::fs::write(tmp.join("held"), "human t0k").unwrap();
+    for id in 1..=4 {
+        proxy.handle(tool(id, "navigate", json!({"instance_id": "i", "url": "https://shop.example/"}))).await;
+        let answer = last(&out);
+        assert_eq!(answer["id"], json!(id));
+        assert_eq!(answer["result"].get("isError"), None, "{answer}");
+        assert_eq!(text_of(&answer), browser_mcp::PERSON_HOLDS, "said plainly, no streak hint for a hold");
+        // with what its output schema asks (Hermes' client refuses a result without: lab, 13/11)
+        assert_eq!(answer["result"]["structuredContent"], json!({"success": false}));
+    }
+    // « Rendre la main »: the very next call goes through
+    std::fs::remove_file(tmp.join("held")).unwrap();
+    let started = std::time::Instant::now();
+    proxy.handle(tool(5, "navigate", json!({"instance_id": "i", "url": "https://shop.example/"}))).await;
+    assert_eq!(text_of(&last(&out)), "did navigate");
+    assert!(started.elapsed() < Duration::from_secs(5));
+
+    // fields still folded in a panel: errors, never `isError`; the third in a row says what to do
+    for id in 6..=8 {
+        proxy.handle(tool(id, "click_element", json!({"instance_id": "i", "selector": "#folded"}))).await;
+        let answer = last(&out);
+        assert_eq!(answer["result"].get("isError"), None, "{answer}");
+        assert!(text_of(&answer).starts_with("Error calling tool 'click_element'"));
+        assert_eq!(text_of(&answer).contains(browser_mcp::STREAK_HINT), id == 8, "{answer}");
+        assert_eq!(answer["result"]["structuredContent"], json!({"result": false}));
+    }
+    assert_eq!(proxy.failures.load(Ordering::SeqCst), 3);
+    proxy.handle(tool(9, "click_element", json!({"instance_id": "i", "selector": "#open-register"}))).await;
+    assert_eq!(text_of(&last(&out)), "did click_element");
+    assert_eq!(proxy.failures.load(Ordering::SeqCst), 0, "a step that worked starts again from 0");
+    proxy.stop_child().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_agent_never_types_a_password_nor_ticks_the_terms() {
+    // 13/11: Vie typed « a provisional password » itself; on the lab GLM typed into #register-password three times,
+    // and agents ticked the terms with a script
+    let dir = tempfile::tempdir().unwrap();
+    let tmp = dir.path();
+    let (proxy, out) = guarded(tmp).await;
+    let typed = |tmp: &Path| -> Vec<String> {
+        calls(tmp)
+            .iter()
+            .filter(|c| c["name"] != "execute_script")
+            .map(|c| format!("{} {}", c["name"].as_str().unwrap(), c["arguments"]["selector"].as_str().unwrap_or("")))
+            .collect()
+    };
+    let password = json!({"instance_id": "i", "selector": "#register-password", "text": "Provisoire123!"});
+    proxy.handle(tool(1, "type_text", password.clone())).await;
+    assert_eq!(text_of(&last(&out)), browser_mcp::PASSWORD_REFUSED);
+    assert_eq!(last(&out)["result"].get("isError"), None);
+    assert_eq!(last(&out)["result"]["structuredContent"], json!({"result": false}));
+    proxy.handle(tool(2, "paste_text", password)).await;
+    assert_eq!(text_of(&last(&out)), browser_mcp::PASSWORD_REFUSED);
+    proxy.handle(tool(3, "press_key", json!({"instance_id": "i", "selector": "#register-password", "key": "P"}))).await;
+    assert_eq!(text_of(&last(&out)), browser_mcp::PASSWORD_REFUSED);
+    assert!(typed(tmp).is_empty(), "nothing typed into the password field: {:?}", typed(tmp));
+    // the other fields, and a key (« Enter ») in the password field, go on
+    proxy.handle(tool(4, "type_text", json!({"instance_id": "i", "selector": "#lastname", "text": "Testeur"}))).await;
+    assert_eq!(text_of(&last(&out)), "did type_text");
+    proxy
+        .handle(tool(5, "press_key", json!({"instance_id": "i", "selector": "#register-password", "key": "Enter"})))
+        .await;
+    assert_eq!(text_of(&last(&out)), "did press_key");
+    // a script writing the password field: refused before the page
+    let script = "document.getElementById('register-password').value = 'Provisoire123!'";
+    proxy.handle(tool(6, "execute_script", json!({"instance_id": "i", "script": script}))).await;
+    assert_eq!(text_of(&last(&out)), browser_mcp::SCRIPT_PASSWORD_REFUSED);
+    assert!(!calls(tmp).iter().any(|c| c["arguments"]["script"].as_str().is_some_and(|s| s.contains("Provisoire"))));
+    // the terms: the person's to tick, by a click or a script; the newsletter box is not the terms
+    proxy.handle(tool(7, "click_element", json!({"instance_id": "i", "selector": "#cgu"}))).await;
+    assert_eq!(text_of(&last(&out)), browser_mcp::TERMS_REFUSED);
+    proxy
+        .handle(tool(8, "execute_script", json!({"instance_id": "i", "script": "document.getElementById('cgu').checked = true"})))
+        .await;
+    assert_eq!(text_of(&last(&out)), browser_mcp::TERMS_REFUSED);
+    proxy.handle(tool(9, "click_element", json!({"instance_id": "i", "selector": "#newsletter"}))).await;
+    assert_eq!(text_of(&last(&out)), "did click_element");
+    assert_eq!(typed(tmp), ["type_text #lastname", "press_key #register-password", "click_element #newsletter"]);
+    // a script sent under another tool's name runs as a script (DeepSeek on the lab, 13/11)
+    proxy
+        .handle(tool(10, "take_screenshot", json!({"instance_id": "i", "script": "return document.title", "full_page": true})))
+        .await;
+    let sent = calls(tmp).last().unwrap().clone();
+    assert_eq!(sent, json!({"name": "execute_script", "arguments": {"instance_id": "i", "script": "return document.title"}}));
+    proxy.stop_child().await;
 }

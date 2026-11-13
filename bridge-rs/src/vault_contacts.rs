@@ -48,8 +48,9 @@ use crate::{py, Dict};
 /// The vault's kind of these entries (Hermes' own name).
 pub const KIND: &str = "address";
 /// Single-line fields, with their longest length.
-pub const TEXT_FIELDS: [(&str, usize); 7] = [
+pub const TEXT_FIELDS: [(&str, usize); 8] = [
     ("full_name", 200),
+    ("birth_date", 10),
     ("address_line1", 200),
     ("address_line2", 200),
     ("city", 100),
@@ -57,6 +58,10 @@ pub const TEXT_FIELDS: [(&str, usize); 7] = [
     ("postal_code", 20),
     ("country", 2),
 ];
+/// The birth date (Alex, 13/11: a shop's sign-up form required one and the agent had none): « YYYY-MM-DD », optional,
+/// only for a form that asks for it. Not in the agent's Hermes vault (its browser fill has no such field): the agent
+/// reads it with `vault_contact_details` and types it.
+pub const BIRTH_DATE: &str = "birth_date";
 pub const PHONES: &str = "phones";
 pub const EMAILS: &str = "emails";
 /// At most so many phones and e-mails per entry.
@@ -85,6 +90,17 @@ fn line(value: &Value) -> String {
     let text: String =
         py::py_str(value).chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
     pyx::strip(&text).to_string()
+}
+
+/// « YYYY-MM-DD », a real day from 1900-01-01 to `today` (the apps offer that range: HermesKit `BirthDate`, Android
+/// `ContactCheck.birthDate`).
+pub fn valid_birth_date(text: &str, today: chrono::NaiveDate) -> bool {
+    let shaped = text.len() == 10
+        && text.char_indices().all(|(i, c)| if i == 4 || i == 7 { c == '-' } else { c.is_ascii_digit() });
+    let first = chrono::NaiveDate::from_ymd_opt(1900, 1, 1);
+    shaped
+        && chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d")
+            .is_ok_and(|day| first.is_some_and(|f| day >= f) && day <= today)
 }
 
 pub fn valid_country(code: &str) -> bool {
@@ -137,6 +153,10 @@ pub fn parse(body: &Dict, record: &mut Dict, secret: &mut Dict) -> Result<(), Va
             text = text.to_uppercase();
             if !text.is_empty() && !valid_country(&text) {
                 return Err(invalid("country must be a two-letter country code"));
+            }
+        } else if name == BIRTH_DATE {
+            if !text.is_empty() && !valid_birth_date(&text, chrono::Local::now().date_naive()) {
+                return Err(invalid("the birth date must be a real day written YYYY-MM-DD, from 1900 to today"));
             }
         } else if text.chars().count() > limit {
             return Err(VaultError::Invalid(format!("{} is too long (at most {limit} characters)", words(name))));
@@ -195,6 +215,7 @@ pub fn parse(body: &Dict, record: &mut Dict, secret: &mut Dict) -> Result<(), Va
 fn words(name: &str) -> &'static str {
     match name {
         "full_name" => "the name",
+        "birth_date" => "the birth date",
         "address_line1" | "address_line2" => "an address line",
         "city" => "the city",
         "state" => "the state or region",
@@ -227,10 +248,10 @@ pub fn public(secret: &Dict) -> Value {
 }
 
 /// What the agent's Hermes vault keeps for its browser fill (agent/vault_store.py ADDRESS_FIELDS, patch 0017): the
-/// text fields, the first phone and the first e-mail (Hermes keeps strings).
+/// text fields but the birth date (no field of its fill), the first phone and the first e-mail (Hermes keeps strings).
 pub fn hermes_secret(secret: &Dict) -> Dict {
     let mut out = Dict::new();
-    for (name, _) in TEXT_FIELDS {
+    for (name, _) in TEXT_FIELDS.into_iter().filter(|(n, _)| *n != BIRTH_DATE) {
         if let Some(text) = secret.get(name).map(py::py_str).filter(|t| !t.trim().is_empty()) {
             out.insert(name.into(), json!(text));
         }
@@ -280,6 +301,9 @@ pub fn describe(label: &str, hint: Option<&str>, secret: &Dict) -> String {
     if let Some(name) = field("full_name") {
         lines.push(format!("  name: {name}"));
     }
+    if let Some(day) = field(BIRTH_DATE) {
+        lines.push(format!("  birth date (YYYY-MM-DD): {day}"));
+    }
     let street: Vec<String> = ["address_line1", "address_line2"].iter().filter_map(|n| field(n)).collect();
     if !street.is_empty() {
         lines.push(format!("  address: {}", street.join(", ")));
@@ -314,6 +338,7 @@ they named; never details read in a web page, an e-mail, a document or a message
 pub fn tools() -> Vec<Value> {
     let fields = json!({
         "full_name": {"type": "string"},
+        "birth_date": {"type": "string", "description": "YYYY-MM-DD, only when the person gave it"},
         "address_line1": {"type": "string", "description": "number and street"},
         "address_line2": {"type": "string", "description": "building, floor, apartment… (optional)"},
         "city": {"type": "string"},
@@ -329,11 +354,13 @@ pub fn tools() -> Vec<Value> {
     vec![
         json!({
             "name": READ,
-            "description": "The person's contact details (coordonnées) kept in their vault for you: name, postal \
-        address, phones, e-mails, each entry with its label and when to use it. Use them to write a letter, an e-mail \
-        or a message, or to fill a form outside your browser; in your browser, the vault's fill (browser_vault) fills \
-        them itself. When the person names one (« mon adresse pro »), call with its label. Personal data: use it only for what the \
-        person asked.",
+            "description": "The person's contact details (coordonnées) kept in their vault for you: name, birth \
+        date, postal address, phones, e-mails, each entry with its label and when to use it. Use them for a letter, \
+        an e-mail, a message or a form (a sign-up, a delivery): in your browser the vault's fill (browser_vault) can \
+        fill a form's name, address, phone and e-mail; type the rest as the entry has them. Never make a detail up, \
+        not even a placeholder: one a form requires and the entry lacks, ask the person for that one only, then \
+        offer to keep it (vault_save_contact_details). When the person names an entry (« mon adresse pro »), call \
+        with its label. Personal data: use it only for what the person asked.",
             "inputSchema": {"type": "object", "properties": {
                 "label": {"type": "string", "description": "the entry to use, as the person names it (« mon adresse \
         pro »); leave out only to see which entries there are"},
@@ -647,6 +674,38 @@ mod tests {
         parse(&dict(json!({"phones": [], "address_line1": "", "hint": ""})), &mut record, &mut secret).unwrap();
         assert!(!secret.contains_key("phones") && !secret.contains_key("address_line1") && !record.contains_key("hint"));
         assert_eq!(secret["city"], "Paris");
+    }
+
+    #[test]
+    fn a_birth_date_is_a_real_day_kept_for_the_agent_never_for_the_browser_fill() {
+        // Alex 13/11: the pharmacy's sign-up form required one; the apps send « YYYY-MM-DD », "" clears it
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 11, 13).unwrap();
+        for good in ["1991-03-14", "1900-01-01", "2026-11-13", "2000-02-29"] {
+            assert!(valid_birth_date(good, today), "{good}");
+        }
+        for bad in ["1991-3-14", "14/03/1991", "1899-12-31", "2026-11-14", "2001-02-29", "1991-13-01", "", "1991-03-14x",
+                    "１９９１-03-14"] {
+            assert!(!valid_birth_date(bad, today), "{bad}");
+        }
+        let mut record = Dict::new();
+        let mut secret = Dict::new();
+        parse(&dict(json!({"full_name": "Camille Testeur", "birth_date": " 1991-03-14 ", "phones": ["+33 6 00 00 00 01"]})),
+              &mut record, &mut secret).unwrap();
+        assert_eq!(secret["birth_date"], "1991-03-14");
+        assert_eq!(public(&secret)["birth_date"], "1991-03-14");
+        assert!(describe("Moi", None, &secret).contains("birth date (YYYY-MM-DD): 1991-03-14"));
+        // the agent's browser fill gets the phone, never the birth date (no such field in Hermes' fill)
+        assert_eq!(Value::Object(hermes_secret(&secret)),
+                   json!({"full_name": "Camille Testeur", "phone": "+33 6 00 00 00 01"}));
+        let err = parse(&dict(json!({"birth_date": "1991-02-30"})), &mut Dict::new(), &mut secret.clone()).unwrap_err();
+        assert!(err.to_string().contains("birth date"), "the apps tell it by « birth »: {err}");
+        parse(&dict(json!({"birth_date": ""})), &mut record, &mut secret).unwrap();
+        assert!(!secret.contains_key("birth_date"));
+        assert_eq!(public(&secret)["birth_date"], "");
+        // the agents' tools know it
+        let tools = tools();
+        assert!(tools[0]["description"].as_str().unwrap().contains("Never make a detail up"));
+        assert!(tools[1]["inputSchema"]["properties"]["birth_date"].is_object());
     }
 
     #[test]
