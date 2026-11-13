@@ -943,16 +943,12 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
     }
     let message = cards::approval_message(&entry.payment, cents, &currency, &host, &card.label, &last4, &merchant);
     journal(&config, &entry, &agent.name, "asked");
-    let message = if on_phone {
-        // Which card, for the phone that keeps it (the apps read « Card item_… » to find it on the device).
-        message.replacen(
-            " Approve in the BipAgents app",
-            &format!(" Card {}. Approve in the BipAgents app", card.id),
-            1,
-        )
-    } else {
-        message
-    };
+    // Which card: « Card item_… » for the phone that keeps its numbers (the offer), « Card ref item_… » for one the
+    // bridge keeps (the phone that remembers its security code finds it so).
+    let message = cards::with_note(
+        &message,
+        &if on_phone { format!("Card {}.", card.id) } else { format!("Card ref {}.", card.id) },
+    );
     let code = match approval(&entry.payment, asker, &message, on_phone.then(|| meta.clone())).await {
         Ok(code) => code,
         Err(why) => {

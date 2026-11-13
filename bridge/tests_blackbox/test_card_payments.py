@@ -423,8 +423,8 @@ def test_a_payment_approved_is_typed_on_the_real_site_then_the_bridge_clicks(bri
         assert commands[podman.index(CALLS_CHECK)][5:] == []
         assert all(c[5:] == ["sh", hold_token] for c in commands[hold_at + 1:hold_at + 4])
         assert re.fullmatch(r"Card payment pay_[0-9a-f]{12}: 12\.50 EUR on shop\.example with card \"Petits achats\" "
-                            r"ending 4242, for \"Billet Paris-Lyon\"\. Approve in the BipAgents app with the card's "
-                            r"security code\.", asked)
+                            r"ending 4242, for \"Billet Paris-Lyon\"\. Card ref item_[0-9a-f]{12}\. Approve in the BipAgents app "
+                            r"with the card's security code\.", asked)
         # Typed where each field lives: the provider's frame (its own session) and the page.
         assert chrome.typed == [("F-main", "name", "Alex Martin"), ("F-psp", "number", NUMBER),
                                 ("F-psp", "exp", "12/30"), ("F-psp", "csc", CODE)]
