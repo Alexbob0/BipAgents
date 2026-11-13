@@ -2,14 +2,15 @@
 //! call's own short session (made by `POST /v1/live/calls/start`, live_brief.rs) on Hermes' `chat/stream`, whose SSE
 //! answer is passed on as it comes (one request, nothing waited for: the first words as early as before), with the
 //! agent's quick-turn thinking (`quick_turn_options`: off, or the least its model allows) and the media and long tools
-//! refused (`LIVE_CLOSED_TOOLS`, `live_turn_options`).
+//! refused (`LIVE_CLOSED_TOOLS`, `live_turn_options`), `clarify` too: the call's rules say to ask out loud
+//! (`with_call_rules`).
 //!
 //!     POST /v1/live/turns       {agent, live_session, text, attachments?}   → text/event-stream (Hermes' events)
 //!     POST /v1/live/turns/stop  {agent, run_id}                             → {stopped}
 //!
 //! The first turn's text starts with the call's prelude (the time, the call's rules, its brief, the greeting said: a
 //! hidden note the apps write, LiveLines.prelude); photos come inline and documents by path, as in a written message
-//! (threads/send.rs). Approvals and questions are answered through `POST /v1/approve`.
+//! (threads/send.rs). Approvals are answered through `POST /v1/approve`.
 //!
 //! A turn the phone's voice decider sent to be filed, not answered (`noter`, 9/11), starts with a hidden
 //! `<!--bip:note … -->`: whatever the app wrote in it (the 9/11 apps named a Carnet v1 tool, `notebook_note`, that is
@@ -77,9 +78,11 @@ fn field(name: &str, msg: &str) -> FieldError {
 /// Hermes patch 0024 (`model_options.closed_tools`, a trailing `*` closes a prefix) refuses them in its dispatcher
 /// (`tool_call` included) with « say it instead, offer it for after the call »; the request still lists every tool, so
 /// a call's prompt is its conversations' one in the model server's cache. A Hermes without the patch ignores the field:
-/// the rules still say it.
-pub const LIVE_CLOSED_TOOLS: [&str; 17] = [
+/// the rules still say it. `clarify` too (12/11: a question card asked in a call, which the call screens never show: the
+/// call waited on it until Hermes gave up): the bridge's `ASK_ALOUD` in the call's rules says to ask out loud instead.
+pub const LIVE_CLOSED_TOOLS: [&str; 18] = [
     "browser_*",
+    "clarify",
     "computer_use",
     "delegate_task",
     "image_generate",
@@ -104,6 +107,25 @@ pub fn live_turn_options(config: &crate::config::Config, agent: &crate::config::
     let mut options = crate::agents_admin::quick_turn_options(config, agent);
     options["closed_tools"] = json!(LIVE_CLOSED_TOOLS);
     options
+}
+
+/// The call's rule for a question (12/11, `clarify` closed in a call): the bridge's words, put first in the call's
+/// rules (`with_call_rules`), so a call's prompt stays the same at every turn and in the warm-up (the cache holds).
+pub const ASK_ALOUD: &str = "No clarify tool in this call (the person sees no card): to ask something, ask it out loud in \
+one short sentence and wait for the person's spoken answer. ";
+
+const LIVE_OPEN: &str = "<!--bip:live\n";
+
+/// `text` with `ASK_ALOUD` first in its call's rules (the prelude's `<!--bip:live` note: the first turn and the
+/// warm-up); a text without them, or that has it already, unchanged.
+pub fn with_call_rules(text: &str) -> std::borrow::Cow<'_, str> {
+    match text.find(LIVE_OPEN) {
+        Some(at) if !text.contains(ASK_ALOUD) => {
+            let end = at + LIVE_OPEN.len();
+            format!("{}{ASK_ALOUD}{}", &text[..end], &text[end..]).into()
+        }
+        _ => text.into(),
+    }
 }
 
 /// What the agent reads for a turn to file (`with_note`): one notebook_write per page, no search first, the label
@@ -136,7 +158,7 @@ async fn turn(State(state): State<AppState>, Json(body): Json<Turn>) -> ApiResul
     let config = state.config();
     let agent = crate::app::agent_or_404(&config, Some(&body.agent))?;
     // `chat/stream` takes the parts of one message (photos), not a list of messages as `/v1/runs` does
-    let input = match input_of(None, &with_note(&body.text), &body.attachments) {
+    let input = match input_of(None, &with_call_rules(&with_note(&body.text)), &body.attachments) {
         Value::Array(mut messages) => messages.swap_remove(0)["content"].take(),
         words => words,
     };
@@ -244,6 +266,19 @@ answer only « OK, noté » in your language, nothing more.\n-->\npour info le p
     }
 
     #[test]
+    fn a_calls_rules_say_to_ask_out_loud() {
+        let prelude = "<!--bip:now x-->\n<!--bip:live\nbrief\n\nrules <!--bip:end-->";
+        let ruled = with_call_rules(prelude);
+        assert_eq!(ruled, format!("<!--bip:now x-->\n<!--bip:live\n{ASK_ALOUD}brief\n\nrules <!--bip:end-->"));
+        // once only, and the next turns (no prelude) unchanged
+        assert_eq!(with_call_rules(&ruled), ruled);
+        for same in ["bonjour", "<!--bip:lively-->"] {
+            assert_eq!(with_call_rules(same), same);
+        }
+        assert!(ASK_ALOUD.contains("clarify") && !ASK_ALOUD.contains("-->"));
+    }
+
+    #[test]
     fn a_call_closes_the_media_and_long_tools_and_keeps_the_quick_ones() {
         let bridge = |name: &str| format!("{}{name}", crate::tool_diet::BRIDGE_PREFIX);
         for made in [crate::agent_tools::CREATE_AUDIO, crate::agent_tools::CREATE_PODCAST, crate::agent_tools::CREATE_PAGE,
@@ -261,9 +296,11 @@ answer only « OK, noté » in your language, nothing more.\n-->\npour info le p
         {
             assert!(!closes(&bridge(quick)), "{quick}");
         }
-        for quick in ["web_search", "web_extract", "clarify", "memory", "read_file", "terminal", "tool_search"] {
+        for quick in ["web_search", "web_extract", "memory", "read_file", "terminal", "tool_search"] {
             assert!(!closes(quick), "{quick}");
         }
+        // a question card nobody sees in a call (12/11): closed, asked out loud
+        assert!(closes("clarify"));
         // Hermes 0024 takes at most 128 names without spaces; one fixed list, in order
         assert!(LIVE_CLOSED_TOOLS.len() <= 128 && LIVE_CLOSED_TOOLS.iter().all(|n| !n.contains(char::is_whitespace)));
         assert!(LIVE_CLOSED_TOOLS.windows(2).all(|w| w[0] < w[1]));
