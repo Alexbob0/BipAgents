@@ -10,7 +10,8 @@
 //!   « Payer dans le navigateur de l'agent » the live view (the agent's browser is still on that page); their
 //!   `/v1/approve` only puts it away.
 //! - **« Prêt à acheter »**: a watcher made for a purchase (`watch.purchase`) shows a checklist (`purchase_view`):
-//!   the shop's customer account, the card, the rehearsal; the phone adds its own steps (the code remembered there,
+//!   the shop's customer account, the « Coordonnées » a checkout needs (filled, not only there), the card, the
+//!   rehearsal; the phone adds its own steps (the code remembered there,
 //!   urgent alerts allowed). Its actions: `POST …/connectors/<id>/purchase/account` (the agent creates the account
 //!   with `vault_create_login`), `…/purchase/rehearse` (the agent goes up to the payment page without paying, then
 //!   empties the cart; `pay_with_card` is refused meanwhile), `POST /v1/agents/<a>/urgent-test` (a test alert).
@@ -300,11 +301,32 @@ fn card_step(config: &Config, cards: &[crate::vault::Item], agent: &str, purchas
     }
 }
 
+/// The address step: the agent's « Coordonnées » with what a checkout needs filled (vault_contacts.rs
+/// `DELIVERY_NEEDS`). ok: at least one entry is complete (its label when it is the only one, else how many);
+/// incomplete: none is, the closest one and its empty fields (the agent would have to ask, or make one up); missing:
+/// no entry given to this agent.
+fn address_step(entries: &[crate::vault_contacts::Entry]) -> Value {
+    let checked: Vec<(&crate::vault_contacts::Entry, Vec<&str>)> =
+        entries.iter().map(|e| (e, crate::vault_contacts::missing_for_delivery(&e.secret))).collect();
+    let complete: Vec<&crate::vault_contacts::Entry> =
+        checked.iter().filter(|(_, missing)| missing.is_empty()).map(|(e, _)| *e).collect();
+    match (complete.as_slice(), checked.iter().min_by_key(|(_, missing)| missing.len())) {
+        ([one], _) => json!({"id": "address", "state": "ok", "entries": 1, "entry": one.label, "entry_id": one.id}),
+        ([_, ..], _) => json!({"id": "address", "state": "ok", "entries": complete.len()}),
+        ([], Some((closest, missing))) => json!({"id": "address", "state": "incomplete", "entries": 0,
+            "entry": closest.label, "entry_id": closest.id, "missing": missing}),
+        ([], None) => json!({"id": "address", "state": "missing", "entries": 0}),
+    }
+}
+
 /// `watch.purchase` of the watcher's detail, with its checklist's steps the bridge knows (the phone adds its own).
 pub fn purchase_view(state: &AppState, config: &Config, agent: &str, conn: &Connector, purchase: &Purchase) -> Value {
     let items = state.vault.items();
-    let account = items.iter().any(|i| i.kind == "login" && i.origin.as_deref().is_some_and(|o| same_site(o, &purchase.site)));
-    let contacts = state.vault.contacts_for(config, agent).map(|c| c.len()).unwrap_or(0);
+    // a login for the site that this agent may use (one kept from it can't log it in at checkout)
+    let account = items.iter().any(|i| {
+        i.kind == "login" && i.agents.contains_key(agent) && i.origin.as_deref().is_some_and(|o| same_site(o, &purchase.site))
+    });
+    let entries = state.vault.contacts_for(config, agent).unwrap_or_default();
     let rt = crate::watchers::load(config, agent, &conn.id);
     let rehearsal = match (&rt.rehearsal, rehearsing(agent)) {
         (_, true) => json!({"id": "rehearsal", "state": "running"}),
@@ -317,7 +339,8 @@ pub fn purchase_view(state: &AppState, config: &Config, agent: &str, conn: &Conn
         "price": (purchase.cents > 0).then(|| cards::format_cents(purchase.cents)), "currency": purchase.currency,
         "payments_allowed": cards::allowed(config) && cards::enabled(config),
         "steps": [
-            {"id": "account", "state": if account { "ok" } else { "missing" }, "contacts": contacts},
+            {"id": "account", "state": if account { "ok" } else { "missing" }},
+            address_step(&entries),
             card_step(config, &items, agent, purchase),
             rehearsal,
         ],
@@ -524,6 +547,30 @@ mod tests {
         keep(&config, "vie", &about(), None);
         change(&config, |carts| carts.iter_mut().for_each(|c| c.until = py::time_time() - 1.0));
         assert!(pending_items(&config, None).is_empty());
+    }
+
+    #[test]
+    fn the_address_step_wants_an_entry_a_checkout_can_use() {
+        let entry = |id: &str, label: &str, secret: Value| crate::vault_contacts::Entry {
+            id: id.into(),
+            label: label.into(),
+            hint: None,
+            secret: secret.as_object().cloned().unwrap(),
+        };
+        let full = json!({"full_name": "Camille Exemple", "address_line1": "1 rue de l'Essai", "city": "Testville",
+                          "postal_code": "00100", "country": "FR", "phones": ["+33 6 00 00 00 00"]});
+        let no_phone = json!({"full_name": "Camille Exemple", "address_line1": "1 rue de l'Essai", "city": "Testville",
+                              "postal_code": "00100", "country": "FR"});
+        let bare = json!({"full_name": "Camille Exemple"});
+        assert_eq!(address_step(&[]), json!({"id": "address", "state": "missing", "entries": 0}));
+        // entries there, none a checkout can use: the closest one and what it lacks (never « ok » for a count)
+        let step = address_step(&[entry("item_a", "Bureau", bare.clone()), entry("item_b", "Perso", no_phone.clone())]);
+        assert_eq!(step, json!({"id": "address", "state": "incomplete", "entries": 0, "entry": "Perso",
+                                "entry_id": "item_b", "missing": ["phone"]}));
+        let step = address_step(&[entry("item_a", "Bureau", bare), entry("item_b", "Perso", full.clone())]);
+        assert_eq!(step, json!({"id": "address", "state": "ok", "entries": 1, "entry": "Perso", "entry_id": "item_b"}));
+        let step = address_step(&[entry("item_a", "Bureau", full.clone()), entry("item_b", "Perso", full)]);
+        assert_eq!(step, json!({"id": "address", "state": "ok", "entries": 2}));
     }
 
     #[test]

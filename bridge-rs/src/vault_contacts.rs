@@ -597,6 +597,22 @@ pub fn used_marks(reply: &str, listed: &[Listed]) -> Vec<String> {
     out
 }
 
+/// What a shop's checkout asks of an entry used for delivery and billing (a purchase watcher's « Prêt à acheter »,
+/// urgent_pay.rs `address_step`): the name, the street, the postal code, the city, the country and a phone (shops and
+/// carriers ask one; an agent must never make one up). The e-mail is the shop account's.
+pub const DELIVERY_NEEDS: [&str; 6] = ["full_name", "address_line1", "postal_code", "city", "country", "phone"];
+
+/// The `DELIVERY_NEEDS` an entry's fields leave empty, in that order (`phone`: no phone at all).
+pub fn missing_for_delivery(secret: &Dict) -> Vec<&'static str> {
+    DELIVERY_NEEDS
+        .into_iter()
+        .filter(|&need| match need {
+            "phone" => secret.get(PHONES).map(list_of).unwrap_or_default().is_empty(),
+            field => secret.get(field).map(py::py_str).is_none_or(|t| t.trim().is_empty()),
+        })
+        .collect()
+}
+
 /// An entry as the agents' tools read it.
 pub struct Entry {
     pub id: String,
@@ -761,5 +777,22 @@ mod tests {
         // the person names an entry: the model is asked for its label
         assert!(tools[0]["description"].as_str().unwrap().contains("call with its label"));
         assert!(tools[0]["inputSchema"]["properties"]["label"]["description"].as_str().unwrap().contains("mon adresse"));
+    }
+
+    #[test]
+    fn a_checkout_needs_the_name_the_address_and_a_phone() {
+        let full = dict(json!({"full_name": "Camille Exemple", "address_line1": "1 rue de l'Essai", "city": "Testville",
+            "postal_code": "00100", "country": "FR", "phones": ["+33 6 00 00 00 00"]}));
+        assert!(missing_for_delivery(&full).is_empty());
+        let mut partial = full.clone();
+        partial.insert("city".into(), json!("  "));
+        partial.insert("phones".into(), json!([]));
+        partial.remove("country");
+        assert_eq!(missing_for_delivery(&partial), vec!["city", "country", "phone"]);
+        // an address item of before (address fields only): no name, no phone
+        let old = dict(json!({"address_line1": "1 rue de l'Essai", "city": "Testville", "postal_code": "00100",
+            "country": "FR"}));
+        assert_eq!(missing_for_delivery(&old), vec!["full_name", "phone"]);
+        assert_eq!(missing_for_delivery(&Dict::new()).len(), DELIVERY_NEEDS.len());
     }
 }
