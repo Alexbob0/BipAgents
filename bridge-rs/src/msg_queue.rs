@@ -565,6 +565,11 @@ impl Queues {
         lock(&self.state).get(agent).is_some_and(|q| q.waits_in(session_id))
     }
 
+    /// Words of the person went into that run while it went on (`steer`; read like `waits_in`).
+    pub fn steered_into(&self, agent: &str, run_id: &str) -> bool {
+        lock(&self.state).get(agent).is_some_and(|q| q.steers.iter().any(|s| s.run_id == run_id))
+    }
+
     /// The run going on in a conversation, as the hub follows it.
     pub fn running_run(&self, agent: &str, session_id: &str) -> Option<String> {
         self.hub.session_run(agent, session_id)

@@ -483,6 +483,9 @@ pub struct SubscriptionState {
     pub rescue_of: Option<String>,
     /// This run is the continuation of that run, which ended on a promise (`go_on`; never continued itself).
     pub go_on_of: Option<String>,
+    /// This run's end waits for that run, its continuation (`go_on`) or the brake's rescue turn (`loop_rescue`), whose
+    /// events follow in its stream: that one is the conversation's turn now (`session_run`: its stop, words steered).
+    pub continued_by: Option<String>,
     /// Followed for the brake whoever looks (`keep`: a run started or followed through the door's Hermes relay, a
     /// peer's message): kept alive like a watched run, without its pushes.
     pub kept: bool,
@@ -546,6 +549,7 @@ impl Default for SubscriptionState {
             loop_rescue: None,
             rescue_of: None,
             go_on_of: None,
+            continued_by: None,
             kept: false,
             ever_followed: false,
             last_tool: String::new(),
@@ -918,7 +922,8 @@ impl RunHub {
             }
             let st = lock(&sub.state);
             let Some(session) = st.session_id.clone().filter(|s| !s.is_empty()) else { continue };
-            if st.finished || !st.end_push {
+            // a continuation or rescue turn (its end told by the turn it follows) is that conversation's too
+            if st.finished || !(st.end_push || st.go_on_of.is_some() || st.rescue_of.is_some()) {
                 continue;
             }
             let handing = st.recent_tools.back().is_some_and(|t| handoff_tool(t));
@@ -1005,13 +1010,26 @@ impl RunHub {
 
     /// `session_run` with when the hub began following it (Unix seconds): the turn's start for a run the bridge started
     /// (an app's send), the apps' working-line clock (`pending.run.started`) whichever phone follows it.
+    /// A turn whose end waits for its continuation or rescue turn (`continued_by`) is not it: that one is (the apps'
+    /// Stop, words steered, the queue), since the turn's start.
     pub fn session_run_since(&self, agent: &str, session_id: &str) -> Option<(String, f64)> {
         let inner = lock(&self.inner);
-        inner.subs.values().find_map(|sub| {
+        let (mut going, mut since) = (None, f64::INFINITY);
+        for sub in inner.subs.values() {
             let st = lock(&sub.state);
-            (sub.agent.name == agent && !st.finished && st.terminal.is_none() && st.session_id.as_deref() == Some(session_id))
-                .then(|| (sub.run_id.clone(), st.followed_since))
-        })
+            if sub.agent.name != agent
+                || st.finished
+                || st.terminal.is_some()
+                || st.session_id.as_deref() != Some(session_id)
+            {
+                continue;
+            }
+            since = since.min(st.followed_since);
+            if st.continued_by.is_none() && going.is_none() {
+                going = Some(sub.run_id.clone());
+            }
+        }
+        going.map(|run| (run, since))
     }
 
     /// What a run followed now is doing, as a quick talk shows it (threads/follow.rs): the tool going on (None: it
@@ -1140,9 +1158,12 @@ impl RunHub {
         let mut st = lock(&sub.state);
         let was_followed = st.followers() > 0;
         st.listeners.retain(|l| l.id != id);
-        if was_followed && st.followers() == 0 && st.watched && !st.finished {
+        let unfollowed = was_followed && st.followers() == 0;
+        if unfollowed && st.watched && !st.finished {
             self.push_unseen(&inner, sub, &mut st);
         }
+        // the cards of its continuation or rescue turn were seen through it: unseen now too
+        let next = st.continued_by.clone().filter(|_| unfollowed && !st.finished);
         if st.listeners.is_empty() && !st.watched && !st.kept && !st.finished {
             if let Some(cancel) = &st.cancel {
                 cancel.cancel();
@@ -1152,6 +1173,23 @@ impl RunHub {
                 inner.subs.remove(&key);
             }
         }
+        drop(st);
+        if let Some(next) = next.and_then(|n| inner.subs.get(&(sub.agent.name.clone(), n)).cloned()) {
+            let mut st = lock(&next.state);
+            if st.watched && st.followers() == 0 && !st.finished {
+                self.push_unseen(&inner, &next, &mut st);
+            }
+        }
+    }
+
+    /// A continuation or rescue turn shows in the stream of the turn it follows (`go_on`, `loop_rescue`): whoever
+    /// follows that turn sees its cards, so they are not pushed. `inner` held, then the continuation's state.
+    fn followed_through(inner: &HubInner, sub: &RunSubscription, st: &SubscriptionState) -> bool {
+        st.go_on_of
+            .as_ref()
+            .or(st.rescue_of.as_ref())
+            .and_then(|of| inner.subs.get(&(sub.agent.name.clone(), of.clone())))
+            .is_some_and(|origin| lock(&origin.state).followers() > 0)
     }
 
     /// The app stopped showing the run (left the conversation, screen locked) while an approval or a
@@ -1207,7 +1245,7 @@ impl RunHub {
             .cloned()
             .collect();
         for event in questions {
-            self.on_clarify(sub, st, &event);
+            self.on_clarify(inner, sub, st, &event);
         }
     }
 
@@ -1284,10 +1322,13 @@ impl RunHub {
                                     self.rescue(sub, &event).await;
                                     // a turn the brake stopped: its rescue turn's end instead (loop_rescue)
                                     let event = self.loop_rescue(sub, event).await;
-                                    // a turn that ended on a promise: its continuation's end instead (go_on.rs)
-                                    let event = self.go_on(sub, event).await;
-                                    // what the turn made and the files its reply cites, as attachments
-                                    self.hand_over(sub, event).await
+                                    // a turn that ended on a promise: its continuation's end instead (go_on.rs),
+                                    // already handed over by the continuation (this turn made nothing)
+                                    match self.go_on(sub, event).await {
+                                        (event, true) => event,
+                                        // what the turn made and the files its reply cites, as attachments
+                                        (event, false) => self.hand_over(sub, event).await,
+                                    }
                                 } else {
                                     event
                                 };
@@ -1494,7 +1535,7 @@ impl RunHub {
         } else if kind == "clarify.request" {
             Self::keep_question(&mut inner, sub, &st, &event);
             if !self.hold_question(sub, &st, &event) {
-                self.on_clarify(sub, &mut st, &event);
+                self.on_clarify(&inner, sub, &mut st, &event);
             }
         } else if kind == crate::hermes_prompts::APPROVAL_SETTLED || kind == crate::hermes_prompts::CLARIFY_SETTLED {
             Self::forget_pending(&mut inner, &sub.agent.name, &sub.run_id, event.data.get("request_id"));
@@ -1816,6 +1857,8 @@ impl RunHub {
             st.session_id = session.clone();
             st.rescue_of = Some(sub.run_id.clone());
             st.turn.banned = crate::loop_brake::stopped_tool(&over);
+            drop(st);
+            lock(&sub.state).continued_by = Some(rescue_id.clone());
         }
         // Its browser reads no page until its end (bip-browser-mcp refuses at once): the token lab's rescue turn
         // (2026-11-07) read the page it was stopped for again and waited the full 120 s. Not while another run of the
@@ -1926,51 +1969,54 @@ impl RunHub {
     /// told out of sight to do it now or to start a background task (`go_on::input`). Its events go on in this run's
     /// stream after a `loop_rescue_started` notice with its run id (the apps adopt it: its stop, its checks), and its
     /// end is this run's end (the « reply ready » push, when nobody looks, is its reply). It has the conversation's
-    /// limits and the brake's rescue, and is never continued itself. When it can't start, fails or says nothing:
-    /// this run's own end.
-    async fn go_on(self: &Arc<Self>, sub: &Arc<RunSubscription>, terminal: SSEEvent) -> SSEEvent {
+    /// limits, the long-work net's hand-over and the brake's rescue, and is never continued itself. Never in a family
+    /// agent's conversation, nor after words of the person went into the turn. Returns the end and whether it is the
+    /// continuation's (handed over already: this turn made nothing). When it can't start, fails or says nothing: this
+    /// run's own end.
+    async fn go_on(self: &Arc<Self>, sub: &Arc<RunSubscription>, terminal: SSEEvent) -> (SSEEvent, bool) {
         if terminal.r#type != "run.completed" {
-            return terminal;
+            return (terminal, false);
         }
-        let Some(shared) = self.config.clone() else { return terminal };
-        if !shared.get().brake.go_on {
-            return terminal;
+        let Some(shared) = self.config.clone() else { return (terminal, false) };
+        // never in a family agent's common conversation (its creator's turns included), nor when switched off
+        if !shared.get().brake.go_on || crate::family_thread::is_common(&shared.get(), &sub.agent.name) {
+            return (terminal, false);
         }
-        let (session, watched, followed) = {
+        let (session, watched, followed, phone) = {
             let st = lock(&sub.state);
             let tools: Vec<String> = st
                 .backlog
                 .iter()
                 .filter(|e| e.r#type == "tool.started")
-                .map(|e| as_str(e.data.get("tool")).or_else(|| as_str(e.data.get("name"))).unwrap_or_default())
+                .map(|e| crate::loop_brake::event_tool(&e.data))
                 .collect();
             if !go_on_fits(&st) || !crate::go_on::did_nothing(tools.iter().map(String::as_str)) {
-                return terminal;
+                return (terminal, false);
             }
-            (st.session_id.clone(), st.watched, st.ever_followed)
+            (st.session_id.clone(), st.watched, st.ever_followed, st.phone.clone())
         };
         let said = terminal.final_text();
         // their next words already wait (words steered into the turn): they say what comes next
         let steered = as_str(terminal.data.get("pending_steer")).is_some_and(|p| !p.trim().is_empty());
         if !crate::go_on::promises(&said) || steered || self.someone_elses(&sub.run_id) {
-            return terminal;
+            return (terminal, false);
+        }
+        let queues = self.queues.get().and_then(std::sync::Weak::upgrade);
+        // words of theirs went into the turn (« laisse tomber »…): its last words answer them, nothing to go on with
+        if queues.as_ref().is_some_and(|q| q.steered_into(&sub.agent.name, &sub.run_id)) {
+            return (terminal, false);
         }
         let agent = sub.agent.clone();
         let session = match session.filter(|s| !s.is_empty()) {
             Some(s) => s,
             None => match self.hermes.run(&agent, &sub.run_id).await.ok().and_then(|r| as_str(r.get("session_id"))) {
                 Some(s) => s,
-                None => return terminal,
+                None => return (terminal, false),
             },
         };
         // a message of theirs waits in line for this conversation: it says what comes next
-        let waiting = self
-            .queues
-            .get()
-            .and_then(std::sync::Weak::upgrade)
-            .is_some_and(|queues| queues.waits_in(&agent.name, &session));
-        if waiting {
-            return terminal;
+        if queues.is_some_and(|queues| queues.waits_in(&agent.name, &session)) {
+            return (terminal, false);
         }
         let input = crate::dates::now::stamped(&shared.get(), &agent, &crate::go_on::input(&said));
         let mut started = None;
@@ -1993,7 +2039,7 @@ impl RunHub {
         }
         let Some(next_id) = started else {
             tracing::warn!(agent = %agent.name, run_id = %sub.run_id, "promise with no work: no continuation");
-            return terminal;
+            return (terminal, false);
         };
         tracing::info!(agent = %agent.name, run_id = %sub.run_id, continuation = %next_id,
             "promise with no work: continuation started");
@@ -2008,6 +2054,12 @@ impl RunHub {
             st.end_push = false; // this run's end tells it
             st.session_id = Some(session.clone());
             st.go_on_of = Some(sub.run_id.clone());
+            // where a reminder it sets goes: the phone of the person's words
+            if st.phone.is_none() {
+                st.phone = phone;
+            }
+            drop(st);
+            lock(&sub.state).continued_by = Some(next_id.clone());
         }
         let mut listener = self.subscribe(&agent, &next_id, "forward", false);
         let mut data = Map::new();
@@ -2037,7 +2089,9 @@ impl RunHub {
                 }
                 Ok(None) => break,
                 Err(_) => {
+                    // it goes on alone: its own end tells the person (its « reply ready » when nobody looks)
                     tracing::warn!(agent = %agent.name, run_id = %next_id, "continuation followed too long: let go");
+                    lock(&listener.sub.state).end_push = watched;
                     break;
                 }
             }
@@ -2052,12 +2106,12 @@ impl RunHub {
             {
                 tracing::info!(agent = %agent.name, run_id = %sub.run_id, continuation = %next_id,
                     "promise with no work: the continuation answered");
-                end
+                (end, true)
             }
             _ => {
                 tracing::warn!(agent = %agent.name, run_id = %sub.run_id, continuation = %next_id,
                     "promise with no work: the continuation did not answer");
-                terminal
+                (terminal, false)
             }
         }
     }
@@ -2105,6 +2159,15 @@ impl RunHub {
             added.extend(cited.into_iter().filter(|p| !before.contains(p) && !after.contains(p)));
         }
         let mut data = event.data;
+        // files the end hands over already (a rescue turn's own end, handed over in its own run): once
+        let have: Vec<String> = data
+            .get("attachments")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|a| as_str(a.get("path")))
+            .collect();
+        added.retain(|p| !have.contains(p));
         let marked = crate::made_files::fix_reply(&written, agent, &marks);
         if let Some(fixed) = &marked {
             if !said.trim().is_empty() {
@@ -2324,7 +2387,9 @@ impl RunHub {
         }
         // a run kept for the brake only (a peer's message nobody looks at): no steer, no rescue, as before
         let held = st.delegating > 0 || st.subagents > 0 || (st.kept && !st.watched && !st.ever_followed);
-        if st.steered || st.braked || st.handed_off || !st.end_push || st.finished || held {
+        // a continuation (go_on) is a person's conversation turn like the one it follows: long work goes to a task
+        let conversation = st.end_push || st.go_on_of.is_some();
+        if st.steered || st.braked || st.handed_off || !conversation || st.finished || held {
             return;
         }
         if !matches!(event.r#type.as_str(), "tool.started" | "tool.completed") {
@@ -2380,7 +2445,7 @@ impl RunHub {
         let output = terminal.final_text();
         let (session, steps, said) = {
             let mut st = lock(&sub.state);
-            if !st.steered || st.handed_off || !st.end_push || st.rescued {
+            if !st.steered || st.handed_off || !(st.end_push || st.go_on_of.is_some()) || st.rescued {
                 return;
             }
             let said: String = st.backlog.iter().filter(|e| is_delta(&e.r#type)).map(|e| e.text()).collect();
@@ -2523,13 +2588,18 @@ touche « Démarrer » pour reprendre."
     }
 
     /// A question (docs/hermes-clarify-api.md) nobody sees: push it once, like an approval.
-    fn on_clarify(&self, sub: &RunSubscription, st: &mut SubscriptionState, event: &SSEEvent) {
+    fn on_clarify(&self, inner: &HubInner, sub: &RunSubscription, st: &mut SubscriptionState, event: &SSEEvent) {
         let data = &event.data;
         let request_id = clarify_id(data);
         let dedupe =
             format!("clarify:{}", request_id.clone().filter(|r| !r.is_empty()).unwrap_or_else(|| sha16(&event.raw)));
         let Some(push) = self.push.clone() else { return };
-        if !st.watched || st.followers() > 0 || st.pushed.contains(&dedupe) || self.someone_elses(&sub.run_id) {
+        if !st.watched
+            || st.followers() > 0
+            || Self::followed_through(inner, sub, st)
+            || st.pushed.contains(&dedupe)
+            || self.someone_elses(&sub.run_id)
+        {
             return;
         }
         let questions = match data.get("questions") {
@@ -2771,7 +2841,7 @@ touche « Démarrer » pour reprendre."
                 return;
             }
         }
-        let followers = st.followers();
+        let followers = st.followers() + usize::from(Self::followed_through(inner, sub, st));
         let push = match self.push.clone() {
             Some(push) if st.watched && followers == 0 && !st.pushed.contains(&dedupe) && !elsewhere => push,
             _ => {
@@ -2854,6 +2924,73 @@ mod tests {
         assert_eq!(hub.session_run_since("vie", "api_bot"), Some(("run_1".into(), since)));
         assert_eq!(hub.session_run("vie", "api_bot").as_deref(), Some("run_1"));
         assert_eq!(hub.session_run_since("vie", "api_other"), None);
+    }
+
+    /// A turn whose end `go_on` holds while its continuation runs, and the continuation, linked as `go_on` links them.
+    fn turn_and_continuation(hub: &RunHub) -> (Arc<RunSubscription>, Arc<RunSubscription>) {
+        let vie = || AgentConfig { name: "vie".into(), ..Default::default() };
+        let turn = Arc::new(RunSubscription::new(vie(), "run_vie"));
+        {
+            let mut st = lock(&turn.state);
+            st.session_id = Some("api_c".into());
+            st.watched = true;
+            st.ever_followed = true;
+            st.followed_since -= 60.0;
+            st.continued_by = Some("run_next".into());
+        }
+        let next = Arc::new(RunSubscription::new(vie(), "run_next"));
+        {
+            let mut st = lock(&next.state);
+            st.kept = true;
+            st.watched = true;
+            st.ever_followed = true;
+            st.end_push = false;
+            st.session_id = Some("api_c".into());
+            st.go_on_of = Some("run_vie".into());
+        }
+        lock(&hub.inner).subs.insert(turn.key(), turn.clone());
+        lock(&hub.inner).subs.insert(next.key(), next.clone());
+        (turn, next)
+    }
+
+    /// Review 13/11 of go_on: the apps' Stop (POST /v1/threads/{id}/stop), the words steered (threads/send.rs) and the
+    /// queue take `session_run`; with the turn and its continuation both going on, the hub's map order picked either.
+    #[test]
+    fn during_the_continuation_the_conversations_turn_is_the_continuation() {
+        let mut wrong = 0;
+        for _ in 0..40 {
+            let hub = RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None);
+            let (turn, _) = turn_and_continuation(&hub);
+            let started = lock(&turn.state).followed_since;
+            match hub.session_run_since("vie", "api_c") {
+                Some((run, since)) if run == "run_next" => assert_eq!(since, started, "the turn's start"),
+                _ => wrong += 1,
+            }
+        }
+        assert_eq!(wrong, 0, "in {wrong} of 40 hubs the conversation's turn was the one Hermes had already ended");
+    }
+
+    /// The continuation is told to start_task: the task's conversation (jobs.rs `asking_session`) is its own, even
+    /// while another conversation of the agent was followed later.
+    #[test]
+    fn a_task_the_continuation_starts_belongs_to_its_conversation() {
+        let hub = RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None);
+        let (_, next) = turn_and_continuation(&hub);
+        let now = crate::py::time_time();
+        {
+            let mut st = lock(&next.state);
+            st.followed_since = now - 20.0;
+            st.recent_tools.push_back("mcp_bipagents_start_task".into());
+        }
+        let other =
+            Arc::new(RunSubscription::new(AgentConfig { name: "vie".into(), ..Default::default() }, "run_other"));
+        {
+            let mut st = lock(&other.state);
+            st.session_id = Some("api_other".into());
+            st.followed_since = now - 30.0;
+        }
+        lock(&hub.inner).subs.insert(other.key(), other);
+        assert_eq!(hub.asking_session("vie").as_deref(), Some("api_c"));
     }
 
     #[tokio::test]

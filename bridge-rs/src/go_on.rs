@@ -20,10 +20,12 @@ use regex::Regex;
 /// The continuation's input starts with this (the timeline hides the row: threads/timeline.rs `BRIDGE_MARK`).
 pub const MARK: &str = "[bipagents:go_on]";
 
-/// Tools that do no work for the person: a turn that called only these did nothing it could announce.
-pub const TALK_TOOLS: [&str; 10] = [
+/// Tools that do no work for the person: a turn that called only these did nothing it could announce (`todo`: the task
+/// list's other name, steps.rs `is_todo_call`).
+pub const TALK_TOOLS: [&str; 11] = [
     "clarify",
     "todo_list",
+    "todo",
     "memory",
     "skill_view",
     "skills_list",
@@ -41,7 +43,9 @@ pub const TAIL_CHARS: usize = 400;
 /// background task anyway: runs.rs `handoff`); after that it goes on alone, its run adopted by the apps.
 pub const MAX_SECONDS: f64 = 1800.0;
 
-/// Work announced for later, in the five languages of the agents (lower case; apostrophes made straight first).
+/// Work announced for later, in the five languages of the agents (lower case; apostrophes made straight first): the
+/// agent's own verb in the first person, never a time alone (« prêt dans 20 minutes », « in a few minutes » of a recipe)
+/// nor a polite closing line (« I'm looking forward… », « Ik kijk ernaar uit… »).
 static PROMISE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(concat!(
         r"(?i)",
@@ -49,20 +53,23 @@ static PROMISE: LazyLock<Regex> = LazyLock::new(|| {
         r"\bje (?:te |t'|vous )?(?:pr[ée]pare|cherche|regarde|lance|compare|fouille|reviens|m'en occupe|m'y mets|m'en charge)\b",
         r"|\bje vais (?:te |t'|vous )?(?:chercher|regarder|trouver|comparer|voir|fouiller|lancer|pr[ée]parer|d[ée]nicher|faire une recherche|m'en occuper)\b",
         r"|\bje (?:te |vous )?(?:tiens au courant|recontacte|reviens)\b",
-        r"|\bdans (?:quelques|deux|trois|cinq|dix|\d+) (?:minutes|instants)\b|\bdans un instant\b|\blaisse-moi (?:chercher|regarder|v[ée]rifier)\b",
+        r"|\blaisse-moi (?:chercher|regarder|v[ée]rifier)\b|\bdonne-moi (?:quelques|deux|trois|cinq|\d+) minutes\b",
         // English
-        r"|\bi(?:'ll| will) (?:look|search|check|find|get back|come back|be back|prepare|put together|dig|compare|report back|hunt)\b",
-        r"|\bi'm (?:on it|looking|searching|checking|preparing|putting together|digging)\b|\blet me (?:look|search|check|find|dig)\b",
-        r"|\b(?:give me|in) (?:a few|a couple of|\d+) minutes\b",
+        r"|\bi(?:'ll| will) (?:look (?:for|into|up|around)|search|check|find|get back|come back|be back|prepare|put together|dig|compare|report back|hunt)\b",
+        r"|\bi'm (?:on it|looking (?:for|into|up)|searching|checking|preparing|putting together|digging)\b",
+        r"|\blet me (?:look|search|check|find|dig)\b|\bgive me (?:a few|a couple of|\d+) minutes\b",
         // Spanish
-        r"|\b(?:te )?(?:preparo|busco|vuelvo)\b|\bvoy a (?:buscar|mirar|preparar|comparar)\b|\ben unos minutos\b",
+        r"|\b(?:te )?(?:preparo|busco)\b|\bvuelvo (?:con|en)\b|\bvoy a (?:buscar|mirar|preparar|comparar)\b",
         // German
-        r"|\bich (?:suche|schaue|bereite|melde mich|k[üu]mmere mich)\b|\bin (?:ein paar|wenigen) minuten\b",
+        r"|\bich (?:suche|schaue|bereite|melde mich|k[üu]mmere mich)\b",
         // Dutch
-        r"|\bik (?:zoek|kijk|ga .{0,30}zoeken|kom .{0,30}terug)\b|\bover een paar minuten\b",
+        r"|\bik (?:zoek|kijk (?:even|het na|rond|voor je)|ga .{0,30}zoeken|kom .{0,30}terug)\b",
     ))
     .expect("valid regex")
 });
+
+/// A link, whose `?` asks nothing.
+static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://\S+").expect("valid regex"));
 
 /// The person is asked to say or choose something (lower case; apostrophes made straight first): the work waits for
 /// their answer, it was offered, not promised. Bench 13/11 (DeepSeek): « Dis-moi lequel et je m'y mets tout de suite ».
@@ -95,6 +102,7 @@ pub fn promises(reply: &str) -> bool {
     let chars: Vec<char> = text.chars().collect();
     let tail: String = chars[chars.len().saturating_sub(TAIL_CHARS)..].iter().collect();
     let tail = tail.replace(['\u{2019}', '\u{02BC}'], "'");
+    let tail = LINK.replace_all(&tail, "");
     // it asks the person something (« Tu veux que je… ? », « Dis-moi lequel et je m'y mets »): they answer first
     if tail.contains('?') || ASKS.is_match(&tail) {
         return false;
@@ -151,8 +159,38 @@ mod tests {
     }
 
     #[test]
+    fn a_recipe_a_breath_or_a_closing_line_is_no_promise() {
+        // review 13/11: a time alone, or a polite closing line, announces no work of the agent's
+        let said = [
+            "Ajoute la crème, couvre et laisse mijoter à feu doux : ce sera prêt dans 20 minutes. Bon appétit !",
+            "Respire lentement par le ventre, tu vas te sentir plus calme dans un instant.",
+            "Put it in the oven at 180 °C: it'll be ready in 25 minutes. Enjoy!",
+            "What a lovely plan! I'm looking forward to hearing all about your trip.",
+            "La pasta estará lista en unos minutos. ¡Buen provecho!",
+            "Die Nudeln sind in ein paar Minuten fertig. Guten Appetit!",
+            "Wat een leuk plan! Ik kijk ernaar uit om te horen hoe het was.",
+            "Vuelvo a decirte que fue un placer. ¡Buen viaje!",
+        ];
+        let taken: Vec<&str> = said.iter().copied().filter(|s| promises(s)).collect();
+        assert!(taken.is_empty(), "taken for a promise of work: {taken:#?}");
+        // still promises: the agent's own verb
+        assert!(promises("Donne-moi quelques minutes, je reviens avec le lien."));
+        assert!(promises("I'm looking into it, give me a few minutes."));
+        assert!(promises("Ich melde mich in ein paar Minuten mit dem Link."));
+        assert!(promises("Ik kijk even rond en kom zo bij je terug."));
+        assert!(promises("Vuelvo en unos minutos con el enlace."));
+    }
+
+    #[test]
+    fn a_link_s_question_mark_asks_nothing() {
+        assert!(promises("J'ai repéré https://www.fnac.com/a123?origin=search, je te prépare le panier dessus."));
+        assert!(!promises("Celui-ci te va ? https://www.fnac.com/a123"));
+    }
+
+    #[test]
     fn only_the_end_counts() {
-        let long = format!("Je cherche souvent ce genre de choses. {}Voilà la liste complète.", "Une idée. ".repeat(60));
+        let long =
+            format!("Je cherche souvent ce genre de choses. {}Voilà la liste complète.", "Une idée. ".repeat(60));
         assert!(!promises(&long));
     }
 
@@ -160,6 +198,8 @@ mod tests {
     fn a_turn_did_nothing_with_only_talking_tools() {
         assert!(did_nothing([]));
         assert!(did_nothing(["clarify", "todo_list", "mcp__bipagents__notebook_search"]));
+        // the task list under its other name (steps.rs `is_todo_call`)
+        assert!(did_nothing(["todo", "clarify"]));
         assert!(!did_nothing(["clarify", "web_search"]));
         assert!(!did_nothing(["mcp__bipagents__start_task"]));
         assert!(!did_nothing(["mcp_stealth_navigate"]));
