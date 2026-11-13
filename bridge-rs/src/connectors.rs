@@ -586,6 +586,8 @@ fn card_item(state: Option<&AppState>, config: &Config, agent: &str, conn: &Conn
         "bip_connector_secrets": secrets_view(state, agent, conn),
         "bip_connector_schedule": when_line(conn),
         "bip_connector_watch": conn.watch.as_ref().map(crate::watchers::watch_view),
+        // a purchase watcher: that it buys, shown on the card itself
+        "bip_connector_purchase": conn.watch.as_ref().and_then(|w| w.purchase.as_ref()).map(crate::watchers::purchase_text),
         "bip_connector_tools": tool_names(conn),
         "bip_connector_icon": {"symbol": icon_of(&conn.icon).get("key").cloned().unwrap_or(Value::Null),
                                "image": icon_url(agent, conn)},
@@ -1818,10 +1820,10 @@ mod tests {
                 "the {change} card of a purchase watcher never says it buys, nor what: {shown}"
             );
             assert_eq!(
-                card["bip_connector_schedule"],
-                "Vérifie toutes les 15 min, ne réveille l'agent que si ça change ; dès que c'est possible, il achète « 2 \
-billets Stromae » sur shop.example (≈ 45,00 €) : tu valides le paiement"
+                card["bip_connector_purchase"],
+                "Il achètera « 2 billets Stromae » sur shop.example (≈ 45,00 €) dès que possible : tu valideras le paiement"
             );
+            assert_eq!(card["bip_connector_schedule"], "Vérifie toutes les 15 min, ne réveille l'agent que si ça change");
         }
     }
 }

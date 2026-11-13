@@ -52,7 +52,10 @@ pub const TOO_LATE: &str = "The person did not answer within 10 minutes: nothing
 card now waits for them to buy it themselves (don't call hand_over_payment). End your turn with one short sentence.";
 
 /// What `pay_with_card` answers during a rehearsal.
-pub const REHEARSAL_NO_PAY: &str = "This is a rehearsal: never pay. Stop at the payment page, then empty the cart.";
+/// Said so that a real payment refused by mistake (a turn the hub can't tell from the rehearsal's) keeps its cart.
+pub const REHEARSAL_NO_PAY: &str = "A purchase rehearsal of yours is running: no payment now. If this is that \
+rehearsal, stop at the payment page, then empty the cart; otherwise keep the cart and try pay_with_card again in a few \
+minutes.";
 
 // --- words -----------------------------------------------------------------------------------------------------------
 

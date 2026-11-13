@@ -182,19 +182,18 @@ pub fn minutes_of(watch: &Watch) -> u32 {
 /// The connector card's line: « Vérifie toutes les 15 min, ne réveille l'agent que si ça change ».
 pub fn card_text(watch: &Watch) -> String {
     let when = if watch.notify == ON_CONDITION { "que si sa condition est remplie" } else { "que si ça change" };
-    let check = format!("Vérifie {}, ne réveille l'agent {when}", every_text(minutes_of(watch)));
-    match &watch.purchase {
-        // what the person approves: that this watcher buys, what, where (the agent wrote it: review 2, 13/11)
-        Some(p) => {
-            let price = if p.cents > 0 {
-                format!(" (≈ {})", crate::urgent_pay::money("fr", p.cents, &p.currency))
-            } else {
-                String::new()
-            };
-            format!("{check} ; dès que c'est possible, il achète « {} » sur {}{price} : tu valides le paiement", p.what, p.site)
-        }
-        None => check,
-    }
+    format!("Vérifie {}, ne réveille l'agent {when}", every_text(minutes_of(watch)))
+}
+
+/// A purchase watcher's own line on the card the person approves, shown with it (not under the « i »): that it buys,
+/// what, where (the agent wrote it; reviews 2 and 3, 13/11).
+pub fn purchase_text(p: &connectors::Purchase) -> String {
+    let price = if p.cents > 0 {
+        format!(" (≈ {})", crate::urgent_pay::money("fr", p.cents, &p.currency))
+    } else {
+        String::new()
+    };
+    format!("Il achètera « {} » sur {}{price} dès que possible : tu valideras le paiement", p.what, p.site)
 }
 
 /// The agent's `watch` checked: Err is the refusal's text.
@@ -551,12 +550,11 @@ the error's technical words, file names or tool names. No URGENT.\n-->",
 pub fn read_reply(text: &str) -> Option<(bool, String)> {
     let text = tk::strip(text);
     let bare = |s: &str| s.trim_matches(|c: char| !c.is_alphanumeric()).to_uppercase();
-    // NOTHING, its translations, or the background turns' own code word (lab 13/11: GLM answered « [SILENT] » to a
-    // purchase watcher's wake-up, which went to the person as a message)
-    if text.is_empty()
-        || ["NOTHING", "RIEN", "NICHTS", "NADA"].contains(&bare(text).as_str())
-        || crate::background_turn::is_silent(text)
-    {
+    // NOTHING, its translations, or the background turns' own code word, alone or leading (lab 13/11: GLM answered
+    // « [SILENT] » to a purchase watcher's wake-up, which went to the person as a message); never a real message in
+    // brackets (« [Billets en vente !] »)
+    let silent = text.trim_start().trim_start_matches(['*', '`', '_']).starts_with(crate::background_turn::SILENT);
+    if text.is_empty() || silent || ["NOTHING", "RIEN", "NICHTS", "NADA", "SILENT", "NO_REPLY"].contains(&bare(text).as_str()) {
         return None;
     }
     let mut lines = text.lines();
@@ -1001,12 +999,27 @@ mod tests {
         assert_eq!(decide(&rt, &low, ON_CONDITION, 1000.0, gap), Step::Wake);
     }
 
+    /// A watcher's real message in brackets, whole or leading, is never dropped as the « [SILENT] » code word (review 3,
+    /// 13/11).
+    #[test]
+    fn a_watchers_real_message_in_brackets_is_never_dropped() {
+        for said in ["[Billets Stromae] En vente maintenant : https://shop.example/stromae",
+            "[EN VENTE] 2 billets à 45 €, je les ai mis au panier.", "URGENT\n[En stock !]",
+            "[Voir les billets](https://shop.example/stromae)"] {
+            assert!(read_reply(said).is_some(), "{said:?} dropped as silent");
+        }
+        for said in ["[Billets en vente !]", "[De retour en stock]", "**[EN VENTE]**"] {
+            assert!(read_reply(said).is_some(), "the watcher's whole message {said:?} dropped as silent: the person gets nothing");
+        }
+    }
+
     #[test]
     fn the_agents_reply() {
         assert_eq!(read_reply("NOTHING"), None);
         assert_eq!(read_reply("  Rien. "), None);
         assert_eq!(read_reply("[SILENT]"), None);
         assert_eq!(read_reply("**[SILENT]**"), None);
+        assert_eq!(read_reply("[SILENT] rien de neuf"), None);
         assert_eq!(read_reply("URGENT\nUn créneau mardi à 10 h : réserve vite."), Some((true, "Un créneau mardi à 10 h : réserve vite.".into())));
         assert_eq!(read_reply("**URGENT**\nVite."), Some((true, "Vite.".into())));
         assert_eq!(read_reply("URGENT: ton solde est à 80 €."), Some((true, "ton solde est à 80 €.".into())));

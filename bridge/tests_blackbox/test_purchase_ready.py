@@ -199,7 +199,7 @@ def test_a_rehearsal_never_pays_and_its_verdict_is_kept(bridges, fakes):
     time.sleep(1)   # the bridge learns the run's id as Hermes answers its start
     # meanwhile: never a payment from the rehearsal's turn (refused before the person is asked), never a second one
     refused = pay_tool(bridge, PAY_ARGS)
-    assert refused["isError"] is True and "This is a rehearsal: never pay" in refused["content"][0]["text"], refused
+    assert refused["isError"] is True and "A purchase rehearsal of yours is running: no payment now" in refused["content"][0]["text"], refused
     outcomes = [e["outcome"] for e in bridge.get("/v1/vault/payments", headers=AUTH).json()["journal"]]
     assert "asked" not in outcomes
     assert not [c for c in bridge.get("/v1/approvals", headers=AUTH, params={"agent": "vie"}).json()["items"]
