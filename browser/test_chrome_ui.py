@@ -83,10 +83,12 @@ class FakeTab:
 class FakeConnection:
     """The browser's DevTools connection: `Browser.getWindowForTarget` fails for a tab with no window."""
 
-    def __init__(self, windowless):
-        self.windowless = windowless
+    def __init__(self, windowless, stuck=()):
+        self.windowless, self.stuck = windowless, stuck
 
     async def send(self, command):
+        if command[0] == "window" and command[1] in self.stuck:
+            await asyncio.sleep(3600)   # a DevTools that never answers
         if command[0] == "window" and command[1] in self.windowless:
             raise Exception("Browser window not found [code: -32000]")
         return {"windowId": 1}
@@ -146,6 +148,12 @@ def test_every_tab_choice_skips_chromes_own_ui_even_first(tmp_path, monkeypatch)
     # Review of 13/11: a real tab on such an address (an error page, in a window) is still the agent's tab.
     lookalike = FakeTab("LOOK", "chrome-untrusted://foo.top-chrome/")
     assert asyncio.run(helpers["_bip_tabs"](FakeBrowser(lookalike, *chrome_ui_tabs(), site))) == [lookalike, site]
+    # Second review of 13/11: a window question that never gets its answer does not hang the tab choice; that page
+    # (a top-chrome address) counts as Chrome's UI, as when Chrome says it has no window.
+    helpers["_WINDOW_SECONDS"] = 0.2
+    stuck = FakeBrowser(lookalike, site)
+    stuck.connection.stuck = {"LOOK"}
+    assert asyncio.run(asyncio.wait_for(helpers["_bip_tabs"](stuck), timeout=3)) == [site]
     # spawn and reconnect with no tab of its own known: the first real one, never the popup listed before it
     assert asyncio.run(helpers["_bip_first_tab"](browser)) is site
     # only Chrome's UI left: a blank tab opened for the agent
@@ -167,11 +175,12 @@ def test_one_disable_features_switch_with_the_popup_off(tmp_path):
             "--disable-features=IsolateOrigins,site-per-process,OptimizationHints", "--no-sandbox"]
     merged = merge(args)
     switches = [a for a in merged if a.startswith("--disable-features=")]
-    assert switches == ["--disable-features=IsolateOrigins,site-per-process,OptimizationHints,WebUIOmniboxPopup"]
+    assert switches == ["--disable-features=IsolateOrigins,site-per-process,OptimizationHints,WebUIOmniboxPopup,"
+                        "WebUIOmniboxAimPopup"]
     assert [a for a in merged if a not in switches] == [a for a in args if not a.startswith("--disable-features=")]
     # the caller's args alone (the server's own launch, after nodriver's switch): nodriver's two kept
     assert [a for a in merge(["--start-maximized"]) if a.startswith("--disable-features=")] == [
-        "--disable-features=IsolateOrigins,site-per-process,WebUIOmniboxPopup"]
+        "--disable-features=IsolateOrigins,site-per-process,WebUIOmniboxPopup,WebUIOmniboxAimPopup"]
     assert merge(merged) == merged
 
 
@@ -240,7 +249,7 @@ def test_the_persons_chrome_starts_without_the_popup_page(tmp_path):
     args = launched_with(tmp_path, browser_args=BRIDGE_ARGS)
     assert features_off(args) == [["IsolateOrigins", "site-per-process", "OptimizationGuideModelDownloading",
                                    "OptimizationHintsFetching", "OptimizationTargetPrediction", "OptimizationHints",
-                                   "WebUIOmniboxPopup"]]
+                                   "WebUIOmniboxPopup", "WebUIOmniboxAimPopup"]]
     assert "--start-maximized" in args and "--accept-lang=fr-FR,fr" in args and "--no-sandbox" in args
 
 
@@ -251,7 +260,8 @@ def test_the_agents_chrome_starts_without_the_popup_page(tmp_path):
                 "--disable-features=IsolateOrigins,site-per-process,OptimizationHints", "--no-sandbox",
                 "--remote-debugging-host=127.0.0.1", "--remote-debugging-port=9222"]
     args = launched_with(tmp_path, *nodriver)
-    assert features_off(args) == [["IsolateOrigins", "site-per-process", "OptimizationHints", "WebUIOmniboxPopup"]]
+    assert features_off(args) == [["IsolateOrigins", "site-per-process", "OptimizationHints", "WebUIOmniboxPopup",
+                                   "WebUIOmniboxAimPopup"]]
     assert [a for a in args if not a.startswith("--disable-features=")] == [
         a for a in nodriver if not a.startswith("--disable-features=")]
 
@@ -378,7 +388,8 @@ def no_popup_page(container: str, started: str) -> None:
     switches = [a for a in chrome_command_line(container) if a.startswith("--disable-features=")]
     assert switches, started
     last = set(switches[-1].split("=", 1)[1].split(","))
-    assert {"WebUIOmniboxPopup", "OptimizationHints", "IsolateOrigins"} <= last, (started, switches)
+    assert {"WebUIOmniboxPopup", "WebUIOmniboxAimPopup", "OptimizationHints", "IsolateOrigins"} <= last, (
+        started, switches)
     assert not [t for t in chrome_targets(container) if ".top-chrome" in t["url"]], started
 
 
@@ -412,7 +423,7 @@ def test_the_agent_never_drives_chromes_popup_page(container):
     assert first.call("close_tab", instance_id=instance, tab_id=popup) is False
     # its tracked tab is gone: the navigation goes to the site's tab, never to the popup listed before it
     assert first.call("navigate", instance_id=instance, url=SITE + "account.html")["title"] == "Compte"
-    assert [t["url"] for t in chrome_targets(container) if t["url"] != POPUP] == [SITE + "account.html"]
+    assert [t["url"] for t in chrome_targets(container) if ".top-chrome" not in t["url"]] == [SITE + "account.html"]
     first.end()   # Hermes restarts its MCP servers
 
     second = Server(container)
@@ -475,5 +486,60 @@ def test_release_and_spawn_again_with_the_popup_there(container):
     again = server.call("spawn_browser")["instance_id"]
     state = server.call("get_active_tab", instance_id=again)
     server.end()
-    assert left == ["about:blank", POPUP], left
+    # Chrome's UI left alone (the popup; Fedora's Chromium 156 has a second one, …/omnibox_popup_aim.html)
+    assert POPUP in left and [u for u in left if ".top-chrome" not in u] == ["about:blank"], left
     assert state["url"] == "about:blank", state
+
+
+# In the container: the first tab to argv[1], Alt+Shift+R sent to it (Chrome's shortcut for reading mode), then every
+# target at a read-anything address: its type and its document's real address (chrome-error:// when blocked).
+READ = """
+import asyncio, json, sys, urllib.request
+import websockets
+async def main():
+    v = json.load(urllib.request.urlopen("http://127.0.0.1:9222/json/version"))
+    async with websockets.connect(v["webSocketDebuggerUrl"], max_size=None) as ws:
+        n = 0
+        async def call(method, params=None, session=None):
+            nonlocal n
+            n += 1
+            await ws.send(json.dumps({"id": n, "method": method, "params": params or {},
+                                      **({"sessionId": session} if session else {})}))
+            while True:
+                m = json.loads(await ws.recv())
+                if m.get("id") == n:
+                    return m.get("result", m.get("error"))
+        tab = next(t for t in (await call("Target.getTargets"))["targetInfos"] if t["type"] == "page")
+        s = (await call("Target.attachToTarget", {"targetId": tab["targetId"], "flatten": True}))["sessionId"]
+        await call("Page.navigate", {"url": sys.argv[1]}, s)
+        await asyncio.sleep(2)
+        await call("Page.bringToFront", {}, s)
+        key = {"modifiers": 9, "key": "R", "code": "KeyR", "windowsVirtualKeyCode": 82, "nativeVirtualKeyCode": 82}
+        await call("Input.dispatchKeyEvent", {"type": "rawKeyDown", **key}, s)
+        await call("Input.dispatchKeyEvent", {"type": "keyUp", **key}, s)
+        await asyncio.sleep(4)
+        out = []
+        for t in (await call("Target.getTargets"))["targetInfos"]:
+            if "read-anything" in t["url"]:
+                ss = (await call("Target.attachToTarget", {"targetId": t["targetId"], "flatten": True}))["sessionId"]
+                r = await call("Runtime.evaluate", {"expression": "location.href", "returnByValue": True}, ss)
+                out.append([t["type"], r.get("result", {}).get("value")])
+        print(json.dumps(out))
+asyncio.run(main())
+"""
+
+
+@needs_image
+def test_reading_mode_opens_for_the_person(container):
+    """Chrome's reading mode (Alt+Shift+R, or the page's menu), which the person watching « Bureau » may open: a side
+    panel of Chrome's own, chrome-untrusted://read-anything-side-panel.top-chrome/. Second review of 13/11: a policy
+    blocking chrome-untrusted://* showed « This page is blocked » in it (and in Google Lens). The bridge's refusal of
+    those addresses and the « address and no window » rule are enough against a tab made to look like Chrome's UI."""
+    subprocess.run([ENGINE, "exec", "-d", container, "/opt/stealth/open_browser.sh"], check=True)
+    assert wait_for(lambda: chrome_targets(container))
+    time.sleep(2)
+    out = in_container(container, "/opt/stealth/venv/bin/python", "-I", "-c", READ, SITE + "account.html")
+    panels = json.loads(out)
+    assert panels, "reading mode was not asked for (the shortcut did not reach Chrome)"
+    assert all(href == "chrome-untrusted://read-anything-side-panel.top-chrome/" for _, href in panels), panels
+

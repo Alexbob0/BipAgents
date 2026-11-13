@@ -980,8 +980,10 @@ mod tests {
         assert_eq!(address("  "), None);
     }
 
-    /// A DevTools answering `/json/list` with `list` (one request per connection, as reqwest makes them here).
-    async fn devtools_listing(list: Value) -> u16 {
+    /// A DevTools answering `/json/list` with `list` (one request per connection, as reqwest makes them here), and on
+    /// a tab's own WebSocket, `Browser.getWindowForTarget`: a window for the targets of `windowed`, Chrome's « Browser
+    /// window not found » for the others.
+    async fn devtools_listing(list: Value, windowed: &'static [&'static str]) -> u16 {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -990,6 +992,25 @@ mod tests {
             while let Ok((mut socket, _)) = listener.accept().await {
                 let body = body.clone();
                 tokio::spawn(async move {
+                    let mut first = [0u8; 32];
+                    let seen = socket.peek(&mut first).await.unwrap_or(0);
+                    if first[..seen].starts_with(b"GET /devtools/page/") {
+                        let Ok(mut ws) = tokio_tungstenite::accept_async(socket).await else { return };
+                        while let Some(Ok(WsMessage::Text(text))) = ws.next().await {
+                            let asked: Value = serde_json::from_str(&text).unwrap_or_default();
+                            let target = asked["params"]["targetId"].as_str().unwrap_or_default();
+                            let none = json!({"code": -32000, "message": "Browser window not found"});
+                            let answer = if windowed.contains(&target) {
+                                json!({"id": asked["id"], "result": {"windowId": 1}})
+                            } else {
+                                json!({"id": asked["id"], "error": none})
+                            };
+                            if ws.send(WsMessage::Text(answer.to_string().into())).await.is_err() {
+                                return;
+                            }
+                        }
+                        return;
+                    }
                     let mut head = [0u8; 4096];
                     let _ = socket.read(&mut head).await;
                     let head = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close";
@@ -1003,11 +1024,16 @@ mod tests {
 
     /// 13/11 (Alex, aibox and an offer's place): Chrome 157 lists its address bar's suggestion popup as a page with no
     /// window, first once the agent's first tab was closed; « Bureau » showed a tab « null » there. Chrome's own UI
-    /// pages (`*.top-chrome`, chrome:// and chrome-untrusted://) are never a tab of the agent, whatever their order.
+    /// pages (`*.top-chrome`, chrome:// and chrome-untrusted://, with no window) are never a tab of the agent,
+    /// whatever their order. A real tab at such an address (an error page, in a window) is one (review of 13/11).
     #[tokio::test]
     async fn chromes_own_ui_pages_are_never_a_tab() {
-        let port = devtools_listing(json!([
+        let port = devtools_listing(
+            json!([
+            {"id": "LOOK", "type": "page", "url": "chrome-untrusted://foo.top-chrome/", "title": "foo.top-chrome"},
             {"id": "POPUP", "type": "page", "url": "chrome://omnibox-popup.top-chrome/", "title": "null"},
+            {"id": "AIM", "type": "page", "title": "",
+             "url": "chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html"},
             {"id": "SEARCH", "type": "page", "url": "chrome://tab-search.top-chrome/", "title": "Rechercher"},
             {"id": "READ", "type": "page", "title": "",
              "url": "chrome-untrusted://read-anything-side-panel.top-chrome/"},
@@ -1015,13 +1041,16 @@ mod tests {
             {"id": "TOOLS", "type": "page", "url": "devtools://devtools/bundled/inspector.html", "title": "DevTools"},
             {"id": "FRAME", "type": "iframe", "url": "https://pay.example/", "title": ""},
             {"id": "NEW", "type": "page", "url": "chrome://newtab/", "title": "Nouvel onglet"}
-        ]))
+            ]),
+            &["LOOK", "SITE", "NEW"],
+        )
         .await;
         let list = tabs(port, None).await.unwrap();
-        assert_eq!(list.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["SITE", "NEW"]);
-        let only_ui = devtools_listing(json!([
-            {"id": "POPUP", "type": "page", "url": "chrome://omnibox-popup.top-chrome/", "title": "null"}
-        ]))
+        assert_eq!(list.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["LOOK", "SITE", "NEW"]);
+        let only_ui = devtools_listing(
+            json!([{"id": "POPUP", "type": "page", "url": "chrome://omnibox-popup.top-chrome/", "title": "null"}]),
+            &[],
+        )
         .await;
         assert_eq!(tabs(only_ui, None).await.unwrap(), Vec::<Tab>::new());
     }

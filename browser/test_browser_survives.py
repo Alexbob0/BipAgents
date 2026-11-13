@@ -223,9 +223,8 @@ asyncio.run(main())
 
 def test_chrome_reads_the_images_policies(container):
     """policies.json as Chrome reads it in the image. Chrome says nothing, even in its log, of a policy file it could
-    not read (tried 13/11): what it refuses shows the file was read. chrome:// and chrome-untrusted:// addresses are
-    blocked (review of 13/11: a tab sent to chrome-untrusted://….top-chrome/ kept an address like Chrome's own UI),
-    and the new tab page still renders with its own frame (its Gmail / Images / apps bar, chrome-untrusted://)."""
+    not read (tried 13/11): what it refuses shows the file was read (chrome://version). The new tab page renders with
+    its own frame (its Gmail / Images / apps bar, chrome-untrusted://new-tab-page: never blocked)."""
     subprocess.run([ENGINE, "exec", "-d", container, "/opt/stealth/open_browser.sh"], check=True)
     listing = "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:9222/json/list').read().decode())"
     for _ in range(100):
@@ -234,12 +233,11 @@ def test_chrome_reads_the_images_policies(container):
         if any(t["type"] == "page" for t in json.loads(out or "[]")):
             break
         time.sleep(0.2)
-    asked = ["chrome://version/", "chrome-untrusted://foo.top-chrome/", "chrome://newtab/"]
+    asked = ["chrome://version/", "chrome://newtab/"]
     answer = subprocess.run([ENGINE, "exec", container, "/opt/stealth/venv/bin/python", "-I", "-c", ASK, *asked],
                             capture_output=True, text=True, check=True).stdout
     seen = json.loads(answer)
-    blocked = "net::ERR_BLOCKED_BY_ADMINISTRATOR"
-    assert seen["chrome://version/"] == seen["chrome-untrusted://foo.top-chrome/"] == blocked, seen
+    assert seen["chrome://version/"] == "net::ERR_BLOCKED_BY_ADMINISTRATOR", seen
     assert seen["chrome://newtab/"] is None
     assert any(f.startswith("chrome-untrusted://new-tab-page/") for f in seen["frames"]), seen["frames"]
     assert not any(f.startswith("chrome-error://") for f in seen["frames"]), seen["frames"]

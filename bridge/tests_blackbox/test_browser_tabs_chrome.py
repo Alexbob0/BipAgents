@@ -134,7 +134,7 @@ def test_the_agent_keeps_its_site_when_its_first_tab_is_closed(bridges, fakes, b
     main = [line.split() for line in out.splitlines() if "--type=" not in line]
     assert len(main) == 1, out
     switches = [a for a in main[0] if a.startswith("--disable-features=")]
-    assert switches and {"WebUIOmniboxPopup", "OptimizationHints", "IsolateOrigins"} <= set(
+    assert switches and {"WebUIOmniboxPopup", "WebUIOmniboxAimPopup", "OptimizationHints", "IsolateOrigins"} <= set(
         switches[-1].split("=", 1)[1].split(",")), switches
     assert [t["url"] for t in chrome_pages(container)] == [SITE + "account.html"]
 
@@ -146,3 +146,51 @@ def test_the_agent_keeps_its_site_when_its_first_tab_is_closed(bridges, fakes, b
     while time.time() < deadline:   # still so a moment later (the popup page, when there is one, comes late)
         time.sleep(1)
         assert bridge.get("/v1/agents/vie/desktop/state", headers=AUTH).json()["title"] == "Compte"
+
+
+POPUP = "chrome://omnibox-popup.top-chrome/"
+LOOKALIKE = "chrome-untrusted://foo.top-chrome/"   # no page of Chrome behind it: an error page, in a real tab
+# Chrome started by hand WITHOUT the flags (as an old image's): its popup page is there.
+BY_HAND = ("for c in google-chrome-stable google-chrome chromium-browser chromium; do"
+           " command -v \"$c\" >/dev/null 2>&1 && exec \"$c\" --no-first-run --no-default-browser-check"
+           " --start-maximized --test-type --no-sandbox --remote-debugging-host=127.0.0.1 --remote-debugging-port=9222"
+           " --user-data-dir=/home/bip/profile >/tmp/chrome.log 2>&1; done; exit 1")
+# In the container: each address of argv opened in a new tab in front (Target.createTarget).
+OPEN = """
+import asyncio, json, sys, urllib.request
+import websockets
+async def main():
+    v = json.load(urllib.request.urlopen("http://127.0.0.1:9222/json/version"))
+    async with websockets.connect(v["webSocketDebuggerUrl"], max_size=None) as ws:
+        for n, url in enumerate(sys.argv[1:], 1):
+            await ws.send(json.dumps({"id": n, "method": "Target.createTarget", "params": {"url": url}}))
+            while json.loads(await ws.recv()).get("id") != n:
+                pass
+            await asyncio.sleep(1.5)
+asyncio.run(main())
+"""
+
+
+def test_the_page_view_tells_chromes_ui_from_a_real_tab_at_such_an_address(bridges, fakes, browser_container):
+    """Second review of 13/11: the bridge asks Browser.getWindowForTarget over that tab's own DevTools connection,
+    through the container's relay, with a real Chrome. A real tab at chrome-untrusted://foo.top-chrome/ (in a window)
+    in front: « Bureau » shows it; once it is closed, the site, never the popup (Chrome run here without the flags)."""
+    container, cdp = browser_container
+    subprocess.run([ENGINE, "exec", "-d", container, "sh", "-c", BY_HAND], check=True)
+    assert wait_until(lambda: chrome_pages(container), timeout=30)
+    time.sleep(3)
+    subprocess.run([ENGINE, "exec", container, "/opt/stealth/venv/bin/python", "-I", "-c", OPEN,
+                    SITE + "login.html", LOOKALIKE], check=True)
+    pages = chrome_pages(container)
+    look = [t for t in pages if t["url"] == LOOKALIKE]
+    assert look, pages
+    bridge, _ = browser_bridge(bridges, fakes, cdp)
+    state = bridge.get("/v1/agents/vie/desktop/state", headers=AUTH).json()
+    assert (state["state"], state["title"]) == ("active", look[0]["title"]), (state, pages)
+    in_container(container, "python3.11", "-I", "-c",
+                 "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9222/json/close/%s')" % look[0]["id"])
+    time.sleep(1)
+    state = bridge.get("/v1/agents/vie/desktop/state", headers=AUTH).json()
+    assert (state["state"], state["site"], state["title"]) == ("active", "127.0.0.1", "Connexion"), (
+        state, chrome_pages(container))
+

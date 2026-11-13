@@ -17,11 +17,10 @@ def test_chrome_opens_no_file_source_internal_or_devtools_page():
     # container's secrets (the screen's password, the DevTools secret). Chrome's managed policy blocks those schemes.
     policy = json.loads(read("policies.json"))
     assert {"file://*", "view-source:*", "chrome://*", "devtools://*", "chrome-devtools://*"} <= set(policy["URLBlocklist"])
-    # Chrome's « untrusted » pages too (review of 13/11): a tab sent there kept an address like Chrome's own UI
-    assert "chrome-untrusted://*" in policy["URLBlocklist"]
-    # only the new tab page (its Gmail / Images / apps bar is a chrome-untrusted frame of it)
-    assert set(policy["URLAllowlist"]) == {"chrome://newtab", "chrome://new-tab-page",
-                                           "chrome-untrusted://new-tab-page"}
+    assert set(policy["URLAllowlist"]) == {"chrome://newtab", "chrome://new-tab-page"}   # only the new tab page
+    # Not chrome-untrusted://: Chrome's reading mode and Google Lens are pages of it (second review of 13/11); the
+    # bridge refuses those addresses to the agent (browser_mcp.rs), and a tab is Chrome's UI only with no window.
+    assert not [a for a in policy["URLBlocklist"] if a.startswith("chrome-untrusted")]
     for kept in ("PasswordManagerEnabled", "AutofillAddressEnabled", "AutofillCreditCardEnabled",
                  "PasswordLeakDetectionEnabled"):
         assert policy[kept] is False, kept
