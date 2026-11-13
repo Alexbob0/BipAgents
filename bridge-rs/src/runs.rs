@@ -1046,6 +1046,11 @@ impl RunHub {
         self.pending_of(Some(agent), true)
     }
 
+    /// The questions waiting, one agent's or every agent's (None): the Boîte's list (`GET /v1/approvals`).
+    pub fn pending_questions_of(&self, agent: Option<&str>) -> Vec<Dict> {
+        self.pending_of(agent, true)
+    }
+
     fn pending_of(&self, agent: Option<&str>, questions: bool) -> Vec<Dict> {
         let inner = lock(&self.inner);
         let mut items: Vec<Dict> = inner

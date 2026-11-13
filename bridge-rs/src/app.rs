@@ -1509,13 +1509,26 @@ async fn approvals(State(state): State<AppState>, q: QueryMap) -> ApiResult<Resp
         let cards = crate::card_place::fold(&config, crate::card_place::bridge_cards(&state, &config, name.as_deref()));
         items.extend(cards.into_iter().map(|c| crate::card_place::with_session(&config, c)));
     }
-    for item in items.iter_mut() {
+    // the agents' questions waiting (a run's `clarify.request`, runs.rs `keep_question`): listed in the Boîte beside the
+    // approvals, each opening its conversation, gone once answered, skipped or expired (13/11, Alex: a question was never
+    // in the Boîte). A relative's turn's are theirs. Their own list: an app from before reads `items` as approvals.
+    let mut questions = if shared.is_some() { Vec::new() } else { state.hub.pending_questions_of(name.as_deref()) };
+    questions
+        .retain(|i| !crate::agent_shares::relative_run(&config, i.get("run_id").and_then(Value::as_str).unwrap_or("")));
+    for question in questions.iter_mut() {
+        let id = crate::threads::answered_id(
+            question.get("run_id").and_then(Value::as_str),
+            question.get("request_id").and_then(Value::as_str),
+        );
+        question.insert("id".into(), json!(id));
+    }
+    for item in items.iter_mut().chain(questions.iter_mut()) {
         let created = item.get("created_at").and_then(Value::as_f64).unwrap_or(0.0);
         let micros = (created * 1_000_000.0).round() as i64;
         let when = chrono::DateTime::<chrono::Utc>::from_timestamp_micros(micros).unwrap_or_default();
         item.insert("created_at".into(), json!(iso(when)));
     }
-    Ok(web::ok(json!({"items": items})))
+    Ok(web::ok(json!({"items": items, "questions": questions})))
 }
 
 /// Python's `build_router()`: the core routes, mounted under /v1 behind the bridge key.

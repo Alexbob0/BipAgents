@@ -74,6 +74,8 @@ def test_the_badge_counts_only_what_the_boite_shows_and_a_gone_cards_mark_goes(b
         db.execute("UPDATE notifications SET created_at = ? WHERE id = ?", (ago(minutes=10), waiting["id"]))
     # Alex's stuck row: a secret card typed (or withdrawn) where nothing read its notification
     row(bridge, "n_gone", "wellness", "secret", ref="sec_gone")
+    # a question's row whose question waits no more (answered, skipped, expired: 13/11, the Boîte lists the waiting ones)
+    row(bridge, "n_qgone", "wellness", "question", ref="q_gone")
     # what the Boîte never lists: a room's reply, a held e-mail, a date to find
     row(bridge, "n_room", "wellness", "room_reply", ref="r1", thread="room:r1")
     row(bridge, "n_held", "wellness", "email_held", ref="held1")
@@ -81,13 +83,14 @@ def test_the_badge_counts_only_what_the_boite_shows_and_a_gone_cards_mark_goes(b
     # a message of an agent not on this phone (another install's, a deleted one): its own key in `boite`
     row(bridge, "n_other", "ancien", "reply", ref="r_old", created=ago(days=5))
     counts = unread(bridge)
-    assert counts["total"] == 3, counts                      # the approval, the stuck secret, the old message
-    assert counts["boite"] == {"wellness": 2, "ancien": 1}, counts
-    assert counts["agents"] == {"wellness": 5, "ancien": 1}, counts   # the home's dots: every unread row
+    assert counts["total"] == 4, counts                      # the approval, the stuck secret and question, the old message
+    assert counts["boite"] == {"wellness": 3, "ancien": 1}, counts
+    assert counts["agents"] == {"wellness": 6, "ancien": 1}, counts   # the home's dots: every unread row
     assert counts["threads"]["room:r1"] == 1
     # within a minute (the watch's sweep): the stuck card's row read, `gone`; the waiting card's kept
     assert wait_until(lambda: one(bridge, "n_gone")["read_at"], timeout=75), one(bridge, "n_gone")
     assert one(bridge, "n_gone")["state"] == "gone"
+    assert one(bridge, "n_qgone")["read_at"] and one(bridge, "n_qgone")["state"] == "gone"
     assert one(bridge, waiting["id"])["read_at"] is None
     for id in ("n_room", "n_held", "n_meet", "n_other"):
         assert one(bridge, id)["read_at"] is None, id      # not the cards' sweep

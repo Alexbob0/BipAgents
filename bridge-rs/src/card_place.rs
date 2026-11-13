@@ -561,6 +561,8 @@ fn waiting_refs(state: &AppState, cards: &[Dict]) -> HashSet<String> {
     let mut refs = HashSet::new();
     let mut hermes = state.hub.pending_approvals(None);
     hermes.extend(crate::agent_shares::pending_mine(None));
+    // the questions waiting (their rows' `ref` is the prompt's id)
+    hermes.extend(state.hub.pending_questions_of(None));
     for item in cards.iter().chain(hermes.iter()) {
         let run = run_id_of(item);
         if let Some((_, id)) = run.strip_prefix("bip-").and_then(|r| r.split_once('-')) {
