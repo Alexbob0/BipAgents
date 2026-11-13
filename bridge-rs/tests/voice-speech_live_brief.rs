@@ -496,7 +496,8 @@ async fn a_calls_warm_up_reads_its_prelude_in_a_throwaway_session() {
     assert_eq!(h.chats.len(), 1);
     let chat = &h.chats[0];
     // the call's first message starts the same way; the system prompt is the agent's own (no instructions)
-    assert_eq!(chat["message"], format!("<!--bip:live\nCall rules\n\nBrief of the call\n-->\n\n{WARM_MESSAGE}"));
+    // the bridge puts its ask-aloud rule first in the call's rules (clarify closed in a call, 12/11)
+    assert_eq!(chat["message"], format!("<!--bip:live\n{}Call rules\n\nBrief of the call\n-->\n\n{WARM_MESSAGE}", bipbridge::live_turns::ASK_ALOUD));
     assert!(chat.get("instructions").is_none(), "{chat}");
     assert!(chat["model_options"]["reasoning"].is_object(), "{chat}"); // what the call's turns ask for
     let session = chat["session"].as_str().unwrap();
