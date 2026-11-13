@@ -2278,7 +2278,7 @@ pub fn soul_text(config: &Config, agent: &AgentConfig, personality: &str, lang: 
     let family = crate::family_agent::is_family(config, &agent.name);
     let closed = family || project;
     let open = !closed && !agent.host_home.as_deref().is_some_and(|h| !h.is_empty());
-    let text = if open { crate::souls::with_payments(&text) } else { text };
+    let text = if open { crate::souls::with_payments(&text, &crate::card_pay::shopping(config, agent)) } else { text };
     let text = crate::souls::with_server(&text, open && crate::handover::on_offer());
     let text = crate::souls::with_notebook(&text, !closed && crate::notebook::enabled(config, &agent.name));
     let text = crate::souls::with_archives(&text, !closed && crate::archives::enabled(config, &agent.name));

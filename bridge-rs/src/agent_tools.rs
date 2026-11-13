@@ -2386,7 +2386,7 @@ mod tests {
             soul = crate::souls::with_notebook(&soul, true);
             soul = crate::souls::with_archives(&soul, true);
             soul = crate::souls::with_health(&soul, true);
-            soul = crate::souls::with_payments(&soul);
+            soul = crate::souls::with_payments(&soul, &crate::souls::Shopping::SetUp);
             soul = crate::souls::with_shared_memory(&soul, Some(true));
             soul = crate::souls::with_server(&soul, true);
             soul = crate::souls::with_style(&soul, Some("detailed"), None);
