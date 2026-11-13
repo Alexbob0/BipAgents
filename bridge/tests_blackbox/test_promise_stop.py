@@ -662,3 +662,51 @@ def test_a_closing_line_of_care_is_not_continued(bridges, fakes):
     events = follow(bridge, "run_vie")
     hidden = {r: s["input"][:200] for r, s in fakes.hermes.started.items()}
     assert notices(events) == [] and hidden == {}, f"a hidden turn told to do it now: {hidden}"
+
+
+# -- seventh review of 13/11 (each passed before the sixth fix, failed after it; fixed again) ----------------------------
+
+WAITS_AGAIN = [
+    "OK pour la taille M ?\n\nJe lance la commande.",
+    "Je lance la commande dès que tu me dis laquelle.",
+    "You can send me the link and I'll check it.",
+]
+
+
+@pytest.mark.parametrize("reply", WAITS_AGAIN)
+def test_a_reply_waiting_for_their_choice_is_not_continued(bridges, fakes, reply):
+    bridge = bridges.new().start()
+    fakes.hermes.runs["run_vie"] = turn("run_vie", reply)
+    fakes.hermes.runs["r1"] = turn("r1", "C'est fait : commande passée.", tools=["mcp__stealth__navigate"])
+    events = follow(bridge, "run_vie")
+    hidden = {r: s["input"][:120] for r, s in fakes.hermes.started.items()}
+    assert notices(events) == [] and hidden == {}, f"a hidden turn told to do it now: {hidden}"
+
+
+LOST = [
+    "Je te prépare ça :\n\n- 2-3 trouvailles autour de 5 €\n- les liens et le meilleur prix",
+    "Je te prépare 2-3 trouvailles pour 5 €. Dis-moi aussi si tu as une enseigne préférée.",
+]
+
+
+@pytest.mark.parametrize("reply", LOST)
+def test_a_promise_the_sixth_fix_lost_goes_on(bridges, fakes, reply):
+    bridge = bridges.new().start()
+    fakes.hermes.runs["run_vie"] = turn("run_vie", reply)
+    fakes.hermes.runs["r1"] = turn("r1", FOUND, tools=["web_search"])
+    events = follow(bridge, "run_vie")
+    assert [n["code"] for n in notices(events)] == ["loop_rescue_started"], "the turn ended on its promise, nothing done"
+    assert events[-1][1]["output"] == FOUND
+
+
+def test_a_continuation_cut_after_its_work_does_not_end_the_turn_on_the_promise(bridges, fakes):
+    bridge = bridges.new().start()
+    partial = "Voilà 3 idées à moins de 5 € : un carnet HEMA (3,69 €), un poche Folio (2,50 €)"
+    fakes.hermes.runs["run_vie"] = turn("run_vie", PROMISE)
+    fakes.hermes.runs["r1"] = [sse("tool.started", run_id="r1", tool="web_search", preview="idée à 5 €"),
+                               sse("tool.completed", run_id="r1", tool="web_search"),
+                               sse("message.delta", run_id="r1", delta=partial),
+                               sse("run.completed", run_id="r1", output=f"{partial}\n\n{NO_REPLY}")]
+    events = follow(bridge, "run_vie")
+    end = events[-1][1]
+    assert end.get("output") != PROMISE and end.get("run_id") == "r1", end
