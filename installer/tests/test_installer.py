@@ -137,6 +137,26 @@ def test_hermes_setup_commands(monkeypatch, tmp_path):
     assert hermes.agent_url("https://mini.tail0000.ts.net:8642", "finance") == "https://mini.tail0000.ts.net:8642/p/finance"
 
 
+def test_the_hubs_key_is_its_own_random_key(monkeypatch, tmp_path):
+    """13/11 (public beta): setup_hub's clarify loop reused the name `key`, so the hub's API_SERVER_KEY was
+    « clarify.timeout »: 15 characters, which Hermes 0.23 refuses (16 at least), so its API server never started and
+    no agent of a fresh install (offer place or self-install) was ever served (« the gateway did not pick the agent
+    up »). The key written is the one returned, random, long enough, and never a setting's name."""
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / ".hermes"))
+
+    class Recorder(hermes.Runner):   # files written for real, no `hermes` command run
+        def run(self, args, **kw):
+            self.log.append(" ".join(args) if not isinstance(args, str) else args)
+            return ""
+
+    runner = Recorder()
+    key = hermes.setup_hub(runner, 8642, hermes.Model("custom", "glm", base_url="https://api.eurouter.ai/api/v1"))
+    env = dict(line.split("=", 1) for line in (tmp_path / ".hermes" / ".env").read_text().splitlines() if "=" in line)
+    assert env["API_SERVER_KEY"] == key
+    assert len(key) >= 32 and key not in {name for name, _ in hermes.CLARIFY_WAIT}
+    assert key not in "\n".join(runner.log)   # never on a command line
+
+
 def test_secrets_go_to_the_env_file_only_its_owner_reads(monkeypatch, tmp_path):
     """A key never on a command line: a neighbour on a shared server reads /proc/<pid>/cmdline (audit 11/11, BV-6).
     In the profile's .env, created 0600 and moved over the old one, the other lines kept."""
@@ -1186,3 +1206,31 @@ def test_an_update_gives_every_hub_an_hour_for_a_question(tmp_path):
     migrations.clarify_hour(runner, tmp_path)
     assert ran[4:] == ran[:4]   # the same again
     assert "2026-11-10-clarify-hour" in [mid for mid, _ in migrations.MIGRATIONS]
+
+
+def test_a_hub_installed_with_the_clarify_key_gets_its_own_key_again(tmp_path):
+    """13/11: installs of 10-13/11 carry « clarify.timeout » as the hub's API_SERVER_KEY (Hermes 0.23 serves nothing
+    with it). The update writes a random key in its place (the other lines kept, 0600) and restarts the gateway; a
+    good key is never touched."""
+    import stat
+    from bipinstall import migrations
+    hub = tmp_path / ".hermes"
+    hub.mkdir()
+    (hub / "config.yaml").write_text("gateway:\n  multiplex_profiles: true\n")
+    env = hub / ".env"
+    env.write_text("API_SERVER_ENABLED=true\nAPI_SERVER_KEY=clarify.timeout\nCUSTOM_API_KEY=sk-x\n")
+    runner = hermes.Runner()
+    ran = []
+    runner.run = lambda args, check=True, **kw: ran.append(list(args)) or ""
+    said = migrations.hub_key(runner, tmp_path)
+    values = dict(line.split("=", 1) for line in env.read_text().splitlines())
+    assert values["API_SERVER_ENABLED"] == "true" and values["CUSTOM_API_KEY"] == "sk-x"
+    assert len(values["API_SERVER_KEY"]) >= 32 and values["API_SERVER_KEY"] not in "\n".join(runner.log)
+    assert stat.S_IMODE(env.stat().st_mode) == 0o600
+    assert ["systemctl", "--user", "try-restart", "hermes-gateway.service"] in ran and "again" in said
+    ran.clear()
+    kept = env.read_text()
+    assert "already" in migrations.hub_key(runner, tmp_path) and env.read_text() == kept and ran == []
+    assert "2026-11-13-hub-key" in [mid for mid, _ in migrations.MIGRATIONS]
+    # an install of another account (no Hermes of its own) has nothing to fix
+    assert "nothing" in migrations.hub_key(runner, tmp_path / "other")
