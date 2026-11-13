@@ -499,12 +499,14 @@ pub async fn read_card(state: &AppState, agent: &str, card: &str, run_id: &str) 
 /// The cards' rows still unread whose card waits no more (`waiting`: the run and request ids of every card waiting,
 /// the bridge's and Hermes'): read on every device, `gone`. Answered or withdrawn where nothing read its row (a secret
 /// typed in its field, a card never placed, a Hermes approval lost with its run), one kept « Boîte 1 » on an empty
-/// Boîte (Alex's iPhone, 5/11). A row younger than `fresh` seconds is left: its card may not be listed yet.
+/// Boîte (Alex's iPhone, 5/11). A row younger than `fresh` seconds is left: its card may not be listed yet. A question's
+/// row too (13/11: the Boîte lists the questions waiting, `GET /v1/approvals`; answered, skipped or expired, its row
+/// counts no more).
 pub async fn read_gone(state: &AppState, waiting: &std::collections::HashSet<String>, fresh: i64) -> usize {
     let before = iso(utcnow() - chrono::Duration::seconds(fresh));
     let sql = format!(
         "SELECT id, agent, ref_id FROM notifications WHERE read_at IS NULL AND type IN ({}) AND created_at < ?",
-        quoted(&BOITE_CARDS)
+        quoted(&[&BOITE_CARDS[..], &["question"]].concat())
     );
     let Ok(rows) = state.store.run(&sql, vec![text(&before)]).await else { return 0 };
     let mut by_agent: std::collections::BTreeMap<String, Vec<String>> = Default::default();

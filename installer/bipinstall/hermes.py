@@ -198,7 +198,11 @@ def write_env(runner: Runner, profile: str, key: str, value: str) -> None:
     """A secret `KEY=value` in the profile's .env, where `hermes config set KEY value` puts it, but never on a command
     line: every account of a shared server reads the others' in /proc (audit 11/11, BV-6). Created 0600, then moved
     over the old file: never readable by others, even for a moment."""
-    path = profile_dir(profile) / ".env"
+    write_env_file(runner, profile_dir(profile) / ".env", key, value)
+
+
+def write_env_file(runner: Runner, path: Path, key: str, value: str) -> None:
+    """`write_env` into a given `.env` (another Hermes home: migrations.py)."""
     runner.log.append(f"write {path}: {key}")   # never the value
     if runner.dry:
         return
@@ -332,8 +336,10 @@ def setup_hub(runner: Runner, port: int, model: Model, sandbox: Optional[str] = 
     # The app's question card: Hermes' `clarify` tool, which its API toolset leaves out (« no interactive UI tools »);
     # every agent is cloned from this profile, and the bridge adds it at each start too (tool_diet.rs `with_clarify`).
     runner.run([hermes_bin(), "-p", HUB_PROFILE, *CLARIFY_ON])
-    for key, value in CLARIFY_WAIT:
-        _config(runner, HUB_PROFILE, key, value)
+    # never `key` here: that loop once replaced the hub's key with « clarify.timeout » (10/11 to 13/11), which
+    # Hermes 0.23 refuses (shorter than 16): no API server, so no agent was ever served on a fresh install
+    for setting, value in CLARIFY_WAIT:
+        _config(runner, HUB_PROFILE, setting, value)
     _config(runner, HUB_PROFILE, "API_SERVER_ENABLED", "true")
     _config(runner, HUB_PROFILE, "API_SERVER_HOST", "127.0.0.1")
     _config(runner, HUB_PROFILE, "API_SERVER_PORT", str(port))

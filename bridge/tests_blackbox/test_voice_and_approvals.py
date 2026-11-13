@@ -303,6 +303,39 @@ def test_question_pushed_when_the_app_left(bridge, fakes):
     assert pushed_text(bridge, payload) == "Quel train ?"
 
 
+def test_a_waiting_question_is_in_the_boites_list_until_it_is_settled(bridge, fakes):
+    """13/11 (Alex, Vie): a question the agent asked was never in the Boîte, only in its conversation. The Boîte's list
+    (`GET /v1/approvals`) has the questions waiting in `questions` (never in `items`, which an older app reads as
+    approvals), each with its conversation and the id of its card, gone once Hermes settles it (answered, skipped,
+    expired)."""
+    settle = threading.Event()
+    fakes.hermes.runs["run_bq"] = [
+        sse("message.delta", run_id="run_bq", delta="Je regarde. "),
+        sse("clarify.request", run_id="run_bq", kind="clarify", prompt_id="c_7", execution_generation=1,
+            question="Un achat test à 2 € ou à 5 € ?", choices=["2 €", "5 €"], multi_select=False),
+        settle,
+        sse("clarify.settled", run_id="run_bq", prompt_id="c_7", execution_generation=1),
+        threading.Event(),
+    ]
+    assert bridge.post("/v1/watch", headers=AUTH, json={"agent": "wellness", "run_id": "run_bq",
+                                                        "session_id": "api_bq"}).status_code == 200
+
+    def listed(agent=None):
+        params = {"agent": agent} if agent else None
+        return bridge.get("/v1/approvals", headers=AUTH, params=params).json()
+
+    assert wait_until(lambda: listed("wellness")["questions"])
+    for body in (listed("wellness"), listed()):
+        assert body["items"] == []
+        [question] = body["questions"]
+        assert question["question"] == "Un achat test à 2 € ou à 5 € ?" and question["choices"] == ["2 €", "5 €"]
+        assert (question["agent"], question["run_id"], question["request_id"], question["session_id"]) == \
+            ("wellness", "run_bq", "c_7", "api_bq")
+        assert question["id"].startswith("a_") and question["created_at"].endswith("Z")
+    settle.set()
+    assert wait_until(lambda: listed("wellness")["questions"] == [])
+
+
 def test_upstream_question_contract_is_pushed_too(bridge, fakes):
     """Hermes' upstream clarify (one question per `clarify_id`) is pushed like ours."""
     register(bridge)
