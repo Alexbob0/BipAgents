@@ -404,6 +404,18 @@ fn peer_of(text: &str) -> Option<(String, String, String)> {
     Some((caps[2].to_string(), name.to_string(), caps[3].trim().to_string()))
 }
 
+/// The agent's words and Hermes' failed-turn line since the person's last message (the turn cut by a restart); its
+/// calls stay (what it read).
+fn drop_cut_answer(items: &mut Vec<Item>) {
+    let person = |i: &Item| i.kind() == "message" && matches!(i.body.get("role").and_then(Value::as_str), Some("person" | "peer"));
+    let from = items.iter().rposition(person).map(|at| at + 1).unwrap_or(0);
+    let tail = items.split_off(from);
+    items.extend(tail.into_iter().filter(|i| {
+        let words = i.kind() == "message" && i.body.get("role") == Some(&json!("agent"));
+        !words && i.body.get("notice").and_then(|n| n.get("code")) != Some(&json!("failed_turn"))
+    }));
+}
+
 /// Which of Hermes' failed-turn lines `text` is, exactly (spaces aside: a reply quoting one stays a reply):
 /// `partial` (something may have run) or `not_processed` (nothing was done). The apps say it in their words from this
 /// (`notice.stopped`, a run's `stopped`), never by reading Hermes' English.
@@ -529,6 +541,11 @@ pub fn segment_items(
                 let (text, attachments) = visible(&words, &id, images);
                 if text.is_empty() && attachments.is_empty() {
                     continue;
+                }
+                if crate::turn_restart::restarted(&raw) {
+                    // the turn before was stopped for these words and started again with them (turn_restart.rs): its
+                    // cut answer and Hermes' « not processed » line leave the conversation, one answer comes for both
+                    drop_cut_answer(&mut items);
                 }
                 *turn = id.clone();
                 let mut body = json!({"kind": "message", "role": "person", "text": text, "attachments": attachments});
@@ -1145,6 +1162,30 @@ mod tests {
         let nothing = items(&[row(1, "user", json!("Range")), row(2, "assistant", json!(format!(" {FAILED_NOT_PROCESSED}\n")))]);
         assert_eq!(nothing[1].body["notice"]["stopped"], "not_processed");
         assert_eq!(stopped_kind(&format!("Hermes dit : {FAILED_PARTIAL}")), None, "a reply quoting it stays a reply");
+    }
+
+    /// turn_restart.rs: a turn stopped for new words and started again with them shows the two messages and the one
+    /// answer; its cut words and Hermes' « not processed » line leave the conversation, what it read stays.
+    #[test]
+    fn a_turn_started_again_for_new_words_shows_one_answer() {
+        let mut rows = vec![
+            row(1, "user", json!("Bonjour")),
+            row(2, "assistant", json!("Salut")),
+            row(3, "user", json!("Compare trois écoles")),
+            row(4, "assistant", json!("Je regarde")),
+            row(5, "tool", json!("{\"results\": []}")),
+            row(6, "assistant", json!("Voici trois éc")),
+            row(7, "assistant", json!(FAILED_NOT_PROCESSED)),
+            row(8, "user", json!(format!("<!--bip:now 9 h-->\n{}\nSeulement les publiques", crate::turn_restart::NOTE))),
+            row(9, "assistant", json!("Les trois écoles publiques : …")),
+        ];
+        rows[3].tool_calls = Some(json!([{"id": "a", "function": {"name": "web_search", "arguments": "{}"}}]));
+        rows[4].tool_call_id = Some("a".into());
+        let got = items(&rows);
+        let shown: Vec<(&str, &str)> = got.iter().map(|i| (i.kind(), i.text())).collect();
+        assert_eq!(shown, [("message", "Bonjour"), ("message", "Salut"), ("message", "Compare trois écoles"), ("tool", ""),
+                           ("message", "Seulement les publiques"), ("message", "Les trois écoles publiques : …")]);
+        assert!(got[4].body.get("added_during_run").is_none(), "a message of its own, not words added to a turn");
     }
 
     /// Another agent's message in Bot Mode's conversation: its sender's id, the name it signed with, its words alone

@@ -10,7 +10,7 @@ import time
 
 import httpx
 
-from bbkit.common import AUTH, read_sse, sse
+from bbkit.common import AUTH, read_sse, run_has, sse
 from bbkit.fakes import CLOSE
 from bbkit.servers import wait_until
 
@@ -278,9 +278,12 @@ def test_a_waiting_message_says_its_files_and_its_voice(bridges, fakes):
 def test_words_during_a_turn_go_into_it_files_wait(bridges, fakes):
     bridge, thread = setup(bridges, fakes)
     gate = threading.Event()
-    fakes.hermes.runs["r1"] = [sse("run.started", run_id="r1"), gate, sse("run.completed", run_id="r1", output="Fini.")]
+    # a turn that acted already (a page made): words go in at its next step (test_turn_restart.py: before any action)
+    fakes.hermes.runs["r1"] = [sse("run.started", run_id="r1"), sse("tool.started", run_id="r1", tool="create_page"),
+                               gate, sse("run.completed", run_id="r1", output="Fini.")]
     fakes.hermes.runs["r2"] = [sse("run.completed", run_id="r2", output="La photo.")]
     send(bridge, thread, "C1D00000-0000-4000-8000-0000000000B1", "Compare trois écoles")
+    assert run_has(bridge, "r1", "tool.started")
     steered = send(bridge, thread, "C1D00000-0000-4000-8000-0000000000B2", "Seulement les publiques")
     assert steered.json()["state"] == "steered" and steered.json()["run_id"] == "r1"
     assert fakes.hermes.steers[-1]["body"] == {"input": "Seulement les publiques"}

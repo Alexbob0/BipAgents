@@ -108,6 +108,11 @@ pub fn thinking_run(run_id: &str) {
     runs.push(run_id.to_string());
 }
 
+/// Whether run `run_id` was started as a thinking turn and goes on (a turn started again for new words thinks too).
+pub fn is_thinking_run(run_id: &str) -> bool {
+    THINKING_RUNS.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|r| r == run_id)
+}
+
 /// Run `run_id` of `agent` ended (runs.rs, its `run.completed`), `answered` whether it said something: a thinking
 /// turn without an answer starts the agent's pause without thinking ([`record_no_reply`]).
 pub fn run_ended(agent: &str, run_id: &str, answered: bool) {

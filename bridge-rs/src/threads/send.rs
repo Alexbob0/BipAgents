@@ -9,7 +9,8 @@
 //!
 //! - nothing runs in the conversation: a turn starts (`state: started`, its `run_id` followed as before through
 //!   `/v1/runs/{id}/events`);
-//! - a turn goes on: words only go into it (Hermes' steer, `steered`); with files, with `after` (« Après »), or when
+//! - a turn goes on: words only go into it (`steered`): a turn that did nothing yet starts again with them
+//!   (turn_restart.rs, `restarted: true`), else Hermes' steer at its next step; with files, with `after` (« Après »), or when
 //!   the turn takes no more words, the message waits in the agent's queue (msg_queue.rs, `queued`) and starts next;
 //! - the same `client_id` again (a retry after a lost answer) changes nothing (`known`).
 //!
@@ -576,7 +577,43 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
         }),
         None => waits,
     };
+    // what waited for this message (a Live call's recap, the time, the family's news, a feature to propose…)
+    let mut waited = None;
     if let Some(run) = running.as_deref().filter(|r| !body.after && !held && body.attachments.is_empty() && own_turn(r)) {
+        if author.is_none() && state.hub.subscription(&agent.name, run).is_some_and(|sub| !sub.acted()) {
+            // the turn did nothing yet (it thinks, writes, reads): stopped and started again with these words too, for
+            // one answer to both (turn_restart.rs); Hermes' steer would only reach it after a tool call
+            waited = Some(crate::live_brief::message_notes(state, agent, tip, &words, &body.kinds).await);
+            let notes = [waited.clone().flatten(), body.notes.clone()].into_iter().flatten().collect::<Vec<_>>();
+            // the restarted turn thinks when the cut one did
+            let thinking = if crate::turn_thinking::is_thinking_run(run) { Some(true) } else { body.thinking };
+            let plan = crate::turn_restart::Plan {
+                said: said.clone(),
+                notes: notes.join("\n"),
+                client_id: Some(body.client_id.clone()),
+                phone: phone.map(str::to_string),
+                instructions: body.instructions.clone().filter(|i| !i.trim().is_empty()),
+                options: crate::turn_thinking::turn_options(&state.config(), agent, &words, thinking),
+            };
+            if state.hub.interrupt(&agent.name, run, plan) {
+                match state.hermes.stop_run(agent, run).await {
+                    // stopping, or over already: its end starts the words (runs.rs `restart`)
+                    Ok(()) => {}
+                    Err(exc) if matches!(exc.status(), Some(404 | 409)) => {}
+                    Err(exc) => {
+                        tracing::info!(agent = %agent.name, run_id = %run, error = %exc, "restart: stop refused, words steered");
+                        state.hub.withdraw_restart(&agent.name, run);
+                    }
+                }
+                if state.hub.subscription(&agent.name, run).is_some_and(|sub| sub.restarting()) {
+                    threads.bump(&thread, "sent").await?;
+                    tell_if_lost(state, agent, &thread, tip, &body.client_id);
+                    let mut answer = answer("steered", Some(run));
+                    answer["restarted"] = json!(true);
+                    return Ok(answer);
+                }
+            }
+        }
         // words into the turn going on (Hermes takes them at its next step)
         let steered = queues
             .steer(agent, tip, Some(run), &said, Some(&body.client_id))
@@ -591,8 +628,10 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
             return Ok(answer("steered", Some(&run)));
         }
     }
-    // what waited for this message (a Live call's recap, the time, the family's news, a feature to propose…)
-    let waited = crate::live_brief::message_notes(state, agent, tip, &words, &body.kinds).await;
+    let waited = match waited {
+        Some(waited) => waited,
+        None => crate::live_brief::message_notes(state, agent, tip, &words, &body.kinds).await,
+    };
     let notes = [waited, body.notes.clone()].into_iter().flatten().collect::<Vec<_>>().join("\n");
     let input = input_of(Some(&notes), &said, &body.attachments);
     let by = crate::family_thread::by_value(author.as_ref());
@@ -683,6 +722,8 @@ pub async fn stop(state: &AppState, agent: &AgentConfig, thread: &Thread) -> Api
     let Some(run) = tip.as_deref().and_then(|t| state.hub.session_run(&agent.name, t)) else {
         return Ok(json!({"stopped": false}));
     };
+    // stopped for new words a moment ago (turn_restart.rs): the person's stop wins, nothing starts again
+    state.hub.withdraw_restart(&agent.name, &run);
     match state.hermes.stop_run(agent, &run).await {
         Ok(()) => Ok(json!({"stopped": true, "run_id": run})),
         Err(exc) if matches!(exc.status(), Some(404 | 409)) => Ok(json!({"stopped": false, "run_id": run})),
