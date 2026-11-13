@@ -64,3 +64,15 @@ def test_a_list_of_the_sites_own_is_told_to_take_two_clicks(browser):
     assert browser.page("document.getElementById('civility-value').value") == ""
     said = browser.tool("select_option", selector="#nothing-here", value="1")
     assert said.startswith("Not done:"), said
+
+
+def test_a_list_looked_for_under_a_guessed_name_gets_the_pages_lists(browser):
+    # the « after » bench, GLM-5.3 Flash (2 runs of 9 stopped there): « Civilité » looked for as
+    # `select[name="civilite"], #civilite`, then `select#*civility`, never found; the answer now names the page's lists,
+    # the site's own among them, with their labels
+    open_form(browser)
+    for guess in ('select[name="civilite"], #civilite', "select#*civility"):
+        said = browser.tool("select_option", selector=guess, text="Madame")
+        assert said.startswith("Not done:"), said
+        assert "#birthday-month" in said and "#civility (Civilité)" in said and "click_element" in said, said
+    assert browser.page("document.getElementById('civility-value').value") == ""
