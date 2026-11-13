@@ -579,7 +579,13 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
     };
     // what waited for this message (a Live call's recap, the time, the family's news, a feature to propose…)
     let mut waited = None;
-    if let Some(run) = running.as_deref().filter(|r| !body.after && !held && body.attachments.is_empty() && own_turn(r)) {
+    // a turn about to start again with earlier words (runs.rs `restart` starting it): Hermes ended it, it takes no
+    // words; these wait first in line, for the turn after
+    let restarting = |r: &str| state.hub.subscription(&agent.name, r).is_some_and(|sub| sub.restarting());
+    if let Some(run) = running
+        .as_deref()
+        .filter(|r| !body.after && !held && body.attachments.is_empty() && own_turn(r) && !restarting(r))
+    {
         if author.is_none() && state.hub.subscription(&agent.name, run).is_some_and(|sub| !sub.acted()) {
             // the turn did nothing yet (it thinks, writes, reads): stopped and started again with these words too, for
             // one answer to both (turn_restart.rs); Hermes' steer would only reach it after a tool call
