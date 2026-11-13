@@ -98,10 +98,10 @@ pub fn late_line(lang: &str, about: &About) -> String {
 /// « Faire un essai »'s alert.
 pub fn test_line(lang: &str) -> &'static str {
     match lang {
-        "de" => "Test: So warnt dich dein Agent, wenn schnell bezahlt werden muss.",
-        "es" => "Prueba: así te avisa tu agente cuando hay que pagar rápido.",
-        "en" => "Test: this is how your agent alerts you when you need to pay fast.",
-        _ => "Essai : c'est ainsi que ton agent te prévient quand il faut payer vite.",
+        "de" => "Test: So wirst du gewarnt, wenn schnell bezahlt werden muss.",
+        "es" => "Prueba: así se te avisa cuando hay que pagar rápido.",
+        "en" => "Test: this is how you are told when you need to pay fast.",
+        _ => "Essai : voici comment tu es prévenu quand il faut payer vite.",
     }
 }
 

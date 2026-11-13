@@ -393,7 +393,7 @@
           "args": {
             "run_id": "bip-paytest-0123456789ab",
             "request_id": "0123456789ab",
-            "line": "Essai : c'est ainsi que ton agent te prévient quand il faut payer vite.",
+            "line": "Essai : voici comment tu es prévenu quand il faut payer vite.",
             "session_id": null,
             "test": true
           }
