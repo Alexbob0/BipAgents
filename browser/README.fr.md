@@ -30,8 +30,6 @@ te le demande, il ne le résout jamais.
 - **Le coffre** remplit les mots de passe dans ce même Chrome : Hermes joint son port DevTools (`browser.cdp_url`) et
   remplit le champ sur le site exact de l'identifiant, sans que l'agent voie jamais le mot de passe. Le gestionnaire
   de mots de passe et la saisie automatique de Chrome sont coupés (règles dans l'image) : c'est le coffre qui les garde.
-  Les expériences à distance de Google aussi, sauf correctifs critiques (`ChromeVariations` 1) : Chrome se comporte
-  partout de la même façon jusqu'à une nouvelle version.
 - **Le bureau** : le serveur VNC du conteneur a son propre mot de passe ; le bridge s'y connecte et relaie l'écran
   vers l'app. Les ports DevTools et VNC n'écoutent que sur 127.0.0.1, jamais sur le tailnet.
 

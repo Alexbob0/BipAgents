@@ -21,9 +21,8 @@ def test_chrome_opens_no_file_source_internal_or_devtools_page():
     for kept in ("PasswordManagerEnabled", "AutofillAddressEnabled", "AutofillCreditCardEnabled",
                  "PasswordLeakDetectionEnabled"):
         assert policy[kept] is False, kept
-    # Google's remote experiments (Finch « variations ») off but for critical fixes (1; 2 would drop those too):
-    # Chrome behaves the same from one day and one place to another until a new version (13/11, Chrome 157's popup).
-    assert policy["ChromeVariations"] == 1 and type(policy["ChromeVariations"]) is int
+    # No ChromeVariations: it drops Chrome's X-Client-Data header to Google, a fingerprint change (Alex, 13/11).
+    assert "ChromeVariations" not in policy
     # Installed where Chrome and Chromium read their managed policies.
     containerfile = read("Containerfile")
     assert "COPY policies.json /opt/stealth/policies.json" in containerfile
