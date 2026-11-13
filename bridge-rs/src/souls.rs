@@ -243,11 +243,17 @@ pub const STEPS_RULE: &str = concat!(
 /// then the answer later), and a short line before each main step of long work (« deux, trois petites bulles » that make
 /// the wait shorter): the apps show these as bubbles above the working line, never read aloud. Rust bridge only,
 /// like FAMILY_RULE (added to tests/golden/souls.json by hand). Short: it is paid on every call.
+/// The sentence and the first tool call go in one answer, and a turn never ends on a promise (Alex 13/11, Vie: « Je te
+/// prépare 2-3 trouvailles pour 5 € », then « Je reviens dans quelques minutes avec le lien », each time the turn
+/// over with no search: an answer without a tool call ends the turn, nothing runs after it). Bench and the bridge's
+/// safety net for what the rule misses: runs.rs `go_on`, internal/notes/promise-stop.md.
 pub const ACK_RULE: &str = concat!(
     "Before work that takes more than a few seconds (browsing, searches, several tools, a background task), first ",
-    "write one short sentence in your person's language saying what you understood and what you will do, then start. ",
-    "During long work, before each new main step, write one short line on what you do next (« Je compare les prix… »). ",
-    "Don't repeat these at the end. Not for quick answers."
+    "write one short sentence in your person's language saying what you understood and what you will do, and call the ",
+    "first tool in that same answer. During long work, before each new main step, write one short line on what you do ",
+    "next (« Je compare les prix… »). Don't repeat these at the end. Not for quick answers. An answer without a tool ",
+    "call ends your turn and you can't act after it: never end on a promise (« je te prépare ça », « je reviens dans ",
+    "quelques minutes »). Do it now with your tools, or start a background task with start_task and say so."
 );
 
 /// What a recurring production keeps (Alex, 2026-10-28: an agent that makes something every day says what space it
@@ -410,7 +416,7 @@ pub fn language_block(lang: Option<&str>) -> String {
 /// were French for every agent (Alex, 2026-10-30: his wife's place, iPhone and app in English, had a reply in
 /// French): « Je m'en occupe en arrière-plan… » or « un veilleur » were the very
 /// words its rules gave it to say. The Carnet's « Toi » and « En bref » take the agent's language's names.
-const ENGLISH_EXAMPLES: [(&str, &str); 22] = [
+const ENGLISH_EXAMPLES: [(&str, &str); 24] = [
     ("« non attends »", "« wait, no »"),
     ("« Je m'en occupe en arrière-plan, je te préviens quand c'est fini. »", "« I'm on it in the background, I'll tell you when it's done. »"),
     ("« remplis mon Carnet »", "« fill my Carnet »"),
@@ -418,6 +424,8 @@ const ENGLISH_EXAMPLES: [(&str, &str); 22] = [
     ("« fais une recherche approfondie sur les mutuelles »", "« research health insurers in depth »"),
     ("« compare 10 appartements »", "« compare 10 flats »"),
     ("« Je compare les prix… »", "« Comparing prices… »"),
+    ("« je te prépare ça »", "« I'll get that ready »"),
+    ("« je reviens dans quelques minutes »", "« I'll be back in a few minutes »"),
     ("« Je garderai les 30 derniers, environ 150 Mo. »", "« I'll keep the last 30, about 150 MB. »"),
     ("« Coach sportif »", "« Sports coach »"),
     ("« rappelle-moi… »", "« remind me… »"),
@@ -1197,6 +1205,28 @@ mod tests {
             let en = soul_for("Bip", category, Some("en")).unwrap();
             assert!(en.contains("(never « wait, no »)") && !en.contains("non attends"), "{category}");
         }
+    }
+
+    #[test]
+    fn every_agent_acts_in_the_same_answer_and_never_ends_on_a_promise() {
+        // Alex 13/11, Vie: « Je te prépare 2-3 trouvailles pour 5 € », then « Je reviens dans quelques minutes », each
+        // time the turn over with no search
+        for needed in [
+            "and call the first tool in that same answer",
+            "An answer without a tool call ends your turn and you can't act after it",
+            "never end on a promise",
+            "start a background task with start_task",
+        ] {
+            assert!(ACK_RULE.contains(needed), "missing {needed}");
+        }
+        assert!(ACK_RULE.len() < 760, "short: paid on every call");
+        for category in CATEGORIES {
+            let fr = soul_for("Bip", category, Some("fr")).unwrap();
+            assert_eq!(fr.matches(ACK_RULE).count(), 1, "{category}");
+            let en = soul_for("Bip", category, Some("en")).unwrap();
+            assert!(en.contains("« I'll be back in a few minutes »") && !en.contains("je reviens"), "{category}");
+        }
+        assert_eq!(language_block_compact(Some("fr")).matches(ACK_RULE).count(), 1);
     }
 
     #[test]
