@@ -840,7 +840,9 @@ fn urgent_window() -> Duration {
         return URGENT_WINDOW;
     };
     let window = Duration::from_secs(seconds.clamp(1, URGENT_WINDOW.as_secs()));
-    tracing::warn!(seconds = window.as_secs(), "card payment: urgent window at a test length");
+    // said once (the cards' listing asks it every second: the lab's log filled with it, 13/11)
+    static SAID: std::sync::Once = std::sync::Once::new();
+    SAID.call_once(|| tracing::warn!(seconds = window.as_secs(), "card payment: urgent window at a test length"));
     window
 }
 
