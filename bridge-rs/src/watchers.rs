@@ -999,6 +999,21 @@ mod tests {
         assert_eq!(decide(&rt, &low, ON_CONDITION, 1000.0, gap), Step::Wake);
     }
 
+    /// Fourth review: the code word and NOTHING dropped, in their usual dresses; real messages kept.
+    #[test]
+    fn read_reply_drops_the_code_word_and_keeps_messages() {
+        for said in ["[SILENT]", "**[SILENT]**", "[SILENT] rien de neuf", "NOTHING", "`[SILENT]`", "  [SILENT]\n",
+            "[SILENT]\n\nRien de neuf sur le site.", "**NOTHING**", "Nothing.", "_[SILENT]_ rien", "[silent]", "SILENT",
+            "NO_REPLY", "« [SILENT] »", "\"[SILENT]\""] {
+            assert_eq!(read_reply(said), None, "{said:?} went to the person");
+        }
+        for said in ["[Billets en vente !]", "**[EN VENTE]**", "[De retour en stock]", "Billets en vente ! [SILENT]",
+            "[SILENTIUM] Les billets sont là", "Les billets Stromae sont en vente : https://shop.example/stromae"] {
+            assert!(matches!(read_reply(said), Some((false, _))), "{said:?} dropped");
+        }
+        assert_eq!(read_reply("URGENT\n[En vente !]"), Some((true, "[En vente !]".into())));
+    }
+
     /// A watcher's real message in brackets, whole or leading, is never dropped as the « [SILENT] » code word (review 3,
     /// 13/11).
     #[test]
