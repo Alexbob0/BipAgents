@@ -15,7 +15,7 @@ from websockets.sync.client import connect
 from bbkit.common import AUTH
 from bbkit.servers import free_port, wait_until
 from bbkit.ws import open_ws
-from test_card_payments_chrome import CHROME
+from test_card_payments_chrome import CHROME, tab as is_tab
 from test_desktop_page import browser_bridge, recv_until
 
 pytestmark = pytest.mark.skipif(CHROME is None, reason="no Chromium on this machine")
@@ -44,7 +44,7 @@ def chromium():
 
 def looks(port):
     """The page as its scripts see it: width, user agent, touch."""
-    tab = next(t for t in httpx.get(f"http://127.0.0.1:{port}/json/list").json() if t["type"] == "page")
+    tab = next(t for t in httpx.get(f"http://127.0.0.1:{port}/json/list").json() if is_tab(t))
     with connect(tab["webSocketDebuggerUrl"], max_size=None) as ws:
         ws.send(json.dumps({"id": 1, "method": "Runtime.evaluate", "params": {
             "expression": "[innerWidth, navigator.userAgent, 'ontouchstart' in window]", "returnByValue": True}}))

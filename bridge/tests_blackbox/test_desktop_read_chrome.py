@@ -16,7 +16,7 @@ from websockets.sync.client import connect
 
 from bbkit.common import AUTH
 from bbkit.servers import free_port
-from test_card_payments_chrome import CHROME
+from test_card_payments_chrome import CHROME, tab as is_tab
 from test_desktop_page import browser_bridge
 
 pytestmark = pytest.mark.skipif(CHROME is None, reason="no Chromium on this machine")
@@ -56,7 +56,7 @@ def chromium():
 
 
 def page_eval(port, expression):
-    tab = next(t for t in httpx.get(f"http://127.0.0.1:{port}/json/list").json() if t["type"] == "page")
+    tab = next(t for t in httpx.get(f"http://127.0.0.1:{port}/json/list").json() if is_tab(t))
     with connect(tab["webSocketDebuggerUrl"], max_size=None) as ws:
         ws.send(json.dumps({"id": 1, "method": "Runtime.evaluate", "params": {
             "expression": expression, "returnByValue": True}}))

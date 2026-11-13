@@ -1002,8 +1002,9 @@ pub fn secure(scheme: &str, host: &str) -> bool {
 mod tests {
     use super::*;
 
-    /// Chrome 157 lists its address bar's suggestion popup as a page; closed, it comes back at once (seen on its
-    /// image, 13/11): `fresh` waited for it to close and every payment ended « another tab would not close ».
+    /// Chrome 157 lists its address bar's suggestion popup as a page; closed, it comes back at once (its image, 13/11):
+    /// `fresh` waited for it to close (« another tab would not close ») and every payment was handed over, nothing
+    /// typed.
     #[test]
     fn chromes_own_ui_is_no_tab_to_close_or_blank() {
         let targets = json!({"targetInfos": [
