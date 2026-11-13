@@ -128,13 +128,14 @@ def test_the_agent_keeps_its_site_when_its_first_tab_is_closed(bridges, fakes, b
     assert "Mon compte" in json.dumps(content, ensure_ascii=False)
     second.end()
 
-    # Chrome as it runs: one --disable-features (Chrome reads only the last), its popup page off, the bridge's kept
+    # Chrome as it runs: the last --disable-features (the only one Chrome reads; a distribution's wrapper may put its
+    # own first, as Fedora's chromium-browser on ARM) has its popup page off and the bridge's kept
     out = in_container(container, "pgrep", "-a", "-f", "--", "--remote-debugging-port=9222")
     main = [line.split() for line in out.splitlines() if "--type=" not in line]
     assert len(main) == 1, out
     switches = [a for a in main[0] if a.startswith("--disable-features=")]
-    assert len(switches) == 1, switches
-    assert {"WebUIOmniboxPopup", "OptimizationHints", "IsolateOrigins"} <= set(switches[0].split("=", 1)[1].split(","))
+    assert switches and {"WebUIOmniboxPopup", "OptimizationHints", "IsolateOrigins"} <= set(
+        switches[-1].split("=", 1)[1].split(",")), switches
     assert [t["url"] for t in chrome_pages(container)] == [SITE + "account.html"]
 
     # « Bureau »: the bridge's view of that browser shows the site, never Chrome's own UI

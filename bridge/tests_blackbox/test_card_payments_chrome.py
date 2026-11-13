@@ -44,6 +44,9 @@ CHROME = next((c for c in CANDIDATES if c and os.path.exists(c)), None)
 pytestmark = pytest.mark.skipif(CHROME is None, reason="no Chromium on this machine")
 
 
+LOOKALIKE = "chrome-untrusted://foo.top-chrome/"   # no page of Chrome behind it: an error page, in a real tab
+
+
 def tab(target):
     """A tab of the browser: a page target but Chrome's own UI (since Chrome 157 its address bar's suggestion popup,
     chrome://omnibox-popup.top-chrome/, is a page with no window; the bridge leaves those alone)."""
@@ -182,6 +185,8 @@ def test_a_providers_frame_on_another_site(bridges, fakes):
         assert browser.run(PLANT, "elements.html") == '["marker"]'
         browser.call("Target.createTarget", {"url": f"http://127.0.0.1:{shop.server_port}/done.html?other",
                                              "background": True})
+        # and one on an address like Chrome's own UI (review of 13/11): an error page in a real tab, closed all the same
+        browser.call("Target.createTarget", {"url": LOOKALIKE, "background": True})
         time.sleep(1)
         targets = browser.call("Target.getTargets")["targetInfos"]
         agents_tab = next(t["targetId"] for t in targets if t["type"] == "page" and "elements.html" in t["url"])
@@ -191,6 +196,7 @@ def test_a_providers_frame_on_another_site(bridges, fakes):
         assert result["isError"] is False, result
         assert " on 127.0.0.1 with card " in asked
         assert [u.split("?")[0].split("/")[-1] for u in browser.pages()] == ["elements.html"]   # the other tab closed
+        assert LOOKALIKE not in [t["url"] for t in browser.call("Target.getTargets")["targetInfos"]]
         values = browser.values()
         # Typed into the page reloaded under the hold: the agent's own fields are gone with the old document.
         assert values["elements.html"] == {"holder": "Alex Martin", "ship": ""}    # the shipping postcode left alone

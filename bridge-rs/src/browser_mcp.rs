@@ -1727,4 +1727,14 @@ out of your reach";
         }
         assert!(refused_address("click_element", json!({"selector": "a"}).as_object().unwrap()).is_none());
     }
+
+    /// Review of 13/11: chrome-untrusted: is Chrome's own pages too. Neither the bridge nor the policy stopped it, and
+    /// a tab sent there keeps that address (an error page): one that looks like Chrome's UI to the top-chrome filters.
+    #[test]
+    fn chrome_untrusted_addresses_are_refused() {
+        let args = |url: &str| json!({"url": url}).as_object().unwrap().clone();
+        assert!(refused_address("navigate", &args("chrome-untrusted://foo.top-chrome/")).is_some());
+        assert!(refused_address("new_tab", &args("CHROME-UNTRUSTED://tab-search.top-chrome/")).is_some());
+        assert!(refused_address("navigate", &args(" chrome-untrusted://new-tab-page/one-google-bar")).is_some());
+    }
 }

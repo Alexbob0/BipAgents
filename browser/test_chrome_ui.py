@@ -60,8 +60,10 @@ def patch_helpers(state_file: str) -> dict:
     code = "\n".join(line[1:] for line in hunk.splitlines()[1:] if line.startswith("+"))
     os.environ["STEALTH_STATE_FILE"] = state_file
     try:
+        window_for = type("BrowserDomain", (), {"get_window_for_target": staticmethod(lambda t: ("window", t))})
+        uc = type("Nodriver", (), {"cdp": type("Cdp", (), {"browser": window_for})})
         namespace = {"__name__": "stealth_patch", "asyncio": asyncio, "os": os, "json": json, "time": time,
-                     "Optional": Optional, "uc": None, "debug_logger": _Logger()}
+                     "Optional": Optional, "uc": uc, "debug_logger": _Logger()}
         exec(compile(code, "stealth.patch", "exec"), namespace)
     finally:
         del os.environ["STEALTH_STATE_FILE"]
@@ -78,14 +80,28 @@ class FakeTab:
         self.target = Target(target_id, url)
 
 
+class FakeConnection:
+    """The browser's DevTools connection: `Browser.getWindowForTarget` fails for a tab with no window."""
+
+    def __init__(self, windowless):
+        self.windowless = windowless
+
+    async def send(self, command):
+        if command[0] == "window" and command[1] in self.windowless:
+            raise Exception("Browser window not found [code: -32000]")
+        return {"windowId": 1}
+
+
 class FakeBrowser:
-    """nodriver's Browser as the patch sees it: `tabs` in Chrome's order, the popup first when it comes first."""
+    """nodriver's Browser as the patch sees it: `tabs` in Chrome's order, the popup first when it comes first.
+    Chrome's UI pages (POPUP, SEARCH, READ) have no window."""
 
     def __init__(self, *tabs: FakeTab, port: int = 9222):
         self.targets = list(tabs)
         self._process = None
         self.config = type("Config", (), {"port": port})()
         self.opened = []
+        self.connection = FakeConnection({"POPUP", "SEARCH", "READ"})
 
     @property
     def tabs(self):
@@ -126,7 +142,10 @@ def test_every_tab_choice_skips_chromes_own_ui_even_first(tmp_path, monkeypatch)
     monkeypatch.setenv("STEALTH_CDP_PORT", "9222")
     site, new = FakeTab("SITE", "https://www.lemonde.fr/"), FakeTab("NEW", "chrome://newtab/")
     browser = FakeBrowser(*chrome_ui_tabs(), site, new)
-    assert helpers["_bip_tabs"](browser) == [site, new]
+    assert asyncio.run(helpers["_bip_tabs"](browser)) == [site, new]
+    # Review of 13/11: a real tab on such an address (an error page, in a window) is still the agent's tab.
+    lookalike = FakeTab("LOOK", "chrome-untrusted://foo.top-chrome/")
+    assert asyncio.run(helpers["_bip_tabs"](FakeBrowser(lookalike, *chrome_ui_tabs(), site))) == [lookalike, site]
     # spawn and reconnect with no tab of its own known: the first real one, never the popup listed before it
     assert asyncio.run(helpers["_bip_first_tab"](browser)) is site
     # only Chrome's UI left: a blank tab opened for the agent
@@ -167,9 +186,11 @@ def test_the_patch_routes_every_tab_choice_through_its_filter():
     assert "for tab in browser.tabs:" in removed               # list_tabs, switch_to_tab, close_tab
     assert "for candidate_tab in browser.tabs:" in removed     # the tracked tab, looked for again
     assert "browser.main_tab" not in added
-    assert not re.search(r"browser\.tabs\b", added.replace("_bip_tabs(browser)", "")
-                         .replace("return [tab for tab in browser.tabs if not _chrome_ui(tab)]", ""))
-    assert added.count("_bip_tabs(browser)") >= 6
+    helper = "return [tab for tab in browser.tabs if not _chrome_ui(tab) or await _has_window(browser, tab)]"
+    assert helper in added
+    assert not re.search(r"browser\.tabs\b", added.replace("_bip_tabs(browser)", "").replace(helper, ""))
+    assert added.count("await _bip_tabs(browser)") >= 6 and added.count("_bip_tabs(browser)") == added.count(
+        "await _bip_tabs(browser)") + added.count("async def _bip_tabs(browser)")
     assert "_launch_detached(_bip_features_off(" in added
     assert "_bip_features_off(_without_dropped_args(merge_browser_args(caller_args)))" in added
     hunks = []
@@ -305,6 +326,23 @@ def chrome_command_line(container: str) -> list:
     return main[0].split()
 
 
+# Chrome started by hand WITHOUT the flag (as before the fix), found as open_browser.sh finds it.
+BY_HAND = ("for c in google-chrome-stable google-chrome chromium-browser chromium; do"
+           " command -v \"$c\" >/dev/null 2>&1 && exec \"$c\" --no-first-run --no-default-browser-check"
+           " --start-maximized --test-type --no-sandbox --remote-debugging-host=127.0.0.1 --remote-debugging-port=9222"
+           " --user-data-dir=/home/bip/profile >/tmp/chrome.log 2>&1; done; exit 1")
+
+
+def chrome_with_its_popup(container: str) -> str:
+    """Chrome started without the flag; its popup page's id (skipped where this Chrome has none: before 157)."""
+    subprocess.run([ENGINE, "exec", "-d", container, "sh", "-c", BY_HAND], check=True)
+    assert wait_for(lambda: chrome_targets(container))
+    popup = wait_for(lambda: next((t["id"] for t in chrome_targets(container) if t["url"] == POPUP), None), 10)
+    if not popup:
+        pytest.skip("this Chrome lists no popup page (before Chrome 157)")
+    return popup
+
+
 def wait_for(check, seconds=30.0):
     deadline = time.time() + seconds
     while time.time() < deadline:
@@ -335,9 +373,12 @@ def container():
 def no_popup_page(container: str, started: str) -> None:
     assert wait_for(lambda: chrome_targets(container)), started
     time.sleep(2)   # the popup page, when there is one, comes a moment after the first tab
+    # Chrome reads only the last --disable-features: ours, whatever a distribution's wrapper puts first (Fedora's
+    # chromium-browser on ARM puts its own).
     switches = [a for a in chrome_command_line(container) if a.startswith("--disable-features=")]
-    assert len(switches) == 1, (started, switches)
-    assert {"WebUIOmniboxPopup", "OptimizationHints", "IsolateOrigins"} <= set(switches[0].split("=", 1)[1].split(","))
+    assert switches, started
+    last = set(switches[-1].split("=", 1)[1].split(","))
+    assert {"WebUIOmniboxPopup", "OptimizationHints", "IsolateOrigins"} <= last, (started, switches)
     assert not [t for t in chrome_targets(container) if ".top-chrome" in t["url"]], started
 
 
@@ -359,12 +400,7 @@ def test_chrome_runs_without_the_popup_page_however_it_starts(container):
 def test_the_agent_never_drives_chromes_popup_page(container):
     """Chrome started by hand WITHOUT the flag (as before this fix): its popup page is there, and the patch alone keeps
     the agent off it: the tab tools never show it, the navigation tab's fallback and a reconnect take the site."""
-    subprocess.run([ENGINE, "exec", "-d", container, "sh", "-c",
-                    "exec google-chrome-stable --no-first-run --no-default-browser-check --start-maximized --test-type"
-                    " --no-sandbox --remote-debugging-host=127.0.0.1 --remote-debugging-port=9222"
-                    " --user-data-dir=/home/bip/profile >/tmp/chrome.log 2>&1"], check=True)
-    popup = wait_for(lambda: next((t["id"] for t in chrome_targets(container) if t["url"] == POPUP), None))
-    assert popup, chrome_targets(container)
+    popup = chrome_with_its_popup(container)
 
     first = Server(container)
     instance = first.call("spawn_browser")["instance_id"]
@@ -385,3 +421,59 @@ def test_the_agent_never_drives_chromes_popup_page(container):
     assert second.call("navigate", instance_id=instance, url=SITE + "login.html")["title"] == "Connexion"
     second.end()
     # the person's view of the page (bridge-rs/src/desktop_page.rs, most recently active first) is tested there
+
+
+# -- the review of 13/11 (its tests, kept) ---------------------------------------------------------------------------
+
+LOOKALIKE = "chrome-untrusted://foo.top-chrome/"   # no page of Chrome behind it: an error page in a real tab
+
+
+def window_of(container: str, target_id: str) -> str:
+    """Browser.getWindowForTarget for one target, asked in the container: « window » or Chrome's error."""
+    code = f"""
+import asyncio, json, urllib.request, websockets
+async def main():
+    v = json.load(urllib.request.urlopen("http://127.0.0.1:9222/json/version"))
+    async with websockets.connect(v["webSocketDebuggerUrl"], max_size=None) as ws:
+        await ws.send(json.dumps({{"id": 1, "method": "Browser.getWindowForTarget",
+                                   "params": {{"targetId": "{target_id}"}}}}))
+        m = json.loads(await ws.recv())
+        print("window" if "result" in m else m["error"]["message"])
+asyncio.run(main())
+"""
+    return in_container(container, "/opt/stealth/venv/bin/python", "-I", "-c", code).strip()
+
+
+@needs_image
+def test_a_real_tab_on_an_address_like_chromes_ui_stays_the_agents_tab(container):
+    """The bridge refuses chrome-untrusted: (browser_mcp.rs) and the policy blocks it, but the server here is asked
+    directly: Chrome then shows an error page with that address in a real tab, on the screen the person watches.
+    Only a page with no window of its own is Chrome's UI: that tab is listed and closed like any other."""
+    server = Server(container)
+    instance = server.call("spawn_browser")["instance_id"]
+    server.call("navigate", instance_id=instance, url=SITE + "login.html")
+    tab_id = server.call("new_tab", instance_id=instance, url=LOOKALIKE)["tab_id"]
+    assert [t["url"] for t in chrome_targets(container) if t["id"] == tab_id] == [LOOKALIKE]
+    assert window_of(container, tab_id) == "window"
+    listed = [t["tab_id"] for t in server.call("list_tabs", instance_id=instance)]
+    closed = server.call("close_tab", instance_id=instance, tab_id=tab_id)
+    server.end()
+    assert tab_id in listed, "the agent's own tab is not listed"
+    assert closed is True, "the agent cannot close its own tab"
+
+
+@needs_image
+def test_release_and_spawn_again_with_the_popup_there(container):
+    """Chrome without the flag (an old container's): the agent's close_instance (its pages closed, a blank one left)
+    leaves the popup alone, and the next spawn_browser takes the blank tab, not the popup."""
+    chrome_with_its_popup(container)
+    server = Server(container)
+    instance = server.call("spawn_browser")["instance_id"]
+    server.call("new_tab", instance_id=instance, url=SITE + "login.html")
+    server.call("close_instance", instance_id=instance)
+    left = sorted(t["url"] for t in chrome_targets(container))
+    again = server.call("spawn_browser")["instance_id"]
+    state = server.call("get_active_tab", instance_id=again)
+    server.end()
+    assert left == ["about:blank", POPUP], left
+    assert state["url"] == "about:blank", state
