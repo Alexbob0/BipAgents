@@ -647,6 +647,16 @@ pub fn approval_message(
     )
 }
 
+/// `approval_message` with `note` (« Card ref item_…. », « Delivery "Perso". ») put right before its « Approve in the
+/// BipAgents app »: the apps read each note on its own, older apps skip what they don't know.
+pub fn with_note(message: &str, note: &str) -> String {
+    const APPROVE: &str = " Approve in the BipAgents app";
+    match message.find(APPROVE) {
+        Some(at) => format!("{} {}{}", &message[..at], note.trim(), &message[at..]),
+        None => format!("{message} {}", note.trim()),
+    }
+}
+
 /// A text shown between quotes on one line: no quotes, no line breaks, no control characters, cut.
 pub fn quoted(text: &str, limit: usize) -> String {
     let clean: String = text
@@ -901,5 +911,10 @@ mod tests {
             "Card payment pay_0123456789ab: 12.50 EUR on sncf-connect.com with card \"Petits 'achats'\" ending 4242, for \
              \"Billet Paris-Lyon\". Approve in the BipAgents app with the card's security code."
         );
+        let noted = with_note(&with_note(&line, "Card ref item_0123456789ab."), "Delivery \"Perso\".");
+        assert!(noted.ends_with(
+            "for \"Billet Paris-Lyon\". Card ref item_0123456789ab. Delivery \"Perso\". Approve in the BipAgents app with \
+             the card's security code."
+        ));
     }
 }

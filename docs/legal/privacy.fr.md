@@ -75,8 +75,9 @@ Avec ton propre ordinateur ou ton propre serveur :
 - **Une carte de paiement pour tes agents.** « Paiements par tes agents » est désactivé par défaut. Sur ton propre
   serveur, si tu l'actives et ajoutes une carte (une carte virtuelle avec un plafond, jamais ta carte principale), son
   numéro, sa date d'expiration, le nom du titulaire et le code postal vont dans le coffre chiffré de ton serveur, où seul
-  le bridge les lit pour remplir un paiement que tu as validé. Le code de sécurité n'est jamais gardé : tu le tapes à
-  chaque paiement. L'agent (le modèle d'IA) ne voit jamais ces numéros, et Kerfy Studio n'en reçoit rien. Avec l'offre
+  le bridge les lit pour remplir un paiement que tu as validé. Le code de sécurité n'est jamais gardé sur ton serveur ni
+  chez Kerfy Studio : tu le tapes à chaque paiement, ou, si tu le choisis (« Retenir le code sur ce téléphone »), ton
+  téléphone le garde pour toi, protégé par Face ID, ton empreinte ou le code de ton téléphone, et l'envoie avec chaque paiement que tu valides. L'agent (le modèle d'IA) ne voit jamais ces numéros, et Kerfy Studio n'en reçoit rien. Avec l'offre
   tout compris, la carte reste sur ton téléphone (section 5.10).
 - **Plusieurs personnes sur un même serveur** (fonction famille) : chaque personne a sa propre installation et ses
   propres agents, séparés des autres, sauf les agents de la famille et les agents partagés (section 2 bis), qui sont
@@ -716,7 +717,7 @@ lui confies, sur les sites que tu autorises :
   ton code. Ta place ne garde que le nom que tu as donné à la carte, son réseau, ses 4 derniers chiffres, le plafond
   que tu as fixé, les sites et les agents autorisés, et les paiements faits avec (montant, site, agent, date).
 - **À chaque paiement que tu valides** dans l'app, ton téléphone envoie ces données et le code de sécurité de la carte
-  que tu viens de taper à ta place, par la connexion chiffrée de l'app. Le logiciel de ta place les garde en mémoire
+  (tapé, ou retenu sur ce téléphone si tu l'as choisi) à ta place, par la connexion chiffrée de l'app. Le logiciel de ta place les garde en mémoire
   le temps de remplir le formulaire de paiement dans le navigateur de l'agent, puis les efface. Elles ne sont jamais
   écrites sur le disque, ni dans les journaux, ni dans les sauvegardes, et l'agent (le modèle d'IA) ne les voit pas.
 - Le journal des paiements (sans aucun numéro de carte) est gardé 3 ans sur ta place.

@@ -73,8 +73,12 @@ pub const PLACE_IDLE_SOON: &str =
 /// `place_parked`: the place was freed on day 7, its copy kept 30 days.
 pub const PLACE_PARKED: &str = "Ta place a été libérée : personne n’a écrit à tes agents pendant 7 jours. Tes données sont gardées 30 jours : ouvre l’app pour la reprendre.";
 pub const MAX_PAYLOAD_BYTES: usize = 4096;
-/// The values the apps use; anything else is dropped (no « time-sensitive », no custom sound).
-const CATEGORIES: &[&str] = &["MESSAGE", "APPROVAL"];
+/// The values the apps use; anything else is dropped (no custom sound). The urgent payment's category (`PAYMENT`: a
+/// watcher found the ticket, the person has minutes to approve; the bridge's card_pay.rs `urgent`) and « time-sensitive »
+/// pass only for such a push (`urgent_payment`): an approval naming its payment (`pay`), marked `urgent`.
+const CATEGORIES: &[&str] = &["MESSAGE", "APPROVAL", "PAYMENT"];
+const URGENT_CATEGORY: &str = "PAYMENT";
+const URGENT_LEVEL: &str = "time-sensitive";
 const SOUNDS: &[&str] = &["default"];
 const INTERRUPTION_LEVELS: &[&str] = &["active", "passive"];
 const VALUE_MAX: usize = 256;
@@ -133,6 +137,14 @@ fn sealed(value: &Value) -> Option<Value> {
     fits.then(|| value.clone())
 }
 
+/// An urgent payment's push as the bridge makes it (push_runs/notices.rs `PaymentUrgent`): an approval (`t`), its
+/// payment named (`pay`), marked `urgent`.
+fn urgent_payment(object: &Map<String, Value>) -> bool {
+    object.get("t").and_then(Value::as_str) == Some("approval")
+        && object.get("urgent").and_then(Value::as_i64) == Some(1)
+        && object.get("pay").and_then(Value::as_str).is_some_and(|p| !p.is_empty() && p.len() <= 64)
+}
+
 /// The payload as the relay forwards it, or why it refuses it.
 pub fn scrub(payload: &Value, aud: Audience) -> Result<Value, &'static str> {
     let object = payload.as_object().ok_or("payload must be an object")?;
@@ -140,8 +152,16 @@ pub fn scrub(payload: &Value, aud: Audience) -> Result<Value, &'static str> {
     if let Some(aps) = object.get("aps") {
         let aps = aps.as_object().ok_or("aps must be an object")?;
         let mut clean = Map::new();
+        let urgent = aps.get("category").and_then(Value::as_str) == Some(URGENT_CATEGORY) && urgent_payment(object);
         for (key, value) in aps {
             if !APS_KEYS.contains(&key.as_str()) {
+                continue;
+            }
+            if key == "category" && value.as_str() == Some(URGENT_CATEGORY) && !urgent {
+                continue; // « Payer » on a push that is no payment: dropped
+            }
+            if key == "interruption-level" && urgent && value.as_str() == Some(URGENT_LEVEL) {
+                clean.insert(key.clone(), Value::String(URGENT_LEVEL.into()));
                 continue;
             }
             let allowed = match key.as_str() {
@@ -337,6 +357,42 @@ mod tests {
             (&json!("APPROVAL"), &json!("default"), &json!("passive"))
         );
         assert!(clean["aps"]["alert"].get("title").is_none());
+        // time-sensitive only for an urgent payment
+        let urgent = json!({"t": "approval", "pay": "pay_0123456789ab", "urgent": 1,
+                            "aps": {"alert": {"loc-key": "notif.approval"}, "category": "PAYMENT",
+                                    "interruption-level": "time-sensitive", "relevance-score": 1}});
+        let clean = scrub(&urgent, Audience::Bridge).unwrap();
+        assert_eq!(
+            (&clean["aps"]["category"], &clean["aps"]["interruption-level"], &clean["aps"]["relevance-score"]),
+            (&json!("PAYMENT"), &json!("time-sensitive"), &json!(1))
+        );
+        let sneaky = json!({"aps": {"alert": {"loc-key": "notif.reply"}, "category": "MESSAGE",
+                                    "interruption-level": "time-sensitive"}});
+        assert!(scrub(&sneaky, Audience::Bridge).unwrap()["aps"].get("interruption-level").is_none());
+    }
+
+    /// « time-sensitive » and « Payer » are for the urgent payment only (review 13/11): a push that is not one (an
+    /// agent's message, a plain approval: no `pay`, no `urgent`) saying `category: PAYMENT` gets neither, so it never
+    /// breaks through Focus / Do Not Disturb.
+    #[test]
+    fn a_push_that_is_not_an_urgent_payment_gets_no_time_sensitive_with_category_payment() {
+        let not_payments = [
+            json!({"t": "message", "c": "t_1", "aps": {"alert": {"loc-key": "notif.reply"}, "category": "PAYMENT",
+                                                        "interruption-level": "time-sensitive"}}),
+            json!({"t": "approval", "run_id": "r1", "request_id": "q1",
+                   "aps": {"alert": {"loc-key": "notif.approval"}, "category": "PAYMENT",
+                           "interruption-level": "time-sensitive"}}),
+        ];
+        let kept: Vec<Value> = not_payments
+            .iter()
+            .map(|p| scrub(p, Audience::Bridge).unwrap()["aps"].get("interruption-level").cloned().unwrap_or(Value::Null))
+            .collect();
+        assert_eq!(kept, vec![Value::Null, Value::Null], "time-sensitive kept for pushes that are not urgent payments");
+        let categories: Vec<Value> = not_payments
+            .iter()
+            .map(|p| scrub(p, Audience::Bridge).unwrap()["aps"].get("category").cloned().unwrap_or(Value::Null))
+            .collect();
+        assert_eq!(categories, vec![Value::Null, Value::Null], "« Payer » on pushes that are no payment");
     }
 
     #[test]

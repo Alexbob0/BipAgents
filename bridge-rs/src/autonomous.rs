@@ -745,7 +745,7 @@ mod tests {
             name: "Créneau médecin".into(),
             status: connectors::APPROVED.into(),
             enabled: true,
-            watch: Some(connectors::Watch { every: "15m".into(), notify: "on_change".into() }),
+            watch: Some(connectors::Watch { every: "15m".into(), notify: "on_change".into(), purchase: None }),
             ..Default::default()
         };
         let rt = crate::watchers::Runtime {

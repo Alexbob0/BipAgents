@@ -76,7 +76,9 @@ Mit deinem eigenen Computer oder deinem eigenen Server:
   eigenen Server gehen, wenn du sie einschaltest und eine Karte hinzufügst (eine virtuelle Karte mit Limit, nie deine
   Hauptkarte), ihre Nummer, ihr Ablaufdatum, der Name des Karteninhabers und die Postleitzahl in den verschlüsselten
   Tresor deines Servers, wo nur die Bridge sie liest, um eine Zahlung auszufüllen, die du freigegeben hast. Der
-  Sicherheitscode wird nie gespeichert: Du tippst ihn bei jeder Zahlung ein. Der Agent (das KI-Modell) sieht diese
+  Sicherheitscode wird weder auf deinem Server noch bei Kerfy Studio gespeichert: Du tippst ihn bei jeder Zahlung ein,
+  oder, wenn du es wählst (« Code auf diesem Telefon merken »), behält ihn dein Telefon für dich, geschützt durch Face
+  ID, deinen Fingerabdruck oder den Code deines Telefons, und sendet ihn mit jeder Zahlung, die du freigibst. Der Agent (das KI-Modell) sieht diese
   Nummern nie, und Kerfy Studio erhält nichts davon. Beim Alles-inklusive-Angebot bleibt die Karte auf deinem Telefon
   (Abschnitt 5.10).
 - **Mehrere Personen auf einem Server** (Familienfunktion): Jede Person hat ihre eigene Installation und ihre eigenen
@@ -749,8 +751,8 @@ kleinen Einkauf mit einer Karte bezahlen, die du ihm anvertraust, auf den Websit
   Fingerabdruck oder deinem Code. Dein Platz speichert nur den Namen, den du der Karte gegeben hast, ihr Netzwerk, die
   letzten 4 Ziffern, das von dir gesetzte Limit, die erlaubten Websites und Agenten und die damit getätigten Zahlungen
   (Betrag, Website, Agent, Datum).
-- **Bei jeder Zahlung, die du in der App bestätigst**, sendet dein Telefon diese Daten und den gerade eingegebenen
-  Sicherheitscode über die verschlüsselte Verbindung der App an deinen Platz. Die Software deines Platzes hält sie im
+- **Bei jeder Zahlung, die du in der App bestätigst**, sendet dein Telefon diese Daten und den Sicherheitscode (eingetippt,
+  oder auf diesem Telefon gemerkt, wenn du es gewählt hast) über die verschlüsselte Verbindung der App an deinen Platz. Die Software deines Platzes hält sie im
   Arbeitsspeicher, bis das Zahlungsformular im Browser des Agenten ausgefüllt ist, und löscht sie dann. Sie werden nie
   auf die Festplatte, in Protokolle oder Sicherungen geschrieben, und der Agent (das KI-Modell) sieht sie nicht.
 - Das Zahlungsprotokoll (ohne Kartennummer) wird 3 Jahre auf deinem Platz aufbewahrt.

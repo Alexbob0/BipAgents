@@ -123,6 +123,23 @@ pub struct Watch {
     pub every: String,
     /// `on_change` or `on_condition`.
     pub notify: String,
+    /// A watcher made for a purchase (« préviens-moi quand les billets sont en vente »): what, where, the price
+    /// expected; its detail shows « Prêt à acheter » (urgent_pay.rs `purchase_view`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub purchase: Option<Purchase>,
+}
+
+/// What a purchase watcher is for.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Purchase {
+    /// The shop's host (« ticketmaster.fr »).
+    pub site: String,
+    /// What to buy, in a few words.
+    pub what: String,
+    /// The price expected, in cents (0: not known).
+    pub cents: i64,
+    pub currency: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -569,6 +586,8 @@ fn card_item(state: Option<&AppState>, config: &Config, agent: &str, conn: &Conn
         "bip_connector_secrets": secrets_view(state, agent, conn),
         "bip_connector_schedule": when_line(conn),
         "bip_connector_watch": conn.watch.as_ref().map(crate::watchers::watch_view),
+        // a purchase watcher: that it buys, shown on the card itself
+        "bip_connector_purchase": conn.watch.as_ref().and_then(|w| w.purchase.as_ref()).map(crate::watchers::purchase_text),
         "bip_connector_tools": tool_names(conn),
         "bip_connector_icon": {"symbol": icon_of(&conn.icon).get("key").cloned().unwrap_or(Value::Null),
                                "image": icon_url(agent, conn)},
@@ -857,6 +876,12 @@ pub fn tools() -> Vec<Value> {
         Leave schedule out.", "properties": {
         "every": {"type": "string", "description": "how often it checks: « 15m » (the least, only for a slot to grab), « 30m », « 1h », « 6h », « 1d »: the longest that still works"},
         "notify": {"type": "string", "enum": ["on_change", "on_condition"], "description": "on_change: wake you when its state changes; on_condition: when its \"condition\" is true (a balance under a threshold)"},
+        "purchase": {"type": "object", "description": "when it watches something to BUY as soon as it is there (tickets on sale, back in stock): the person then gets ready in the app (account, card, alarm, a rehearsal) and, when it fires, you go to the payment page and pay_with_card at once: they approve in seconds", "properties": {
+            "site": {"type": "string", "description": "the shop's site, e.g. ticketmaster.fr"},
+            "what": {"type": "string", "description": "what to buy, a few words, e.g. « 2 billets Stromae, Paris 12/03 »"},
+            "price": {"type": "string", "description": "the price expected, e.g. 45.00 (leave out if unknown)"},
+            "currency": {"type": "string", "description": "e.g. EUR"},
+        }, "required": ["site", "what"]},
     }, "required": ["every", "notify"]});
     let fields = json!({
         "name": {"type": "string", "description": "its name for the person, e.g. « Garmin »"},
@@ -1494,7 +1519,13 @@ pub fn view(state: &AppState, config: &Config, agent: &AgentConfig, conn: &Conne
         "sites": conn.sites, "secrets": secrets_view(Some(state), &agent.name, conn), "tools": tools,
         "schedule": conn.schedule.as_ref().map(|s| json!({"when": s.when, "text": schedule_text(&conn.schedule),
                                                           "mechanical": s.mechanical, "tool": s.tool})),
-        "watch": conn.watch.as_ref().map(|w| crate::watchers::detail_view(config, &agent.name, conn, w)),
+        "watch": conn.watch.as_ref().map(|w| {
+            let mut view = crate::watchers::detail_view(config, &agent.name, conn, w);
+            if let (Some(purchase), Some(map)) = (&w.purchase, view.as_object_mut()) {
+                map.insert("purchase".into(), crate::urgent_pay::purchase_view(state, config, &agent.name, conn, purchase));
+            }
+            view
+        }),
         "last_run": conn.last_run.as_ref().map(|r| json!({"at": r.at, "ok": r.ok, "message": r.message})),
         "unofficial": conn.unofficial, "from_template": conn.from_template,
         "card_run_id": conn.card.as_ref().map(|c| format!("{RUN_PREFIX}{}", c.id)),
@@ -1764,5 +1795,35 @@ mod tests {
         assert!(tools[0]["description"].as_str().unwrap().contains("Never ask for a password"));
         assert!(tools[1]["description"].as_str().unwrap().contains("sandbox_sites_request"));
         assert!(tools[1]["description"].as_str().unwrap().contains("never goes in a task's prompt"));
+    }
+
+    /// A purchase watcher's wake-up tells the agent to buy at once (watchers.rs `purchase_rule`), and its
+    /// `watch.purchase` is the agent's own (connector_register / connector_update): the card the person approves says
+    /// that the watcher buys, what and where (review 2, 13/11).
+    #[test]
+    fn the_card_the_person_approves_says_the_watcher_buys_and_what() {
+        let config = Config::with_key("k");
+        let purchase =
+            Purchase { site: "shop.example".into(), what: "2 billets Stromae".into(), cents: 4500, currency: "EUR".into() };
+        let conn = Connector {
+            name: "Billets Stromae".into(),
+            sites: vec!["www.shop.example".into()],
+            description: "La mise en vente des billets".into(),
+            watch: Some(Watch { every: "15m".into(), notify: "on_change".into(), purchase: Some(purchase) }),
+            ..Default::default()
+        };
+        for change in ["new", "update"] {
+            let card = card_item(None, &config, "vie", &conn, &new_card(change));
+            let shown = serde_json::to_string(&card).unwrap();
+            assert!(
+                shown.contains("2 billets Stromae") && shown.contains("shop.example"),
+                "the {change} card of a purchase watcher never says it buys, nor what: {shown}"
+            );
+            assert_eq!(
+                card["bip_connector_purchase"],
+                "Il achètera « 2 billets Stromae » sur shop.example (≈ 45,00 €) dès que possible : tu valideras le paiement"
+            );
+            assert_eq!(card["bip_connector_schedule"], "Vérifie toutes les 15 min, ne réveille l'agent que si ça change");
+        }
     }
 }

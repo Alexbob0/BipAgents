@@ -92,6 +92,17 @@ pub enum Notice {
     /// A date to find with a relative's household.
     #[serde(rename = "notify_meet")]
     Meet { line: String, id: String },
+    /// A card payment a turn nobody follows asked (a watcher found the ticket): urgent, with « Payer »
+    /// (card_pay.rs `urgent`); `test`: « Faire un essai » of the « Prêt à acheter » checklist (no card).
+    #[serde(rename = "notify_payment_urgent")]
+    PaymentUrgent {
+        run_id: String,
+        request_id: String,
+        line: String,
+        session_id: Option<String>,
+        #[serde(default)]
+        test: bool,
+    },
     /// A silent push (`run_finished`, `reminders`, `calendar`, `contacts`, `read`).
     #[serde(rename = "notify_silent")]
     Silent {
@@ -102,7 +113,7 @@ pub enum Notice {
 }
 
 /// The `notify_*` names `Notice` stands for, one per variant: each must have a contract file.
-pub const BUILDERS: [&str; 15] = [
+pub const BUILDERS: [&str; 16] = [
     "notify_message",
     "notify_approval_values",
     "notify_reply",
@@ -117,6 +128,7 @@ pub const BUILDERS: [&str; 15] = [
     "notify_login_request",
     "notify_bridge_card",
     "notify_meet",
+    "notify_payment_urgent",
     "notify_silent",
 ];
 
@@ -149,6 +161,7 @@ impl Notice {
             Notice::Login { .. } => "notify_login_request",
             Notice::Card { .. } => "notify_bridge_card",
             Notice::Meet { .. } => "notify_meet",
+            Notice::PaymentUrgent { .. } => "notify_payment_urgent",
             Notice::Silent { .. } => "notify_silent",
         }
     }
@@ -249,11 +262,34 @@ impl Notice {
             Notice::Login { host, id } => card(agent, Kind::Login, &login_line(&context.lang, host), id),
             Notice::Card { line, key, id } => card(agent, Kind::of_card(key), line, id),
             Notice::Meet { line, id } => card(agent, Kind::Meet, line, id),
+            Notice::PaymentUrgent { run_id, request_id, line, session_id, test } => {
+                // an approval's pointer (older apps open its conversation), the bridge's card in `run_id`, urgent:
+                // its own category (« Payer »), time-sensitive (iOS), the urgent channel (Android: `urgent`)
+                let mut event = Event::new(agent, Kind::Approval, request_id)
+                    .session(opt(session_id))
+                    .reference(request_id)
+                    .text(Some(line))
+                    .collapse(request_id)
+                    .with("run_id", json!(run_id))
+                    .with("request_id", json!(request_id))
+                    .with("pay", json!(request_id))
+                    .with("urgent", json!(1));
+                if *test {
+                    event = event.with("test", json!(1));
+                }
+                event.aps.insert("category".into(), json!(PAYMENT_CATEGORY));
+                event.aps.insert("interruption-level".into(), json!("time-sensitive"));
+                event.aps.insert("relevance-score".into(), json!(1));
+                event
+            }
             Notice::Silent { .. } => return None,
         };
         Some(event)
     }
 }
+
+/// The urgent payment's APNs category: one button, « Payer », that opens the app on the card (the code is typed there).
+pub const PAYMENT_CATEGORY: &str = "PAYMENT";
 
 /// An accord card (always notified), its id in `r`.
 fn card(agent: &str, kind: Kind, line: &str, id: &str) -> Event {
@@ -293,7 +329,7 @@ impl Event {
     /// line, the pointer, the buttons' fields.
     pub fn push(&self, pointer: &Pointer) -> Built {
         let (thread, message) = self.target(pointer);
-        let payload = payload(
+        let mut payload = payload(
             self.kind,
             &self.agent,
             &pointer.n,
@@ -303,6 +339,9 @@ impl Event {
             pointer.badge,
             &self.extra,
         );
+        if let Some(Value::Object(aps)) = payload.get_mut("aps") {
+            aps.extend(self.aps.clone());
+        }
         Built { payload, push_type: "alert", priority: 10, collapse_id: self.collapse.clone() }
     }
 }

@@ -241,6 +241,7 @@ pub mod connectors;
 pub mod connectors_run;
 pub mod triggers;
 pub mod triggers_mail;
+pub mod urgent_pay;
 pub mod watchers;
 /// An agent's Hermes restarted when there is a reason (memory, unhealthy, requested), only when idle (2026-10-28).
 pub mod agent_restart;

@@ -20,6 +20,9 @@
 //! - **How long**: a card waits until answered, at most `KEEP_SECONDS`, or until its routine's next run (which asks
 //!   again if it is still needed).
 //!
+//! A card payment is the exception (watcher-urgent-pay, 13/11): it never becomes a held card (the run would end and
+//! the cart be lost); it waits for the person `card_pay::URGENT_WINDOW`, pushed urgent (card_pay.rs `urgent`).
+//!
 //! A family member's routine (`by`) keeps today's way (its cards are hers, family_thread.rs).
 //!
 //!     <data>/held-approvals.json (0600)   {held: [...], grants: [...]}
@@ -332,6 +335,13 @@ async fn held(state: &AppState, agent: &AgentConfig, run_id: &str, session: Opti
             .push
             .notify_approval_values(&agent.name, run_id, request_id.as_deref(), Some(&choices), summary.as_deref(), session.as_deref(), None)
             .await;
+        return;
+    }
+    let command = item.get("command").and_then(Value::as_str).unwrap_or("");
+    if crate::card_pay::payment_id(command).is_some() {
+        // a card payment (a watcher found the ticket): never a held card, which would end the run and lose the cart;
+        // it waits for the person a few minutes, pushed urgent (card_pay.rs `urgent`)
+        crate::card_pay::urgent(state, agent, run_id, session, &item).await;
         return;
     }
     let now = py::time_time();

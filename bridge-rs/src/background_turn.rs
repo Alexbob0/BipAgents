@@ -115,6 +115,10 @@ impl Kind {
     }
 }
 
+/// How much longer a turn may go while a card payment of its agent is asked or held (the person's window, the fill,
+/// the bank's confirmation).
+const PAYING_EXTRA: f64 = 1200.0;
+
 /// One turn to take.
 #[derive(Debug, Clone)]
 pub struct Turn {
@@ -429,7 +433,11 @@ impl Pipeline {
             if let Some(end) = self.status(agent, run_id, session).await {
                 break end;
             }
-            if py::time_time() - started >= max_seconds {
+            let spent = py::time_time() - started;
+            // a card payment waiting for the person or being made (a watcher found the ticket): its window and the
+            // bank's, never cut by the turn's own limit (card_pay.rs `URGENT_WINDOW`)
+            let paying = spent < max_seconds + PAYING_EXTRA && crate::card_pay::in_progress(&agent.name);
+            if spent >= max_seconds && !paying {
                 let _ = self.hermes.stop_run(agent, run_id).await;
                 break End { status: "timeout".into(), ..End::default() };
             }

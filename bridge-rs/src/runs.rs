@@ -2234,6 +2234,23 @@ impl RunHub {
         runs
     }
 
+    /// The agent's runs going on that are inside a call of `tool` right now, whatever MCP server Hermes named it after
+    /// (`mcp_bipagents_pay_pay_with_card`, `mcp__bipagents_pay__pay_with_card`: `bare` keeps the server's name there),
+    /// the call not completed yet: whose payment it is (urgent_pay.rs `refuses_payment`).
+    pub fn runs_calling(&self, agent: &str, tool: &str) -> Vec<String> {
+        let suffix = format!("_{tool}");
+        let inner = lock(&self.inner);
+        let mut runs: Vec<String> = Vec::new();
+        for sub in inner.subs.values().filter(|sub| sub.agent.name == agent) {
+            let st = lock(&sub.state);
+            let named = st.last_tool == tool || st.last_tool.ends_with(&suffix);
+            if !st.finished && st.terminal.is_none() && st.tools_open > 0 && named && !runs.contains(&sub.run_id) {
+                runs.push(sub.run_id.clone());
+            }
+        }
+        runs
+    }
+
     /// The turn a call of the bridge's tool `tool` by `agent` belongs to (loop_brake.rs, its MCP counts): the agent's
     /// run going on that the hub follows; with several, the one whose last call was this tool, else the one that
     /// called a tool last. None: no run of the agent followed (a routine, Hermes' cron).
@@ -3156,6 +3173,48 @@ mod tests {
         assert_eq!(hub.turn_of("other", "calendar_add"), None);
         lock(&task.state).finished = true;
         assert_eq!(turn("notebook_search"), Some(("run_chat".into(), false)));
+    }
+
+    /// urgent_pay.rs `refuses_payment` tells the rehearsal's own pay_with_card from another turn of the agent by the
+    /// run inside that very call (review 2, 13/11). Hermes names a tool after its MCP server, here `bipagents_pay` /
+    /// `bipagents_link` (`mcp__bipagents_pay__pay_with_card`, `mcp_bipagents_pay_confirm_payment`). Two runs of Vie:
+    /// the rehearsal (in the watcher's conversation) and the person's own conversation, each calling a tool a moment
+    /// after the other.
+    #[tokio::test]
+    async fn a_payment_is_told_to_the_run_that_calls_the_pay_tool() {
+        let hub = RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None);
+        let agent = AgentConfig { name: "vie".into(), ..Default::default() };
+        let run = |id: &str| {
+            let sub = Arc::new(RunSubscription::new(agent.clone(), id));
+            lock(&hub.inner).subs.insert(sub.key(), sub.clone());
+            sub
+        };
+        let started = |tool: &str| SSEEvent::new("tool.started", json!({"tool": tool}).as_object().cloned().unwrap(), "{}");
+        let (rehearsal, chat) = (run("run_rehearsal"), run("run_chat"));
+        hub.mark_background("vie", "run_rehearsal");
+        let pause = || std::thread::sleep(std::time::Duration::from_millis(20));
+        let turn = |tool: &str| hub.runs_calling("vie", tool).join(",");
+        let mut seen = Vec::new();
+        // 1. the rehearsal calls pay_with_card (it must be refused); the person's turn calls a tool just after
+        for name in ["mcp_bipagents_pay_pay_with_card", "mcp__bipagents_pay__pay_with_card"] {
+            hub.dispatch(&rehearsal, started(name));
+            pause();
+            hub.dispatch(&chat, started("mcp_bipagents_notebook_search"));
+            seen.push((name, "rehearsal's own call", turn(crate::card_pay::PAY), "run_rehearsal"));
+            pause();
+        }
+        hub.dispatch(&rehearsal, started("mcp_bipagents_link_pay_with_link"));
+        pause();
+        hub.dispatch(&chat, started("mcp_bipagents_notebook_search"));
+        seen.push(("mcp_bipagents_link_pay_with_link", "rehearsal's own call", turn(crate::link_wallet::PAY), "run_rehearsal"));
+        pause();
+        // 2. the person's own turn pays for real (never refused as a rehearsal's); the rehearsal browses just after
+        hub.dispatch(&chat, started("mcp_bipagents_pay_pay_with_card"));
+        pause();
+        hub.dispatch(&rehearsal, started("mcp__stealth__get_page_content"));
+        seen.push(("mcp_bipagents_pay_pay_with_card", "person's real payment", turn(crate::card_pay::PAY), "run_chat"));
+        let wrong: Vec<_> = seen.iter().filter(|(_, _, got, want)| got != want).collect();
+        assert!(wrong.is_empty(), "runs_calling(vie, pay tool) picked the wrong run: {wrong:?}");
     }
 
     #[tokio::test]

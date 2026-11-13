@@ -1298,6 +1298,27 @@ async fn bridge_card(
             None => Err(HttpError::new(404, "no such request (answered already?)")),
         }?));
     }
+    // a card payment waiting for the person while nobody followed its turn (card_pay.rs `urgent`): its code came
+    // first (`/v1/vault/payments/<id>/approve`); « Non » refuses it
+    if let Some(id) = run_id.strip_prefix(crate::card_pay::URGENT_PREFIX) {
+        let allow = crate::card_place::allowed(&body.choice);
+        return Ok(Some(match crate::card_pay::answer_card(&agent.name, id, allow) {
+            Ok(()) => Ok(web::ok(json!({"ok": true, "choice": if allow { "once" } else { "deny" }}))),
+            Err((status, why)) => Err(HttpError::new(status, why)),
+        }?));
+    }
+    // the « Panier prêt » of a payment come too late (urgent_pay.rs): answered, gone (the app opened the shop itself)
+    if let Some(id) = run_id.strip_prefix(crate::urgent_pay::CART_PREFIX) {
+        let allow = crate::card_place::allowed(&body.choice);
+        let (config, name, id) = (state.config(), agent.name.clone(), id.to_string());
+        let answered = tokio::task::spawn_blocking(move || crate::urgent_pay::answer(&config, &name, &id))
+            .await
+            .map_err(anyhow::Error::from)?;
+        return Ok(Some(match answered {
+            true => Ok(web::ok(json!({"ok": true, "choice": if allow { "once" } else { "deny" }}))),
+            false => Err(HttpError::new(404, "no such request (answered already?)")),
+        }?));
+    }
     // what a turn nobody followed asked (held_approvals.rs): « Oui » lets the agent do exactly that once, as it goes on
     if let Some(id) = run_id.strip_prefix(crate::held_approvals::RUN_PREFIX) {
         let allow = crate::card_place::allowed(&body.choice); // an unknown word: refused
@@ -1749,6 +1770,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::dates::router())
         .merge(crate::vault::router())
         .merge(crate::card_pay::app_router())
+        .merge(crate::urgent_pay::app_router())
         .merge(crate::vault_logins::app_router())
         .merge(crate::secrets::app_router())
         .merge(crate::connectors::app_router())

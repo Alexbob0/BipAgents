@@ -423,8 +423,8 @@ def test_a_payment_approved_is_typed_on_the_real_site_then_the_bridge_clicks(bri
         assert commands[podman.index(CALLS_CHECK)][5:] == []
         assert all(c[5:] == ["sh", hold_token] for c in commands[hold_at + 1:hold_at + 4])
         assert re.fullmatch(r"Card payment pay_[0-9a-f]{12}: 12\.50 EUR on shop\.example with card \"Petits achats\" "
-                            r"ending 4242, for \"Billet Paris-Lyon\"\. Approve in the BipAgents app with the card's "
-                            r"security code\.", asked)
+                            r"ending 4242, for \"Billet Paris-Lyon\"\. Card ref item_[0-9a-f]{12}\. Approve in the BipAgents app "
+                            r"with the card's security code\.", asked)
         # Typed where each field lives: the provider's frame (its own session) and the page.
         assert chrome.typed == [("F-main", "name", "Alex Martin"), ("F-psp", "number", NUMBER),
                                 ("F-psp", "exp", "12/30"), ("F-psp", "csc", CODE)]
@@ -482,6 +482,34 @@ def test_only_on_the_cards_sites_and_only_with_both_approvals(bridges, fakes):
         assert "No card « Autre »" in other["content"][0]["text"]
         outcomes = [e["outcome"] for e in bridge.get("/v1/vault/payments", headers=AUTH).json()["journal"]]
         assert outcomes[:5] == ["denied", "asked", "denied", "asked", "refused_site"]
+    finally:
+        chrome.stop()
+
+
+def test_the_delivery_is_one_of_the_agents_coordonnees_and_shown_with_the_payment(bridges, fakes):
+    chrome = FakeChrome()
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome)
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json=CARD)
+        none_yet = tool(bridge, "pay_with_card", {**ARGS, "delivery": "Perso"})
+        # (the agent's language here is English: « Coordonnées » is named « Contact details » to it)
+        assert none_yet["isError"] is True and "entry: leave delivery out" in none_yet["content"][0]["text"]
+        pro = {"kind": "address", "label": "Kerfy Studio (pro)", "hint": "pour la société", "full_name": "Camille Exemple",
+               "address_line1": "1 rue de l'Essai", "city": "Testville", "postal_code": "00100", "country": "fr",
+               "agents": ["vie"]}
+        made = bridge.post("/v1/vault", headers=AUTH, json=pro)
+        assert made.status_code == 201, made.text
+        other = tool(bridge, "pay_with_card", {**ARGS, "delivery": "Bureau"})
+        assert other["isError"] is True
+        assert "entry « Bureau » for you. Yours: « Kerfy Studio (pro) »." in other["content"][0]["text"]
+        denied, asked = pay(bridge, {**ARGS, "delivery": "kerfy studio (pro)"}, hermes="decline", app=None)
+        assert denied["isError"] is True
+        assert re.search(r"Card ref item_[0-9a-f]{12}\. Delivery \"Kerfy Studio \(pro\)\"\. Approve in the BipAgents app",
+                         asked), asked
+        assert "Testville" not in asked and chrome.typed == []
+        outcomes = [e["outcome"] for e in bridge.get("/v1/vault/payments", headers=AUTH).json()["journal"]]
+        assert outcomes[:2] == ["denied", "asked"]     # a delivery refused never asked the person
     finally:
         chrome.stop()
 

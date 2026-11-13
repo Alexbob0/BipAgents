@@ -6,7 +6,8 @@
   "producers": [
     "runs.rs push_unseen (~973), ~2060 -> notify_approval_values",
     "agent_shares.rs:1141 (agent shared by a relative)",
-    "rooms.rs (room_id: a group discussion's turn)"
+    "rooms.rs (room_id: a group discussion's turn)",
+    "card_pay.rs urgent -> notify_payment_urgent (a turn nobody follows asks a card payment: urgent, « Payer »); urgent_pay.rs test_route (test)"
   ],
   "policy": {
     "per_agent_switch": false
@@ -313,6 +314,121 @@
         "push_type": "alert",
         "priority": 10,
         "collapse_id": "req_9"
+      }
+    },
+    {
+      "name": "urgent_payment",
+      "about": "A watcher found the ticket: the card payment waits 10 minutes as the bridge's card bip-pay-<id>; category PAYMENT (« Payer »), time-sensitive, Android's urgent channel (urgent).",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        },
+        "input": {
+          "fn": "notify_payment_urgent",
+          "args": {
+            "run_id": "bip-pay-pay_0123456789ab",
+            "request_id": "pay_0123456789ab",
+            "line": "A trouvé : Billet Stromae à 45,00 € sur ticketmaster.fr",
+            "session_id": "sess_w",
+            "test": false
+          }
+        }
+      },
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.approval",
+            "body": "notif.approval"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "PAYMENT",
+          "sound": "default",
+          "badge": 1,
+          "interruption-level": "time-sensitive",
+          "relevance-score": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "approval",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "pay_0123456789ab",
+        "run_id": "bip-pay-pay_0123456789ab",
+        "request_id": "pay_0123456789ab",
+        "pay": "pay_0123456789ab",
+        "urgent": 1
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "pay_0123456789ab"
+      }
+    },
+    {
+      "name": "urgent_test",
+      "about": "« Faire un essai » of the « Prêt à acheter » checklist: the same urgent push, test, no card.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        },
+        "input": {
+          "fn": "notify_payment_urgent",
+          "args": {
+            "run_id": "bip-paytest-0123456789ab",
+            "request_id": "0123456789ab",
+            "line": "Essai : voici comment tu es prévenu quand il faut payer vite.",
+            "session_id": null,
+            "test": true
+          }
+        }
+      },
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.approval",
+            "body": "notif.approval"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "PAYMENT",
+          "sound": "default",
+          "badge": 1,
+          "interruption-level": "time-sensitive",
+          "relevance-score": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "approval",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "0123456789ab",
+        "run_id": "bip-paytest-0123456789ab",
+        "request_id": "0123456789ab",
+        "pay": "0123456789ab",
+        "urgent": 1,
+        "test": 1
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "0123456789ab"
       }
     }
   ]

@@ -121,7 +121,9 @@ fn keep(config: &Config, run_id: &str, place: Place) -> std::io::Result<()> {
     let mut all = load(config);
     let now = py::time_time();
     all.retain(|_, p| now - p.at < KEEP_DAYS * 86400.0);
-    all.insert(run_id.to_string(), Place { at: now, ..place });
+    // placed again (`watch` and the card's maker at the same moment): a card whose answer its tool call told stays so
+    let taken = place.taken || all.get(run_id).is_some_and(|p| p.taken);
+    all.insert(run_id.to_string(), Place { at: now, taken, ..place });
     save(config, &all)
 }
 
@@ -164,6 +166,8 @@ pub fn bridge_cards(state: &AppState, config: &Config, agent: Option<&str>) -> V
     items.extend(crate::routines::pending_items(config, agent));
     items.extend(crate::agent_hops::pending_items(config, agent));
     items.extend(crate::held_approvals::pending_items(config, agent));
+    items.extend(crate::card_pay::pending_items(agent));
+    items.extend(crate::urgent_pay::pending_items(config, agent));
     // the kinds a « Toujours » may cover offer it (approval_level.rs)
     items.into_iter().map(|item| crate::approval_level::with_always(config, item)).collect()
 }

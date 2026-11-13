@@ -65,7 +65,8 @@ de l’offre tout compris. Tout ce qui est personnel va ici, avec la clé de ce 
 - **Secrets saisis par la personne :** mots de passe des boîtes mail (`/v1/mail/accounts`, et la boîte propre d’un
   agent chez le fournisseur de la personne dans `/v1/agents/{id}/email`), éléments du coffre (`/v1/vault` ; sur le serveur de la personne, le numéro, l’expiration, le titulaire et le code
   postal d’une carte de paiement y vont aussi, `bridge-rs/src/cards.rs` ; sur une place de l’offre, ils restent sur le
-  téléphone et ne partent, avec le code de sécurité tapé, que pour un paiement que la personne valide), clés SSH
+  téléphone et ne partent, avec le code de sécurité (tapé, ou retenu sur ce téléphone derrière Face ID / l’empreinte si la personne l’a
+  choisi : Trousseau / Keystore Android), que pour un paiement que la personne valide), clés SSH
   publiques (`/v1/ssh/keys`), réglages d’un serveur de voix.
 - **Santé** (`App/Features/Settings/HealthSync.swift`, `android/.../health/HealthSync.kt`) : un résumé par jour,
   envoyé par `PUT /v1/health-data/days` à chaque bridge dont au moins un agent a « Santé » activé, avec seulement les
