@@ -139,12 +139,23 @@ static ANSWERED: LazyLock<Regex> = LazyLock::new(|| {
 fn delivered(said: &str, after: &str) -> bool {
     let line = after.lines().next().unwrap_or("");
     let checks = CHECKS.is_match(said);
-    line.split_once(':').is_some_and(|(_, given)| given.contains('=') || (checks && ANSWERED.is_match(given)))
+    let Some((_, given)) = line.split_once(':') else { return false };
+    if given.contains('=') || (checks && ANSWERED.is_match(given)) {
+        return true;
+    }
+    // something made, given on the lines its colon opens (« Je te fais un petit récap :\n\n- Budget : 5 € … »); a
+    // search's list is its plan (« Je regarde Sephora et Nocibé :\n- miniatures… »)
+    given.trim().is_empty() && MAKES.is_match(said) && after.lines().skip(1).any(|l| !l.trim().is_empty())
 }
+
+/// Work that makes something the reply can hold (a recap, a list, a programme), not a search.
+static MAKES: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)pr[ée]pare|fais|put together|pull together|make|draft|write").expect("valid regex")
+});
 
 /// A check announced, whose answer may follow (« Je vérifie : … tombe un mercredi »); any other promise followed by
 /// « : c'est parfait pour un achat test » still announces work.
-static CHECKS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)v[ée]rifie|check").expect("valid regex"));
+static CHECKS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)v[ée]rifie|check|compare").expect("valid regex"));
 
 /// « je cherche (juste) à comprendre », « je reviens sur ta question »: the words, not work to come.
 static SEEKS_TO: LazyLock<Regex> = LazyLock::new(|| {
@@ -152,9 +163,22 @@ static SEEKS_TO: LazyLock<Regex> = LazyLock::new(|| {
 });
 static ON_TOPIC: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^\s*sur\b").expect("valid regex"));
 
+/// What one sends or gives out of care (« je t'envoie plein de courage », « je te fais un gros câlin »): no work.
+static CARE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"(?i)^\s*(?:(?:un|une|des|plein de|toute?s?|tout|mes|ma|mon|de la|du|de|mille|beaucoup de)\s+)*",
+        r"(?:(?:gros|grosse|grand|grande|petit|petite|énorme|immense|bonnes?|bons?|douces?|tendres?)\s+)*",
+        r"(?:c[âa]lins?|bisous?|bises?|courage|force|ondes|pensées|amitiés|amour|tendresse|soutien|énergie|accolade",
+        r"|sourires?|clin d'(?:œ|oe)il|vibes?|hugs?|love)\b",
+    ))
+    .expect("valid regex")
+});
+
 fn figurative(said: &str, after: &str) -> bool {
     let said = said.to_lowercase();
-    (said.ends_with("cherche") && SEEKS_TO.is_match(after)) || (said.ends_with("reviens") && ON_TOPIC.is_match(after))
+    (said.ends_with("cherche") && SEEKS_TO.is_match(after))
+        || (said.ends_with("reviens") && ON_TOPIC.is_match(after))
+        || ((said.ends_with("envoie") || said.contains(" fais ")) && CARE.is_match(after))
 }
 
 /// Words to the person (a question with « tu », « you »…): a `?` there asks them something; a bare echo (« 5 € ? »)
@@ -169,20 +193,27 @@ static TO_THEM: LazyLock<Regex> = LazyLock::new(|| {
 /// What acknowledges an echo of the person's words (« 5 € ? Parfait, … »).
 static ACKNOWLEDGED: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(concat!(
-        r"(?i)^\s*(?:parfait|top|super|tr[èe]s bien|bonne id[ée]e|ok|d'accord|entendu|not[ée]|c'est not[ée]|ça marche",
-        r"|perfect|great|sure|no problem|got it|noted|sounds good|genial|perfecto|vale|alles klar|prima)\b",
+        r"(?i)^\s*(?:parfait|top|super|g[ée]nial|tr[èe]s bien|(?:bonne|tr[èe]s bonne|excellente) id[ée]e|ok|okay|d'accord",
+        r"|entendu|not[ée]|c'est not[ée]|ça marche|avec plaisir|pas de (?:souci|soucis|probl[èe]me)|bien s[ûu]r|volontiers",
+        r"|perfect|great|sure|of course|absolutely|certainly|no problem|got it|noted|sounds good|happy to",
+        r"|perfecto|vale|claro|alles klar|gerne|prima)\b",
     ))
     .expect("valid regex")
 });
 
-/// A question to the person: after the promise starts (« Je te prépare le panier sur Carrefour ? »), or before it
-/// (« Which one do you like? I'll prepare the cart then », « Taille M ou L ? Je lance la commande »), but a bare echo
-/// of their words that the agent acknowledges (« 5 € ? Parfait, je te prépare 2-3 trouvailles »).
+/// A question to the person: after the promise starts (« Je te prépare le panier sur Carrefour ? »), before it in words
+/// to them (« Which one do you like? I'll prepare the cart then ») or right before its sentence (« Taille M ou L ? Je
+/// lance la commande »), but an echo of their words the agent acknowledges (« 5 € ? Parfait, je te prépare… ») and a
+/// question it answers itself (« Pourquoi ces trois enseignes ? Ce sont… »).
 fn asks_a_question(tail: &str, at: usize) -> bool {
     tail.match_indices('?').any(|(i, _)| {
+        if i >= at {
+            return true;
+        }
         let start = tail[..i].rfind(['.', '!', '?', '\n']).map_or(0, |s| s + 1);
-        let echo = !TO_THEM.is_match(&tail[start..i]) && ACKNOWLEDGED.is_match(&tail[i + 1..]);
-        i >= at || !echo
+        // right before the promise's sentence (« Taille M ou L ? Je lance la commande »), unless acknowledged
+        let next = !tail[i + 1..at].contains(['.', '!', '?', '\n']);
+        TO_THEM.is_match(&tail[start..i]) || (next && !ACKNOWLEDGED.is_match(&tail[i + 1..]))
     })
 }
 
@@ -258,14 +289,24 @@ pub fn promises(reply: &str) -> bool {
     // ça te va et je lance la commande »), but an optional line after the promise (« Dis-moi si tu as une enseigne
     // préférée ») and a statement (« tu choisis celle qui te plaît », « so you can choose »)
     let request = |m: &regex::Match| {
-        if m.start() < at {
-            return true; // before the work: it waits for them
+        let before: Vec<String> = tail[..m.start()].split_whitespace().rev().take(2).map(str::to_lowercase).collect();
+        let said = before.first().map(String::as_str).unwrap_or("");
+        let help = before.len() == 2 && before[1] == "help" && said == "you";
+        // « so you can choose », « to help you choose », « pour t'aider à choisir »: no request
+        if ["can", "could", "to", "peux", "pourras"].contains(&said) || help {
+            return false;
         }
-        let said = tail[..m.start()].split_whitespace().last().unwrap_or("").to_lowercase();
-        let statement = ["tu", "can", "could", "to", "you", "peux", "pourras"].contains(&said.as_str());
+        if m.start() < at {
+            return true; // before the work: it waits for them (« Tu choisis et je lance la commande »)
+        }
+        // after it, a choice among what it brings (« tu choisis celle qui te plaît », « tu valides celle… »)
+        let choice = said == "tu" || said == "you" || CHOICE.is_match(&tail[m.end()..]);
         let end = tail[m.end()..].find(['.', '!', '?', '\n']).map_or(tail.len(), |e| m.end() + e);
-        let optional = OPTIONAL.is_match(&tail[m.end()..]) || IF.is_match(&tail[m.end()..end]);
-        !statement && !optional
+        let sentence = &tail[m.end()..end];
+        // optional (« Dis-moi si tu as une enseigne préférée », « Envoie-moi un message si tu as besoin… »), unless it
+        // asks for their yes (« Dis-moi juste si c'est bon pour toi »)
+        let optional = (OPTIONAL.is_match(sentence) || NEED.is_match(sentence)) && !YES.is_match(sentence);
+        !choice && !optional
     };
     if ASKS.find_iter(&tail).any(|m| request(&m)) {
         return false;
@@ -280,7 +321,24 @@ pub fn promises(reply: &str) -> bool {
 
 /// A request after the promise made optional by its own condition (« Envoie-moi un message si tu as besoin d'autre
 /// chose », « Send me your address if you want delivery »).
-static IF: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\b(?:si|s'il|if)\b").expect("valid regex"));
+static NEED: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\b(?:si (?:tu as besoin|besoin|tu veux|tu en veux|tu pr[ée]f[èe]res)|if you (?:need|want|prefer|'d like))\b")
+        .expect("valid regex")
+});
+
+/// Their yes asked (« si c'est bon pour toi », « if this works for you »): no optional line.
+static YES: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"(?i)\bsi (?:c'est bon|ça te va|ça te convient|cela te convient|tu es d'accord|tu valides|tu confirmes|ça marche)",
+        r"|\bif (?:it|this|that) (?:looks good|works|suits)|\bif you(?:'re| are) (?:ok|okay|happy|fine)|\bif you agree",
+    ))
+    .expect("valid regex")
+});
+
+/// After the promise, the person picks among what it brings (« tu valides celle qui te plaît »).
+static CHOICE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^\s*(?:celle|celui|ceux|celles|laquelle|lequel|lesquel(?:le)?s|one|which)\b").expect("valid regex")
+});
 
 /// The continuation's input (in English, like the brake's: the agent answers in its person's language).
 pub fn input(reply: &str) -> String {
@@ -290,8 +348,8 @@ pub fn input(reply: &str) -> String {
 no tool, so your turn ended there: nothing happens after an answer until your person writes again. Do it now, in this \
 answer, with your tools (search, browse, pages…), or start it as a background task with start_task and say so in one \
 sentence. Don't apologise and don't mention this note. If something is really missing to do it, ask your person one \
-precise question. If your last answer was in fact waiting for your person (their choice, a detail, their go-ahead), do \
-nothing and write nothing: never send, order, book or pay because of this note."
+precise question. If your last answer was in fact waiting for your person (their choice, a detail, their go-ahead), \
+don't act: say in one short sentence that you wait for them. Never send, order, book or pay because of this note."
     )
 }
 
@@ -494,6 +552,45 @@ mod tests {
     }
 
     #[test]
+    fn care_a_recap_given_under_its_colon_and_the_fifth_fix_s_misses() {
+        // sixth review 13/11
+        let said = [
+            "Je suis vraiment désolée que ta journée ait été si difficile. Prends soin de toi ce soir, je t'envoie \
+             plein de courage pour demain 💛",
+            "Bravo pour ta séance ! Je t'envoie plein de bonnes ondes pour la suite.",
+            "Courage pour ton entretien demain, je t'envoie toute ma force !",
+            "Ça a l'air d'être une période chargée. Je te fais un gros câlin virtuel 🤗",
+            "Je te fais un petit récap :\n\n- Budget : 5 €\n- Enseigne : Sephora\n- Retrait en magasin samedi\n\nOn est \
+             bons !",
+            "Je te fais la liste de courses :\n\n- 1,2 kg de raclette\n- 1 kg de pommes de terre\n- charcuterie\n- \
+             cornichons\n\nBonne soirée !",
+            "Je te prépare un petit programme pour la semaine :\n\n- Lundi : 20 min de marche\n- Mercredi : yoga\n- \
+             Vendredi : 20 min de marche\n\nTu vas voir, ça passe vite !",
+            "Let me put together a quick summary:\n\n- Budget: €5\n- Shop: Sephora\n- Pick-up on Saturday\n\nAll set!",
+            "Je compare : la Fnac est moins chère (4,99 € contre 5,49 €).",
+            "Je lance la commande. Dis-moi juste si c'est bon pour toi.",
+        ];
+        let taken: Vec<&str> = said.iter().copied().filter(|s| promises(s)).collect();
+        assert!(taken.is_empty(), "taken for a promise of work: {taken:#?}");
+        let said = [
+            "5 € ? Avec plaisir, je te prépare 2-3 trouvailles.",
+            "5 € ? Pas de souci, je te prépare 2-3 trouvailles.",
+            "5 € ? Bien sûr ! Je te prépare 2-3 trouvailles.",
+            "Un achat test à 5 € ? Excellente idée ! Je te prépare 2-3 trouvailles.",
+            "€5? Of course! I'll look for two or three finds.",
+            "Pourquoi ces trois enseignes ? Ce sont celles qui ont le plus de miniatures.\n\nJe reviens dans quelques \
+             minutes avec le lien et le meilleur prix.",
+            "To help you choose, I'll compare three shops and get back to you with the best price.",
+            "Je te prépare 2-3 trouvailles, tu valides celle qui te plaît.",
+            "Je regarde Sephora, Marionnaud et Nocibé, et je te dis où le panier tombe à ~5 €.\n\n- Sephora : miniatures\n\
+             - Marionnaud : échantillons\n\nJe reviens dans quelques minutes avec le lien et le meilleur prix.",
+            "Je t'envoie le lien et le meilleur prix dans quelques minutes.",
+        ];
+        let missed: Vec<&str> = said.iter().copied().filter(|s| !promises(s)).collect();
+        assert!(missed.is_empty(), "real promises not caught: {missed:#?}");
+    }
+
+    #[test]
     fn the_rules_own_english_promise_is_caught() {
         // souls.rs ENGLISH_EXAMPLES gives « I'll get that ready » for « je te prépare ça »
         assert!(promises("I'll get that ready for you."));
@@ -533,6 +630,6 @@ mod tests {
         assert!(text.contains("« Je reviens dans quelques minutes avec le lien. »"));
         assert!(text.contains("start_task"));
         // a reply that waited for the person is never acted on through this note
-        assert!(text.contains("never send, order, book or pay because of this note"));
+        assert!(text.contains("Never send, order, book or pay because of this note"));
     }
 }

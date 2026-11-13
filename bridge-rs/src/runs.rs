@@ -2185,8 +2185,11 @@ impl RunHub {
                     "promise with no work: the continuation was stopped");
                 (end, None)
             }
+            // its words, or files: Hermes' « no reply » line (made plain: `bip_no_reply`) is no answer, the turn keeps
+            // its own end
             Some(end)
                 if end.r#type == "run.completed"
+                    && end.data.get("bip_no_reply").and_then(Value::as_bool) != Some(true)
                     && !(words.trim().is_empty()
                         && end.final_text().trim().is_empty()
                         && end.data.get("attachments").and_then(Value::as_array).is_none_or(Vec::is_empty)) =>

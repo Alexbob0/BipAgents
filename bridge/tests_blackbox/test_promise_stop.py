@@ -632,3 +632,33 @@ def test_a_promise_explained_after_a_colon_goes_on(bridges, fakes, reply):
     events = follow(bridge, "run_vie")
     assert [n["code"] for n in notices(events)] == ["loop_rescue_started"], "the turn ended on its promise, nothing done"
     assert events[-1][1]["output"] == FOUND
+
+
+# -- sixth review of 13/11 (failed before its fix) ----------------------------------------------------------------------
+
+NO_REPLY = ("⚠️ No reply: GLM didn't produce a reply this time, even after retries. Send `continue` to try again, "
+            "or switch models with /model.")
+
+
+def test_a_continuation_that_wrote_nothing_leaves_the_turn_its_own_end(bridges, fakes):
+    # told to write nothing when the reply waited for the person, the model gave nothing: Hermes ends on its « no
+    # reply » line (patch 0010), which is no answer: the turn keeps its own end
+    bridge = bridges.new().start()
+    fakes.hermes.runs["run_vie"] = turn("run_vie", PROMISE)
+    fakes.hermes.runs["r1"] = [sse("run.completed", run_id="r1", output=NO_REPLY)]
+    events = follow(bridge, "run_vie")
+    assert [n["code"] for n in notices(events)] == ["loop_rescue_started"]
+    end = events[-1][1]
+    assert end.get("output") == PROMISE and not end.get("bip_no_reply"), end
+    assert bridge.logged("promise with no work: the continuation did not answer")
+
+
+def test_a_closing_line_of_care_is_not_continued(bridges, fakes):
+    bridge = bridges.new().start()
+    said = ("Je suis vraiment désolée que ta journée ait été si difficile. Prends soin de toi ce soir, je t'envoie plein "
+            "de courage pour demain 💛")
+    fakes.hermes.runs["run_vie"] = turn("run_vie", said)
+    fakes.hermes.runs["r1"] = turn("r1", "Je suis là si tu as besoin 💛")
+    events = follow(bridge, "run_vie")
+    hidden = {r: s["input"][:200] for r, s in fakes.hermes.started.items()}
+    assert notices(events) == [] and hidden == {}, f"a hidden turn told to do it now: {hidden}"
