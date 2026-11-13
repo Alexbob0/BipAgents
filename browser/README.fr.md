@@ -83,8 +83,9 @@ au commit testé avec BipAgents (`a7b9eea`, fixé dans le `Containerfile`), et a
   le retrait d'options que le serveur ajoute dans les conteneurs et dont celui-ci se passe (`STEALTH_DROP_ARGS`) ;
   un navigateur toujours affiché sur l'écran du conteneur, même si l'agent le demande invisible (`STEALTH_HEADFUL`) ;
   les pages de l'interface de Chrome (la liste de suggestions de sa barre d'adresse, une page sans fenêtre depuis
-  Chrome 157) jamais prises pour l'onglet de l'agent, et Chrome lancé sans elle (`WebUIOmniboxPopup`, dans l'unique
-  `--disable-features` qu'il lit, comme le fait `open_browser.sh`).
+  Chrome 157 : une adresse de l'interface de Chrome et pas de fenêtre) jamais prises pour l'onglet de l'agent, et
+  Chrome lancé sans elle (`WebUIOmniboxPopup`, dans le dernier `--disable-features`, le seul qu'il lit, comme le fait
+  `open_browser.sh`).
 - `requirements.txt` : ses paquets Python aux versions exactes testées, installés depuis PyPI. Parmi eux, **nodriver
   est sous GNU AGPL v3** et certifi sous MPL 2.0 : tous deux installés sans modification, comme paquets séparés.
 - `entrypoint.sh` (l'écran, le serveur VNC), `devtools_relay.py` (les DevTools de Chrome depuis l'hôte, à une adresse

@@ -110,11 +110,12 @@ static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
         .unwrap_or_default()
 });
 
-/// Chrome's own UI drawn as a web page (« top-chrome » WebUI): its address bar's suggestion popup
+/// An address of Chrome's own UI drawn as a web page (« top-chrome » WebUI): its address bar's suggestion popup
 /// (`chrome://omnibox-popup.top-chrome/`, a `page` target since Chrome 157, with no window of its own), tab search,
 /// the side panels (`chrome-untrusted://…top-chrome/`). Never a tab of the agent: not shown, read, closed or blanked.
 /// The browser image starts Chrome without the popup page (browser/open_browser.sh); an older one still has it, and
-/// on 13/11 « Bureau » showed a tab « null » there once the agent's first tab was closed.
+/// on 13/11 « Bureau » showed a tab « null » there once the agent's first tab was closed. The address alone is not
+/// enough (review of 13/11): a real tab sent there keeps it (an error page, in a window); `windowless` tells.
 pub fn chrome_ui(url: &str) -> bool {
     let Some((scheme, rest)) = url.split_once("://") else {
         return false;
@@ -126,9 +127,18 @@ pub fn chrome_ui(url: &str) -> bool {
     host.to_ascii_lowercase().ends_with(".top-chrome")
 }
 
+/// Whether the tab `id` has no window of its own (`Browser.getWindowForTarget` fails): Chrome's UI, not a tab.
+async fn windowless(port: u16, id: &str, token: Option<&str>) -> bool {
+    let Ok(mut cdp) = Cdp::connect(port, id, token).await else { return true };
+    let asked = cdp.call("Browser.getWindowForTarget", json!({"targetId": id}));
+    let window = tokio::time::timeout(Duration::from_secs(3), asked).await;
+    cdp.close().await;
+    !matches!(window, Ok(Ok(_)))
+}
+
 /// The page tabs of the Chrome behind `port`, most recently active first (Chrome's own order), neither DevTools,
-/// an extension's page nor Chrome's own UI (`chrome_ui`). `token`: the person's hold, which the container's relay lets
-/// through.
+/// an extension's page nor Chrome's own UI (`chrome_ui` with no window: asked only for those addresses). `token`: the
+/// person's hold, which the container's relay lets through.
 pub async fn tabs(port: u16, token: Option<&str>) -> Result<Vec<Tab>, String> {
     let mut request = HTTP.get(format!("http://127.0.0.1:{port}/json/list"));
     if let Some(secret) = crate::browsers::devtools_secret(port) {
@@ -140,21 +150,20 @@ pub async fn tabs(port: u16, token: Option<&str>) -> Result<Vec<Tab>, String> {
     let answer = request.send().await.map_err(|e| e.to_string())?;
     let list: Value = answer.json().await.map_err(|e| e.to_string())?;
     let items = list.as_array().ok_or("not a list")?;
-    Ok(items
-        .iter()
-        .filter(|t| t.get("type").and_then(Value::as_str) == Some("page"))
-        .filter_map(|t| {
-            let url = t.get("url").and_then(Value::as_str).unwrap_or_default();
-            if url.starts_with("devtools://") || url.starts_with("chrome-extension://") || chrome_ui(url) {
-                return None;
-            }
-            Some(Tab {
-                id: t.get("id").and_then(Value::as_str)?.to_string(),
-                url: url.to_string(),
-                title: t.get("title").and_then(Value::as_str).unwrap_or_default().to_string(),
-            })
-        })
-        .collect())
+    let mut tabs = Vec::new();
+    for t in items.iter().filter(|t| t.get("type").and_then(Value::as_str) == Some("page")) {
+        let url = t.get("url").and_then(Value::as_str).unwrap_or_default();
+        let Some(id) = t.get("id").and_then(Value::as_str) else { continue };
+        if url.starts_with("devtools://") || url.starts_with("chrome-extension://") {
+            continue;
+        }
+        if chrome_ui(url) && windowless(port, id, token).await {
+            continue;
+        }
+        let title = t.get("title").and_then(Value::as_str).unwrap_or_default().to_string();
+        tabs.push(Tab { id: id.to_string(), url: url.to_string(), title });
+    }
+    Ok(tabs)
 }
 
 pub fn is_blank(url: &str) -> bool {

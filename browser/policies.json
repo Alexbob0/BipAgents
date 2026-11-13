@@ -3,6 +3,6 @@
   "AutofillAddressEnabled": false,
   "AutofillCreditCardEnabled": false,
   "PasswordLeakDetectionEnabled": false,
-  "URLBlocklist": ["file://*", "view-source:*", "chrome://*", "devtools://*", "chrome-devtools://*"],
-  "URLAllowlist": ["chrome://newtab", "chrome://new-tab-page"]
+  "URLBlocklist": ["file://*", "view-source:*", "chrome://*", "chrome-untrusted://*", "devtools://*", "chrome-devtools://*"],
+  "URLAllowlist": ["chrome://newtab", "chrome://new-tab-page", "chrome-untrusted://new-tab-page"]
 }

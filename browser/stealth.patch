@@ -1,8 +1,8 @@
 diff --git a/src/browser_manager.py b/src/browser_manager.py
-index a614108..c31c33f 100644
+index a614108..7e04474 100644
 --- a/src/browser_manager.py
 +++ b/src/browser_manager.py
-@@ -56,6 +56,267 @@ def _parse_nonnegative_int_env(
+@@ -56,6 +56,278 @@ def _parse_nonnegative_int_env(
      return parsed
  
  
@@ -206,6 +206,8 @@ index a614108..c31c33f 100644
 +# main_tab and first tab are the first page target: once the agent's first tab was closed, that popup. The server took
 +# it at spawn, at reconnect and as the navigation tab's fallback, and every call failed (13/11, aibox and an offer's
 +# place, about ten minutes). Chrome is started without it (_bip_features_off); it is never the agent's tab all the same.
++# By its address AND its having no window: a real tab sent to such an address (an error page that keeps it, in a window
++# the person sees) stays the agent's (review of 13/11).
 +_FEATURES_OFF_ALWAYS = ("IsolateOrigins", "site-per-process")   # nodriver's own switch (its Config), kept
 +_FEATURES_OFF = ("WebUIOmniboxPopup",)
 +
@@ -221,14 +223,23 @@ index a614108..c31c33f 100644
 +    return host.lower().endswith(".top-chrome")
 +
 +
-+def _bip_tabs(browser) -> list:
-+    """The browser's tabs, in nodriver's order, but Chrome's own UI pages."""
-+    return [tab for tab in browser.tabs if not _chrome_ui(tab)]
++async def _has_window(browser, tab) -> bool:
++    try:
++        await browser.connection.send(uc.cdp.browser.get_window_for_target(tab.target.target_id))
++        return True
++    except Exception:
++        return False
++
++
++async def _bip_tabs(browser) -> list:
++    """The browser's tabs, in nodriver's order, but Chrome's own UI pages (asked for their window only when their
++    address is one of Chrome's UI)."""
++    return [tab for tab in browser.tabs if not _chrome_ui(tab) or await _has_window(browser, tab)]
 +
 +
 +async def _bip_first_tab(browser):
 +    """The tab to drive when the agent's own is not known: the first of its tabs, else a blank one opened for it."""
-+    tabs = _bip_tabs(browser)
++    tabs = await _bip_tabs(browser)
 +    if tabs:
 +        return tabs[0]
 +    return await browser.get("about:blank", new_tab=True)
@@ -259,7 +270,7 @@ index a614108..c31c33f 100644
 +        return None
 +    try:
 +        await browser.update_targets()
-+        for tab in _bip_tabs(browser):
++        for tab in await _bip_tabs(browser):
 +            if str(getattr(getattr(tab, "target", None), "target_id", "")) == wanted:
 +                return tab
 +    except Exception as e:
@@ -270,7 +281,7 @@ index a614108..c31c33f 100644
  class BrowserManager:
      """Manages multiple browser instances."""
  
-@@ -78,6 +339,72 @@ class BrowserManager:
+@@ -78,6 +350,72 @@ class BrowserManager:
              minimum=1,
          )
          self._idle_reaper_task: Optional[asyncio.Task] = None
@@ -309,7 +320,7 @@ index a614108..c31c33f 100644
 +            try:
 +                blank = await asyncio.wait_for(browser.get("about:blank", new_tab=True), timeout=10)
 +                await browser.update_targets()
-+                for tab in _bip_tabs(browser):
++                for tab in await _bip_tabs(browser):
 +                    if self._get_tab_target_id(tab) != self._get_tab_target_id(blank):
 +                        try:
 +                            await tab.close()
@@ -343,7 +354,7 @@ index a614108..c31c33f 100644
  
      @staticmethod
      def _append_user_agent_arg(args: List[str], user_agent: Optional[str]) -> List[str]:
-@@ -255,7 +582,7 @@ class BrowserManager:
+@@ -255,7 +593,7 @@ class BrowserManager:
              pass
          self._idle_reaper_task = None
  
@@ -352,7 +363,7 @@ index a614108..c31c33f 100644
          """
          Spawn a new browser instance with given options.
  
-@@ -265,7 +592,21 @@ class BrowserManager:
+@@ -265,7 +603,21 @@ class BrowserManager:
          Returns:
              BrowserInstance: The spawned browser instance.
          """
@@ -375,7 +386,7 @@ index a614108..c31c33f 100644
  
          instance = BrowserInstance(
              instance_id=instance_id,
-@@ -321,7 +662,8 @@ class BrowserManager:
+@@ -321,7 +673,8 @@ class BrowserManager:
                  caller_args,
                  launch_proxy_server,
              )
@@ -385,7 +396,7 @@ index a614108..c31c33f 100644
              
              config = uc.Config(
                  headless=options.headless,
-@@ -331,8 +673,9 @@ class BrowserManager:
+@@ -331,8 +684,9 @@ class BrowserManager:
                  browser_args=launch_args
              )
  
@@ -397,7 +408,7 @@ index a614108..c31c33f 100644
              config_obj = getattr(browser, "config", None)
              actual_user_data_dir = getattr(config_obj, "user_data_dir", options.user_data_dir)
              uses_custom_data_dir = getattr(
-@@ -404,6 +747,8 @@ class BrowserManager:
+@@ -404,6 +758,8 @@ class BrowserManager:
  
              instance.state = BrowserState.READY
              instance.update_activity()
@@ -406,7 +417,7 @@ index a614108..c31c33f 100644
  
              persistent_storage.store_instance(instance_id, {
                  'state': instance.state.value,
-@@ -470,7 +815,17 @@ class BrowserManager:
+@@ -470,7 +826,17 @@ class BrowserManager:
              Optional[dict]: The browser instance data if found, else None.
          """
          async with self._lock:
@@ -425,7 +436,7 @@ index a614108..c31c33f 100644
  
      async def list_instances(self) -> List[BrowserInstance]:
          """
-@@ -479,10 +834,11 @@ class BrowserManager:
+@@ -479,10 +845,11 @@ class BrowserManager:
          Returns:
              List[BrowserInstance]: List of all browser instances.
          """
@@ -438,7 +449,7 @@ index a614108..c31c33f 100644
          """
          Close and remove a browser instance.
  
-@@ -493,7 +849,13 @@ class BrowserManager:
+@@ -493,7 +860,13 @@ class BrowserManager:
              bool: True if closed successfully, False otherwise.
          """
          import asyncio
@@ -453,25 +464,25 @@ index a614108..c31c33f 100644
          async def _do_close():
              async with self._lock:
                  if instance_id not in self._instances:
-@@ -748,13 +1110,14 @@ class BrowserManager:
+@@ -748,13 +1121,14 @@ class BrowserManager:
              await browser.update_targets()
              tracked_target_id = self._get_tab_target_id(tracked_tab)
              if tracked_target_id:
 -                for candidate_tab in browser.tabs:
-+                for candidate_tab in _bip_tabs(browser):   # BipAgents: never Chrome's own UI
++                for candidate_tab in await _bip_tabs(browser):   # BipAgents: never Chrome's own UI
                      if self._get_tab_target_id(candidate_tab) == tracked_target_id:
                          await candidate_tab
                          return candidate_tab
  
 -            if browser.tabs:
 -                fallback_tab = browser.tabs[0]
-+            tabs = _bip_tabs(browser)   # BipAgents: the first tab, never Chrome's own UI listed before it
++            tabs = await _bip_tabs(browser)   # BipAgents: the first tab, never Chrome's own UI listed before it
 +            if tabs:
 +                fallback_tab = tabs[0]
                  await fallback_tab
                  async with self._lock:
                      if instance_id in self._instances:
-@@ -924,6 +1287,8 @@ class BrowserManager:
+@@ -924,6 +1298,8 @@ class BrowserManager:
          if data:
              if touch_activity:
                  await self.touch_instance(instance_id)
@@ -480,34 +491,34 @@ index a614108..c31c33f 100644
              return data['tab']
          return None
  
-@@ -966,7 +1331,7 @@ class BrowserManager:
+@@ -966,7 +1342,7 @@ class BrowserManager:
          await browser.update_targets()
  
          tabs = []
 -        for tab in browser.tabs:
-+        for tab in _bip_tabs(browser):   # BipAgents: never Chrome's own UI
++        for tab in await _bip_tabs(browser):   # BipAgents: never Chrome's own UI
              await tab
              tabs.append({
                  'tab_id': str(tab.target.target_id),
-@@ -995,7 +1360,7 @@ class BrowserManager:
+@@ -995,7 +1371,7 @@ class BrowserManager:
          await browser.update_targets()
  
          target_tab = None
 -        for tab in browser.tabs:
-+        for tab in _bip_tabs(browser):   # BipAgents: never Chrome's own UI
++        for tab in await _bip_tabs(browser):   # BipAgents: never Chrome's own UI
              if str(tab.target.target_id) == tab_id:
                  target_tab = tab
                  break
-@@ -1041,7 +1406,7 @@ class BrowserManager:
+@@ -1041,7 +1417,7 @@ class BrowserManager:
              return False
  
          target_tab = None
 -        for tab in browser.tabs:
-+        for tab in _bip_tabs(browser):   # BipAgents: never Chrome's own UI
++        for tab in await _bip_tabs(browser):   # BipAgents: never Chrome's own UI
              if str(tab.target.target_id) == tab_id:
                  target_tab = tab
                  break
-@@ -1214,7 +1579,7 @@ class BrowserManager:
+@@ -1214,7 +1590,7 @@ class BrowserManager:
                      to_close.append(instance_id)
  
          for instance_id in to_close:
@@ -516,7 +527,7 @@ index a614108..c31c33f 100644
  
          return len(to_close)
  
-@@ -1226,4 +1591,4 @@ class BrowserManager:
+@@ -1226,4 +1602,4 @@ class BrowserManager:
          """
          instance_ids = list(self._instances.keys())
          for instance_id in instance_ids:

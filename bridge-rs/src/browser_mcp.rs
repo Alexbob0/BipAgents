@@ -452,8 +452,8 @@ pub fn never_relayed(method: &str, params: Option<&Value>) -> Option<Value> {
 /// Addresses the agent's browser never opens for it (security audit 11/11): a file of the container
 /// (`file:///run/bipagents/…` holds the screen's password and the DevTools secret), a page's source, Chrome's own
 /// pages and DevTools, an extension's page. Chrome's managed policy blocks them too (browser/policies.json).
-pub const REFUSED_SCHEMES: [&str; 6] =
-    ["file:", "view-source:", "chrome:", "devtools:", "chrome-devtools:", "chrome-extension:"];
+pub const REFUSED_SCHEMES: [&str; 7] =
+    ["file:", "view-source:", "chrome:", "chrome-untrusted:", "devtools:", "chrome-devtools:", "chrome-extension:"];
 
 /// A tool's call to an address of `REFUSED_SCHEMES` (its `url` argument: `navigate`, `new_tab`; Chrome drops tabs,
 /// newlines and spaces from an address, so they are dropped here too): the refusal for the agent, else None.
