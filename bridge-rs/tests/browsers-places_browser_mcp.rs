@@ -1305,19 +1305,18 @@ fn review5_jquery_setting_a_password_or_ticking_the_terms_then_clicking_is_refus
 }
 
 #[test]
-fn a_drop_down_of_the_sites_own_opened_and_chosen_by_one_script_goes_on() {
-    // fifth review: signup.html's « Civilité » (a button and a list, not a <select>): two clicks, none on a box
+fn two_clicks_in_one_script_on_a_page_whose_terms_arent_ticked_are_refused() {
+    // sixth review 13/11: what a click aims at can't be told from a script's words (a label found by its text); a
+    // drop-down list of the site's own (signup.html's « Civilité ») takes two click_element there
     let page = signup_page();
     let script = "document.querySelector('#civility').click(); \
                   document.querySelector('#civility-options li[data-value=\"M\"]').click(); 'ok';";
-    assert!(!browser_mcp::script_fills_and_sends(script, Some(&page)));
-    // a box clicked by its label's words, then the button: refused
-    let by_words = "[...document.querySelectorAll('label')].find((l) => l.innerText.includes('conditions')).click(); \
-                    document.querySelector('#create').click();";
-    assert!(browser_mcp::script_fills_and_sends(by_words, Some(&page)));
-    // a box known by its rank only (no id, no name): any two clicks
-    let unnamed = json!({"pw": {}, "known": [], "boxes": ["input@4"]});
-    assert!(browser_mcp::script_fills_and_sends(script, Some(&unnamed)));
+    assert!(browser_mcp::script_fills_and_sends(script, Some(&page)));
+    assert!(browser_mcp::SCRIPT_SENDS_REFUSED.contains("one click_element per click"));
+    // no terms on the page: it goes on
+    assert!(!browser_mcp::script_fills_and_sends(script, Some(&plain_page())));
+    // one click goes on (a panel opened)
+    assert!(!browser_mcp::script_fills_and_sends("document.querySelector('#open-register').click();", Some(&page)));
 }
 
 #[test]
@@ -1343,4 +1342,23 @@ fn a_script_reading_a_password_field_by_its_id_or_all_the_forms_values_is_refuse
     // nothing typed in it yet: listing the fields' values goes on
     let empty = json!({"pw": {"#pass1": ""}, "known": [], "boxes": []});
     assert!(!browser_mcp::script_reads_password("[...document.querySelectorAll('input')].map((e) => e.value)", Some(&empty)));
+}
+
+// --- sixth review of fix-signup-hold (ad232660d) ----------------------------------------------------------------------
+
+#[test]
+fn review6_the_terms_label_found_by_its_text_then_a_button_clicked_is_refused() {
+    // how a model clicks what it read: no id, no « checkbox », no word of the terms in the script
+    let page = json!({"pw": {}, "known": [], "boxes": ["#cgu"]});
+    let script = "[...document.querySelectorAll('label')].find((l) => l.innerText.includes(\"J'accepte\")).click(); \
+                  document.querySelector('#create').click(); 'sent';";
+    assert!(browser_mcp::script_fills_and_sends(script, Some(&page)), "{script}");
+}
+
+#[test]
+fn review6_a_password_read_as_the_focused_field_is_refused() {
+    // the password field the agent clicked into (before vault_create_login), read back as `document.activeElement`
+    let page = json!({"pw": {"#pass1": "1a2b3c4d"}, "known": ["1a2b3c4d"], "boxes": []});
+    let script = "btoa(document.activeElement.value)";
+    assert!(browser_mcp::script_reads_password(script, Some(&page)), "{script}");
 }

@@ -335,9 +335,8 @@ pub fn page_holds(before: Option<&Value>) -> (bool, bool) {
 }
 
 static ROOT_PREFIX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^r\d+:").expect("valid regex"));
-static CHECKBOX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)checkbox").expect("valid regex"));
 static ALL_FIELDS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)queryselectorall|getelementsbytagname|\.elements\b|\.forms\b|\$\s*\(\s*["'`]:?input"#)
+    Regex::new(r#"(?i)queryselectorall|getelementsbytagname|\.elements\b|\.forms\b|\$\s*\(\s*["'`]:?input|activeelement"#)
         .expect("valid regex")
 });
 static FORM_DATA: LazyLock<Regex> = LazyLock::new(|| {
@@ -376,8 +375,8 @@ fn names_one(script: &str, before: Option<&Value>, field: &str, unnamed: bool) -
 }
 
 /// A script that reads what a password field holds, on a page that has one (`before`): one it names by its id or name
-/// (`#pass1`: fifth review 13/11, then encoded or put in the page's title), or all of a form's values while a password
-/// field holds text (the vault typed it).
+/// (`#pass1`: fifth review 13/11, then encoded or put in the page's title), or all of a form's values (or the focused
+/// field's: sixth) while a password field holds text (the vault typed it).
 pub fn script_reads_password(script: &str, before: Option<&Value>) -> bool {
     let holds_text = before.is_none_or(|b| {
         b.get("pw").and_then(Value::as_object).is_some_and(|pw| pw.values().any(|v| v.as_str().is_some_and(|f| !f.is_empty())))
@@ -389,22 +388,23 @@ pub fn script_reads_password(script: &str, before: Option<&Value>) -> bool {
 /// A script that would change what a page sends and send it at once, the site getting it before the check after the
 /// call: on a page with a password field, it writes a value and sends the form or clicks (second review 13/11: set from
 /// a table, then `requestSubmit()`; third: the app's button clicked; fourth: fields named otherwise, `#pass1`); on a page
-/// whose terms aren't ticked, it ticks a box, clicks in a loop, or clicks twice with one click on a box (fourth: the box
-/// ticked by its own `.click()`; fifth: jQuery's `.val()`, `.prop('checked')`, `.trigger('submit')`; a drop-down list
-/// of the site's own opened and chosen goes on), and sends. Decided from the page, not the script's words (`before`,
+/// whose terms aren't ticked, it ticks a box, clicks in a loop, or clicks twice (fourth: the box ticked by its own
+/// `.click()`; fifth: jQuery's `.val()`, `.prop('checked')`, `.trigger('submit')`; sixth: the terms' label found by its
+/// text and clicked, then the button: what a click aims at can't be told from a script's words; a drop-down list of the
+/// site's own takes two click_element), and sends. Decided from the page, not the script's words (`before`,
 /// `page_holds`): a shop's filters or a « mot de passe oublié » e-mail sent by a script go on (fourth review).
 pub fn script_fills_and_sends(script: &str, before: Option<&Value>) -> bool {
     let (passwords, terms) = page_holds(before);
     let actions = SENDS.find_iter(script).count();
-    let at_a_box = TERMS.is_match(script) || CHECKBOX.is_match(script) || names_one(script, before, "boxes", true);
-    let several = actions > 1 && at_a_box || actions >= 1 && LOOPS.is_match(script);
+    let several = actions > 1 || actions >= 1 && LOOPS.is_match(script);
     actions > 0 && (passwords && WRITES.is_match(script) || terms && (TICKS_BOX.is_match(script) || several))
 }
 
 /// A script that would both fill and send a form (`script_fills_and_sends`).
 pub const SCRIPT_SENDS_REFUSED: &str = "Not done: on a page with a password field or terms not accepted yet, a script \
-never changes a field or a box and clicks or sends in the same run (the site would get it before the app's check). \
-Do it step by step with your browser's tools: type_text, select_option… for the fields, vault_create_login for the \
+never changes a field or a box and clicks or sends, nor clicks twice, in the same run (the site would get it before \
+the app's check). Do it step by step with your browser's tools: type_text, select_option… for the fields, one \
+click_element per click (a list of the site's own: open it, then click the choice), vault_create_login for the \
 password (the vault types it), accept_terms for the terms (your person says « Oui »), then click_element on the \
 form's button. Nothing was run.";
 

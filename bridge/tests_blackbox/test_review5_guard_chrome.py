@@ -47,13 +47,18 @@ def test_a_terms_box_in_the_sites_own_frame_is_never_ticked_by_a_script(browser)
     assert not ticked, (ticked, said)
 
 
-def test_a_custom_dropdown_opened_and_chosen_by_one_script_goes_on(browser):
-    # signup.html's « Civilité » is a button and a list, not a <select> (select_option can't): open it, pick « M. »
+def test_a_custom_dropdown_is_chosen_with_two_clicks_not_one_script(browser):
+    # signup.html's « Civilité » is a button and a list, not a <select> (select_option can't). On a page whose terms
+    # aren't ticked, one script clicking twice is refused (sixth review: what a click aims at can't be told from the
+    # script); the refusal says how, and two click_element choose it
     browser.tool("navigate", url=f"{browser.base}/signup.html")
     browser.tool("click_element", selector="#open-register")
     time.sleep(1)
     said = browser.tool("execute_script", script="document.querySelector('#civility').click(); "
                                                  "document.querySelector('#civility-options li[data-value=\"M\"]').click(); 'ok';")
+    assert "one click_element per click" in said, said
+    browser.tool("click_element", selector="#civility")
+    browser.tool("click_element", selector='#civility-options li[data-value="M"]')
     chosen = browser.page("document.getElementById('civility-value').value")
     assert chosen == "M", (chosen, said)
 
