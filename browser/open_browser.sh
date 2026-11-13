@@ -49,9 +49,10 @@ if [ $# -eq 0 ]; then
 fi
 
 # Chrome reads only its last --disable-features: every one given (nodriver's own, the container's in
-# STEALTH_BROWSER_ARGS, where the bridge puts its own) merged into one, with WebUIOmniboxPopup. Chrome 157 lists its
-# address bar's suggestion popup (chrome://omnibox-popup.top-chrome/) as a page with no window of its own, which the
-# agent's server took for its tab once the first tab was closed: every call then failed (13/11).
+# STEALTH_BROWSER_ARGS, where the bridge puts its own) merged into one, last, with WebUIOmniboxPopup and
+# WebUIOmniboxAimPopup. Chrome 157 lists its address bar's suggestion popup (chrome://omnibox-popup.top-chrome/) as a
+# page with no window of its own, which the agent's server took for its tab once the first tab was closed: every
+# call then failed (13/11). Fedora's Chromium 156 (the ARM image) has a second one (…/omnibox_popup_aim.html).
 features=""
 add_features() {   # a comma-separated list: each feature once, in order
     old_ifs=$IFS
@@ -73,6 +74,6 @@ for arg do
         *) set -- "$@" "$arg" ;;
     esac
 done
-add_features WebUIOmniboxPopup
+add_features WebUIOmniboxPopup,WebUIOmniboxAimPopup
 set -- "$@" "--disable-features=$features"
 exec "$chrome" "$@" >/tmp/open-browser.log 2>&1
