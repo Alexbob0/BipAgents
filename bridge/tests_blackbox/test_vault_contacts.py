@@ -365,3 +365,6 @@ def test_a_browsing_agent_has_its_account_and_details_tools_in_view(bridges, fak
     for name in ("vault_create_login", "vault_confirm_login", "vault_contact_details", "vault_save_contact_details"):
         assert f"!mcp__bipagents_vault__{name}" in defer(), name
     assert "!mcp__stealth__type_text" in defer()
+    # and a drop-down list's choice (select-option-direct, 13/11: behind the search, the agents typed into the
+    # birth date's <select>s or read the page with a value)
+    assert "!mcp__stealth__select_option" in defer()

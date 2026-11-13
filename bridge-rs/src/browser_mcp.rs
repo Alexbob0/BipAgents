@@ -155,6 +155,10 @@ your person « Oui / Non », and on « Oui » the box is ticked for you. Nothing
 pub const NOT_PASSWORDS: &str = "Never into a password field, not even a temporary password nor one your person wrote \
 to you: to sign up, vault_create_login has the person's vault make and type it; to log in, browser_vault fill.";
 
+/// Added to `type_text` in the tool list (`tame_tool_list`), worded as the visible-browser skill's § 4b: 13/11, the
+/// sign-up bench's GLM-5.3 Flash typed a birth date into a page's `<select>`s (7 runs of 29), the site got none.
+pub const LIST_CHOICE: &str = "A drop-down list: select_option.";
+
 /// A tool call's answer as it goes to Hermes, never with `isError` nor as a JSON-RPC error (module doc above): true
 /// when it was a failure.
 pub fn soften(response: &mut Dict) -> bool {
@@ -806,17 +810,24 @@ pub fn tame_call(tool: &str, params: &mut Value) -> Vec<String> {
 
 /// The tool list as the agent reads it: the arguments `tame_call` takes off are not offered (their schema
 /// properties, `required` entries and their lines in the description); typing tools say they never take a password
-/// (`NOT_PASSWORDS`).
+/// (`NOT_PASSWORDS`), `type_text` that a drop-down list is `select_option`'s (`LIST_CHOICE`).
 pub fn tame_tool_list(result: &mut Value) {
     let Some(tools) = result.get_mut("tools").and_then(Value::as_array_mut) else { return };
     for tool in tools {
         // never a password (fix-signup-hold, 13/11: the agent typed « a provisional password » itself)
-        if matches!(tool.get("name").and_then(Value::as_str), Some("type_text" | "paste_text")) {
+        let typing = tool.get("name").and_then(Value::as_str).filter(|n| matches!(*n, "type_text" | "paste_text"));
+        if let Some(list) = typing.map(|n| n == "type_text") {
             if let Some(Value::String(text)) = tool.get_mut("description") {
-                if !text.contains(NOT_PASSWORDS) {
-                    text.push_str("\n\n");
-                    text.push_str(NOT_PASSWORDS);
+                // a list cached before: what was added then taken off, the additions written again in their order
+                let mut own =
+                    text.replace(&format!("\n\n{LIST_CHOICE}"), "").replace(&format!("\n\n{NOT_PASSWORDS}"), "");
+                for (added, wanted) in [(LIST_CHOICE, list), (NOT_PASSWORDS, true)] {
+                    if wanted {
+                        own.push_str("\n\n");
+                        own.push_str(added);
+                    }
                 }
+                *text = own;
             }
             continue;
         }
@@ -2345,7 +2356,7 @@ out of your reach";
     fn the_skill_gives_the_same_script() {
         let skill = crate::browsers::skill();
         assert!(skill.contains(&format!("`{AROUND_A_WORD}`")), "visible-browser/SKILL.md § 2 and AROUND_A_WORD");
-        assert!(skill.contains("version: 1.12.1"));
+        assert!(skill.contains("version: 1.12.2"));
         // never an argument the relay takes off (tame_call): the agent would say it quit the browser, and it did not
         assert!(!skill.contains("quit_browser:") && !skill.contains("browser_args"), "visible-browser/SKILL.md");
     }
@@ -2607,5 +2618,20 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         assert_eq!(list["tools"][2]["description"], "Go.");
         tame_tool_list(&mut list);
         assert_eq!(list["tools"][0]["description"].as_str().unwrap(), first, "once");
+    }
+
+    #[test]
+    fn typing_points_a_drop_down_list_to_select_option() {
+        // 13/11 (sign-up bench): GLM-5.3 Flash typed the birth date into the page's <select>s, 7 runs of 29
+        let mut list = json!({"tools": [{"name": "type_text", "description": "Type text into an input field."},
+                                        {"name": "paste_text", "description": "Paste."}]});
+        tame_tool_list(&mut list);
+        let typing = list["tools"][0]["description"].as_str().unwrap().to_string();
+        assert!(typing.contains(LIST_CHOICE) && typing.ends_with(NOT_PASSWORDS), "{typing}");
+        assert!(!list["tools"][1]["description"].as_str().unwrap().contains(LIST_CHOICE), "pasting is no choice");
+        tame_tool_list(&mut list);
+        assert_eq!(list["tools"][0]["description"].as_str().unwrap(), typing, "once");
+        // the skill says it the same way (§ 4b)
+        assert!(crate::browsers::skill().contains("a drop-down list: `select_option`"));
     }
 }

@@ -99,8 +99,16 @@ pub const BROWSER_SERVER: &str = "stealth";
 /// the search, a fresh agent asked to open a page had no browser tool in view: on 2026-10-27 (token lab, GLM-5.3 Flash,
 /// names constrained to the request's tools) its call ended on `calendar_add`, and the turn went round in circles on
 /// the calendar (loop_brake.rs). Its other tools (tabs, scripts, closing…) stay behind the search.
-pub const BROWSER_DIRECT: [&str; 6] =
-    ["spawn_browser", "navigate", "get_page_content", "click_element", "type_text", "take_screenshot"];
+///
+/// `select_option`, a drop-down list's choice: behind the search, 13/11 (fix-signup-hold's bench, a copy of a shop's
+/// sign-up page with the birth date in three `<select>`s, GLM-5.3 Flash and DeepSeek V4.1 Flash, 29 runs): it was
+/// looked for with `tool_describe` or `tool_search` in 10 runs, called as `get_page_content` with {selector, value} in
+/// 13 (a name constrained to the request's tools ends on an in-view one) and typed into with `type_text` in 7; GLM got
+/// 2 accounts accepted out of 9. Its schema costs ≈ 230 tokens on each call of a browsing agent. Not hunted there,
+/// left behind the search: `scroll_page` (clicks and typing bring their element into view), `file_upload` (paths of
+/// the browser's own container only), `press_key`; a box or a radio button is a `click_element`.
+pub const BROWSER_DIRECT: [&str; 7] =
+    ["spawn_browser", "navigate", "get_page_content", "click_element", "type_text", "select_option", "take_screenshot"];
 
 /// A bridge tool kept direct brings the one it leads to (first, then), when the agent has it. Behind the search,
 /// `mail_read` cost the real-day bench's loops (2026-10-29, GLM-5.3 Flash): after `tool_describe` on it the model
@@ -163,7 +171,7 @@ pub const MAX_TURNS: u32 = 150;
 /// first in each agent's tool list in this order (Hermes' sorted order of their names), so that any agent's first call
 /// reads them from the cache another agent left (`tools.order_first`, Hermes patch 0022). Those of the bridge are in
 /// view for every kind ([`diet`]); a tool an agent lacks is skipped (the prefix stops being common there).
-pub const COMMON_FIRST: [&str; 27] = [
+pub const COMMON_FIRST: [&str; 28] = [
     "clarify",
     "manage_connections",
     // in view for a voice call's turns, where what it notes can't be made (live_calls.rs, 4/11)
@@ -183,6 +191,8 @@ pub const COMMON_FIRST: [&str; 27] = [
     "mcp__stealth__click_element",
     "mcp__stealth__get_page_content",
     "mcp__stealth__navigate",
+    // in view for every agent with its browser (13/11, a drop-down list's choice: `BROWSER_DIRECT`)
+    "mcp__stealth__select_option",
     "mcp__stealth__spawn_browser",
     "mcp__stealth__take_screenshot",
     "mcp__stealth__type_text",
