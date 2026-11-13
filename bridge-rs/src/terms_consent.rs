@@ -62,8 +62,9 @@ pub fn tool() -> Value {
 // --- the box in the page --------------------------------------------------------------------------------------------
 
 /// Finds, in one frame, the box not ticked whose label holds `box` (or is held in it), accents, case and punctuation
-/// aside: its `<label>`, the text it is labelled by (`aria-labelledby`), else the short text around it (second review
-/// 13/11: a box whose text is a span beside it), and its aria-label; among several, the one shown (a form's hidden
+/// aside: its `<label>`, the text it is labelled by (`aria-labelledby`), else the text right after it up to the next
+/// field or line break (second review 13/11: a box whose text is a span beside it; third: two boxes in one paragraph),
+/// or its parent's when that holds this box only, and its aria-label; among several, the one shown (a form's hidden
 /// mobile copy left out). With `apply`, ticks it if it is a terms or consent box (a cookie banner's choice is not,
 /// unless it also names the terms). Run in an isolated world: it reads no value, and its click is the page's own `click`.
 pub fn box_script(wanted: &str, apply: bool) -> String {
@@ -76,7 +77,8 @@ const STRONG = /\\b(cgu|cgv|agb)\\b|conditions|terms|terminos|condiciones|nutzun
 const want = norm({wanted}); \
 const label = (e) => {{ const own = [...(e.labels || [])].map((l) => l.innerText).join(' '); \
 const by = ((e.getAttribute && e.getAttribute('aria-labelledby')) || '').split(/\\s+/).map((i) => ((document.getElementById(i) || {{}}).innerText || '')).join(' '); \
-const p = e.parentElement; const around = own || by.trim() ? '' : (p && p.innerText.length <= 300 ? p.innerText : ((e.nextElementSibling || {{}}).innerText || '')); \
+let around = ''; if (!own && !by.trim()) {{ for (let n = e.nextSibling; n && around.length < 300; n = n.nextSibling) {{ if (n.nodeType === 1 && n.matches('input, select, textarea, button, br, label')) break; around += ' ' + n.textContent; }} \
+const p = e.parentElement; if (!around.trim() && p && p.innerText.length <= 300 && p.querySelectorAll('input').length === 1) around = p.innerText; }} \
 return [own, by, around, (e.getAttribute && e.getAttribute('aria-label')) || ''].join(' ').replace(/\\s+/g, ' ').trim(); }}; \
 const seen = (e) => e.getClientRects().length > 0 || [...(e.labels || [])].some((l) => l.getClientRects().length > 0); \
 let found = [...document.querySelectorAll('input[type=checkbox]')].filter((e) => !e.disabled && !e.checked).filter((e) => {{ const t = norm(label(e)); return t && want && (t.includes(want) || want.includes(t)); }}); \

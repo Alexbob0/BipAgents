@@ -703,16 +703,17 @@ characters of this page. To read on, run execute_script with: "
     // a click too; a call without an instance waits for nothing
     std::fs::remove_file(tmp.join("calls.jsonl")).unwrap();
     proxy.handle(tool(4, "click_element", json!({"instance_id": "319ceedb", "selector": "a"}))).await;
-    // what the target is (never the site's terms box), the page's state kept before (browser_mcp `GUARD_BEFORE`),
-    // the click, then the page's state
-    assert_eq!(calls(tmp).len(), 4);
+    // what the target is (never the site's terms box), the page's fingerprints before (browser_mcp `guard_before`),
+    // the click, the page's state, then the check after it (`guard_after`)
+    assert_eq!(calls(tmp).len(), 5);
     assert!(calls(tmp)[0]["arguments"]["script"].as_str().unwrap().contains("found: true"));
     assert!(calls(tmp)[1]["arguments"]["script"].as_str().unwrap().contains("bipagents guard: before"));
     assert_eq!(calls(tmp)[2]["arguments"]["timeout"], json!(3000), "3 s to find it, not the real server's 10");
+    assert!(calls(tmp)[4]["arguments"]["script"].as_str().unwrap().contains("bipagents guard: after"));
     proxy.handle(tool(5, "list_tabs", json!({"instance_id": "319ceedb"}))).await;
     proxy.handle(tool(6, "click_element", json!({"selector": "a", "timeout": 8000}))).await;
-    assert_eq!(calls(tmp).len(), 6);
-    assert_eq!(calls(tmp)[5]["arguments"]["timeout"], json!(8000), "the agent's own time kept");
+    assert_eq!(calls(tmp).len(), 7);
+    assert_eq!(calls(tmp)[6]["arguments"]["timeout"], json!(8000), "the agent's own time kept");
 
     // a screenshot: an image block, the agent's path never passed on (it would land in the container)
     std::fs::remove_file(tmp.join("calls.jsonl")).unwrap();
@@ -890,7 +891,7 @@ for line in sys.stdin:
         if os.path.exists(os.path.join(here, "held")):
             r = text(GATE, True)
         elif name == "execute_script" and "bipagents guard: before" in script:
-            r = script_answer("ok")
+            r = script_answer(json.dumps({"pw": {}, "known": [], "boxes": ["#cgu"]}))
         elif name == "execute_script" and "bipagents guard: after" in script:
             r = script_answer(json.dumps({"passwords": page["typed"], "terms": page["ticked"]}))
             page["typed"] = page["ticked"] = 0
@@ -1194,7 +1195,24 @@ fn a_script_that_fills_a_form_and_sends_it_is_refused() {
         for (const [s, v] of Object.entries(data)) document.querySelector(s).value = v; \
         document.querySelector('#cgu').checked = true; document.getElementById('register-form').requestSubmit();";
     assert!(browser_mcp::script_fills_and_sends(script));
-    assert!(browser_mcp::script_fills_and_sends("f.elements.email.value = 'a@b.c'; f.submit()"));
+    // third review: an app without a form, its button clicked by the same script
+    let app = "const data = {'#email': 'c@example.org', '#password': 'Provisoire123!'}; \
+        for (const [s, v] of Object.entries(data)) document.querySelector(s).value = v; document.querySelector('#create').click();";
+    assert!(browser_mcp::script_fills_and_sends(app));
+    assert!(browser_mcp::script_fills_and_sends("document.querySelector('#cgu').checked = true; document.querySelector('#go').click()"));
     assert!(!browser_mcp::script_fills_and_sends("document.querySelector('#lastname').value = 'Testeur'"));
     assert!(!browser_mcp::script_fills_and_sends("document.getElementById('register-form').requestSubmit()"));
+}
+
+#[test]
+fn a_search_typed_and_sent_by_a_script_goes_on() {
+    // third review 13/11: a site's search box filled and sent in one script: no password, no box
+    let refused = [
+        "document.querySelector('input[name=q]').value = 'doliprane'; document.querySelector('#search-form').submit();",
+        "const f = document.forms[0]; f.elements.q.value = 'horaires'; f.requestSubmit(); 'ok'",
+    ]
+    .into_iter()
+    .filter(|script| browser_mcp::script_fills_and_sends(script))
+    .collect::<Vec<_>>();
+    assert!(refused.is_empty(), "refused: {refused:#?}");
 }

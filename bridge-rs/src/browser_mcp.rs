@@ -301,22 +301,33 @@ pub fn terms_box(label: &str) -> bool {
 }
 
 static SENDS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)requestsubmit|\.submit\s*\(|new\s+(submit)?event\s*\(\s*["'`]submit"#).expect("valid regex")
+    // a form sent, or a button clicked (an app without a form sends on its button's click: third review 13/11)
+    Regex::new(r#"(?i)requestsubmit|\.submit\s*\(|\.click\s*\(|new\s+(submit|mouse|pointer)?event\s*\(\s*["'`](submit|click)"#)
+        .expect("valid regex")
 });
-static FILLS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)\.(value|checked)\s*=[^=]|setattribute\s*\(\s*["'`](value|checked)|getownpropertydescriptor"#)
+static WRITES: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)\.value\s*=[^=]|setattribute\s*\(\s*["'`]value|getownpropertydescriptor"#).expect("valid regex")
+});
+static TICKS_BOX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)\.checked\s*=\s*(true|1|!0)|setattribute\s*\(\s*["'`]checked"#).expect("valid regex")
+});
+static PASSWORD_NAMED: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)["'`][^"'`]*(password|passwd|passwort|mot.?de.?passe|motdepasse|\bmdp\b|\bpwd\b|kennwort|contrase)"#)
         .expect("valid regex")
 });
 
-/// A script that writes fields and sends the form (second review 13/11: the password and the terms set from a table,
-/// then `requestSubmit()`: the site got them before the check after the call).
+/// A script that sets a password field (named anywhere in it, a table of selectors included) or ticks a box, and sends
+/// the form or clicks (second review 13/11: set from a table, then `requestSubmit()`; third: then the app's button
+/// clicked): the site would get them before the check after the call. A search filled and sent is not one.
 pub fn script_fills_and_sends(script: &str) -> bool {
-    SENDS.is_match(script) && FILLS.is_match(script)
+    SENDS.is_match(script)
+        && (TICKS_BOX.is_match(script)
+            || WRITES.is_match(script) && (PASSWORD_NAMED.is_match(script) || PASSWORD_TARGET.is_match(script)))
 }
 
 /// A script that would both fill and send a form (`script_fills_and_sends`).
-pub const SCRIPT_SENDS_REFUSED: &str = "Not done: a script never fills a form and sends it at once. Fill the fields with \
-your browser's steps (type_text, select_option…), let the vault type the password (vault_create_login) and your person \
+pub const SCRIPT_SENDS_REFUSED: &str = "Not done: a script never sets a password or ticks a box and sends the form (or \
+clicks) at once. Fill the fields with your browser's steps (type_text, select_option…), let the vault type the password (vault_create_login) and your person \
 accept the terms (accept_terms), then click the form's button yourself. Nothing was run.";
 
 /// `press_key` typing a character (« a », « P » with Shift), not a key (« Enter », « Tab ») nor a shortcut.
@@ -366,63 +377,57 @@ pub const LABEL_JS: &str = "const TERMS = /\\b(cgu|cgv|agb|rgpd|gdpr)\\b|terms|c
 const STRONG = /\\b(cgu|cgv|agb)\\b|conditions|terms|t[ée]rminos|condiciones|nutzungsbedingungen/i; \
 const label = (e) => { const own = [...(e.labels || [])].map((l) => l.innerText).join(' '); \
 const by = (e.getAttribute('aria-labelledby') || '').split(/\\s+/).map((i) => ((document.getElementById(i) || {}).innerText || '')).join(' '); \
-const p = e.parentElement; const around = own || by.trim() ? '' : (p && p.innerText.length <= 300 ? p.innerText : ((e.nextElementSibling || {}).innerText || '')); \
+let around = ''; if (!own && !by.trim()) { for (let n = e.nextSibling; n && around.length < 300; n = n.nextSibling) { if (n.nodeType === 1 && n.matches('input, select, textarea, button, br, label')) break; around += ' ' + n.textContent; } \
+const p = e.parentElement; if (!around.trim() && p && p.innerText.length <= 300 && p.querySelectorAll('input').length === 1) around = p.innerText; } \
 return [own, by, around, e.getAttribute('aria-label') || '', e.name || '', e.id || ''].join(' ').replace(/\\s+/g, ' ').trim(); }; \
 const isTerms = (t) => TERMS.test(t) && (!/cookie/i.test(t) || STRONG.test(t)); ";
 
-/// Before a guarded call: the page's password fields with what they hold, and its terms or consent boxes not ticked,
-/// kept in the page (values never leave it), under `key` (random for each proxy, not enumerable: second review 13/11,
-/// a page listing the window's symbols saw a fixed name). The checks before a call can't see everything (a click by its
-/// text, a framework's way of setting a value, a field drawn a moment later: review 13/11); what the call did is looked
-/// at after it. Meanwhile a form is not sent while a password field holds the call's text or a terms box it ticked
-/// (a script that fills, ticks and sends: second review); that watch ends by itself after two minutes.
-pub fn guard_before(key: &str) -> String {
-    let key = serde_json::to_string(key).unwrap_or_else(|_| "\"\"".into());
+/// How the checks around a call name an input (its id; else its tag, name and rank among that name's; else its rank) and
+/// fingerprint a value (FNV-1a, 32 bits: the value never leaves the page).
+const GUARD_JS: &str = "const h = (v) => { let x = 0x811c9dc5; for (let i = 0; i < v.length; i++) { x ^= v.charCodeAt(i); \
+x = Math.imul(x, 0x01000193) >>> 0; } return x.toString(16); }; \
+const inputs = [...document.querySelectorAll('input')]; \
+const key = (e, i) => e.id ? '#' + e.id : (e.name ? e.tagName + '|' + e.name + '|' + inputs.filter((x) => x.name === e.name).indexOf(e) : 'input@' + i); \
+const kind = (e) => (e.getAttribute('type') || '').toLowerCase(); ";
+
+/// Before a guarded call: a fingerprint of what each password field holds and the terms or consent boxes not ticked,
+/// returned to the proxy, which keeps them for that call only (third review 13/11: nothing is left in the page, which a
+/// page could see or a take-over leave behind). The checks before a call can't see everything (a click by its text, a
+/// framework's way of setting a value, a field drawn a moment later: review 13/11); what the call did is looked at after
+/// it (`guard_after`).
+pub const GUARD_BEFORE: &str = "/* bipagents guard: before */ (() => { ";
+
+/// The full script before a call (`GUARD_BEFORE`, `LABEL_JS`, `GUARD_JS`).
+pub fn guard_before() -> String {
     format!(
-        "/* bipagents guard: before */ (() => {{ const KEY = {key}; {LABEL_JS}\
-const old = window[KEY]; if (old && old.restore) old.restore(); \
-const pw = [...document.querySelectorAll('input')].filter((e) => (e.getAttribute('type') || '').toLowerCase() === 'password'); \
-const boxes = [...document.querySelectorAll('input[type=checkbox]')].filter((e) => !e.checked && isTerms(label(e))); \
-const g = {{values: new Map(pw.map((e) => [e, e.value])), known: new Set(pw.map((e) => e.value).filter(Boolean)), boxes: boxes, blocked: 0, until: Date.now() + 120000}}; \
-g.changed = () => {{ for (const e of document.querySelectorAll('input')) {{ if ((e.getAttribute('type') || '').toLowerCase() !== 'password' || !e.value) continue; \
-const had = g.values.has(e) ? g.values.get(e) : null; if (had === e.value || (had === null && g.known.has(e.value))) continue; return true; }} \
-return g.boxes.some((b) => b.isConnected && b.checked); }}; \
-g.stops = () => {{ if (Date.now() > g.until) {{ g.restore(); return false; }} if (!g.changed()) return false; g.blocked++; return true; }}; \
-const P = HTMLFormElement.prototype; const submit = P.submit, requestSubmit = P.requestSubmit; \
-g.onsubmit = (ev) => {{ if (g.stops()) {{ ev.preventDefault(); ev.stopImmediatePropagation(); }} }}; \
-P.submit = function () {{ if (!g.stops()) return submit.call(this); }}; \
-P.requestSubmit = function (...a) {{ if (!g.stops()) return requestSubmit.apply(this, a); }}; \
-g.restore = () => {{ P.submit = submit; P.requestSubmit = requestSubmit; window.removeEventListener('submit', g.onsubmit, true); delete window[KEY]; }}; \
-window.addEventListener('submit', g.onsubmit, true); \
-Object.defineProperty(window, KEY, {{value: g, configurable: true, enumerable: false, writable: true}}); \
-return 'ok'; }})()"
+        "{GUARD_BEFORE}{LABEL_JS}{GUARD_JS}const pw = {{}}, known = [], boxes = []; \
+inputs.forEach((e, i) => {{ if (kind(e) === 'password') {{ pw[key(e, i)] = e.value ? h(e.value) : ''; if (e.value) known.push(h(e.value)); }} \
+else if (kind(e) === 'checkbox' && !e.checked && isTerms(label(e))) boxes.push(key(e, i)); }}); \
+return JSON.stringify({{pw: pw, known: known, boxes: boxes}}); }})()"
     )
 }
 
-/// After it: the watch on sending ended; a password field holding text it didn't hold before (not a value the page
-/// already had: a field drawn again) is given back what it held; a terms box ticked is unticked. How many of each, and
-/// how many sendings were stopped.
-pub fn guard_after(key: &str) -> String {
-    let key = serde_json::to_string(key).unwrap_or_else(|_| "\"\"".into());
+/// After it, with what `guard_before` answered: a password field holding text it didn't hold before (not a value the
+/// page already had: a field drawn again) is emptied; a terms box ticked is unticked. How many of each.
+pub fn guard_after(before: &Value) -> String {
+    let before = serde_json::to_string(before).unwrap_or_else(|_| "{}".into());
     format!(
-        "/* bipagents guard: after */ (() => {{ const KEY = {key}; const g = window[KEY]; \
-if (!g) return JSON.stringify({{passwords: 0, terms: 0, blocked: 0}}); \
-g.restore(); \
+        "/* bipagents guard: after */ (() => {{ const B = {before}; {GUARD_JS}\
 const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; \
-let passwords = 0, terms = 0; \
-for (const e of document.querySelectorAll('input')) {{ \
-if ((e.getAttribute('type') || '').toLowerCase() !== 'password' || !e.value) continue; \
-const had = g.values.has(e) ? g.values.get(e) : null; \
-if (had === e.value || (had === null && g.known.has(e.value))) continue; \
-set.call(e, had || ''); e.dispatchEvent(new Event('input', {{bubbles: true}})); e.dispatchEvent(new Event('change', {{bubbles: true}})); passwords++; }} \
-for (const b of g.boxes) {{ if (b.isConnected && b.checked) {{ b.click(); if (b.checked) {{ b.checked = false; b.dispatchEvent(new Event('change', {{bubbles: true}})); }} terms++; }} }} \
-return JSON.stringify({{passwords: passwords, terms: terms, blocked: g.blocked}}); }})()"
+const pw = B.pw || {{}}, known = B.known || [], boxes = B.boxes || []; let passwords = 0, terms = 0; \
+inputs.forEach((e, i) => {{ const k = key(e, i); \
+if (kind(e) === 'password' && e.value) {{ const now = h(e.value); const had = k in pw ? pw[k] : null; \
+if (had === now || (had === null && known.includes(now))) return; \
+set.call(e, ''); e.dispatchEvent(new Event('input', {{bubbles: true}})); e.dispatchEvent(new Event('change', {{bubbles: true}})); passwords++; }} \
+else if (kind(e) === 'checkbox' && e.checked && boxes.includes(k)) {{ e.click(); \
+if (e.checked) {{ e.checked = false; e.dispatchEvent(new Event('change', {{bubbles: true}})); }} terms++; }} }}); \
+return JSON.stringify({{passwords: passwords, terms: terms}}); }})()"
     )
 }
 
 /// What the agent reads when the check after its call undid it.
 pub const PASSWORD_UNDONE: &str = "Not done: that put text into a password field, and you never type a password \
-yourself, not even a temporary one: it was erased. To create an account, call vault_create_login: the person's vault \
+yourself, not even a temporary one: the field was emptied. To create an account, call vault_create_login: the person's vault \
 makes the password and types it here once they approve. To log in, use the vault's fill (browser_vault).";
 pub const TERMS_UNDONE: &str = "Not done: that ticked the site's terms (or a consent), and you never tick it \
 yourself: it was unticked. Call accept_terms with the site and the box's label (and the terms' link if the page has \
@@ -996,8 +1001,6 @@ pub struct Proxy {
     last_url: Mutex<String>,
     /// The tool calls in a row that failed (`answered_call`, `STREAK_HINT`).
     pub failures: AtomicU32,
-    /// Where the checks around a call keep their state in the page (`guard_before`): a name of this proxy's own.
-    guard_key: String,
 }
 
 impl Proxy {
@@ -1041,7 +1044,6 @@ impl Proxy {
             tcp_tables: Mutex::new(TCP_TABLES.iter().map(|s| s.to_string()).collect()),
             last_url: Mutex::new(String::new()),
             failures: AtomicU32::new(0),
-            guard_key: format!("__{}", crate::py::token_hex(8)),
         })
     }
 
@@ -1368,8 +1370,8 @@ impl Proxy {
 
     /// After a guarded call: what it wrote into a password field erased, a terms box it ticked unticked
     /// (`guard_after`), and what the agent reads then; None when nothing had to be undone (or the page can't say).
-    async fn undone(&self, instance: &str) -> Option<&'static str> {
-        let report = match self.script(instance, &guard_after(&self.guard_key)).await? {
+    async fn undone(&self, instance: &str, before: &Value) -> Option<&'static str> {
+        let report = match self.script(instance, &guard_after(before)).await? {
             Value::String(text) => serde_json::from_str::<Value>(&text).ok()?,
             other => other,
         };
@@ -1464,9 +1466,13 @@ impl Proxy {
                 arguments.insert("timeout".into(), json!(CLICK_TIMEOUT_MS));
             }
         }
-        let watched = GUARDED.contains(&tool)
-            && !instance.is_empty()
-            && self.script(&instance, &guard_before(&self.guard_key)).await.is_some();
+        let before = match GUARDED.contains(&tool) && !instance.is_empty() {
+            true => match self.script(&instance, &guard_before()).await {
+                Some(Value::String(text)) => serde_json::from_str::<Value>(&text).ok(),
+                _ => None,
+            },
+            false => None,
+        };
         let response = self.request("tools/call", sent.as_ref()).await?;
         if loads_a_page(tool) && !instance.is_empty() {
             let failed = response.contains_key("error")
@@ -1475,8 +1481,8 @@ impl Proxy {
                 self.settle(&instance, tool != "navigate").await;
             }
         }
-        if watched {
-            if let Some(text) = self.undone(&instance).await {
+        if let Some(before) = &before {
+            if let Some(text) = self.undone(&instance, before).await {
                 return Ok(refused(text));
             }
         }
@@ -2411,10 +2417,12 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         // only `type=password` is a password field (an address field may say autocomplete="new-password")
         assert!(script.contains("attr('type') === 'password'") && !script.contains("new-password"));
         // the checks around a guarded call keep nothing but in the page, and say how many were undone
-        let (before, after) = (guard_before("__k1"), guard_after("__k1"));
-        assert!(before.contains("const KEY = \"__k1\";") && before.contains("enumerable: false"));
-        assert!(!before.contains("Symbol.for") && before.contains("isTerms(label(e))"));
-        assert!(after.contains("g.restore();") && after.contains("blocked: g.blocked"));
+        let (before, after) = (guard_before(), guard_after(&json!({"pw": {"#pw": "1a2b"}, "known": ["1a2b"], "boxes": ["#cgu"]})));
+        // nothing kept in the page (third review 13/11): no global written, no function of the page replaced
+        assert!(!before.contains("window[") && !before.contains("defineProperty") && !before.contains("prototype.submit"));
+        assert!(before.contains("isTerms(label(e))") && before.contains("JSON.stringify({pw: pw, known: known, boxes: boxes})"));
+        assert!(after.contains("const B = {") && after.contains("\"boxes\":[\"#cgu\"]") && after.contains("\"#pw\":\"1a2b\""), "{after}");
+        assert!(!after.contains("window[") && after.contains("set.call(e, '')"));
     }
 
     #[test]

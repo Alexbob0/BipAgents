@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Se connecter</title></head><body>
+<!-- an older site's login: its button hashes the password in its field before the form is sent
+     (« onclick="this.form.pw.value = hex_md5(this.form.pw.value)" »; btoa stands for the hash here) -->
+<form id="login-form" action="welcome.html" method="get">
+  <label for="user">Identifiant</label><input type="text" id="user" name="user">
+  <label for="pw">Mot de passe</label><input type="password" id="pw" name="pw">
+  <button type="submit" id="login" onclick="this.form.pw.value = btoa(this.form.pw.value)">Se connecter</button>
+</form>
+</body></html>
