@@ -236,7 +236,7 @@ def test_toujours_lets_mail_moves_go_alone_until_taken_back_and_never_a_trash(br
     [granted] = level["always"]["coach"]
     assert granted["kind"] == "mail_move" and granted["label"], level
     assert level["level"] == "all", "the level itself unchanged"
-    # the next move: alone, its Boîte line says « toujours autorisé », no card, no notification
+    # the next move: alone, its line says « toujours autorisé », no card, no notification, nothing in the Boîte (13/11)
     again = call(bridge, "mail_bulk", {"action": "move:Achats", "domain": "shop.example"}, token=MAIL_TOKEN)
     assert "Approved at once" in text_of(again), again
     assert mail_cards(bridge) == []
@@ -244,6 +244,9 @@ def test_toujours_lets_mail_moves_go_alone_until_taken_back_and_never_a_trash(br
     [line] = bridge.get("/v1/approvals/auto", headers=AUTH, params={"agent": "coach"}).json()["items"]
     assert line["always"] is True and line["undo"] is True and line["kind"] == "mail_move"
     assert line["summary"].endswith(("(toujours autorisé)", "(always allowed)")), line
+    rows = [r for r in bridge.get("/v1/autonomous", headers=AUTH).json()["approved"] if r["kind"] == "mail_move"]
+    assert [i["id"] for r in rows for i in r["items"]] == [line["id"]], rows   # « Ce que tes agents font tout seuls »
+    assert not [i for i in boite_items(bridge, "coach") if "toujours autorisé" in i.get("text", "")]
     # a trash: still asked, never « Toujours » on it
     call(bridge, "mail_bulk", {"action": "trash", "from": "sam@example.com"}, token=MAIL_TOKEN)
     [trash] = mail_cards(bridge)

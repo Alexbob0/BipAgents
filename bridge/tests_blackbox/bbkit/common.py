@@ -53,6 +53,23 @@ def read_sse(resp, timeout: float = 120.0) -> list:
     return events
 
 
+def run_has(bridge, run_id: str, kind: str, agent: str = "wellness", timeout: float = 10.0) -> bool:
+    """The bridge's hub has the run's event `kind` (read from its stream, which replays the run from its start, on a
+    connection of its own)."""
+    deadline = time.monotonic() + timeout
+    try:
+        with httpx.Client(base_url=bridge.url, headers=AUTH, timeout=timeout) as client:
+            with client.stream("GET", f"/v1/runs/{run_id}/events", params={"agent": agent}) as resp:
+                for line in resp.iter_lines():
+                    if line.startswith("event: ") and line[len("event: "):] == kind:
+                        return True
+                    if time.monotonic() > deadline:
+                        return False
+    except httpx.TimeoutException:
+        return False
+    return False
+
+
 @contextlib.contextmanager
 def on_screen(bridge, agent: str = "wellness", thread: str = "main"):
     """The app shows that conversation: its event stream open with `thread=` (presence: nothing pushed for it)."""

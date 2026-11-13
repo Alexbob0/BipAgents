@@ -1323,7 +1323,7 @@ impl Jobs {
                 _ => {}
             }
         }
-        // its « Validé pour toi » line in the Boîte: « Annulé », no « Annuler » left on a task that is gone
+        // its « Validé pour toi » line: « Annulé », no « Annuler » left on a task that is gone
         crate::approval_level::task_forgotten(&config, job_id);
         Ok(())
     }

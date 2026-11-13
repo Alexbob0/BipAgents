@@ -544,14 +544,17 @@ nothing while the model writes a call's arguments or its own notes).
 POST /v1/threads/{thread|main|new}/messages
      {agent?, client_id, text, attachments?: [{kind: image, name, mime, data (base64)} | {kind: document, name, mime,
       size, path (POST /v1/files)}], notes?, kinds?, after?, instructions?}
-  → {client_id, thread, tip, state: started | steered | queued | known, run_id?, queued? (known only)}
+  → {client_id, thread, tip, state: started | steered | queued | known, run_id?, queued? (known only), restarted?}
 POST /v1/threads/{thread}/stop {agent?}          → {stopped, run_id?}
 POST /v1/approve {agent, run_id, request_id?, choice | answer}   an approval's choice or a question's answer (empty:
                                                                  skipped); the bridge's own cards as before
 ```
 
 One sending path (threads/send.rs): nothing runs in the conversation → a turn starts (followed at
-`/v1/runs/{run_id}/events`); a turn goes on → words go into it (Hermes' steer), files, `after` (« Après ») or a turn
+`/v1/runs/{run_id}/events`); a turn goes on → words go into it: a turn of the person's that did nothing yet (it
+thinks, writes, reads) is stopped and started again with them (turn_restart.rs: `steered` with `restarted: true`, the
+new run's events in the same stream after a `loop_rescue_started` notice with `reason: restarted`, the cut answer left
+out of the timeline), else Hermes' steer at its next step; files, `after` (« Après ») or a turn
 that takes no more words → the agent's queue (msg_queue.rs), started next; the same `client_id` again → nothing
 is sent, `known` with where the message is now: `queued: true` (still in the queue), or `run_id` of its conversation's
 turn going on (the phone follows it again), or neither (its turn is over: the timeline has it). A message that never

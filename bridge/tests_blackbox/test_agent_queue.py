@@ -8,7 +8,7 @@ import threading
 import time
 import uuid
 
-from bbkit.common import AUTH, app_turn, sse, in_session, words_of
+from bbkit.common import AUTH, app_turn, run_has, sse, in_session, words_of
 from bbkit.servers import wait_until
 
 SESSION = "api_q"
@@ -104,10 +104,14 @@ def test_words_steered_reach_the_running_turn(bridges, fakes):
     bridge = bridges.new().start()
     fakes.hermes.rounds = 1000
     gate = threading.Event()
+    # a turn that acted already (a page made): words go in at its next step (before any action it would start again
+    # with them: test_turn_restart.py)
     fakes.hermes.runs["r1"] = turn("r1", gate, output="Fini.")
+    fakes.hermes.runs["r1"].insert(1, sse("tool.started", run_id="r1", tool="mcp__bipagents__create_page"))
     start(bridge, fakes)
     assert wait_until(lambda: bridge.post("/v1/watch", headers=AUTH,
                                           json={"agent": "wellness", "run_id": "r1"}).status_code == 200)
+    assert run_has(bridge, "r1", "tool.started")
     answer = send(bridge, "Seulement les publiques")
     assert answer.status_code == 200, answer.text
     assert answer.json()["state"] == "steered" and answer.json()["run_id"] == "r1"

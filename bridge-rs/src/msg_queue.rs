@@ -3,7 +3,8 @@
 //!
 //! While an agent works on a turn, a message the person sends goes into that turn by default (Hermes v0.22.5's
 //! `POST /v1/runs/{id}/steer`: delivered as its own user message right after the agent's current tool calls, without
-//! stopping it; the apps mark it « Ajouté pendant la réponse »). « Après » puts it here instead: the bridge keeps it,
+//! stopping it; the apps mark it « Ajouté pendant la réponse »; before the turn did anything, it is started again
+//! with them instead: turn_restart.rs). « Après » puts it here instead: the bridge keeps it,
 //! per agent, on disk, and starts it as the next turn of its conversation once the turn going on there ends, one after
 //! another. Every device of the person reads the same list (`GET`, the run stream's `bridge.queue` events,
 //! `session_state`), and changes it the same way:
@@ -511,6 +512,27 @@ impl Queues {
             return Err("full");
         }
         tracing::info!(agent = %agent.name, items = queue.items.len(), front = front, "queue: message added");
+        self.kick(&agent.name);
+        Ok(queue)
+    }
+
+    /// Words a turn was stopped for that Hermes would not start again (runs.rs `restart`): first in line, pushed
+    /// (the stopped turn's end pauses nothing, they start the moment it ends).
+    pub fn add_first(&self, agent: &AgentConfig, session_id: &str, text: &str, sent: Sent) -> Result<AgentQueue, &'static str> {
+        let (queue, added) = self.update(&agent.name, |q| {
+            if q.items.len() >= ITEMS_MAX {
+                return (false, false);
+            }
+            let mut item = new_item(session_id, text.trim(), true, sent);
+            item.pushed = true;
+            q.items.insert(0, item);
+            q.changed();
+            (true, true)
+        });
+        if !added {
+            return Err("full");
+        }
+        tracing::info!(agent = %agent.name, "queue: words of a stopped turn first in line");
         self.kick(&agent.name);
         Ok(queue)
     }

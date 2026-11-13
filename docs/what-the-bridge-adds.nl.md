@@ -42,8 +42,9 @@ toevoegt, met de modules (`bridge-rs/src/<naam>.rs`) die het doen, en wat hij be
   zien ze nooit; `relay.rs` en de aparte [`relay/`](../relay/) sturen de meldingen van elke installatie door.
   `runs.rs` maakt van een goedkeuring waar niemand naar kijkt een melding; `agent_notify.rs` stelt dat per agent in;
   `live_activities.rs` toont lang werk op het vergrendelscherm en in het Dynamic Island.
-- **Berichten tijdens het werk.** `msg_queue.rs`: een bericht dat je stuurt terwijl de agent werkt, gaat in de lopende
-  beurt (Hermes' steer, na de huidige toolaanroepen); « Daarna » zet het in de wachtrij van de agent op de brug, op elk
+- **Berichten tijdens het werk.** `msg_queue.rs`, `turn_restart.rs`: een bericht terwijl de agent alleen denkt, schrijft
+  of leest, start zijn beurt opnieuw met beide berichten (één antwoord op beide); heeft hij al iets gedaan (verstuurd,
+  geschreven, betaald…), dan gaat het in de lopende beurt (Hermes' steer, na de huidige toolaanroepen); « Daarna » zet het in de wachtrij van de agent op de brug, op elk
   apparaat hetzelfde, gestart als volgende beurt (volgorde, weghalen, nu sturen, pauze), één melding aan het eind.
 - **Niets kwijt.** `outbox.rs` en `cronwatch.rs` zetten berichten van agents en het antwoord van elke routine in een
   outbox (`store.rs`), met de audio klaar.

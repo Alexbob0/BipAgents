@@ -214,7 +214,7 @@ def pair_problems(pairs: List[Dict[str, Any]], thread: Dict[str, Any]) -> List[s
 # -- this release's lines and cards ---------------------------------------------------------------------------------
 
 def auto_line_problems(line: Dict[str, Any]) -> List[str]:
-    """A « Validé pour toi » line in the Boîte (InboxAutoSection.swift, AutoApprovals.kt): what was done, when, and
+    """A « Validé pour toi » line of « Ce que tes agents font tout seuls » (AutonomousApproved.swift, AutoApprovals.kt): what was done, when, and
     « Annuler » when it can be."""
     out = [f"auto line: `{k}` missing" for k in ("id", "agent", "kind") if not _text(line.get(k))]
     if not _text(line.get("summary")):
