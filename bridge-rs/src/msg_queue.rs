@@ -683,7 +683,8 @@ impl Queues {
         let input = item.input.clone().or_else(|| again.map(|(i, _)| i)).unwrap_or_else(|| Value::String(item.text.clone()));
         let options = crate::turn_thinking::turn_options(&config, agent, &item.text, item.thinking);
         let thinks = crate::turn_thinking::thought(options.as_ref());
-        let started = self.hermes.start_run_input(agent, input, &item.session_id, instructions.as_deref(), options).await;
+        let started =
+            self.hermes.start_run_input(agent, input, &item.session_id, instructions.as_deref(), options.clone()).await;
         let run_id = match started {
             Ok(run_id) => run_id,
             Err(exc) => {
@@ -700,6 +701,7 @@ impl Queues {
         self.hub.watch(agent, &run_id, Some(&item.session_id), true);
         self.hub.keep(agent, &run_id, Some(&item.session_id));
         self.hub.set_phone(&agent.name, &run_id, item.phone.as_deref());
+        self.hub.set_turn(&agent.name, &run_id, instructions.as_deref(), options);
         let started = crate::store::iso(crate::store::utcnow());
         self.update(&agent.name, |q| {
             q.items.retain(|i| i.id != item.id);

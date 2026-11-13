@@ -149,7 +149,18 @@ fn go_on_fits(st: &SubscriptionState) -> bool {
         && !st.capped
         && st.end_push
         && st.room_id.is_none()
+        && !st.guest
         && (st.watched || st.ever_followed)
+}
+
+/// The conversation's last input was the bridge's own (a continuation, a rescue turn, a hand-over: a `[bipagents:…]`
+/// mark starting a line, after the notes), not the person's words: its turn is never continued (go_on.rs).
+fn last_input_is_the_bridges(rows: &[Dict]) -> bool {
+    rows.iter().rev().find(|m| m.get("role").and_then(Value::as_str) == Some("user")).is_some_and(|m| {
+        let text = crate::cronwatch::message_text(m);
+        let text = crate::live_brief::visible(&text);
+        text.contains("[bipagents:") && crate::threads::timeline::before_bridge_mark(&text).trim().is_empty()
+    })
 }
 
 fn handoff_tool(tool: &str) -> bool {
@@ -248,13 +259,15 @@ pub fn rescue_prompt(request: &str, steps: &[String], said: &str) -> String {
     out
 }
 
-/// A `POST /v1/runs` relayed to an agent's Hermes (the door's relay, lan.rs; a peer's message, peers.rs): its answer
-/// (a small JSON) read whole to follow the run it started (`RunHub::keep`, for the brake), and given back unchanged.
+/// A `POST /v1/runs` relayed to an agent's Hermes (the door's relay, lan.rs; a peer's message, peers.rs: `guest`): its
+/// answer (a small JSON) read whole to follow the run it started (`RunHub::keep`, for the brake), and given back
+/// unchanged.
 pub async fn keep_started(
     hub: &Arc<RunHub>,
     agent: &AgentConfig,
     request: &[u8],
     response: axum::response::Response,
+    guest: bool,
 ) -> axum::response::Response {
     if !response.status().is_success() {
         return response;
@@ -272,7 +285,10 @@ pub async fn keep_started(
         .ok()
         .and_then(|b| b.get("session_id").and_then(Value::as_str).map(str::to_string));
     if let Some(run_id) = run_id.filter(|r| crate::app::RUN_ID.is_match(r)) {
-        hub.keep(agent, run_id, session.as_deref());
+        let sub = hub.keep(agent, run_id, session.as_deref());
+        if guest {
+            lock(&sub.state).guest = true;
+        }
         tracing::info!(agent = %agent.name, run_id = %run_id, "relayed run followed");
     }
     axum::response::Response::from_parts(parts, axum::body::Body::from(bytes))
@@ -486,6 +502,14 @@ pub struct SubscriptionState {
     /// This run's end waits for that run, its continuation (`go_on`) or the brake's rescue turn (`loop_rescue`), whose
     /// events follow in its stream: that one is the conversation's turn now (`session_run`: its stop, words steered).
     pub continued_by: Option<String>,
+    /// The person tapped Stop on this run (threads/send.rs `stop`): even once it ended, no continuation (`go_on`).
+    pub stop_asked: bool,
+    /// A message of another household's agent (peers.rs): a guest's turn, never continued (`go_on`).
+    pub guest: bool,
+    /// The turn's own instructions (a shared conversation's, read_shares.rs) and options (its thinking), for its
+    /// continuation (`go_on`).
+    pub instructions: Option<String>,
+    pub model_options: Option<Value>,
     /// Followed for the brake whoever looks (`keep`: a run started or followed through the door's Hermes relay, a
     /// peer's message): kept alive like a watched run, without its pushes.
     pub kept: bool,
@@ -550,6 +574,10 @@ impl Default for SubscriptionState {
             rescue_of: None,
             go_on_of: None,
             continued_by: None,
+            stop_asked: false,
+            guest: false,
+            instructions: None,
+            model_options: None,
             kept: false,
             ever_followed: false,
             last_tool: String::new(),
@@ -1073,6 +1101,22 @@ impl RunHub {
         }
     }
 
+    /// The turn's instructions and options as it was started (threads/send.rs), for a continuation of it (`go_on`).
+    pub fn set_turn(&self, agent: &str, run_id: &str, instructions: Option<&str>, options: Option<Value>) {
+        if let Some(sub) = self.subscription(agent, run_id) {
+            let mut st = lock(&sub.state);
+            st.instructions = instructions.map(str::to_string);
+            st.model_options = options;
+        }
+    }
+
+    /// The person tapped Stop on this run (threads/send.rs `stop`), whether Hermes still had it or not.
+    pub fn ask_stop(&self, agent: &str, run_id: &str) {
+        if let Some(sub) = self.subscription(agent, run_id) {
+            lock(&sub.state).stop_asked = true;
+        }
+    }
+
     /// The approvals Hermes waits for, each with `created_at` in Unix seconds.
     pub fn pending_approvals(&self, agent: Option<&str>) -> Vec<Dict> {
         self.pending_of(agent, false)
@@ -1325,9 +1369,9 @@ impl RunHub {
                                     // a turn that ended on a promise: its continuation's end instead (go_on.rs),
                                     // already handed over by the continuation (this turn made nothing)
                                     match self.go_on(sub, event).await {
-                                        (event, true) => event,
+                                        (end, Some(own)) => self.with_own_files(sub, own, end).await,
                                         // what the turn made and the files its reply cites, as attachments
-                                        (event, false) => self.hand_over(sub, event).await,
+                                        (event, None) => self.hand_over(sub, event).await,
                                     }
                                 } else {
                                     event
@@ -1970,19 +2014,20 @@ impl RunHub {
     /// stream after a `loop_rescue_started` notice with its run id (the apps adopt it: its stop, its checks), and its
     /// end is this run's end (the « reply ready » push, when nobody looks, is its reply). It has the conversation's
     /// limits, the long-work net's hand-over and the brake's rescue, and is never continued itself. Never in a family
-    /// agent's conversation, nor after words of the person went into the turn. Returns the end and whether it is the
-    /// continuation's (handed over already: this turn made nothing). When it can't start, fails or says nothing: this
-    /// run's own end.
-    async fn go_on(self: &Arc<Self>, sub: &Arc<RunSubscription>, terminal: SSEEvent) -> (SSEEvent, bool) {
+    /// agent's conversation, a guest's turn, a turn the bridge started itself, nor once the person stepped in (Stop,
+    /// words steered, a message waiting), checked again while it starts. It has the turn's instructions and options.
+    /// Returns the end, and this run's own end when that one is the continuation's (handed over already; this run's
+    /// files are merged in: `with_own_files`). When it can't start, fails or says nothing: this run's own end.
+    async fn go_on(self: &Arc<Self>, sub: &Arc<RunSubscription>, terminal: SSEEvent) -> (SSEEvent, Option<SSEEvent>) {
         if terminal.r#type != "run.completed" {
-            return (terminal, false);
+            return (terminal, None);
         }
-        let Some(shared) = self.config.clone() else { return (terminal, false) };
+        let Some(shared) = self.config.clone() else { return (terminal, None) };
         // never in a family agent's common conversation (its creator's turns included), nor when switched off
         if !shared.get().brake.go_on || crate::family_thread::is_common(&shared.get(), &sub.agent.name) {
-            return (terminal, false);
+            return (terminal, None);
         }
-        let (session, watched, followed, phone) = {
+        let (session, watched, followed, phone, instructions, options) = {
             let st = lock(&sub.state);
             let tools: Vec<String> = st
                 .backlog
@@ -1991,38 +2036,64 @@ impl RunHub {
                 .map(|e| crate::loop_brake::event_tool(&e.data))
                 .collect();
             if !go_on_fits(&st) || !crate::go_on::did_nothing(tools.iter().map(String::as_str)) {
-                return (terminal, false);
+                return (terminal, None);
             }
-            (st.session_id.clone(), st.watched, st.ever_followed, st.phone.clone())
+            (
+                st.session_id.clone(),
+                st.watched,
+                st.ever_followed,
+                st.phone.clone(),
+                st.instructions.clone(),
+                st.model_options.clone(),
+            )
         };
         let said = terminal.final_text();
         // their next words already wait (words steered into the turn): they say what comes next
         let steered = as_str(terminal.data.get("pending_steer")).is_some_and(|p| !p.trim().is_empty());
         if !crate::go_on::promises(&said) || steered || self.someone_elses(&sub.run_id) {
-            return (terminal, false);
+            return (terminal, None);
         }
         let queues = self.queues.get().and_then(std::sync::Weak::upgrade);
         // words of theirs went into the turn (« laisse tomber »…): its last words answer them, nothing to go on with
         if queues.as_ref().is_some_and(|q| q.steered_into(&sub.agent.name, &sub.run_id)) {
-            return (terminal, false);
+            return (terminal, None);
         }
         let agent = sub.agent.clone();
         let session = match session.filter(|s| !s.is_empty()) {
             Some(s) => s,
             None => match self.hermes.run(&agent, &sub.run_id).await.ok().and_then(|r| as_str(r.get("session_id"))) {
                 Some(s) => s,
-                None => return (terminal, false),
+                None => return (terminal, None),
             },
         };
-        // a message of theirs waits in line for this conversation: it says what comes next
-        if queues.is_some_and(|queues| queues.waits_in(&agent.name, &session)) {
-            return (terminal, false);
+        // the person stepped in since the turn ended: Stop tapped, words steered in, or a message waiting in line for
+        // this conversation (Hermes refused it to the ended turn): what they said decides, not the promise
+        let stepped_in = || {
+            lock(&sub.state).stop_asked
+                || queues
+                    .as_ref()
+                    .is_some_and(|q| q.waits_in(&agent.name, &session) || q.steered_into(&agent.name, &sub.run_id))
+        };
+        if stepped_in() {
+            return (terminal, None);
+        }
+        // the turn was the bridge's own (a continuation or a rescue turn the hub followed again after a restart, a
+        // hand-over…): never continued (the conversation unreadable: the person's, as the hub saw it)
+        let bridges =
+            self.hermes.session_messages(&agent, &session).await.is_ok_and(|rows| last_input_is_the_bridges(&rows));
+        if bridges {
+            return (terminal, None);
         }
         let input = crate::dates::now::stamped(&shared.get(), &agent, &crate::go_on::input(&said));
         let mut started = None;
         // Hermes may still be closing the turn (the conversation busy for a moment)
         for attempt in 0..4u64 {
-            match self.hermes.start_run(&agent, &input, &session, None).await {
+            if stepped_in() {
+                tracing::info!(agent = %agent.name, run_id = %sub.run_id, "promise with no work: the person stepped in");
+                return (terminal, None);
+            }
+            // with the turn's instructions (a shared conversation's) and its options (its thinking)
+            match self.hermes.start_run_with(&agent, &input, &session, instructions.as_deref(), options.clone()).await {
                 Ok(id) if crate::app::RUN_ID.is_match(&id) => {
                     started = Some(id);
                     break;
@@ -2039,7 +2110,7 @@ impl RunHub {
         }
         let Some(next_id) = started else {
             tracing::warn!(agent = %agent.name, run_id = %sub.run_id, "promise with no work: no continuation");
-            return (terminal, false);
+            return (terminal, None);
         };
         tracing::info!(agent = %agent.name, run_id = %sub.run_id, continuation = %next_id,
             "promise with no work: continuation started");
@@ -2060,6 +2131,16 @@ impl RunHub {
             }
             drop(st);
             lock(&sub.state).continued_by = Some(next_id.clone());
+        }
+        // they stepped in while it started (from now on their Stop and words reach it): stopped, the turn's own end
+        if stepped_in() {
+            tracing::info!(agent = %agent.name, run_id = %sub.run_id, continuation = %next_id,
+                "promise with no work: the person stepped in, continuation stopped");
+            lock(&sub.state).continued_by = None;
+            if let Err(err) = self.hermes.stop_run(&agent, &next_id).await {
+                tracing::warn!(agent = %agent.name, run_id = %next_id, error = %err, "continuation: stop refused");
+            }
+            return (terminal, None);
         }
         let mut listener = self.subscribe(&agent, &next_id, "forward", false);
         let mut data = Map::new();
@@ -2096,8 +2177,15 @@ impl RunHub {
                 }
             }
         }
+        let stopped = lock(&listener.sub.state).stop_asked;
         listener.close();
         match end {
+            // the person stopped it: the turn ends stopped, not on its promise
+            Some(end) if stopped || end.r#type == "run.cancelled" => {
+                tracing::info!(agent = %agent.name, run_id = %sub.run_id, continuation = %next_id,
+                    "promise with no work: the continuation was stopped");
+                (end, None)
+            }
             Some(end)
                 if end.r#type == "run.completed"
                     && !(words.trim().is_empty()
@@ -2106,14 +2194,55 @@ impl RunHub {
             {
                 tracing::info!(agent = %agent.name, run_id = %sub.run_id, continuation = %next_id,
                     "promise with no work: the continuation answered");
-                (end, true)
+                (end, Some(terminal))
             }
             _ => {
                 tracing::warn!(agent = %agent.name, run_id = %sub.run_id, continuation = %next_id,
                     "promise with no work: the continuation did not answer");
-                (terminal, false)
+                (terminal, None)
             }
         }
+    }
+
+    /// The continuation's end (handed over already in its own run) with the files this turn's own reply cites or made
+    /// (« Tes idées sont dans /envoi/idees.md. Je te prépare aussi les liens »): kept on the promise's message, and
+    /// joined to the end the app reads, once each.
+    async fn with_own_files(&self, sub: &Arc<RunSubscription>, own: SSEEvent, end: SSEEvent) -> SSEEvent {
+        let own = self.hand_over(sub, own).await;
+        let paths = |data: &Map<String, Value>| -> Vec<String> {
+            data.get("attachments")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|a| as_str(a.get("path")))
+                .collect()
+        };
+        let (have, theirs) = (paths(&end.data), paths(&own.data));
+        let own_stale = own.data.get("stale").and_then(Value::as_array).cloned().unwrap_or_default();
+        if theirs.iter().all(|p| have.contains(p)) && own_stale.is_empty() {
+            return end;
+        }
+        let mut data = end.data;
+        let mut items: Vec<Value> = data.get("attachments").and_then(Value::as_array).cloned().unwrap_or_default();
+        items.extend(
+            own.data
+                .get("attachments")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter(|a| as_str(a.get("path")).is_none_or(|p| !have.contains(&p)))
+                .cloned(),
+        );
+        data.insert("attachments".into(), json!(items));
+        let mut stale: Vec<Value> = data.get("stale").and_then(Value::as_array).cloned().unwrap_or_default();
+        for s in own_stale {
+            if !stale.contains(&s) {
+                stale.push(s);
+            }
+        }
+        data.insert("stale".into(), json!(stale));
+        let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+        SSEEvent::new(end.r#type, data, raw)
     }
 
     /// What the turn made (made_files.rs: audio, pages, maps) and the files its reply only cites from the agent's own
@@ -2991,6 +3120,30 @@ mod tests {
         }
         lock(&hub.inner).subs.insert(other.key(), other);
         assert_eq!(hub.asking_session("vie").as_deref(), Some("api_c"));
+    }
+
+    /// Second review 13/11: the iOS app watches the continuation it adopts, so after a restart the hub follows it as a
+    /// fresh turn; the conversation's last input, the bridge's note, says it is not the person's. A household's
+    /// message (peers.rs) is a guest's turn: never continued either.
+    #[test]
+    fn a_turn_the_bridge_started_or_a_guests_is_never_continued() {
+        let row = |role: &str, content: &str| {
+            let mut m = Dict::new();
+            m.insert("role".into(), json!(role));
+            m.insert("content".into(), json!(content));
+            m
+        };
+        let person = row("user", "<!--bip:now vendredi 13 novembre, 12 h 27-->\nTrouve-moi un achat test à 5 €.");
+        let reply = row("assistant", "Je te prépare 2-3 trouvailles pour 5 €.");
+        let note =
+            row("user", "<!--bip:now vendredi 13 novembre, 12 h 28-->\n[bipagents:go_on]\n\n(A note from the app…)");
+        assert!(!last_input_is_the_bridges(&[person.clone(), reply.clone()]));
+        assert!(last_input_is_the_bridges(&[person.clone(), reply.clone(), note, reply.clone()]));
+        assert!(!last_input_is_the_bridges(&[]));
+        let mut st = SubscriptionState { watched: true, ..Default::default() };
+        assert!(go_on_fits(&st));
+        st.guest = true;
+        assert!(!go_on_fits(&st));
     }
 
     #[tokio::test]

@@ -162,8 +162,10 @@ def test_stop_during_the_continuation_stops_the_continuation(bridges, fakes):
         assert stopped.status_code == 200, stopped.text
         targets.append((nxt, stopped.json().get("run_id"), fakes.hermes.started[nxt]["status"]))
         gate.set()
-        assert wait_until(lambda: len(bridge.logged("promise with no work: the continuation answered")) == i + 1)
+        # the turn ends stopped, not on the continuation's words nor on its promise
+        assert wait_until(lambda: len(bridge.logged("promise with no work: the continuation was stopped")) == i + 1)
     assert all(asked == got and status == "cancelled" for asked, got, status in targets), targets
+    assert not bridge.logged("promise with no work: the continuation answered")
 
 
 def test_a_long_continuation_is_steered_to_hand_over_like_any_turn(bridges, fakes):
@@ -319,3 +321,174 @@ def test_a_members_turn_in_the_family_conversation_never_goes_on(bridges, fakes)
     assert sent.status_code == 200 and sent.json()["state"] == "started", sent.text
     wait_until(lambda: len(fakes.hermes.started) > 1, timeout=5)
     assert list(fakes.hermes.started) == ["r1"], {r: s["input"][:70] for r, s in fakes.hermes.started.items()}
+
+
+# -- second review of 13/11 (each failed before its fix, but the `ok_` ones: the first fixes pushed further) ----------
+
+DRAFT = ("Voici une proposition de réponse :\n\nBonjour Madame Durand,\n\nMerci pour votre message. Je regarde votre "
+         "dossier ce week-end et je reviens vers vous lundi.\n\nBien cordialement,\nAlex")
+
+
+def test_a_drafted_reply_is_not_continued(bridges, fakes):
+    # « Écris-moi une réponse pour Mme Durand »: the draft's « je regarde… je reviens vers vous » are the person's words
+    # to come, not the agent's work
+    bridge = bridges.new().start()
+    fakes.hermes.runs["run_draft"] = turn("run_draft", DRAFT)
+    events = follow(bridge, "run_draft")
+    started = {r: s["input"][:230] for r, s in fakes.hermes.started.items()}
+    assert notices(events) == [] and started == {}, started
+
+
+def window(bridge, fakes):
+    """A turn that ends on the promise while Hermes is still closing it (go_on's own retries: about 1.5 s before the
+    continuation starts), the app following it."""
+    thread = thread_of(bridge, fakes)
+    fakes.hermes.start_failures = 2
+    fakes.hermes.runs["run_vie"] = turn("run_vie", PROMISE)
+    fakes.hermes.runs["r1"] = turn("r1", FOUND, tools=["web_search"])
+    watch = {"agent": "wellness", "run_id": "run_vie", "session_id": "api_c"}
+    assert bridge.post("/v1/watch", headers=AUTH, json=watch).status_code == 200
+    assert wait_until(lambda: bridge.logged("promise with no work: continuation not started yet"))
+    return thread
+
+
+def test_words_sent_while_the_continuation_starts_hold_it(bridges, fakes):
+    bridge = bridges.new().start()
+    fakes.hermes.steer_status = 409   # Hermes: a run that ended takes no more words
+    thread = window(bridge, fakes)
+    sent = bridge.post(f"/v1/threads/{thread}/messages", headers=AUTH,
+                       json={"agent": "wellness", "client_id": "C0FFEE00-0000-4000-8000-0000000000D1",
+                             "text": "Non laisse tomber, j'irai en magasin"})
+    assert sent.status_code == 200 and sent.json()["state"] == "queued", sent.text
+    time.sleep(3)
+    continued = [r for r, s in fakes.hermes.started.items() if "[bipagents:go_on]" in s["input"]]
+    assert continued == [], f"the person's words wait in line, yet the continuation started: {continued}"
+    assert bridge.logged("promise with no work: the person stepped in")
+
+
+def test_stop_while_the_continuation_starts_is_kept(bridges, fakes):
+    bridge = bridges.new().start()
+    thread = window(bridge, fakes)
+    stopped = bridge.post(f"/v1/threads/{thread}/stop", headers=AUTH, json={"agent": "wellness"})
+    assert stopped.status_code == 200, stopped.text
+    time.sleep(3)
+    assert list(fakes.hermes.started) == [], f"Stop answered {stopped.json()}, then {list(fakes.hermes.started)} started"
+
+
+def cited(bridges, fakes, go_on):
+    from test_sandbox import isolated, started
+    bridge, hub, volumes = isolated(bridges, fakes, agents=("wellness",))
+    if not go_on:
+        bridge.config["brake"] = {"go_on": False}
+    started(bridge, hub, ["wellness"])
+    (volumes[("envoi", "wellness")] / "idees.md").write_text("# Idées à 5 €\n- un carnet\n")
+    promise = "Tes idées sont dans /envoi/idees.md. Je te prépare aussi les liens pour 5 €."
+    nxt = f"r{len(fakes.hermes.started) + 1}"
+    fakes.hermes.runs["run_vie"] = turn("run_vie", promise)
+    fakes.hermes.runs[nxt] = turn(nxt, FOUND, tools=["web_search"])
+    return follow(bridge, "run_vie")[-1][1]
+
+
+def test_without_go_on_the_cited_file_is_handed_over(bridges, fakes):
+    end = cited(bridges, fakes, go_on=False)
+    assert [a["path"] for a in end.get("attachments") or []] == ["/envoi/idees.md"], end
+
+
+def test_a_file_the_promise_cites_still_reaches_the_app(bridges, fakes):
+    end = cited(bridges, fakes, go_on=True)
+    assert end["output"] == FOUND
+    assert [a["path"] for a in end.get("attachments") or []] == ["/envoi/idees.md"], end
+
+
+def test_after_a_restart_the_continuation_is_never_continued(bridges, fakes):
+    bridge = bridges.new().start()
+    fakes.hermes.rounds = 1000   # r1 still running for Hermes when the bridge comes back
+    gate = threading.Event()
+    again = "Je m'en occupe, je reviens vers toi dans un instant."
+    fakes.hermes.runs["run_vie"] = turn("run_vie", PROMISE)
+    fakes.hermes.runs["r1"] = [sse("message.delta", run_id="r1", delta="Je cherche… "), gate,
+                               sse("message.delta", run_id="r1", delta=again),
+                               sse("run.completed", run_id="r1", output=again)]
+    watch = {"agent": "wellness", "run_id": "run_vie", "session_id": "api_c"}
+    assert bridge.post("/v1/watch", headers=AUTH, json=watch).status_code == 200
+    assert wait_until(lambda: fakes.hermes.seen("/v1/runs/r1/events"))
+    # Hermes keeps the continuation's input in the conversation, as the person's rows
+    fakes.hermes.add_session("api_c", [{"role": "user", "content": "Trouve-moi un achat test à 5 €."},
+                                       {"role": "assistant", "content": PROMISE},
+                                       {"role": "user", "content": fakes.hermes.started["r1"]["input"]}], title="Achat")
+    # the iOS app adopts the continuation (ConversationModel.adoptRun: POST /v1/watch of its run)
+    assert bridge.post("/v1/watch", headers=AUTH, json={**watch, "run_id": "r1"}).status_code == 200
+    time.sleep(0.5)
+    bridge.restart()
+    assert wait_until(lambda: bridge.logged("run watch resumed"), timeout=15)
+    gate.set()
+    time.sleep(3)
+    continued = [r for r, s in fakes.hermes.started.items() if "[bipagents:go_on]" in s["input"]]
+    assert continued == ["r1"], f"a continuation of the continuation: {continued}"
+
+
+def test_the_continuation_keeps_the_turns_instructions(bridges, fakes):
+    # a conversation shown read-only to invited people (read_shares.rs): the app's instructions for the turn hold for
+    # its continuation too
+    bridge = bridges.new().start()
+    thread = thread_of(bridge, fakes)
+    fakes.hermes.runs["r1"] = turn("r1", PROMISE)
+    fakes.hermes.runs["r2"] = turn("r2", FOUND, tools=["web_search"])
+    shared = "This conversation is shown read-only to 3 people your person invited."
+    sent = bridge.post(f"/v1/threads/{thread}/messages", headers=AUTH,
+                       json={"agent": "wellness", "client_id": "C0FFEE00-0000-4000-8000-0000000000F1",
+                             "text": "Trouve-moi un achat test à 5 €.", "instructions": shared})
+    assert sent.status_code == 200 and sent.json()["run_id"] == "r1", sent.text
+    assert wait_until(lambda: "r2" in fakes.hermes.started, timeout=10), fakes.hermes.started
+    assert "[bipagents:go_on]" in fakes.hermes.started["r2"]["input"]
+    assert fakes.hermes.started["r2"]["instructions"] == shared
+
+
+def test_ok_words_written_during_the_continuation_go_into_it(bridges, fakes):
+    bridge = bridges.new().start()
+    thread = thread_of(bridge, fakes)
+    gate = threading.Event()
+    fakes.hermes.runs["run_vie"] = turn("run_vie", PROMISE)
+    fakes.hermes.runs["r1"] = [sse("tool.started", run_id="r1", tool="web_search", preview="idée"), gate,
+                               *turn("r1", FOUND)]
+    watch = {"agent": "wellness", "run_id": "run_vie", "session_id": "api_c"}
+    assert bridge.post("/v1/watch", headers=AUTH, json=watch).status_code == 200
+    assert wait_until(lambda: fakes.hermes.seen("/v1/runs/r1/events"))
+    time.sleep(0.3)
+    sent = bridge.post(f"/v1/threads/{thread}/messages", headers=AUTH,
+                       json={"agent": "wellness", "client_id": "C0FFEE00-0000-4000-8000-0000000000E1",
+                             "text": "plutôt en bio"})
+    assert sent.status_code == 200 and sent.json()["state"] == "steered" and sent.json()["run_id"] == "r1", sent.text
+    assert [s["run_id"] for s in fakes.hermes.steers] == ["r1"]
+    gate.set()
+
+
+def leave_with_a_card(bridges, fakes, card):
+    bridge = bridges.new().start()
+    assert bridge.post("/v1/devices", headers=AUTH, json={"token": "e" * 64, "environment": "sandbox",
+                                                          "agent_ids": ["wellness"]}).status_code == 200
+    finish = threading.Event()
+    fakes.hermes.runs["run_vie"] = turn("run_vie", PROMISE)
+    fakes.hermes.runs["r1"] = [sse("tool.started", run_id="r1", tool="terminal", preview="rm -rf build/"), card,
+                               finish, *turn("r1", FOUND)]
+    with bridge.stream("GET", "/v1/runs/run_vie/events?agent=wellness&session_id=api_c", headers=AUTH) as resp:
+        assert resp.status_code == 200
+        assert wait_until(lambda: fakes.hermes.seen("/v1/runs/r1/events"))
+        time.sleep(1.0)   # the card comes right after the continuation's first tool
+        before = list(fakes.apns.payloads())
+    # the app leaves the conversation (screen locked): the continuation's card, seen through the turn, is pushed now
+    assert wait_until(lambda: len(fakes.apns.payloads()) > len(before), timeout=5), fakes.apns.payloads()
+    finish.set()
+    return before
+
+
+def test_ok_the_continuations_approval_is_pushed_once_the_app_leaves(bridges, fakes):
+    before = leave_with_a_card(bridges, fakes, sse("approval.request", run_id="r1", request_id="req_1",
+                                                   command="rm -rf build/", choices=["once", "session", "deny"]))
+    assert before == []
+
+
+def test_ok_the_continuations_question_is_pushed_once_the_app_leaves(bridges, fakes):
+    before = leave_with_a_card(bridges, fakes, sse("clarify.request", run_id="r1", request_id="q_1",
+                                                   question="Quel budget ?", choices=["5 €", "10 €"]))
+    assert before == []

@@ -50,12 +50,12 @@ static PROMISE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(concat!(
         r"(?i)",
         // French
-        r"\bje (?:te |t'|vous )?(?:pr[ée]pare|cherche|regarde|lance|compare|fouille|reviens|m'en occupe|m'y mets|m'en charge)\b",
+        r"\bje (?:te |t'|vous )?(?:pr[ée]pare|cherche|regarde|lance|compare|fouille|d[ée]gote|d[ée]niche|reviens|m'en occupe|m'y mets|m'en charge)\b",
         r"|\bje vais (?:te |t'|vous )?(?:chercher|regarder|trouver|comparer|voir|fouiller|lancer|pr[ée]parer|d[ée]nicher|faire une recherche|m'en occuper)\b",
         r"|\bje (?:te |vous )?(?:tiens au courant|recontacte|reviens)\b",
         r"|\blaisse-moi (?:chercher|regarder|v[ée]rifier)\b|\bdonne-moi (?:quelques|deux|trois|cinq|\d+) minutes\b",
         // English
-        r"|\bi(?:'ll| will) (?:look (?:for|into|up|around)|search|check|find|get back|come back|be back|prepare|put together|dig|compare|report back|hunt)\b",
+        r"|\bi(?:'ll| will) (?:look (?:for|into|up|around)|search|check|find|get back|come back|be back|get [^.!?\n]{0,30}ready|prepare|put together|dig|compare|report back|hunt)\b",
         r"|\bi'm (?:on it|looking (?:for|into|up)|searching|checking|preparing|putting together|digging)\b",
         r"|\blet me (?:look|search|check|find|dig)\b|\bgive me (?:a few|a couple of|\d+) minutes\b",
         // Spanish
@@ -70,6 +70,54 @@ static PROMISE: LazyLock<Regex> = LazyLock::new(|| {
 
 /// A link, whose `?` asks nothing.
 static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://\S+").expect("valid regex"));
+
+/// Words that are not the agent's own to its person: the hidden spoken version (`<!--bip:say …-->`), a block (a
+/// ```draft to send, code).
+static HIDDEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)<!--.*?-->|```.*?(?:```|$)").expect("valid regex"));
+
+/// Quoted words (an example, a line of a story, a quoted message): someone else's « je cherche ».
+static QUOTED: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"(?m)«[^»]*»|“[^”]*”|"[^"\n]*"|^[ \t]*>.*$"#).expect("valid regex"));
+
+/// A letter's closing line (a reply drafted for the person to send): what comes before it is the draft's.
+static SIGNED: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"(?mi)^[ \t]*(?:bien (?:cordialement|à (?:vous|toi))|cordialement|bien amicalement|amicalement|amitiés|bisous|bises",
+        r"|best(?: regards| wishes)?|kind regards|warm regards|regards|sincerely|yours|saludos(?: cordiales)?|atentamente",
+        r"|un (?:abrazo|saludo)|mit freundlichen grüßen|viele grüße|liebe grüße|beste grüße|met vriendelijke groet(?:en)?",
+        r"|hartelijke groet(?:en)?|groetjes)[ \t]*[,.]?[ \t]*$",
+    ))
+    .expect("valid regex")
+});
+
+/// The agent's own words to its person: without its hidden notes and blocks, a drafted letter (up to its signature),
+/// quoted words (unless the whole reply is quoted) and links.
+fn own_words(reply: &str) -> String {
+    let text = reply.replace(['\u{2019}', '\u{02BC}'], "'");
+    let mut text = HIDDEN.replace_all(&text, "").to_string();
+    if let Some(signed) = SIGNED.find_iter(&text).last() {
+        let mut rest = &text[signed.end()..];
+        // the signature's name line (short, no sentence) belongs to the draft too
+        if let Some(line) = rest.lines().find(|l| !l.trim().is_empty()) {
+            let line = line.trim();
+            if line.chars().count() <= 40 && !line.contains(['.', '!', '?']) {
+                rest = rest.split_once(line).map_or(rest, |(_, after)| after);
+            }
+        }
+        text = rest.to_string();
+    }
+    let unquoted = QUOTED.replace_all(&text, "");
+    if unquoted.chars().any(char::is_alphabetic) {
+        text = unquoted.to_string();
+    }
+    LINK.replace_all(&text, "").to_string()
+}
+
+/// A promise followed on its line by `:` and what it gives (« Let me check the math: 3 × 4.99 € = 14.97 € »): done.
+fn delivered(after: &str) -> bool {
+    let line = after.lines().next().unwrap_or("");
+    line.split_once(':').is_some_and(|(_, given)| given.chars().filter(|c| c.is_alphanumeric()).count() >= 3)
+}
 
 /// The person is asked to say or choose something (lower case; apostrophes made straight first): the work waits for
 /// their answer, it was offered, not promised. Bench 13/11 (DeepSeek): « Dis-moi lequel et je m'y mets tout de suite ».
@@ -95,19 +143,18 @@ pub fn did_nothing<'a>(tools: impl IntoIterator<Item = &'a str>) -> bool {
 
 /// The reply's end announces work to come, and does not wait for the person (a question, an offer).
 pub fn promises(reply: &str) -> bool {
-    let text = reply.trim();
+    let text = own_words(reply);
+    let text = text.trim();
     if text.is_empty() {
         return false;
     }
     let chars: Vec<char> = text.chars().collect();
     let tail: String = chars[chars.len().saturating_sub(TAIL_CHARS)..].iter().collect();
-    let tail = tail.replace(['\u{2019}', '\u{02BC}'], "'");
-    let tail = LINK.replace_all(&tail, "");
     // it asks the person something (« Tu veux que je… ? », « Dis-moi lequel et je m'y mets »): they answer first
     if tail.contains('?') || ASKS.is_match(&tail) {
         return false;
     }
-    PROMISE.is_match(&tail)
+    PROMISE.find_iter(&tail).any(|m| !delivered(&tail[m.end()..]))
 }
 
 /// The continuation's input (in English, like the brake's: the agent answers in its person's language).
@@ -179,6 +226,44 @@ mod tests {
         assert!(promises("Ich melde mich in ein paar Minuten mit dem Link."));
         assert!(promises("Ik kijk even rond en kom zo bij je terug."));
         assert!(promises("Vuelvo en unos minutos con el enlace."));
+    }
+
+    #[test]
+    fn a_draft_a_story_or_an_example_is_no_promise() {
+        // re-review 13/11: words the agent writes for someone else, quotes, or the work given at once after a colon
+        let said = [
+            "Voici une proposition de réponse :\n\nBonjour Madame Durand,\n\nMerci pour votre message. Je regarde \
+             votre dossier ce week-end et je reviens vers vous lundi.\n\nBien cordialement,\nAlex",
+            "Here's a reply you can send:\n\nHi Sarah,\n\nThanks for flagging this. I'll look into it and get back \
+             to you by Friday.\n\nBest,\nAlex",
+            "Le petit renard leva les yeux vers la lune et murmura : « Je cherche mon chemin. » La lune lui sourit, et \
+             il s'endormit. Fin. Bonne nuit !",
+            "En espagnol, « Je cherche un cadeau pas cher » se dit « Busco un regalo barato ». Bon courage pour ton cours !",
+            "Let me check the math: 3 × 4.99 € = 14.97 €, so you stay under your 15 € budget.",
+            "Je regarde : 3 × 4,99 € = 14,97 €, tu restes bien sous les 15 €.",
+            "Voilà le texto :\n\n```draft\nSalut Léa, je regarde ça ce soir et je te redis demain !\n```",
+            "C'est noté.\n<!--bip:say Je te prépare ça plus tard si tu veux.-->",
+        ];
+        let taken: Vec<&str> = said.iter().copied().filter(|s| promises(s)).collect();
+        assert!(taken.is_empty(), "taken for a promise of work: {taken:#?}");
+        // still promises: the agent's own words around a quote, after a draft, or a quoted whole reply
+        assert!(promises("J'ai noté « carnet » et « stylo ». Je te prépare 2-3 trouvailles pour 5 €."));
+        assert!(promises("« Je te prépare 2-3 trouvailles pour 5 €. »"));
+        assert!(promises(
+            "Voici le brouillon :\n\nBonjour,\nMerci.\n\nCordialement,\nAlex\n\nPendant ce temps je regarde les prix \
+             sur la Fnac."
+        ));
+        assert!(promises(
+            "Je regarde Sephora et Nocibé :\n\n- miniatures\n- échantillons\n\nJe reviens dans 5 minutes."
+        ));
+    }
+
+    #[test]
+    fn the_rules_own_english_promise_is_caught() {
+        // souls.rs ENGLISH_EXAMPLES gives « I'll get that ready » for « je te prépare ça »
+        assert!(promises("I'll get that ready for you."));
+        assert!(promises("I'll get 2-3 finds ready for €5."));
+        assert!(promises("Je te déniche ça."));
     }
 
     #[test]

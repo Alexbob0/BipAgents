@@ -629,7 +629,7 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
     let instructions = body.instructions.as_deref().filter(|i| !i.trim().is_empty());
     let options = crate::turn_thinking::turn_options(&state.config(), agent, &words, body.thinking);
     let thinks = crate::turn_thinking::thought(options.as_ref());
-    let run = match state.hermes.start_run_input(agent, input.clone(), tip, instructions, options).await {
+    let run = match state.hermes.start_run_input(agent, input.clone(), tip, instructions, options.clone()).await {
         Ok(run) => run,
         Err(exc) => match exc.status() {
             Some(status @ (400 | 413 | 415 | 422)) => {
@@ -670,6 +670,8 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
     state.hub.watch(agent, &run, Some(tip), true);
     state.hub.keep(agent, &run, Some(tip));
     state.hub.set_phone(&agent.name, &run, phone);
+    // its continuation, if it ends on a promise, keeps them (runs.rs `go_on`)
+    state.hub.set_turn(&agent.name, &run, instructions, options);
     tracing::info!(agent = %agent.name, run_id = %run, "message sent: a turn started");
     threads.bump(&thread, "sent").await?;
     told(tip);
@@ -683,6 +685,8 @@ pub async fn stop(state: &AppState, agent: &AgentConfig, thread: &Thread) -> Api
     let Some(run) = tip.as_deref().and_then(|t| state.hub.session_run(&agent.name, t)) else {
         return Ok(json!({"stopped": false}));
     };
+    // noted first: a turn that just ended on a promise is not continued (runs.rs `go_on`)
+    state.hub.ask_stop(&agent.name, &run);
     match state.hermes.stop_run(agent, &run).await {
         Ok(()) => Ok(json!({"stopped": true, "run_id": run})),
         Err(exc) if matches!(exc.status(), Some(404 | 409)) => Ok(json!({"stopped": false, "run_id": run})),
