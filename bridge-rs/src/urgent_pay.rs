@@ -485,7 +485,7 @@ const CONJUNCTIONS: &[&str] = &[
 /// GÉNÉRALE OK] », the lab of 14/11), each one taken out, and the line's own words without them (None: nothing but
 /// them, markdown or an emoji). « [… BLOCKED] » with no reason inside takes the words after it, up to the next verdict,
 /// as its reason. None: no bracketed verdict in the line (a line quoted from a page, « > … », never has one).
-fn verdicts_in(line: &str) -> Option<(Vec<Verdict>, Option<String>)> {
+fn verdicts_in(line: &str, codes_decide: bool) -> Option<(Vec<Verdict>, Option<String>)> {
     let orig: Vec<char> = line.chars().collect();
     if orig.iter().find(|c| !c.is_whitespace()) == Some(&'>') {
         return None;
@@ -495,12 +495,23 @@ fn verdicts_in(line: &str) -> Option<(Vec<Verdict>, Option<String>)> {
     let mut i = 0;
     while i < orig.len() {
         if orig[i] == '[' {
-            if let Some(close) = (i + 1..orig.len()).find(|j| orig[*j] == ']') {
-                let segment: String = orig[i..=close].iter().collect();
-                if let Some(v) = verdict_of(&segment) {
-                    found.push((i, close + 1, v));
-                    i = close + 1;
-                    continue;
+            match (i + 1..orig.len()).find(|j| orig[*j] == ']') {
+                Some(close) => {
+                    let segment: String = orig[i..=close].iter().collect();
+                    if let Some(v) = verdict_of(&segment) {
+                        found.push((i, close + 1, v));
+                        i = close + 1;
+                        continue;
+                    }
+                }
+                // the code word's bracket never closed (« Désolé. [REHEARSAL BLOCKED: le site demande un code SMS »):
+                // it runs to the end of the line (fifth review of 14/11, as 36d5329d0 read it)
+                None => {
+                    let segment: String = orig[i..].iter().collect();
+                    if let Some(v) = verdict_of(&segment).filter(|v| v.code) {
+                        found.push((i, orig.len(), v));
+                        break;
+                    }
                 }
             }
         }
@@ -524,7 +535,9 @@ fn verdicts_in(line: &str) -> Option<(Vec<Verdict>, Option<String>)> {
         kept.extend(&orig[at..start]);
         kept.push(' ');
         at = end;
-        if !v.ok && v.why.is_empty() {
+        // only a deciding verdict takes them: the code word, or a translation when the reply has no code word (one the
+        // code word overrides keeps the person's words: « [REHEARSAL OK] (la [RÉPÉTITION BLOQUÉE] d'hier est réglée) »)
+        if !v.ok && v.why.is_empty() && (v.code || !codes_decide) {
             // « [REHEARSAL BLOCKED] why »: the words after it, up to the next verdict, are what blocked
             let until = found.get(n + 1).map_or(orig.len(), |next| next.0);
             v.why = tidy(&orig[end..until].iter().collect::<String>());
@@ -656,10 +669,14 @@ fn verdict_of(line: &str) -> Option<Verdict> {
 /// else the translations, a blocked one anywhere winning. None: no verdict.
 pub fn read_rehearsal(text: &str) -> Option<(bool, String, String)> {
     let text = crate::tools_knowledge::strip(text).trim().to_string();
+    // the code word anywhere in the reply decides: a translation it overrides takes no words as its reason
+    let codes_decide = text.lines().any(|l| {
+        verdicts_in(l, true).is_some_and(|(found, _)| found.iter().any(|v| v.code)) || verdict_of(l).is_some_and(|v| v.code)
+    });
     // each line: its bracketed verdicts wherever they stand (its own words kept), else a verdict at its start, else words
     let read: Vec<(String, Option<Verdict>)> = text
         .lines()
-        .flat_map(|l| match verdicts_in(l) {
+        .flat_map(|l| match verdicts_in(l, codes_decide) {
             Some((found, left)) => {
                 let mut out: Vec<(String, Option<Verdict>)> = found.into_iter().map(|v| (String::new(), Some(v))).collect();
                 out.extend(left.map(|w| (w, None)));
@@ -1300,5 +1317,44 @@ mod rcl4_review_probes {
             read_rehearsal("Voir [la page 2] du site. [REHEARSAL OK]"),
             Some((true, String::new(), "Voir [la page 2] du site.".into()))
         );
+    }
+}
+
+
+// -- fifth re-review of cards-lab-fixes (14/11, 4a8b2af11): its probes, failing on 4a8b2af11, kept as tests ----
+#[cfg(test)]
+mod rcl5_review_probes {
+    use super::*;
+
+    /// The code word decides; a blocked translation it overrides takes no words of the person's as its reason.
+    #[test]
+    fn rcl5_an_overridden_translation_swallows_no_words() {
+        let read = read_rehearsal("[REHEARSAL OK] (la [RÉPÉTITION BLOQUÉE] d'hier est réglée)").expect("a verdict");
+        assert!(read.0 && read.2.contains("d'hier est réglée"), "the person reads {:?}", read.2);
+    }
+
+    /// A blocked code word whose closing bracket is missing, inside a line (read before, by 36d5329d0): still read,
+    /// never shown.
+    #[test]
+    fn rcl5_an_unclosed_blocked_code_word_inside_a_line_is_read() {
+        let read = read_rehearsal("Désolé. [REHEARSAL BLOCKED: le site demande un code SMS");
+        assert_eq!(read, Some((false, "le site demande un code SMS".into(), "Désolé.".into())));
+    }
+
+    /// Brackets that are no verdict stay the person's (check, expected to pass).
+    #[test]
+    fn rcl5_other_brackets_untouched() {
+        let read = read_rehearsal("Voir [1] et [lien] ✅ [✅] [Billet Stromae](https://shop.example/b). [REHEARSAL OK]");
+        assert_eq!(read.map(|r| r.2), Some("Voir [1] et [lien] ✅ [✅] [Billet Stromae](https://shop.example/b).".into()));
+    }
+
+    /// Across lines too: the code word on one line, an overridden translation on the next keeps its words; an unclosed
+    /// bracket that is no code word stays the person's.
+    #[test]
+    fn rcl5_across_lines_and_other_unclosed_brackets() {
+        let read = read_rehearsal("[REHEARSAL OK]\n(la [RÉPÉTITION BLOQUÉE] d'hier est réglée)").unwrap();
+        assert!(read.0 && read.2.contains("d'hier est réglée"), "{read:?}");
+        let read = read_rehearsal("Voir [la page 2 du site. [REHEARSAL OK]").unwrap();
+        assert_eq!(read.2, "Voir [la page 2 du site.");
     }
 }
