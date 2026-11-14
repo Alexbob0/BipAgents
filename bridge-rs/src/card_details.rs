@@ -126,7 +126,7 @@ static PAYMENT_CARD: LazyLock<Regex> = LazyLock::new(|| Regex::new(PAYMENT_CARD_
 /// number (« card security code »). `strong`: enough alone; the others only beside a card (`card_context`).
 const CSC_STRONG_SRC: &str = r"\b(cvc2?|cvv2?|csc|cvn|cav2)\b|cc ?csc|card ?verification|cryptogramme|kartenprufnummer|codigo de seguridad de la tarjeta|card ?security ?code|code de securite de (la|votre|ta) carte|3 chiffres au dos|chiffres au dos|digits on the back|ziffern auf der ruckseite|digitos (al|del) dorso";
 static CSC_STRONG: LazyLock<Regex> = LazyLock::new(|| Regex::new(CSC_STRONG_SRC).expect("valid regex"));
-const CSC_WEAK_SRC: &str = r"security ?code|code de securite|sicherheitscode|prufnummer|prufziffer|codigo de seguridad|\bcode\b|\bcrypto\b";
+const CSC_WEAK_SRC: &str = r"security ?code|code de securite|sicherheitscode|prufnummer|prufziffer|codigo de seguridad|\bcrypto\b";
 static CSC_WEAK: LazyLock<Regex> = LazyLock::new(|| Regex::new(CSC_WEAK_SRC).expect("valid regex"));
 const EXP_STRONG_SRC: &str = r"cc ?exp|card ?expir|expir\w* (date|month|year)|exp ?date|exp (month|year|mm|yy)|date d ?expiration|date de (fin de )?validite|valid ?(thru|through)|valable jusqu|gultig bis|ablaufdatum|ablauf|fecha de (caducidad|vencimiento|expiracion)|caducidad|vencimiento|\bmm ?/ ?(yy|aa|jj|yyyy|aaaa)\b";
 static EXP_STRONG: LazyLock<Regex> = LazyLock::new(|| Regex::new(EXP_STRONG_SRC).expect("valid regex"));
@@ -336,6 +336,7 @@ mod tests {
         }
         // Beside a card's number only: words that mean other things elsewhere.
         assert_eq!(card_field("Code de sécurité", true), Some("csc"));
+        assert_eq!(card_field("Code d'accès (digicode)", true), None, "a delivery's door code, even beside a card");
         assert_eq!(card_field("Code de sécurité", false), None);
         assert_eq!(card_field("Titulaire", true), Some("name"));
         assert_eq!(card_field("Titulaire du compte", false), None);

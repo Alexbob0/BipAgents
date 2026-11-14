@@ -295,8 +295,8 @@ pub fn hide_cards(response: &mut Dict) -> bool {
 /// The page's look at fields for cards (`target_script`, `guard_before`, `guard_after`): the rules of card_details.rs
 /// (`js_rules`), a field's words (its autocomplete token, name, id, placeholder, aria and title, labels, data-*), a
 /// payment provider's frame (by its address's host, card_fill.rs `provider_hosts`, or its name, title, id or class),
-/// and `cardOf(e, ctx)`: the part of a card a field is (« Titulaire » or « Code » only beside a card's number or a
-/// provider's frame: `ctx`).
+/// and `cardOf(e, ctx)`: the part of a card a field is (« Titulaire », « Mois » or « Code de sécurité » only beside a
+/// card's number in its form or page, or a provider's frame in its form: `ctx`).
 pub fn card_js() -> String {
     let hosts = serde_json::to_string(&crate::card_fill::provider_hosts()).unwrap_or_else(|_| "[]".into());
     format!(
@@ -313,7 +313,7 @@ const NOT_TEXT = ['hidden', 'submit', 'button', 'image', 'reset', 'checkbox', 'r
 const fieldish = (e) => ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.tagName) && !NOT_TEXT.includes((e.getAttribute('type') || '').toLowerCase()); \
 const scopeOf = (e) => e.form || e.ownerDocument; \
 const cardScope = (scope) => [...scope.querySelectorAll('input, select, textarea')].some((o) => fieldish(o) && cardKind(words(o), false) === 'number') \
-|| [...scope.querySelectorAll('iframe, frame')].some(payFrame); \
+|| (scope.tagName === 'FORM' && [...scope.querySelectorAll('iframe, frame')].some(payFrame)); \
 const cardOf = (e, ctx) => {{ if (!fieldish(e)) return ''; const w = words(e); return cardKind(w, false) || (ctx === undefined ? cardScope(scopeOf(e)) : ctx) && cardKind(w, true) || ''; }}; ",
         rules = crate::card_details::js_rules()
     )
