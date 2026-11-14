@@ -8,7 +8,8 @@ fix-signup-hold: the same tools, output schemas and semantics where the guard of
 - execute_script: `script`, or `(function() { script })(args…)` with `args` (dom_handler.execute_script);
 - select_option (added for select-option-direct, 13/11): as dom_handler.select_option, a `value` or an `index` set by a
   script declaring `const select` at the page's top level, its error never read (nodriver `Tab.evaluate` returns it),
-  so True whatever happened: a page's second list is never set; a `text` typed into the list (`send_keys`).
+  so True whatever happened: a page's second list is never set; a `text` typed into the list (`send_keys`: Chrome's
+  type-ahead picks the first choice whose text starts with it, review of select-option-direct 14/11).
 
     python3 stealth_cdp.py <page's DevTools websocket URL>
 """
@@ -110,7 +111,14 @@ def call(name, args):
     if name == "select_option":
         element = select(args["selector"])
         if args.get("text") is not None:
-            evaluate(f"{element}.focus()")
+            # `send_keys` into the list: Chrome's type-ahead picks the first choice whose text starts with the keys
+            # (the lab, 13/11: day « 14 », month « Mars », year « 1991 » all set this way); typed into anything else
+            typed = json.dumps(str(args["text"]).lower())
+            if evaluate(f"(() => {{ const s = {element}; s.focus(); if (s.tagName !== 'SELECT') return false; "
+                        f"const o = [...s.options].find((x) => x.text.trim().toLowerCase().startsWith({typed})); "
+                        "if (o) { s.value = o.value; s.dispatchEvent(new Event('input', {bubbles: true})); "
+                        "s.dispatchEvent(new Event('change', {bubbles: true})); } return true; })()"):
+                return True
             for char in str(args["text"]):
                 cdp("Input.insertText", {"text": char})
             return True

@@ -66,6 +66,16 @@ def test_a_list_of_the_sites_own_is_told_to_take_two_clicks(browser):
     assert said.startswith("Not done:"), said
 
 
+def test_the_sites_hidden_field_behind_its_own_list_points_to_that_list(browser):
+    # the « after » bench, 13/11, DeepSeek run 11: select_option on « #civility-value », the hidden input the site's
+    # own « Civilité » list fills (review 14/11: told « a list of the site's own », as if it could be clicked)
+    open_form(browser)
+    said = browser.tool("select_option", selector="#civility-value", text="Madame")
+    assert said.startswith("Not done: that is a hidden field"), said
+    assert "#civility (Civilité)" in said and "click_element" in said, said
+    assert browser.page("document.getElementById('civility-value').value") == ""
+
+
 def test_a_list_looked_for_under_a_guessed_name_gets_the_pages_lists(browser):
     # the « after » bench, GLM-5.3 Flash (2 runs of 9 stopped there): « Civilité » looked for as
     # `select[name="civilite"], #civilite`, then `select#*civility`, never found; the answer now names the page's lists,

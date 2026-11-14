@@ -723,6 +723,18 @@ mod tests {
     }
 
     #[test]
+    fn review_sod_the_civility_question_is_asked_in_the_persons_language() {
+        // review 14/11: the example question is French (« Madame ou Monsieur ? ») and nothing said to ask it in the
+        // person's language, as could_not_start (browser_mcp.rs) and card_pay.rs say for theirs; an English, German or
+        // Spanish form's « Title » / « Anrede » / « Tratamiento » wasn't named either
+        let said = not_held(&[&dict(json!({"full_name": "Camille Testeur"}))]);
+        assert!(said.contains("in their language"), "{said}");
+        for word in ["Mr / Ms", "Frau / Herr", "Sr. / Sra.", "Title", "Anrede", "Tratamiento"] {
+            assert!(said.contains(word), "{word}: {said}");
+        }
+    }
+
+    #[test]
     fn a_birth_date_is_a_real_day_kept_for_the_agent_never_for_the_browser_fill() {
         // Alex 13/11: the pharmacy's sign-up form required one; the apps send « YYYY-MM-DD », "" clears it
         let today = chrono::NaiveDate::from_ymd_opt(2026, 11, 13).unwrap();
