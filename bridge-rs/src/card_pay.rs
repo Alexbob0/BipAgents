@@ -1526,6 +1526,17 @@ async fn fresh_page(
             "The page changed while the person was asked: nothing was typed. Ask again from the payment page.".into()
         );
     }
+    // A provider's own page: still reached from the shop in this tab (not opened again meanwhile by its address).
+    if let Some((shop, _)) = &entry.hosted {
+        let test = card_fill::test_providers(config);
+        let (entries, current) = page.history().await.map_err(|e| unreachable_text(&e))?;
+        if card_fill::reached_from(&entries, current, &entry.sites, &test).as_ref() != Some(shop) {
+            return Err(format!(
+                "The payment page was opened again while the person was asked, not from {shop}: nothing was typed. \
+                 {HAND_IT_OVER}"
+            ));
+        }
+    }
     let lost = format!(
         "The payment page was refreshed for the payment and came back without its card form (some sites lose the \
          order when the page is refreshed): nothing was typed. {HAND_IT_OVER}"
