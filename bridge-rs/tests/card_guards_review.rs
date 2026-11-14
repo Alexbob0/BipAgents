@@ -3,7 +3,7 @@
 //! Only published test numbers (Visa 4242…) and synthetic IBAN / NIR values with valid check digits.
 
 use bipbridge::browser_mcp::{refused_address, script_card_refusal, PROVIDER_SCRIPT_REFUSED};
-use bipbridge::card_details::{asks_for_card, hide_card_numbers, holds_card_number};
+use bipbridge::card_details::{asks_for_card, hide_card_numbers, shows_card_number};
 use serde_json::{json, Value};
 
 fn dict(v: Value) -> serde_json::Map<String, Value> {
@@ -51,7 +51,8 @@ fn rv2_an_iban_or_a_social_security_number_is_no_card_number() {
         "1 48 10 09 262 121 10",              // synthetic NIR, valid key (97 - n mod 97)
         "148100926212110",
     ] {
-        assert!(!holds_card_number(text), "taken for a card number: {text:?} -> {:?}", hide_card_numbers(text));
+        // second review of 14/11: UATP (a NIR's look) is a card's number when typed, never in what the agent reads
+        assert!(!shows_card_number(text), "taken for a card number: {text:?} -> {:?}", hide_card_numbers(text));
     }
 }
 

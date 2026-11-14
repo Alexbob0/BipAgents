@@ -201,7 +201,26 @@ pay_with_card, and when it can't, hand_over_payment.";
 /// Added to `execute_script` in the tool list (`tame_tool_list`).
 pub const NOT_WAYS: &str = "Never to send the browser to another page or to add links, forms, frames or HTML to a page \
 (refused: open an address with navigate, follow the page's own links with click_element); never to read or write a \
-payment card's fields; where a page has card fields, no timers, listeners or promises.";
+payment card's fields. A script runs at once and ends: no timers, listeners or observers, no waiting then writing or \
+clicking, and never a change to how the page's own code works.";
+
+/// A script whose effect would come later (second review of 14/11: an observer set on the step before the card form
+/// filled it when drawn and pressed « Payer », before any look of the guard).
+pub const SCRIPT_LATER_REFUSED: &str = "Not done: a script runs at once and ends: no timers, listeners or observers, \
+and no code that waits (a promise, await) and then writes or clicks. To wait, call your tools again; to act on what a \
+page draws later, read it again and use click_element, type_text or select_option. Nothing was run.";
+
+/// A script changing how the page's own code works (its prototypes, a property's definition, the document's or the
+/// window's own functions): the guard's look in the page's world, when its own can't be had, would read through it.
+pub const SCRIPT_TAMPERS_REFUSED: &str = "Not done: a script never changes how the page's own code or the browser's \
+works (prototypes, defineProperty, the document's or the window's functions). Read the page as it is, and act with \
+click_element, type_text or select_option. Nothing was run.";
+
+/// A script that writes or clicks where cards may be, while the guard can't look from a world of its own (DevTools
+/// out of reach: `look`). Reading goes on.
+pub const SCRIPT_BLIND_REFUSED: &str = "Not done: on this page your browser can't check a script that writes or \
+clicks right now (a payment card's fields may be there). Use click_element, type_text or select_option, which are \
+checked; a script that only reads goes on. Nothing was run.";
 
 /// What names a card's field in a script (on `card_details::folded` text): its autocomplete token, the usual names and
 /// ids, in four languages.
@@ -230,8 +249,49 @@ static MAKES_WAY: LazyLock<Regex> = LazyLock::new(|| {
     .expect("valid regex")
 });
 
+/// Timers, listeners, observers, workers and messages: a script whose effect comes later, after the look that follows
+/// it, on any page (second review of 14/11: set before the card form is drawn, an observer filled it and sent it).
+static DEFERS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)settimeout|setinterval|requestanimationframe|requestidlecallback|addeventlistener|\.on[a-z]{3,}\s*=(?:[^=]|$)|\bon(?:load|click|change|input|submit|focus|blur|key[a-z]+|mouse[a-z]+|pointer[a-z]+|animation[a-z]+|transition[a-z]+)\s*=(?:[^=]|$)|observer|queuemicrotask|new\s+(?:shared)?worker|serviceworker|messagechannel|broadcastchannel|postmessage",
+    )
+    .expect("valid regex")
+});
+
+/// Code that waits (a promise's continuation, async, await): refused when the script writes or clicks (`ACTS`).
+static CONTINUES: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)\.(?:then|catch|finally)\s*\(|\basync\b|\bawait\b|\bpromise\b").expect("valid regex"));
+
+/// A script that writes into the page or acts on it: a property set (`x.value = …`, `x['y'] = …`), a click, an event
+/// sent, a form sent, an element or attribute added, changed or removed.
+static ACTS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)(?:\.[\w$]+|\])\s*(?:[-+*/%&|^]|\*\*|<<|>>>?|\|\||&&|\?\?)?=(?:[^=>]|$)|\.\s*(?:click|dispatchevent|submit|requestsubmit|focus|blur|setattribute\w*|removeattribute|toggleattribute|append(?:child)?|prepend|insert\w*|replace(?:child|children|with)|remove(?:child)?|execcommand|setrangetext|showpicker|trigger|val|prop|attr|reset|select)\s*\(|document\s*\.\s*write",
+    )
+    .expect("valid regex")
+});
+
+/// What changes how the page's own code works: a prototype's member set, a property defined, a prototype swapped, a
+/// built-in's or the document's / window's own function replaced (a look in the page's world would read through it).
+static TAMPERS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i:prototype\s*(?:\.\s*[\w$]+|\[[^\]]*\])\s*=(?:[^=]|$)|defineproperty|setprototypeof|__proto__|__definegetter__|__definesetter__)|\b(?:JSON|Math|String|Array|Object|Reflect|RegExp|Function|Element|Node|EventTarget|HTML\w*Element|Document|Window|Event|MutationObserver|Promise)\s*\.\s*[\w$]+\s*=(?:[^=]|$)|\b(?:document|window|self|globalThis)\s*\.\s*(?:querySelector\w*|getElement\w*|createElement\w*|addEventListener|removeEventListener|dispatchEvent|evaluate|getComputedStyle|getSelection|fetch|XMLHttpRequest|MutationObserver|setTimeout|setInterval|JSON|String|Object|Array|Element|Node|Reflect|Proxy|Event|HTML\w*Element)\s*=(?:[^=]|$)",
+    )
+    .expect("valid regex")
+});
+
+/// What renames a page's fields or their labels (an id, a name, a data- attribute, a label's text, an attribute added
+/// or removed, an element taken out): refused where the page has card fields (second review of 14/11: `data-kind =
+/// 'iban'` on the card's number field made it « another number's » field, and the number went in).
+static RENAMES: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)\.\s*(?:id|name|htmlfor|classname|textcontent|innertext|outertext|nodevalue|data|placeholder|title|autocomplete|type)\s*=(?:[^=]|$)|\b(?:dataset|attributes)\b[^;]*?[^=!<>]=(?:[^=]|$)|setattribute|removeattribute|toggleattribute|setnameditem|removenameditem|object\s*\.\s*assign|\.\s*remove(?:child)?\s*\(|replacewith|replacechild",
+    )
+    .expect("valid regex")
+});
+
 /// Timers, listeners, observers and promises: a script whose effect comes later, after the look that follows it (review
-/// of 14/11: setTimeout writing a card's number 800 ms after the call). Refused where the page has card fields.
+/// of 14/11: setTimeout writing a card's number 800 ms after the call). All refused where the page has card fields.
 static LATER: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?i)settimeout|setinterval|requestanimationframe|requestidlecallback|addeventlistener|\bon[a-z]+\s*=[^=]|observer|queuemicrotask|\.then\s*\(|\basync\b|\bawait\b|\bworker\b|promise",
@@ -244,8 +304,19 @@ static LATER: LazyLock<Regex> = LazyLock::new(|| {
 pub fn script_goes_to_provider(script: &str) -> bool {
     let lower = script.to_lowercase();
     MAKES_WAY.is_match(script)
+        || HIDES_WORDS.is_match(script)
         || NAVIGATES.is_match(script) && crate::card_fill::provider_hosts().iter().any(|h| lower.contains(h))
 }
+
+/// A script that writes its words so they don't show (second review of 14/11: `createElement(String.fromCharCode(97))`,
+/// `a['hr' + 'ef'] = …`, `Reflect.set(form, 'act' + 'ion', …)`): taken as one that makes a way out of the page. What
+/// the page reads never needs it; a provider's page reached after any script is never filled anyway (card_pay.rs).
+static HIDES_WORDS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r#"(?i)fromcharcode|fromcodepoint|\batob\s*\(|\breflect\s*\.|\beval\s*\(|\bfunction\s*\(\s*["'`]|new\s+function\b|\[\s*["'`][^"'`\]]*["'`]\s*\+|\[\s*`[^`\]]*\$\{|\bstring\s*\.\s*raw\b"#,
+    )
+    .expect("valid regex")
+});
 
 /// What the page held before a call about cards (`guard_before`'s `cards`, `frames`, `cardtext`): card fields or a
 /// payment provider's frame, and whether a card field holds text. None (the page couldn't say): both, to be safe.
@@ -268,9 +339,15 @@ pub fn script_card_refusal(script: &str, before: Option<&Value>) -> Option<&'sta
     if script_goes_to_provider(script) {
         return Some(PROVIDER_SCRIPT_REFUSED);
     }
+    if TAMPERS.is_match(script) {
+        return Some(SCRIPT_TAMPERS_REFUSED);
+    }
     let (cards, holds_text) = page_cards(before);
-    if cards && LATER.is_match(script) {
+    if cards && (LATER.is_match(script) || RENAMES.is_match(script)) {
         return Some(SCRIPT_CARD_REFUSED);
+    }
+    if DEFERS.is_match(script) || CONTINUES.is_match(script) && ACTS.is_match(script) {
+        return Some(SCRIPT_LATER_REFUSED);
     }
     if CARD_TARGET.is_match(&crate::card_details::folded(script))
         && (WRITES.is_match(script) || cards && VALUE_ACCESS.is_match(script))
@@ -281,6 +358,16 @@ pub fn script_card_refusal(script: &str, before: Option<&Value>) -> Option<&'sta
         return Some(SCRIPT_CARD_REFUSED);
     }
     (cards && WRITES.is_match(script) && SENDS.is_match(script)).then_some(SCRIPT_CARD_REFUSED)
+}
+
+/// Without the guard's own world (DevTools out of reach, `look`): a script that writes or clicks (`ACTS`) where the page
+/// has card fields, a provider's frame or a card field holding text, or can't be read (second review of 14/11: a
+/// browser set up before the DevTools secret looked silently through the page's own world, which an earlier script
+/// may have changed). Its text, or None. Pages without cards keep their scripts: there, the checks after the call
+/// still undo a password or a ticked terms box.
+pub fn blind_refusal(script: &str, before: Option<&Value>) -> Option<&'static str> {
+    let (cards, holds_text) = page_cards(before);
+    ((cards || holds_text) && ACTS.is_match(script)).then_some(SCRIPT_BLIND_REFUSED)
 }
 
 /// An address the agent opens (`navigate`, `new_tab`) holding a card's number, as written or decoded (review of
@@ -309,7 +396,7 @@ pub fn hide_cards(response: &mut Dict) -> bool {
     fn walk(value: &mut Value, changed: &mut bool) {
         match value {
             Value::String(text) => {
-                if crate::card_details::holds_card_number(text) {
+                if crate::card_details::shows_card_number(text) {
                     *text = crate::card_details::hide_card_numbers(text);
                     *changed = true;
                 }
@@ -341,13 +428,15 @@ pub fn card_js() -> String {
     let hosts = serde_json::to_string(&crate::card_fill::provider_hosts()).unwrap_or_else(|_| "[]".into());
     format!(
         "{rules}const PROV = {hosts}; \
-const words = (e) => {{ const p = [e.getAttribute('autocomplete'), e.name, e.id, e.getAttribute('placeholder'), e.getAttribute('aria-label'), e.getAttribute('title')]; \
+const parts = (e) => {{ const p = [e.getAttribute('autocomplete'), e.name, e.id, e.getAttribute('placeholder'), e.getAttribute('aria-label'), e.getAttribute('title')]; \
 if (e.labels) for (const l of e.labels) p.push(l.textContent); const by = e.getAttribute('aria-labelledby'); \
 if (by) for (const i of by.split(/\\s+/)) {{ const r = e.ownerDocument.getElementById(i); if (r) p.push(r.textContent); }} \
 for (const a of e.attributes) if (a.name.startsWith('data-')) p.push(a.value); \
 const fs = e.closest && e.closest('fieldset'); const lg = fs && fs.querySelector('legend'); if (lg) p.push(lg.textContent); \
 const grp = e.closest && e.closest('[role=group]'); if (grp) p.push(grp.getAttribute('aria-label') || ''); \
-return p.filter(Boolean).join(' ').slice(0, 600); }}; \
+return p.filter(Boolean).map((t) => String(t).slice(0, 300)); }}; \
+const words = (e) => parts(e).join(' ').slice(0, 600); \
+const kindOf = (e, ctx) => {{ const k = cardKind(words(e), ctx); if (k) return k; for (const t of parts(e)) {{ const o = cardKind(t, ctx); if (o) return o; }} return ''; }}; \
 const deepFocus = (d) => {{ let a = d.activeElement; for (let n = 0; a && n < 8; n++) {{ while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement; \
 if (!a || (a.tagName !== 'IFRAME' && a.tagName !== 'FRAME')) break; let c = null; try {{ c = a.contentDocument; }} catch (x) {{}} \
 if (!c || !c.activeElement || c.activeElement === c.body) break; a = c.activeElement; }} return a; }}; \
@@ -359,9 +448,10 @@ return FRAME_WORDS.test(fold([f.name, f.title, f.id, typeof f.className === 'str
 const NOT_TEXT = ['hidden', 'submit', 'button', 'image', 'reset', 'checkbox', 'radio', 'file', 'email', 'range', 'color', 'url']; \
 const fieldish = (e) => ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.tagName) && !NOT_TEXT.includes((e.getAttribute('type') || '').toLowerCase()); \
 const scopeOf = (e) => e.form || e.ownerDocument; \
-const cardScope = (scope) => [...scope.querySelectorAll('input, select, textarea')].some((o) => fieldish(o) && cardKind(words(o), false) === 'number') \
+const cardScope = (scope) => [...scope.querySelectorAll('input, select, textarea')].some((o) => fieldish(o) && kindOf(o, false) === 'number') \
 || (scope.tagName === 'FORM' && [...scope.querySelectorAll('iframe, frame')].some(payFrame)); \
-const cardOf = (e, ctx) => {{ if (!fieldish(e)) return ''; const w = words(e); return cardKind(w, false) || (ctx === undefined ? cardScope(scopeOf(e)) : ctx) && cardKind(w, true) || ''; }}; ",
+const cardOf = (e, ctx) => {{ if (!fieldish(e)) return ''; return kindOf(e, false) || (ctx === undefined ? cardScope(scopeOf(e)) : ctx) && kindOf(e, true) || ''; }}; \
+const otherOf = (e) => CD.other.test(fold(words(e))) && !kindOf(e, false); ",
         rules = crate::card_details::js_rules()
     )
 }
@@ -913,7 +1003,7 @@ let terms = ''; \
 if (el.tagName === 'INPUT' && attr('type') === 'checkbox' && !el.checked) terms = label(el); \
 const frame = el.tagName === 'IFRAME' || el.tagName === 'FRAME'; \
 let card = frame ? (payFrame(el) ? 'frame' : '') : cardOf(el); \
-const other = !frame && !!el.attributes && CD.other.test(fold(words(el))); \
+const other = !frame && !card && !!el.attributes && otherOf(el); \
 if (!card && !takesKeys(el)) {{ const f = deepFocus(document); if (f && f !== el) {{ \
 card = (f.tagName === 'IFRAME' || f.tagName === 'FRAME') ? (payFrame(f) ? 'frame' : '') : (f.attributes ? cardOf(f) : ''); }} }} \
 return JSON.stringify({{found: true, password: password, terms: terms.slice(0, 300), card: card, other: other}}); }})()"
@@ -988,7 +1078,7 @@ own.forEach((e, i) => fields.push({e: e, k: (ri ? 'r' + ri + ':' : '') + (e.id ?
 + own.filter((x) => x.name === e.name).indexOf(e) : e.tagName + '@' + i))})); }); \
 const valueOf = (e) => e.tagName === 'SELECT' ? 's' + e.selectedIndex : String(e.value || ''); \
 const scopes = new Map(); const ctxOf = (e) => { const sc = scopeOf(e); if (!scopes.has(sc)) scopes.set(sc, cardScope(sc)); return scopes.get(sc); }; \
-const isOther = (e) => CD.other.test(fold(words(e))); \
+const isOther = (e) => otherOf(e); \
 const setv = (e, v) => { const w = e.ownerDocument.defaultView; const proto = e.tagName === 'TEXTAREA' ? w.HTMLTextAreaElement.prototype : w.HTMLInputElement.prototype; \
 Object.getOwnPropertyDescriptor(proto, 'value').set.call(e, v); e.dispatchEvent(new Event('input', {bubbles: true})); e.dispatchEvent(new Event('change', {bubbles: true})); }; ";
 
@@ -1639,6 +1729,8 @@ pub struct Proxy {
     last_url: Mutex<String>,
     /// The tool calls in a row that failed (`answered_call`, `STREAK_HINT`).
     pub failures: AtomicU32,
+    /// Whether the guard's look had to run in the page's own world (`look`): said once in the log while it lasts.
+    blind: AtomicBool,
 }
 
 impl Proxy {
@@ -1682,6 +1774,7 @@ impl Proxy {
             tcp_tables: Mutex::new(TCP_TABLES.iter().map(|s| s.to_string()).collect()),
             last_url: Mutex::new(String::new()),
             failures: AtomicU32::new(0),
+            blind: AtomicBool::new(false),
         })
     }
 
@@ -2087,10 +2180,18 @@ impl Proxy {
         }
         // what the page holds before a script or a list's choice (a card's field holding text emptied first), for the
         // check before (`guard`) and after (`undone`)
-        let early = match matches!(tool, "execute_script" | "select_option") && !instance.is_empty() {
-            true => self.page_before(&instance).await,
-            false => None,
+        let (early, own_world) = match matches!(tool, "execute_script" | "select_option") && !instance.is_empty() {
+            true => self.page_before_in(&instance).await,
+            false => (None, true),
         };
+        if tool == "execute_script" && !own_world {
+            let script = args.get("script").and_then(Value::as_str).unwrap_or("");
+            let with_args = format!("{script} {}", args.get("args").map(Value::to_string).unwrap_or_default());
+            if let Some(text) = blind_refusal(&with_args, early.as_ref()) {
+                log("execute_script: refused (it acts where cards may be; the guard can't look from its own world)");
+                return Ok(refused(text));
+            }
+        }
         if let Some(refusal) = self.guard(tool, &args, &instance, early.as_ref()).await {
             log(&format!("{tool}: refused (a password field, the site's terms, or a card's details)"));
             return Ok(refusal);
@@ -2201,7 +2302,13 @@ impl Proxy {
 
     /// What the page holds before a guarded call (`guard_before`); None when it can't say.
     async fn page_before(&self, instance: &str) -> Option<Value> {
-        let before = match self.look(instance, &guard_before()).await {
+        self.page_before_in(instance).await.0
+    }
+
+    /// `page_before`, and whether the guard looked from its own world (`look_in`).
+    async fn page_before_in(&self, instance: &str) -> (Option<Value>, bool) {
+        let (read, own) = self.look_in(instance, &guard_before()).await;
+        let before = match read {
             Some(Value::String(text)) => serde_json::from_str::<Value>(&text).ok(),
             _ => None,
         };
@@ -2209,7 +2316,7 @@ impl Proxy {
         if cleared > 0 {
             log(&format!("{cleared} card field(s) held a card's details before the call: emptied"));
         }
-        before
+        (before, own)
     }
 
     /// A script of the agent's ran on a page: its origin and the time written down (`scripts.jsonl` beside `busy`,
@@ -2249,9 +2356,28 @@ impl Proxy {
     /// Through the real server's execute_script (the page's own world) only when DevTools can't be reached (no port,
     /// an older setting, the browser held for a payment).
     async fn look(&self, instance: &str, script: &str) -> Option<Value> {
+        self.look_in(instance, script).await.0
+    }
+
+    /// `look`, and whether it ran in the guard's own world. Never silently in the page's (second review of 14/11: a
+    /// browser set up before the DevTools secret looked there with nothing said): the log says so once while it lasts,
+    /// and a script that writes or clicks where cards may be is refused (`blind_refusal`).
+    async fn look_in(&self, instance: &str, script: &str) -> (Option<Value>, bool) {
         match self.isolated(instance, script).await {
-            Ok(value) => value,
-            Err(()) => self.script(instance, script).await,
+            Ok(value) => {
+                if self.blind.swap(false, Ordering::SeqCst) {
+                    log("the guard looks from its own world again (DevTools reached)");
+                }
+                (value, true)
+            }
+            Err(()) => {
+                if !self.blind.swap(true, Ordering::SeqCst) {
+                    log("WARNING: the guard can't look from a world of its own (DevTools not reached: its port, the \
+                         browser's secret in cdp_secret_file): it looks through the page's own world, and scripts that \
+                         write or click where cards may be are refused");
+                }
+                (self.script(instance, script).await, false)
+            }
         }
     }
 
@@ -3062,7 +3188,8 @@ out of your reach";
     fn the_skill_gives_the_same_script() {
         let skill = crate::browsers::skill();
         assert!(skill.contains(&format!("`{AROUND_A_WORD}`")), "visible-browser/SKILL.md § 2 and AROUND_A_WORD");
-        assert!(skill.contains("version: 1.13.2"));
+        assert!(skill.contains("version: 1.13.3"));
+        assert!(skill.contains("runs at once and ends"), "no timers, observers…: the second review of 14/11");
         assert!(skill.contains("never changes where a page goes"));
         // card-guards, 14/11: never a card's details typed or asked; the hand-over when the vault can't fill the form
         assert!(skill.contains("never ask the person for them") && skill.contains("`ask_secret` refuses it"));
@@ -3434,7 +3561,37 @@ themselves). Do not use the browser until they hand it back: tell them you are w
                        "fetch(u).then(r => r.text())", "x.oninput = f"] {
             assert_eq!(script_card_refusal(script, Some(&with_cards)), Some(SCRIPT_CARD_REFUSED), "{script}");
             assert_eq!(script_card_refusal(script, Some(&frames)), Some(SCRIPT_CARD_REFUSED), "{script}");
+        }
+        // second review of 14/11: set on the step before the card form, an observer filled it and pressed « Payer »;
+        // timers, listeners and observers are refused on every page, and code that waits then writes or clicks too
+        for script in ["setTimeout(() => {}, 10)", "document.addEventListener('input', f)", "new MutationObserver(f)",
+                       "x.oninput = f", "requestAnimationFrame(f)", "queueMicrotask(f)", "window.onload = f",
+                       "(async () => { await x; document.querySelector('#cc').value = v; })()",
+                       "fetch(u).then(() => { b.click(); })", "Promise.resolve().then(() => f.submit())"] {
+            assert_eq!(script_card_refusal(script, Some(&empty)), Some(SCRIPT_LATER_REFUSED), "{script}");
+        }
+        // what only reads, waiting or not, goes on where no card is
+        for script in ["fetch(u).then(r => r.text())", "(async () => { const r = await fetch(u); return r.status; })()",
+                       "const one = 1; return one + document.title.length", "return [...document.links].map((a) => \
+                        ({text: a.innerText, href: a.href}))", "return document.querySelector('.online').innerText"] {
             assert_eq!(script_card_refusal(script, Some(&empty)), None, "{script}");
+        }
+        // what changes how the page's own code works (the guard's look in the page's world, when DevTools can't be
+        // had, would read through it): refused everywhere
+        for script in ["Object.defineProperty(HTMLInputElement.prototype, 'name', {get() { return 'iban'; }})",
+                       "String.prototype.match = function () { return null; }", "x.__proto__ = y",
+                       "Object.setPrototypeOf(a, b)", "document.querySelectorAll = () => []",
+                       "Element.prototype['querySelector'] = f"] {
+            assert_eq!(script_card_refusal(script, Some(&empty)), Some(SCRIPT_TAMPERS_REFUSED), "{script}");
+        }
+        // the framework's own setter, only read (fix-signup-hold), is no change of the page's code
+        let framework = "const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; return 1";
+        assert_eq!(script_card_refusal(framework, Some(&empty)), None);
+        // a way out written so its words don't show (rw5): refused as one
+        for script in ["const a = document.createElement(String.fromCharCode(97)); a['hr' + 'ef'] = u; a.click()",
+                       "Reflect.set(f, 'act' + 'ion', u); f.submit()", "a[`hr${e}`] = u", "eval(code)",
+                       "new Function(code)()", "window['loc' + 'ation'] = u", "atob(s)"] {
+            assert_eq!(script_card_refusal(script, Some(&empty)), Some(PROVIDER_SCRIPT_REFUSED), "{script}");
         }
         assert!(address_holds_card(&dict(json!({"url": "https://shop.example/pay?cc=4242424242424242&exp=1230"}))));
         assert!(address_holds_card(&dict(json!({"url": "https://shop.example/?n=4242%204242%204242%204242"}))));
@@ -3443,6 +3600,27 @@ themselves). Do not use the browser until they hand it back: tell them you are w
             assert!(refusal.contains("pay_with_card") && refusal.contains("« Panier prêt »"), "{refusal}");
             assert!(refusal.contains("Never ask your person") || refusal.contains("never ask your person"), "{refusal}");
         }
+    }
+
+    #[test]
+    fn without_its_own_world_the_guard_refuses_scripts_that_act_where_cards_may_be() {
+        // second review of 14/11: a browser set up before the guard's DevTools secret looked through the page's own
+        // world, silently; now, without its own world, a script that writes or clicks is refused where the page has
+        // card fields, a provider's frame or card text, or can't be read; reading goes on, and pages without cards too
+        let empty = json!({"pw": {}, "known": [], "boxes": [], "cards": {}, "cardtext": false, "frames": 0});
+        let cards = json!({"pw": {}, "known": [], "boxes": [], "cards": {"#cc": "811c9dc5"}, "cardtext": false});
+        let frames = json!({"pw": {}, "known": [], "boxes": [], "cards": {}, "cardtext": false, "frames": 1});
+        for script in ["document.querySelector('#go').click()", "document.querySelector('#notes').value = 'x'",
+                       "document.forms[0].submit()", "el.dispatchEvent(new Event('change'))", "x.remove()"] {
+            assert_eq!(blind_refusal(script, Some(&cards)), Some(SCRIPT_BLIND_REFUSED), "{script}");
+            assert_eq!(blind_refusal(script, Some(&frames)), Some(SCRIPT_BLIND_REFUSED), "{script}");
+            assert_eq!(blind_refusal(script, None), Some(SCRIPT_BLIND_REFUSED), "{script}");
+            assert_eq!(blind_refusal(script, Some(&empty)), None, "{script}");
+        }
+        for script in ["return document.title", "return [...document.querySelectorAll('h2')].map((h) => h.innerText)"] {
+            assert_eq!(blind_refusal(script, Some(&cards)), None, "{script}");
+        }
+        assert!(SCRIPT_BLIND_REFUSED.contains("click_element") && SCRIPT_BLIND_REFUSED.contains("Nothing was run"));
     }
 
     /// Review of 13/11: chrome-untrusted: is Chrome's own pages too. Neither the bridge nor the policy stopped it, and

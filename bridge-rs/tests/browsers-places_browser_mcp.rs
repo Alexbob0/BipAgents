@@ -894,7 +894,9 @@ for line in sys.stdin:
         if os.path.exists(os.path.join(here, "held")):
             r = text(GATE, True)
         elif name == "execute_script" and "bipagents guard: before" in script:
-            r = script_answer(json.dumps({"pw": {"#register-password": ""}, "known": [], "boxes": ["#cgu"]}))
+            # a page with a card's field when the test says so (`cardpage`)
+            cards = {"#cc": "811c9dc5"} if os.path.exists(os.path.join(here, "cardpage")) else {}
+            r = script_answer(json.dumps({"pw": {"#register-password": ""}, "known": [], "boxes": ["#cgu"], "cards": cards}))
         elif name == "execute_script" and "bipagents guard: after" in script:
             r = script_answer(json.dumps({"passwords": page["typed"], "terms": page["ticked"]}))
             page["typed"] = page["ticked"] = 0
@@ -1103,6 +1105,27 @@ async fn what_slips_past_the_checks_before_a_call_is_undone_after_it() {
     assert_eq!(text_of(&last(&out)), "did execute_script");
     // none of the proxy's own refusals counts as a step that failed
     assert_eq!(proxy.failures.load(Ordering::SeqCst), 0);
+    proxy.stop_child().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn without_its_own_world_the_guard_refuses_a_script_that_acts_on_a_card_page() {
+    // second review of card-guards, 14/11: the guard looked silently through the page's own world when DevTools
+    // couldn't be reached (here: nothing listens on its port); now a script that writes or clicks is refused where the
+    // page has card fields, and reading goes on, and so do pages without cards
+    let dir = tempfile::tempdir().unwrap();
+    let tmp = dir.path();
+    let (proxy, out) = guarded(tmp).await;
+    std::fs::write(tmp.join("cardpage"), "").unwrap();
+    let click = json!({"instance_id": "i", "script": "document.querySelector('#go').click()"});
+    proxy.handle(tool(1, "execute_script", click.clone())).await;
+    assert_eq!(text_of(&last(&out)), browser_mcp::SCRIPT_BLIND_REFUSED);
+    assert!(!calls(tmp).iter().any(|c| c["arguments"]["script"].as_str().is_some_and(|s| s.contains("#go"))));
+    proxy.handle(tool(2, "execute_script", json!({"instance_id": "i", "script": "return document.title"}))).await;
+    assert_eq!(text_of(&last(&out)), "did execute_script");
+    std::fs::remove_file(tmp.join("cardpage")).unwrap();
+    proxy.handle(tool(3, "execute_script", click)).await;
+    assert_eq!(text_of(&last(&out)), "did execute_script");
     proxy.stop_child().await;
 }
 

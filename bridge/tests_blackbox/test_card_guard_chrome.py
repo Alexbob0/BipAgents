@@ -45,6 +45,8 @@ SCRIPT_CARD_REFUSED = "Not done: a script never writes or reads a payment card's
 PROVIDER_SCRIPT_REFUSED = "Not done: a script never sends your browser to another page"
 CARD_UNDONE = "Not done: that put a payment card's details into the page"
 HIDDEN = "[card number hidden]"
+SCRIPT_LATER_REFUSED = "Not done: a script runs at once and ends"
+SCRIPT_TAMPERS_REFUSED = "Not done: a script never changes how the page's own code"
 
 
 def serve(folder):
@@ -252,16 +254,22 @@ def test_a_script_never_writes_reads_or_sends_a_cards_details(browser):
     # a card's number on the page never comes back in what the agent reads
     said = browser.tool("execute_script", script="document.getElementById('info').innerText")
     assert HIDDEN in said and "4242 4242" not in said, said
-    # a timer set before the card's form came, firing once it is there: erased before the agent's next step
+    # a timer set before the card's form came: refused on every page (second review of 14/11: an observer set there
+    # filled the form once drawn and pressed « Payer » before any look of the guard)
     browser.tool("navigate", url=browser.url.replace("checkout.html", "later.html"))
     said = browser.tool("execute_script", script="setTimeout(() => { const f = document.querySelector('#later input'); "
                                                  "if (f) f.value = ['4242', '4242', '4242', '4242'].join(''); }, 1500); 'ok'")
-    assert "ok" in said, said
+    assert said.startswith(SCRIPT_LATER_REFUSED), said
     browser.tool("click_element", selector="#reveal")
     time.sleep(2.5)
-    assert browser.page("document.querySelector('#later input').value") != ""   # the timer wrote it…
+    assert browser.page("document.querySelector('#later input').value") == ""   # nothing came later
+    # a card's number the page itself put there (its own script, an autofill): erased before the agent's next step
+    browser.page("document.querySelector('#later input').value = ['4242', '4242', '4242', '4242'].join('')")
     browser.tool("execute_script", script="document.title")
-    assert browser.page("document.querySelector('#later input').value") == ""   # …and the next step's look erased it
+    assert browser.page("document.querySelector('#later input').value") == ""
+    # a change to how the page's own code works: refused on every page
+    said = browser.tool("execute_script", script="String.prototype.match = function () { return null; }; 'ok'")
+    assert said.startswith(SCRIPT_TAMPERS_REFUSED), said
     # timers and listeners are refused where the page has card fields
     browser.fresh()
     said = browser.tool("execute_script", script="setTimeout(() => {}, 10); document.addEventListener('input', () => {})")

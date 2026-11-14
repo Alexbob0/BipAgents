@@ -18,10 +18,22 @@ use regex::Regex;
 use unicode_normalization::UnicodeNormalization;
 
 /// A card's number among digits: 13 to 19 of them, the Luhn check passed, and a card network's first digits for that
-/// length (Visa, Mastercard, CB on both, American Express, Discover, UnionPay, JCB, Diners, Mir, Maestro). The network
-/// check keeps a French SIRET (14 digits, Luhn by design) or a phone's IMEI (15, Luhn too) from counting; UATP (15
-/// digits from 1, airlines' cards) is left out: a man's French social security number reads the same (review of 14/11).
+/// length (Visa, Mastercard, CB on both, American Express, Discover, UnionPay, JCB, Diners, Mir, Maestro, UATP). The
+/// network check keeps a French SIRET (14 digits, Luhn by design) or a phone's IMEI (15, Luhn too) from counting. UATP
+/// (15 digits from 1, airlines' cards) counts for what is typed (second review of 14/11) but not for what the agent
+/// reads (`shown_card_numbers`): a man's French social security number reads the same, and a field for one says so
+/// (`other_number`).
 pub fn is_card_number(digits: &str) -> bool {
+    network_number(digits) || is_uatp(digits)
+}
+
+/// UATP's numbers: 15 digits from 1, the Luhn check passed.
+fn is_uatp(digits: &str) -> bool {
+    digits.len() == 15 && digits.starts_with('1') && digits.bytes().all(|b| b.is_ascii_digit()) && crate::cards::luhn(digits)
+}
+
+/// `is_card_number` but UATP.
+fn network_number(digits: &str) -> bool {
     let len = digits.len();
     if !(13..=19).contains(&len) || !digits.bytes().all(|b| b.is_ascii_digit()) || !crate::cards::luhn(digits) {
         return false;
@@ -99,6 +111,15 @@ static GROUPS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\\u[0-9a-fA-F]{4}
 /// (`is_card_number`), so « 4242 4242 4242 4242 12/30 » and « carte 4242424242424242 » count, and a longer number
 /// written without spaces does not.
 pub fn card_numbers(text: &str) -> Vec<(usize, usize)> {
+    numbers_in(text, is_card_number)
+}
+
+/// `card_numbers` as the agent reads them (`hide_card_numbers`): UATP's left out, a social security number's look.
+pub fn shown_card_numbers(text: &str) -> Vec<(usize, usize)> {
+    numbers_in(text, network_number)
+}
+
+fn numbers_in(text: &str, is_card_number: fn(&str) -> bool) -> Vec<(usize, usize)> {
     let mut out = Vec::new();
     let ibans = ibans(text);
     for run in RUNS.find_iter(text) {
@@ -135,9 +156,14 @@ pub fn card_numbers(text: &str) -> Vec<(usize, usize)> {
     out
 }
 
-/// Whether `text` holds a card's number (`card_numbers`).
+/// Whether `text` holds a card's number (`card_numbers`): what is typed, written in a script or an address.
 pub fn holds_card_number(text: &str) -> bool {
     !card_numbers(text).is_empty()
+}
+
+/// Whether `text` shows a card's number to the agent (`shown_card_numbers`): what it reads, what a person gives.
+pub fn shows_card_number(text: &str) -> bool {
+    !shown_card_numbers(text).is_empty()
 }
 
 /// What a card's number becomes in what the agent reads.
@@ -145,7 +171,7 @@ pub const HIDDEN: &str = "[card number hidden]";
 
 /// `text` with every card number in it replaced by `HIDDEN`.
 pub fn hide_card_numbers(text: &str) -> String {
-    let spans = card_numbers(text);
+    let spans = shown_card_numbers(text);
     if spans.is_empty() {
         return text.to_string();
     }
@@ -171,12 +197,12 @@ pub fn folded(text: &str) -> String {
 
 /// A card that is not a payment card: loyalty, gift, health, identity, transport, a SIM… (« numéro de carte de
 /// fidélité », « Kartennummer der Krankenkasse »), or a passport's expiry date.
-const NOT_PAYMENT_SRC: &str = r"fidelit|loyalt|treue|fidelidad|bonus ?card|club|cadeau|gift|geschenk|regalo|vitale|carte grise|identit|ausweis|identidad|\bdni\b|\bnie\b|passe?port|reisepass|pasaporte|permis|licen[cs]|fuhrerschein|membre|member|mitglied|socio|adherent|abonne|abonnement|subscri|etudiant|student|estudiante|biblioth|library|navigo|transport|\bsim\b|mutuelle|krankenkasse|versicherung|seguro|assurance|insurance|electeur|siret|siren|imei|\biban\b|\bbic\b|\btva\b|\bvat\b";
+const NOT_PAYMENT_SRC: &str = r"fidelit|loyalt|treue|fidelidad|bonus ?card|club|cadeau|gift|geschenk|regalo|vitale|carte grise|identit|ausweis|identidad|\bdni\b|\bnie\b|passe?port|reisepass|pasaporte|permis|licen[cs]|fuhrerschein|membre|member|mitglied|socio|adherent|abonne|abonnement|subscri|etudiant|student|estudiante|biblioth|library|navigo|transport|\bsim\b|mutuelle|krankenkasse|versicherung|seguro|assurance|insurance|electeur|siret|siren|imei|\biban\b|\bbic\b|\btva\b|\bvat\b|securite sociale|\bsecu\b|\bnir\b|social security|\bssn\b|sozialversicherung|seguridad social|seguranca social|codice fiscale|\binsee\b";
 static NOT_PAYMENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(NOT_PAYMENT_SRC).expect("valid regex"));
 
 /// A field for a number that is no payment card's and may look like one (a SIRET or an IMEI pass Luhn by design, a
 /// loyalty card's or a parcel's number may): a card's number is typed there (browser_mcp.rs).
-const OTHER_NUMBER_SRC: &str = r"siret|siren|imei|\biban\b|\bbic\b|\btva\b|\bvat\b|ust ?id|\bnif\b|fidelit|loyalt|treue|fidelidad|adherent|member|mitglied|socio|suivi|tracking|sendungsnummer|seguimiento|colis|parcel";
+const OTHER_NUMBER_SRC: &str = r"securite sociale|\bsecu\b|\bnir\b|social security|\bssn\b|sozialversicherung|seguridad social|seguranca social|codice fiscale|\binsee\b|siret|siren|imei|\biban\b|\bbic\b|\btva\b|\bvat\b|ust ?id|\bnif\b|fidelit|loyalt|treue|fidelidad|adherent|member|mitglied|socio|suivi|tracking|sendungsnummer|seguimiento|colis|parcel";
 static OTHER_NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(OTHER_NUMBER_SRC).expect("valid regex"));
 
 /// A field's words (`card_field`'s) say it holds a number that is no payment card's (`OTHER_NUMBER_SRC`).
@@ -265,7 +291,7 @@ return (d[0] === '4' && (L === 13 || L === 16 || L === 19)) || (((f(2) >= 51 && 
 || ((f(2) === 34 || f(2) === 37) && L === 15) || ((d.startsWith('6011') || d.startsWith('65') || (f(3) >= 644 && f(3) <= 649)) && long) \
 || (d.startsWith('62') && long) || (f(4) >= 3528 && f(4) <= 3589 && long) \
 || ((f(2) === 36 || f(2) === 38 || f(2) === 39 || (f(3) >= 300 && f(3) <= 305) || f(4) === 3095) && L >= 14 && L <= 19) \
-|| (f(4) >= 2200 && f(4) <= 2204 && long) || ((f(2) === 50 || (f(2) >= 56 && f(2) <= 69)) && long); }}; \
+|| (f(4) >= 2200 && f(4) <= 2204 && long) || ((f(2) === 50 || (f(2) >= 56 && f(2) <= 69)) && long) || (d[0] === '1' && L === 15); }}; \
 const ibanOk = (t) => {{ const p = t.replace(/[^A-Za-z0-9]/g, '').toUpperCase(); if (p.length < 15 || p.length > 34 || !/^[A-Z]{{2}}/.test(p)) return false; \
 let r = 0; for (const c of p.slice(4) + p.slice(0, 4)) {{ const v = parseInt(c, 36); if (isNaN(v)) return false; for (const x of String(v)) r = (r * 10 + +x) % 97; }} return r === 1; }}; \
 const ibanSpans = (v) => {{ const out = []; for (const m of v.matchAll(/[A-Z]{{2}}[0-9]{{2}}(?:[ \\u00a0\\-]?[A-Z0-9]){{11,30}}/g)) {{ \
@@ -401,12 +427,22 @@ mod tests {
                      "4242\t4242\t4242\t4242", "carte_4242_4242_4242_4242"] {
             assert!(holds_card_number(text), "{text:?}");
         }
-        // an IBAN (its check digits hold) or a man's social security number is no card's number
+        // an IBAN (its check digits hold) is no card's number
         assert!(iban_valid("FR98 0378 3840 1165 3551 5752 774") && !iban_valid("FR99 0378 3840 1165 3551 5752 774"));
-        for text in ["FR98 0378 3840 1165 3551 5752 774", "IBAN : FR98 0378 3840 1165 3551 5752 774 BIC AGRIFRPP",
-                     "1 48 10 09 262 121 10", "148100926212110"] {
+        for text in ["FR98 0378 3840 1165 3551 5752 774", "IBAN : FR98 0378 3840 1165 3551 5752 774 BIC AGRIFRPP"] {
             assert!(!holds_card_number(text), "{text:?}");
         }
+        // UATP (15 digits from 1, its published test number): never typed (second review of 14/11), but a man's
+        // social security number reads the same, so neither is hidden from what the agent reads; a field for one says
+        // so (`other_number`)
+        for text in ["1354 1001 4004 955", "1 48 10 09 262 121 10", "148100926212110"] {
+            assert!(holds_card_number(text), "{text:?}");
+            assert_eq!(hide_card_numbers(text), text, "{text:?}");
+        }
+        assert_eq!(hide_card_numbers("UATP 1354 1001 4004 955, Visa 4242 4242 4242 4242"),
+                   format!("UATP 1354 1001 4004 955, Visa {HIDDEN}"));
+        assert!(other_number("Numéro de sécurité sociale") && other_number("N° de sécu") && other_number("NIR"));
+        assert!(other_number("Social Security Number") && other_number("Sozialversicherungsnummer"));
         assert!(holds_card_number("IBAN FR99 0378 3840 1165 3551 5752 774, carte 4242 4242 4242 4242"));
         for text in [
             "Commande n° 4242424242424241",
