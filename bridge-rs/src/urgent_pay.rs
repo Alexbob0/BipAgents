@@ -424,6 +424,9 @@ with one short sentence: what is ready, what is missing.\n-->",
 pub const REHEARSAL_OK: &str = "[REHEARSAL OK]";
 pub const REHEARSAL_BLOCKED: &str = "[REHEARSAL BLOCKED]";
 
+/// How a rehearsal's note starts (`rehearsal_note_in`).
+const REHEARSAL_NOTE_MARK: &str = "<!--bip:purchase\nA rehearsal your person asked for";
+
 /// The note of a rehearsal (hidden in the apps).
 pub fn rehearsal_note(purchase: &Purchase, lang: &str) -> String {
     let price = if purchase.cents > 0 {
@@ -462,6 +465,13 @@ const PASSED_WORDS: &[&str] = &[
 const BLOCKED_WORDS: &[&str] = &[
     "BLOCKED", "FAILED", "FAIL", "BLOQUEE", "BLOQUE", "ECHOUEE", "ECHEC", "BLOCKIERT", "GESCHEITERT", "FEHLGESCHLAGEN",
     "BLOQUEADO", "BLOQUEADA", "FALLIDO", "FALLIDA", "FALLO", "KO",
+];
+
+/// Words that turn a blocked word into its opposite when they come just before it (four words at most: « rien n'a
+/// été bloqué »), accents and case aside.
+const NEGATIONS: &[&str] = &[
+    "RIEN", "PAS", "AUCUN", "AUCUNE", "SANS", "JAMAIS", "NI", "NOT", "NO", "NOTHING", "NEVER", "NONE", "WITHOUT", "NICHT",
+    "NICHTS", "KEIN", "KEINE", "KEINEN", "OHNE", "NIE", "SIN", "NADA", "NINGUN", "NINGUNA", "NUNCA",
 ];
 
 /// `c` upper-case without its accent, one char for one (so a position in it is one in the original).
@@ -528,20 +538,30 @@ fn verdict_of(line: &str) -> Option<Verdict> {
             None => break,
         }
     }
+    // what blocked, never opening on punctuation (« Rehearsal blocked on …: , le formulaire… », second review of 14/11)
     let reason = |end: usize| -> String {
         let why: String = orig[end..].iter().collect();
-        why.trim_start_matches(|c: char| c.is_whitespace() || "]*`):\u{2014}-".contains(c))
+        why.trim_start_matches(|c: char| c.is_whitespace() || c.is_ascii_punctuation() || "\u{2014}\u{2013}".contains(c))
             .trim_end_matches(|c: char| c.is_whitespace() || "]*`".contains(c))
             .trim()
             .chars()
             .take(200)
             .collect()
     };
-    // a blocked word anywhere after the name: blocked (« Rehearsal done but blocked at the payment page »)
+    // a blocked word anywhere after the name: blocked (« Rehearsal done but blocked at the payment page »), unless a
+    // negation comes just before it (« rien n'a été bloqué », « nothing failed », second review of 14/11)
+    // (the words of its own clause only: « le paiement n'est pas passé, bloqué » is blocked)
+    let words_before = |i: usize| -> Vec<String> {
+        let head: String = plain[..i].iter().collect();
+        let clause = head.rsplit(|c: char| ",;.:!?()[]".contains(c)).next().unwrap_or("");
+        clause.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).rev().take(4).map(str::to_string).collect()
+    };
     let blocked_from = |from: usize| {
         (from..plain.len())
             .filter(|i| *i == 0 || !plain[*i - 1].is_alphanumeric())
-            .find_map(|i| word_at(i, BLOCKED_WORDS))
+            .filter_map(|i| word_at(i, BLOCKED_WORDS).map(|end| (i, end)))
+            .find(|(i, _)| !words_before(*i).iter().any(|w| NEGATIONS.contains(&w.as_str())))
+            .map(|(_, end)| end)
     };
     if word_at(at, PASSED_WORDS).is_some() {
         // the code word as written is its own verdict (« [REHEARSAL OK] rien n'a échoué » stays ok)
@@ -556,16 +576,19 @@ fn verdict_of(line: &str) -> Option<Verdict> {
 }
 
 /// The rehearsal's reply read: (ok, what blocked, the words for the person). Every line that reads as a verdict (the
-/// code word or one of its translations, anywhere in the reply) is the app's: never in the words. A blocked one
-/// anywhere wins over any « ok » (14/11 review: « Étapes : - Répétition OK jusqu'au panier » then « [REHEARSAL
-/// BLOCKED] … » was read ok); what blocked is said by the code word when it says it. None: no verdict.
+/// code word or one of its translations, anywhere in the reply) is the app's: never in the words. The exact code word
+/// decides when there is one (a blocked one wins among them: « Étapes : - Répétition OK jusqu'au panier » then
+/// « [REHEARSAL BLOCKED] … » is blocked; « [REHEARSAL OK] » then « Répétition réussie : rien n'a été bloqué » is ok);
+/// else the translations, a blocked one anywhere winning. None: no verdict.
 pub fn read_rehearsal(text: &str) -> Option<(bool, String, String)> {
     let text = crate::tools_knowledge::strip(text).trim().to_string();
     let read: Vec<(&str, Option<Verdict>)> = text.lines().map(|l| (l, verdict_of(l))).collect();
-    let verdicts: Vec<&Verdict> = read.iter().filter_map(|(_, v)| v.as_ref()).collect();
-    if verdicts.is_empty() {
+    let all: Vec<&Verdict> = read.iter().filter_map(|(_, v)| v.as_ref()).collect();
+    if all.is_empty() {
         return None;
     }
+    let codes: Vec<&Verdict> = all.iter().copied().filter(|v| v.code).collect();
+    let verdicts = if codes.is_empty() { all } else { codes };
     let blocked: Vec<&&Verdict> = verdicts.iter().filter(|v| !v.ok).collect();
     let ok = blocked.is_empty();
     let why = blocked
@@ -578,20 +601,16 @@ pub fn read_rehearsal(text: &str) -> Option<(bool, String, String)> {
     Some((ok, why, rest.trim().to_string()))
 }
 
-/// `text` without its rehearsal verdict lines (`read_rehearsal`), for the watcher's conversation as the apps show it
-/// (threads/mod.rs). None: it has none.
+/// `text` without its rehearsal verdict lines (`read_rehearsal`), for the rehearsal's turn as the apps show it
+/// (threads/timeline.rs). None: it has none.
 pub fn without_verdict(text: &str) -> Option<String> {
     read_rehearsal(text).map(|(_, _, rest)| rest)
 }
 
-/// The conversations of `agent`'s purchase watchers (their set-up turns, their rehearsals).
-pub fn purchase_sessions(config: &Config, agent: &str) -> std::collections::HashSet<String> {
-    crate::connectors::of_agent(config, agent)
-        .into_iter()
-        .filter(|c| c.watch.as_ref().is_some_and(|w| w.purchase.is_some()))
-        .map(|c| crate::watchers::load(config, agent, &c.id).session)
-        .filter(|s| !s.is_empty())
-        .collect()
+/// Whether a user row of Hermes is a rehearsal's note (`rehearsal_note`): the reply that follows carries its verdict
+/// (threads/timeline.rs hides its lines).
+pub fn rehearsal_note_in(raw: &str) -> bool {
+    raw.contains(REHEARSAL_NOTE_MARK)
 }
 
 /// The person's line after a rehearsal that said nothing besides its verdict.
@@ -937,6 +956,8 @@ mod tests {
         assert!(!rehearsing("vie"));
         let note = rehearsal_note(&Purchase { site: "ticketmaster.fr".into(), what: "Billet".into(), cents: 4500, currency: "EUR".into() }, "fr");
         assert!(note.contains("NEVER pay") && note.contains("45,00 €") && note.contains(REHEARSAL_OK));
+        assert!(rehearsal_note_in(&format!("<!--bip:now samedi-->\n{note}")), "the timeline knows its turn");
+        assert!(!rehearsal_note_in(&account_note(&Purchase::default(), None)));
         assert!(note.contains(REHEARSAL_BLOCKED) && note.contains("never translated"));
     }
 
@@ -1065,5 +1086,40 @@ mod rcl_review_probes_2 {
     fn rcl_done_but_blocked_is_not_ok() {
         let read = read_rehearsal("Rehearsal done but blocked at the payment page: SMS code required.");
         assert!(read.as_ref().is_none_or(|r| !r.0), "read as ok: {read:?}");
+    }
+}
+
+
+// -- second re-review of cards-lab-fixes (14/11, aeb2dc414): its probes, failing on aeb2dc414, kept as tests --
+#[cfg(test)]
+mod rcl2_review_probes {
+    use super::*;
+
+    /// The code word says OK; the translated line under it reassures « rien n'a été bloqué »: no blocked verdict.
+    #[test]
+    fn rcl2_ok_code_word_with_nothing_blocked_stays_ok() {
+        let read = read_rehearsal(
+            "[REHEARSAL OK]\nRépétition réussie : rien n'a été bloqué, le formulaire de carte s'est affiché.",
+        );
+        assert_eq!(read.as_ref().map(|r| r.0), Some(true), "{read:?}");
+    }
+
+    /// A translated verdict that says nothing failed: ok.
+    #[test]
+    fn rcl2_passed_and_nothing_failed_is_ok() {
+        let read = read_rehearsal("Rehearsal passed: nothing failed, the card form showed.");
+        assert_eq!(read.as_ref().map(|r| r.0), Some(true), "{read:?}");
+    }
+
+    /// A negation only counts in its own clause; a reason never opens on punctuation.
+    #[test]
+    fn rcl2_a_negation_elsewhere_and_a_reason_s_punctuation() {
+        let read = read_rehearsal("Répétition OK mais le paiement n'est pas passé, bloqué par un code SMS").unwrap();
+        assert_eq!((read.0, read.1.as_str()), (false, "par un code SMS"));
+        let read = read_rehearsal("Rehearsal passed: nothing failed, the card form showed.").unwrap();
+        assert_eq!(read, (true, String::new(), String::new()));
+        let read = read_rehearsal("[REHEARSAL BLOCKED]: , le site demande un SMS").unwrap();
+        assert_eq!(read.1, "le site demande un SMS");
+        assert_eq!(read_rehearsal("Probe erfolgreich, nichts blockiert.").map(|r| r.0), Some(true));
     }
 }

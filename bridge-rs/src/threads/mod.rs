@@ -706,12 +706,6 @@ impl Threads {
         if thread.kind != "main" {
             // a run without the person that had nothing to tell (« [SILENT] », or the code word translated): no reply
             items.retain(|i| !timeline::silent_reply(i));
-            // a purchase watcher's conversation: its rehearsals' verdict lines are the app's, never shown (review of
-            // 14/11: « [REHEARSAL OK] » beside the Boîte's message in the same conversation)
-            let purchases = crate::urgent_pay::purchase_sessions(&self.config.get(), &agent.name);
-            if segments.iter().any(|s| purchases.contains(&s.session_id)) {
-                timeline::without_verdicts(&mut items);
-            }
         }
         let mut extra = self.boite(agent, thread, segments).await?;
         extra.extend(self.kept(agent, segments).await?);
