@@ -17,6 +17,7 @@ import pytest
 
 from bipinstall import hermes, shared_hermes
 
+pytestmark = pytest.mark.linux   # all of them: the gc reads places with openat2 and /proc/self/fdinfo (Linux)
 in_namespace = pytest.mark.skipif(os.geteuid() != 0, reason="a mount namespace of its own: run under `unshare -rm`")
 DATA = Path(".local") / "share" / "bipagents"
 VIEW = DATA / "space" / "open"
