@@ -593,6 +593,11 @@ impl Jobs {
         self.hub.as_ref().and_then(|hub| hub.run_progress(&agent.name, run_id)).is_some_and(|p| p.capped)
     }
 
+    /// The brake stopped the task's run (runs.rs `stop_looping`): its line.
+    fn braked(&self, agent: &AgentConfig, run_id: &str) -> Option<String> {
+        self.hub.as_ref()?.brake_said(&agent.name, run_id)
+    }
+
     fn agent(&self, name: &str) -> Result<AgentConfig, JobError> {
         self.config
             .get()
@@ -1086,6 +1091,13 @@ impl Jobs {
 
         async fn ended(&self, agent: &AgentConfig, job: &mut Dict, end: End) {
         let End { mut status, output, usage, error } = end;
+        // Hermes' own lines (background_turn.rs `hermes_line`) are never a report: nothing else, the run was interrupted
+        let words = crate::background_turn::without_hermes_lines(&output);
+        if words.is_empty() && !output.trim().is_empty() && (status == "completed" || status == "gone") {
+            tracing::warn!(agent = %agent.name, job = %tk::str_or_empty(job.get("id")), "the task's run ended on Hermes' line only");
+            status = "interrupted".into();
+        }
+        let output = words;
         let usage = match usage {
             Some(Value::Object(u)) if !u.is_empty() => Some(u),
             // a run stopped (its budget, a pause) comes back without its usage, one lost in a Hermes restart with an
@@ -1104,9 +1116,12 @@ impl Jobs {
         let mut full = String::new();
         // the hub stopped it before a call past its budget, before this watch did (a run that still ended with its
         // answer is done)
-        let capped = (status != "completed" && self.capped(agent, &tk::str_or_empty(job.get("run_id"))))
-            .then(|| json!("budget"));
-        let stopping = job.get("stopping").filter(|v| py::truthy(v)).cloned().or(capped);
+        let run_id = tk::str_or_empty(job.get("run_id"));
+        let capped = (status != "completed" && self.capped(agent, &run_id)).then(|| json!("budget"));
+        // the brake stopped it (the same tool again and again): « loop », and its line told (never silence)
+        let braked = (status != "completed").then(|| self.braked(agent, &run_id)).flatten();
+        let looped = braked.is_some().then(|| json!("loop"));
+        let stopping = job.get("stopping").filter(|v| py::truthy(v)).cloned().or(capped).or(looped);
         if stopping.is_some() || ["cancelled", "canceled", "interrupted"].contains(&status.as_str()) {
             job.insert("state".into(), json!("paused"));
             job.insert("reason".into(), stopping.unwrap_or(json!("interrupted")));
@@ -1134,6 +1149,11 @@ impl Jobs {
             self.hand_back(&handback, agent, job, &from, &full).await;
         } else if state_of(job) == "done" || reason == json!("budget") || reason == json!("time") {
             self.tell_end(agent, job).await;
+        } else if let (Some(said), true, Some(tell)) = (braked, reason == json!("loop"), &self.tell) {
+            let body = push_body(&self.config.get(), agent, PAUSED_BODY);
+            let line = format!("{body}{} {}\n{said}", colon(body), tk::str_or_empty(job.get("title")));
+            let session = job.get("session_id").filter(|v| !v.is_null()).map(py::py_str);
+            tell(agent.name.clone(), session, line, tk::str_or_empty(job.get("id")), body.into()).await;
         }
     }
 

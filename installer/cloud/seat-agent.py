@@ -281,7 +281,7 @@ def shared_gc():
     # its own lines only (what it removed, or why it kept them all: place numbers, never a name); anything else it
     # printed (a traceback may end with a place's path) stays out of the journal
     for line in [line for line in done.stdout.splitlines()
-                 if line.startswith(("Removed: ", "Nothing to remove.", "All kept: "))][-5:]:
+                 if line.startswith(("Removed: ", "Nothing to remove.", "All kept: ", "Space stuck: "))][-5:]:
         log("shared Hermes gc: %s" % line)
     if done.returncode != 0:
         log("shared Hermes gc failed (exit %d)" % done.returncode)

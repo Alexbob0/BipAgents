@@ -48,18 +48,20 @@ turned the shared Hermes on builds at once, as before.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import datetime
 import hashlib
 import json
 import os
 import shutil
 import platform
+import stat
 import subprocess
 import tempfile
 import time
 import urllib.request
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 from . import bridgeconf, hermes, release_key
 
@@ -578,44 +580,417 @@ def running_versions(base: Path, proc: Path = Path("/proc")) -> Dict[str, int]:
 
 
 SPACE_VIEW = Path(".local") / "share" / "bipagents" / "space" / "open"   # a place's encrypted space, open (space.rs)
+SPACE_CIPHER = Path(".local") / "share" / "bipagents" / "space" / "cipher"
+AGENT_SPACES = Path(".local") / "share" / "bipagents" / "spaces"           # its agents' own HERMES_HOMEs
+MOUNTINFO = Path("/proc/self/mountinfo")
+FUSECTL = Path("/sys/fs/fuse/connections")          # each FUSE connection's `abort` (the kernel's fusectl)
+VIEW_KILL_S = 10.0     # a place's reading not done by then (its open space slow or stuck): killed, the place unknown
+VIEW_ABORT_S = 60.0    # still there by then (its space's daemon read root's request and never answers): aborted
+STUCK = Path("/var/lib/bipagents/shared-hermes-stuck.json")   # root's: the places found stuck, when
+STUCK_S = 3600.0       # a place found stuck is left alone (unknown, all kept) this long, then read again
+LINK_HOPS = 8          # a place's own links followed inside its home, at most
+O_PATH = getattr(os, "O_PATH", 0)
+DIR_FLAGS = (os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+             | getattr(os, "O_CLOEXEC", 0))
+OPENAT2 = 437                                       # openat2(2), kernel >= 5.6: the same number on every architecture
+RESOLVE_NO_XDEV, RESOLVE_NO_SYMLINKS = 0x01, 0x04   # never cross a mount, never follow a link (the last one: itself)
+
+# Reading a place's pointers as root enters nothing of the place's: a FUSE daemon of its own (allow_other is on for
+# every place of a server: its encrypted space needs it) that reads root's request and never answers keeps root in
+# state D for good, SIGKILL included: the gc, then the seat agent's round waiting on it (2026-11-14, the disk
+# breakdown's reviews). Each name is looked at from its folder's descriptor with openat2 (RESOLVE_NO_XDEV: a mount
+# point is refused before any request reaches it; RESOLVE_NO_SYMLINKS: a link is the link itself), a folder opened
+# as "." from that descriptor; a place's links are followed only inside its home. The one mount entered is the
+# place's own open space (a gocryptfs of its uid at its view, its cipher folder its source): its pointers live there
+# while it is open. A place is read in a child of the gc, which never waits for it past VIEW_KILL_S (then the place
+# is unknown and everything is kept that time), and only aborts the space's connection when the child is still there
+# at VIEW_ABORT_S (aborting closes the person's open space: a slow one is never cut).
 
 
-def locked(homes: Iterable[Path]) -> List[str]:
-    """The places' Hermes homes root can't read because their encrypted space is locked (after a reboot, or closed by
-    hand) or closed to root: ~/.hermes, or their agents' spaces folder, a link into the place's own space's open view
-    (bridge-rs/src/space.rs makes them so) that root can't list. Which version they run is unknown. Any other link of
-    a place's that leads nowhere is not this: it never holds the gc (one would, for the whole server)."""
-    found = []
-    for home in homes:
-        view = os.path.normpath(home / SPACE_VIEW)
-        for path in (home / ".hermes", home / ".local" / "share" / "bipagents" / "spaces"):
-            if not path.is_symlink():
-                continue
-            try:
-                target = os.path.normpath(os.path.join(path.parent, os.readlink(path)))
-            except OSError:
-                continue
-            if target != view and not target.startswith(view + os.sep):
-                continue
-            try:
-                os.listdir(path)   # the folder it leads to, as root sees it
-            except OSError:
-                found.append(str(path))
+class _How(ctypes.Structure):
+    _fields_ = [("flags", ctypes.c_uint64), ("mode", ctypes.c_uint64), ("resolve", ctypes.c_uint64)]
+
+
+_OPENAT2 = None   # None: not tried yet; False: none here (a kernel < 5.6); else (syscall, its `how`)
+
+
+def has_openat2() -> bool:
+    global _OPENAT2
+    if _OPENAT2 is None:
+        _OPENAT2 = False
+        try:
+            call = ctypes.CDLL(None, use_errno=True).syscall
+            call.restype = ctypes.c_long
+            call.argtypes = (ctypes.c_long, ctypes.c_int, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t)
+            how = _How(O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC, 0, RESOLVE_NO_XDEV | RESOLVE_NO_SYMLINKS)
+            fd = call(OPENAT2, -100, b"/", ctypes.addressof(how), ctypes.sizeof(how)) if O_PATH else -1
+            if fd >= 0:
+                os.close(fd)
+                _OPENAT2 = (call, how)
+        except (OSError, AttributeError):
+            pass
+    return bool(_OPENAT2)
+
+
+def _unescape(text: str) -> str:
+    out, i = [], 0
+    while i < len(text):
+        if text[i] == "\\" and i + 3 < len(text) and all(c in "01234567" for c in text[i + 1:i + 4]):
+            out.append(chr(int(text[i + 1:i + 4], 8)))
+            i += 4
+        else:
+            out.append(text[i])
+            i += 1
+    return "".join(out)
+
+
+def _mounts(mountinfo: Path = MOUNTINFO) -> Dict[str, List[str]]:
+    """mount id -> [point, filesystem type, source, its options, its device's minor] as they are now."""
+    found: Dict[str, List[str]] = {}
+    try:
+        with open(mountinfo) as fh:
+            for line in fh:
+                fields = line.split()
+                if len(fields) > 4 and "-" in fields[5:]:
+                    rest = fields[fields.index("-", 5) + 1:] + ["", "", ""]
+                    found[fields[0]] = [_unescape(fields[4]), rest[0], _unescape(rest[1]), rest[2],
+                                        fields[2].split(":")[1] if ":" in fields[2] else ""]
+    except OSError:
+        pass
     return found
 
 
-def _readable(home: Path) -> None:
-    """Raises OSError when a folder of the place's Hermes can't be read by root: a dead mount of its own (ENOTCONN), one
-    without allow_other (EACCES), its own or one of its agents' spaces'. Never follows a link (a dangling one is the
-    place's business, not a reason to keep everything)."""
-    for path in (home / ".hermes", home / ".local" / "share" / "bipagents" / "spaces"):
-        if os.path.lexists(path):
-            os.stat(path, follow_symlinks=False)
-    spaces = home / ".local" / "share" / "bipagents" / "spaces"
-    if os.path.isdir(spaces):
-        with os.scandir(spaces) as listing:
-            for entry in listing:
-                os.stat(entry.path, follow_symlinks=False)
+def _mount_of(fd: int) -> Optional[List[str]]:
+    """The mount a descriptor is on (its mnt_id, from /proc/self/fdinfo: nothing asked of the filesystem)."""
+    try:
+        with open("/proc/self/fdinfo/%d" % fd) as fh:
+            for line in fh:
+                if line.startswith("mnt_id:"):
+                    return _mounts().get(line.split()[1])
+    except (OSError, IndexError):
+        pass
+    return None
+
+
+def _open_folder(name: str, expected=None, dir_fd: Optional[int] = None) -> Optional[int]:
+    try:
+        fd = os.open(name, DIR_FLAGS, dir_fd=dir_fd) if dir_fd is not None else os.open(name, DIR_FLAGS)
+    except OSError:
+        return None
+    if expected is not None:
+        try:
+            found = os.fstat(fd)
+        except OSError:
+            found = None
+        if found is None or (found.st_dev, found.st_ino) != expected:
+            os.close(fd)
+            return None
+    return fd
+
+
+class _Unknown(Exception):
+    """Something of the place's can't be read without entering it (a mount): which version it runs is unknown."""
+
+
+class _Locked(_Unknown):
+    """A link of the place's into its own encrypted space's view leads nowhere: its space is locked."""
+
+
+class _Place(object):
+    """A place's home as root reads it, in the gc's child (`_read_aside`): opened once, entered nowhere but its own
+    open space; `crumb` (shared with the gc) gets that space's connection number before the child enters it."""
+
+    def __init__(self, home: Path, crumb):
+        self.home, self.crumb = os.path.normpath(str(home)), crumb
+        self.view = os.path.join(self.home, str(SPACE_VIEW))
+        self.view_at: Optional[int] = None
+        self.points = None if has_openat2() else {m[0] for m in _mounts().values()}
+        at = os.open(self.home, O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)   # no request, even there
+        try:
+            mount = _mount_of(at)
+            if mount is None or mount[1].split(".")[0] == "fuse":   # a FUSE of the place's over its home
+                raise _Unknown()
+            self.uid = os.fstat(at).st_uid
+            self.fd = _open_folder(".", dir_fd=at)
+        finally:
+            os.close(at)
+        if self.fd is None:
+            raise FileNotFoundError(self.home)
+
+    def look(self, dir_fd: int, name: str, path: str):
+        """(stat, O_PATH descriptor or None) of `name` in `dir_fd`, never entering a mount (OSError EXDEV)."""
+        if not has_openat2():   # a kernel < 5.6: the mount list read at the start, then fstatat
+            if path in self.points:
+                raise OSError(18, "a mount point", name)
+            return os.stat(name, dir_fd=dir_fd, follow_symlinks=False), None
+        call, how = _OPENAT2
+        fd = call(OPENAT2, dir_fd, os.fsencode(name), ctypes.addressof(how), ctypes.sizeof(how))
+        if fd < 0:
+            code = ctypes.get_errno()
+            raise OSError(code, os.strerror(code), name)
+        try:
+            return os.fstat(fd), fd
+        except OSError:
+            os.close(fd)
+            raise
+
+    def open_view(self, dir_fd: int) -> int:
+        """The place's own open space, entered: only a gocryptfs FUSE of the place's uid at its view, its cipher folder
+        its source (seen from an O_PATH descriptor's mount: nothing asked of it); its connection's number in the
+        crumb first. Anything else mounted there: _Unknown."""
+        if self.view_at is None:
+            at = os.open("open", O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=dir_fd)
+            mount = _mount_of(at)
+            cipher = os.path.join(self.home, str(SPACE_CIPHER))
+            if (mount is None or mount[0] != self.view or mount[1] != "fuse.gocryptfs" or not mount[4]
+                    or os.path.normpath(mount[2]) != cipher or "user_id=%d" % self.uid not in mount[3].split(",")):
+                os.close(at)
+                raise _Unknown()
+            self.crumb[:16] = mount[4].encode().ljust(16, b"\0")
+            self.view_at = at
+        fd = _open_folder(".", dir_fd=self.view_at)   # its first request to the space's daemon
+        if fd is None:
+            raise _Unknown()
+        return fd
+
+    def resolve(self, relative: str) -> Optional[int]:
+        """The folder `relative` under the home, a name at a time from its descriptor: None when it is not there (a
+        link of the place's inside its home leading nowhere: it can't run anything through it either); _Unknown
+        behind a mount but its open space, through a link out of the home (never followed as root, but a version it
+        runs may be there: never counted as nothing) or past LINK_HOPS links, or unreadable; _Locked missing behind a
+        link into its own space's view."""
+        parts, done, hops, into_view = [p for p in relative.split("/") if p not in ("", ".")], [], 0, False
+        fd = _open_folder(".", dir_fd=self.fd)
+        if fd is None:
+            raise _Unknown()
+        try:
+            while parts:
+                name = parts.pop(0)
+                here = os.path.join(self.home, *done)
+                path = os.path.join(here, name)
+                if name == "..":
+                    raise _Unknown()
+                if path == self.view and self.view_at is not None:
+                    found, at = None, None
+                    child = self.open_view(fd)
+                else:
+                    try:
+                        found, at = self.look(fd, name, path)
+                    except FileNotFoundError:
+                        if into_view:
+                            raise _Locked()
+                        return None
+                    except OSError as exc:
+                        if exc.errno == 18 and path == self.view:      # EXDEV: its open space, a mount
+                            found, at, child = None, None, self.open_view(fd)
+                        else:
+                            raise _Unknown()
+                try:
+                    if found is not None and stat.S_ISLNK(found.st_mode):
+                        hops += 1
+                        try:
+                            text = os.readlink("", dir_fd=at) if at is not None else os.readlink(name, dir_fd=fd)
+                        except OSError:
+                            raise _Unknown()
+                        target = os.path.normpath(os.path.join(here, text))
+                        if hops > LINK_HOPS or (target != self.home and not target.startswith(self.home + os.sep)):
+                            raise _Unknown()
+                        into_view = into_view or target == self.view or target.startswith(self.view + os.sep)
+                        parts = [p for p in target[len(self.home):].split("/") if p] + parts   # from the home again
+                        done = []
+                        os.close(fd)
+                        fd = _open_folder(".", dir_fd=self.fd)
+                        if fd is None:
+                            raise _Unknown()
+                        continue
+                    if found is not None:
+                        if not stat.S_ISDIR(found.st_mode):
+                            return None
+                        child = (_open_folder(".", (found.st_dev, found.st_ino), dir_fd=at) if at is not None
+                                 else _open_folder(name, (found.st_dev, found.st_ino), dir_fd=fd))
+                        if child is None:
+                            raise _Unknown()
+                finally:
+                    if at is not None:
+                        os.close(at)
+                os.close(fd)
+                fd, child = child, None
+                done.append(name)
+            result, fd = fd, None
+            return result
+        finally:
+            if fd is not None:
+                os.close(fd)
+
+    def pointer(self, hermes_home: int, path: str) -> Optional[str]:
+        """Where the `shared` link of an opened HERMES_HOME points (ours), else None."""
+        try:
+            found, at = self.look(hermes_home, POINTER, os.path.join(path, POINTER))
+        except FileNotFoundError:
+            return None
+        except OSError:
+            raise _Unknown()
+        try:
+            if not stat.S_ISLNK(found.st_mode):
+                return None
+            return os.readlink("", dir_fd=at) if at is not None else os.readlink(POINTER, dir_fd=hermes_home)
+        except OSError:
+            raise _Unknown()
+        finally:
+            if at is not None:
+                os.close(at)
+
+    def pointers(self) -> List[str]:
+        """Where its HERMES_HOMEs' pointers lead: ~/.hermes and its agents' own spaces'."""
+        found = []
+        homes = [".hermes"]
+        spaces = self.resolve(str(AGENT_SPACES))
+        if spaces is not None:
+            try:
+                with os.scandir(spaces) as listing:
+                    homes += [str(AGENT_SPACES / entry.name) for entry in listing]
+            except OSError:
+                raise _Unknown()
+            finally:
+                os.close(spaces)
+        for relative in homes:
+            fd = self.resolve(relative)
+            if fd is None:
+                continue
+            try:
+                target = self.pointer(fd, os.path.join(self.home, relative))
+            finally:
+                os.close(fd)
+            if target:
+                found.append(target)
+        return found
+
+
+def _read_place(base: Path, home: Path, crumb) -> Dict[str, object]:
+    """In the gc's child: {"versions": what the place's pointers lead to in `base`} or {"unknown": why}."""
+    try:
+        place = _Place(home, crumb)
+    except FileNotFoundError:
+        return {"versions": []}
+    except (_Unknown, OSError):
+        return {"unknown": "unreadable"}
+    try:
+        targets = place.pointers()
+    except _Locked:
+        return {"unknown": "locked"}
+    except (_Unknown, OSError):
+        return {"unknown": "unreadable"}
+    return {"versions": sorted({Path(t).name for t in targets if Path(t).parent == base})}
+
+
+def _abort(minor: str) -> bool:
+    try:
+        with open(FUSECTL / minor / "abort", "w") as fh:
+            fh.write("1")
+        return True
+    except OSError:
+        return False
+
+
+def _read_aside(base: Path, home: Path) -> Tuple[Optional[List[str]], bool]:
+    """(the versions a place's pointers lead to, or None when unknown: unreadable, locked, or not done within
+    VIEW_KILL_S; whether it was found stuck), read in a child of the gc (`_Place`). The child's output goes nowhere
+    (the seat agent reads the gc's to its end: a child it can't kill must not hold it); the gc waits for it to go
+    until VIEW_ABORT_S, then aborts its space's connection (the one it entered, whatever was mounted or unmounted
+    there since) and leaves it: found stuck."""
+    import mmap
+    import select
+    import signal
+    crumb = mmap.mmap(-1, 16)
+    reader, writer = os.pipe()
+    pid = os.fork()
+    if pid == 0:   # the child: its result, then out (never back into the gc)
+        code = 1
+        try:
+            os.close(reader)
+            null = os.open(os.devnull, os.O_RDWR)
+            for n in (0, 1, 2):
+                os.dup2(null, n)
+            data = json.dumps(_read_place(base, home, crumb)).encode()
+            while data:
+                data = data[os.write(writer, data):]
+            code = 0
+        except BaseException:
+            pass
+        os._exit(code)
+    os.close(writer)
+    started, chunks, done = time.monotonic(), [], False
+    try:
+        while not done:
+            left = started + VIEW_KILL_S - time.monotonic()
+            if left <= 0 or not select.select([reader], [], [], min(left, 1.0))[0]:
+                if left <= 0:
+                    break
+                continue
+            chunk = os.read(reader, 65536)
+            done = not chunk
+            chunks.append(chunk)
+    finally:
+        os.close(reader)
+    if not done:
+        try:
+            os.kill(pid, signal.SIGKILL)   # a request its space's daemon has not read yet is dropped with it
+        except OSError:
+            pass
+    status = None
+    while status is None:
+        finished, code = os.waitpid(pid, os.WNOHANG)
+        if finished:
+            status = code
+        elif time.monotonic() >= started + VIEW_ABORT_S:
+            break
+        else:
+            time.sleep(0.05)
+    if status is None:
+        minor = bytes(crumb[:16]).rstrip(b"\0").decode()
+        aborted = bool(minor) and _abort(minor)
+        if aborted:
+            end = time.monotonic() + 2
+            while time.monotonic() < end and not os.waitpid(pid, os.WNOHANG)[0]:
+                time.sleep(0.05)
+        if aborted:
+            say(f"Space stuck: place {_number(home)}'s open encrypted space did not answer root's gc in "
+                f"{VIEW_ABORT_S:.0f} s: its connection aborted (the place must open it again).")
+        else:
+            say(f"Space stuck: place {_number(home)} could not be read in {VIEW_ABORT_S:.0f} s: left waiting.")
+        return None, True
+    if not done or not os.WIFEXITED(status) or os.WEXITSTATUS(status) != 0:
+        return None, False
+    try:
+        result = json.loads(b"".join(chunks))
+    except ValueError:
+        return None, False
+    return (result.get("versions") if "unknown" not in result else None), False
+
+
+def _stuck() -> Dict[str, float]:
+    """Root's record: each home found stuck -> when (time.time())."""
+    try:
+        data = json.loads(STUCK.read_text())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {k: float(v) for k, v in data.items() if isinstance(k, str) and isinstance(v, (int, float))}
+
+
+def _keep_stuck(found: Dict[str, float]) -> None:
+    """Written whole, root's alone (0600)."""
+    try:
+        STUCK.parent.mkdir(parents=True, exist_ok=True)
+        temp = STUCK.with_name(STUCK.name + ".new")
+        fd = os.open(str(temp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            fh.write(json.dumps(found, sort_keys=True))
+        os.chmod(temp, 0o600)
+        os.replace(temp, STUCK)
+    except OSError:
+        pass
 
 
 def _number(home: Path) -> str:
@@ -630,22 +1005,37 @@ def gc(runner: hermes.Runner, base: Path, homes: Iterable[Path], keep: Iterable[
        proc: Path = Path("/proc")) -> List[str]:
     """The versions nothing uses any more, deleted: no place points at them, no process runs them, and not the one
     this BipAgents pins (the next place to update needs it). Unfinished builds too, unless one is under way. Nothing
-    is deleted while a place's encrypted space is locked (`locked`): it may run any of them, and no process shows it
-    (2026-11-14: a locked place's version was deleted, users_of can't read through its locked ~/.hermes)."""
+    is deleted while a place's pointers can't be read (`_read_aside`: its encrypted space locked, a mount of its own
+    in the way, a link out of its home, its open space not answering): it may run any of them, and no process shows it
+    (2026-11-14: a locked place's version was deleted). A place found stuck (`_read_aside`: its space's daemon never
+    answered) is left alone STUCK_S (root's record, STUCK): each gc would wait VIEW_ABORT_S for it again, and the
+    seat agent runs one after each place it updates; then it is read again."""
     if not base.is_dir():
         return []
     held, places, used = [], set(), set()
+    now, stuck = time.time(), _stuck()
+    before = dict(stuck)
     for home in homes:   # place by place: one that can't be read keeps everything, and nothing names it but its number
-        try:
-            found = locked([home])
-            if not found:
-                _readable(home)
-                used |= set(users_of(base, [home]))
-        except OSError:
-            found = [str(home)]
-        if found:
-            held += found
-            places.add(_number(home))
+        key = str(home)
+        at = stuck.get(key)
+        if at is not None and now - STUCK_S < at <= now + 60:   # found stuck less than an hour ago: not entered
+            say(f"Space stuck: place {_number(Path(home))} left alone (found stuck less than "
+                f"{STUCK_S / 3600:.0f} h ago), everything kept.")
+            versions = None
+        else:
+            versions, found_stuck = _read_aside(base, Path(home))
+            if found_stuck:
+                stuck[key] = now
+            else:
+                stuck.pop(key, None)
+        if versions is None:
+            held.append(key)
+            places.add(_number(Path(home)))
+        else:
+            used |= set(versions)
+    stuck = {k: v for k, v in stuck.items() if now - STUCK_S < v <= now + 60}
+    if stuck != before:
+        _keep_stuck(stuck)
     if held:
         numbers = ", ".join(sorted(places, key=lambda n: (not n.isdigit(), int(n) if n.isdigit() else 0)))
         say(f"All kept: {len(held)} place folder(s) behind a locked encrypted space or unreadable (place {numbers}), "
