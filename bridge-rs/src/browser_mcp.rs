@@ -172,8 +172,13 @@ pub const LIST_CHOICE: &str = "A drop-down list: select_option.";
 /// block or a selector holding the day, the month and the year had its first list set, the month's « 03 » in the day);
 /// in it, the choice whose value is `value`, else whose shown text is `value` or `text` (spaces folded, case ignored),
 /// else whose value is `text`, else whose number is theirs (« 3 » for « 03 »), else the `index`-th; never an accepting
-/// choice in a list of the site's terms or a consent (review 14/11: the box of the same label is refused, `LABEL_JS`'s
-/// words); set as a person's choice is (the `input` and `change` events the site may listen to). Its answer, JSON:
+/// choice in a list of the site's terms or a consent (review 14/11: the box of the same label is refused): one whose
+/// own label (its <label>, aria-labelledby, aria-label; not the text around it nor its name: second review, « Délais
+/// selon nos conditions générales de vente » under a delivery list, a profile's visibility named « privacy ») has
+/// `LABEL_JS`'s words and whose choices hold an accepting one and a declining one (not « Payment terms: Net 30 »), each
+/// judged on its shown text, its value only when it shows none (« J'accepte » valued « 0 »); set as a person's choice
+/// is (the `input` and `change` events the site may listen to). Of several lists named, the one shown when the others
+/// are hidden (a form's mobile copy). Its answer, JSON:
 /// `{found, list, chosen, value, text, at, label}`, or why not (`several`, `field`, `hidden`, `box`, `off`, `consent`,
 /// the list's choices when none is the one asked) with the page's lists. The selector and the wanted values passed as
 /// JSON strings.
@@ -204,7 +209,8 @@ else found = [...document.querySelectorAll(sel)]; }} \
 catch (e) {{ return JSON.stringify({{found: false, invalid: true, lists: lists()}}); }} \
 found = found.filter((e) => e.nodeType === 1); \
 if (!found.length) return JSON.stringify({{found: false, lists: lists()}}); \
-const named = [...new Set(found.flatMap((e) => e.tagName === 'SELECT' ? [e] : [...e.querySelectorAll('select')]))]; \
+let named = [...new Set(found.flatMap((e) => e.tagName === 'SELECT' ? [e] : [...e.querySelectorAll('select')]))]; \
+if (named.length > 1) named = named.filter((e) => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden'); \
 if (named.length > 1) return JSON.stringify({{found: true, list: false, several: named.length, lists: lists()}}); \
 if (!named.length) {{ const e = found[0], type = (e.getAttribute('type') || '').toLowerCase(); \
 const why = e.tagName === 'INPUT' && type === 'password' ? {{password: true}} \
@@ -225,10 +231,16 @@ if (at < 0) return JSON.stringify(Object.assign({{found: true, list: true, chose
 more: Math.max(opts.length - 40, 0), \
 choices: opts.slice(0, 40).map((o) => [o.value.slice(0, 40), shown(o.text).slice(0, 40)])}}, where)); \
 if (el.disabled || opts[at].disabled) return JSON.stringify({{found: true, list: true, chosen: false, off: true}}); \
-const declines = (o) => o.value === '' || /^(0|false|n|no|non|nein|nee|nej|refuse[rd]?|decline[d]?)$/i.test(o.value.trim()) \
-|| /^(non|no|nein|nee|nej|je refuse|refuser|i decline|decline|je n'accepte pas|i do not|i don't)\\b/i.test(shown(o.text)); \
-if (isTerms(label(el)) && !declines(opts[at])) return JSON.stringify({{found: true, list: true, chosen: false, \
-consent: true}}); \
+const says = (o) => shown(o.text) || o.value.trim(); \
+const declining = (o) => /^(non|no|nein|nee|nej|n)\\b|refus|rechaz|ablehn|decline|disagree|opt.?out|stimme nicht|\
+nicht einverstanden|ne souhaite pas|n'accepte pas|do not|don't|^(0|false)$/i.test(says(o)); \
+const accepting = (o) => !declining(o) && /^(oui|yes|ja|s[ií]|ok|okay|d'accord|y|1|true|on)\\b|accept|acepto|aceptar|\
+agree|zustimm|stimme zu|einverstanden|consent|autoris/i.test(says(o)); \
+const own = shown([...(el.labels || [])].map((l) => l.innerText).join(' ') || (el.getAttribute('aria-labelledby') || '')\
+.split(/\\s+/).map((i) => i && document.getElementById(i)).filter(Boolean).map((l) => l.innerText).join(' ') \
+|| el.getAttribute('aria-label') || ''); \
+if (isTerms(own) && opts.some(accepting) && opts.some(declining) && accepting(opts[at])) \
+return JSON.stringify({{found: true, list: true, chosen: false, consent: true}}); \
 el.selectedIndex = at; el.dispatchEvent(new Event('input', {{bubbles: true}})); \
 el.dispatchEvent(new Event('change', {{bubbles: true}})); \
 return JSON.stringify(Object.assign({{found: true, list: true, chosen: true, value: opts[at].value.slice(0, 60), \
@@ -491,7 +503,7 @@ static VALUE_ACCESS: LazyLock<Regex> = LazyLock::new(|| {
 });
 static TERMS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)\b(cgu|cgv|agb|rgpd|gdpr)\b|terms|conditions|consent|privacy|confidentialit|datenschutz|t[ée]rminos|condiciones|politique de",
+        r"(?i)\b(cgu|cgv|agb|rgpd|gdpr)\b|terms|conditions|consent|privacy|confidentialit|datenschutz|einwilligung|privacidad|protecci[óo]n de datos|t[ée]rminos|condiciones|politique de",
     )
     .expect("valid regex")
 });
@@ -687,7 +699,7 @@ pub const GUARDED: [&str; 6] =
 /// What makes a box the site's terms in the page's scripts (as `terms_box`): its label, the text it is labelled by, the
 /// short text around a box without a label (a `<label>` tied to nothing right after it included: fourth review 13/11;
 /// a web component's text, the box in its shadow root: fifth), its aria-label, name and id.
-pub const LABEL_JS: &str = "const TERMS = /\\b(cgu|cgv|agb|rgpd|gdpr)\\b|terms|conditions|consent|privacy|confidentialit|datenschutz|t[ée]rminos|condiciones|politique de/i; \
+pub const LABEL_JS: &str = "const TERMS = /\\b(cgu|cgv|agb|rgpd|gdpr)\\b|terms|conditions|consent|privacy|confidentialit|datenschutz|einwilligung|privacidad|protecci[óo]n de datos|t[ée]rminos|condiciones|politique de/i; \
 const STRONG = /\\b(cgu|cgv|agb)\\b|conditions|terms|t[ée]rminos|condiciones|nutzungsbedingungen/i; \
 const label = (e) => { const root = e.getRootNode(); const own = [...(e.labels || [])].map((l) => l.innerText).join(' ').trim(); \
 const by = (e.getAttribute('aria-labelledby') || '').split(/\\s+/).filter(Boolean).map((i) => (((root.getElementById ? root : document).getElementById(i) || {}).innerText || '')).join(' '); \
@@ -1689,7 +1701,9 @@ impl Proxy {
             };
             let missing = target.get("found").and_then(Value::as_bool) == Some(false)
                 && target.get("invalid").and_then(Value::as_bool) != Some(true);
-            if !(typing && missing && !selector.is_empty()) || attempt == LATE_FIELD_TRIES {
+            // select_option waits for its list itself (`choose`), and its script refuses a password field too:
+            // one look here (second review 14/11: a guessed list name took 6.1 s, both waits in a row)
+            if !(typing && missing && !selector.is_empty() && tool != "select_option") || attempt == LATE_FIELD_TRIES {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(250)).await;
@@ -2982,7 +2996,10 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         let script = choose_script("select", Some("03"), None, None);
         assert!(script.contains("querySelectorAll(sel)") && script.contains("ORDERED_NODE_SNAPSHOT_TYPE"), "{script}");
         assert!(script.contains("named.length > 1") && script.contains(LABEL_JS));
-        assert!(script.contains("isTerms(label(el))"));
+        assert!(script.contains("isTerms(own) && opts.some(accepting) && opts.some(declining)"));
+        // the consent words, the box guard's too (second review 14/11)
+        assert!(terms_box("Acepto la política de privacidad") && terms_box("Einwilligung zur Datenverarbeitung"));
+        assert!(terms_box("Acepto la protección de datos") && !terms_box("Visibilité de votre profil"));
         assert!(script.starts_with("(() => {") && script.ends_with("})()"));
     }
 
