@@ -365,3 +365,25 @@ def test_a_browsing_agent_has_its_account_and_details_tools_in_view(bridges, fak
     for name in ("vault_create_login", "vault_confirm_login", "vault_contact_details", "vault_save_contact_details"):
         assert f"!mcp__bipagents_vault__{name}" in defer(), name
     assert "!mcp__stealth__type_text" in defer()
+    # and a drop-down list's choice (select-option-direct, 13/11: behind the search, the agents typed into the
+    # birth date's <select>s or read the page with a value)
+    assert "!mcp__stealth__select_option" in defer()
+
+
+def test_the_details_say_a_civility_is_asked_never_guessed(bridges, fakes):
+    """select-option-direct's bench, 13/11 (DeepSeek V4.1 Flash, a sign-up form with « Civilité », « Coordonnées » of
+    « Camille Testeur »): « Madame » picked by the agent itself in 3 runs of 4, and already « before » (5 of 9 runs,
+    hidden by the bench). The Coordonnées hold no civility: what the agent reads says so, at the moment it fills a
+    form, with the birth date when the entry has none, and never to take one from the first name."""
+    bridge = contacts_bridge(bridges, fakes)
+    made = bridge.post("/v1/vault", headers=AUTH, json={**PRO, "agents": ["vie"]})
+    assert made.status_code == 201, made.text
+    for arguments in ({}, {"label": "Kerfy Studio (pro)"}):
+        read, error = tool(bridge, VIE, "vault_contact_details", arguments)
+        assert not error, read
+        assert "no civility" in read and "first name" in read and "ask" in read, read
+        assert "no birth date" in read, read
+    dated = bridge.patch(f"/v1/vault/{made.json()['id']}", headers=AUTH, json={"birth_date": "1991-03-14"})
+    assert dated.status_code == 200, dated.text
+    read, _ = tool(bridge, VIE, "vault_contact_details", {"label": "Kerfy Studio (pro)"})
+    assert "no civility" in read and "no birth date" not in read, read

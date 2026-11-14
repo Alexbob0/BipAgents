@@ -327,6 +327,22 @@ pub fn describe(label: &str, hint: Option<&str>, secret: &Dict) -> String {
     lines.join("\n")
 }
 
+/// What the details the agent reads never hold, said after them (select-option-direct, 13/11: on a sign-up form with
+/// « Civilité », DeepSeek V4.1 Flash picked « Madame » itself for « Camille Testeur » in 3 runs of 4 after the change and
+/// 5 of 9 before, the rule « no civility of your own » being in the visible-browser skill and this tool's description
+/// only): a civility, and a birth date when none of `secrets` has one, are asked, never guessed; in the person's
+/// language, the titles of other languages' forms named (review 14/11).
+pub fn not_held(secrets: &[&Dict]) -> String {
+    let dated = secrets.iter().any(|s| s.get(BIRTH_DATE).map(py::py_str).is_some_and(|d| !d.trim().is_empty()));
+    format!(
+        "These details hold no civility or title (Madame / Monsieur, Mr / Ms, Frau / Herr, Sr. / Sra.){}: when a form \
+         asks for one (Civilité, Title, Anrede, Tratamiento…), ask your person in one short question, in their \
+         language (« Madame ou Monsieur ? »), unless they told you in this conversation; never pick one yourself, not \
+         from the first name either.",
+        if dated { "" } else { " and no birth date" }
+    )
+}
+
 // --- the agents' tools (on the `bipagents_vault` entry, vault_logins.rs) -------------------------------------------
 
 pub const READ: &str = "vault_contact_details";
@@ -425,11 +441,13 @@ pub async fn call(state: &crate::app::AppState, agent: &AgentConfig, name: &str,
             if wanted.is_empty() {
                 note_listed(state, &agent.name, name, &entries);
                 let all: Vec<String> = entries.iter().map(|e| describe(&e.label, e.hint.as_deref(), &e.secret)).collect();
+                let secrets: Vec<&Dict> = entries.iter().map(|e| &e.secret).collect();
                 return tool_text(
                     &format!(
-                        "Contact details the person gave you (personal data: only for what they ask):\n{}\nCall again \
-                         with the label of the one you use.",
-                        all.join("\n")
+                        "Contact details the person gave you (personal data: only for what they ask):\n{}\n{}\nCall \
+                         again with the label of the one you use.",
+                        all.join("\n"),
+                        not_held(&secrets)
                     ),
                     false,
                 );
@@ -444,8 +462,9 @@ pub async fn call(state: &crate::app::AppState, agent: &AgentConfig, name: &str,
             tracing::info!(agent = %agent.name, item = %entry.id, "contact details read by the agent");
             tool_text(
                 &format!(
-                    "{}\nPersonal data: only for what the person asked.\n{}",
+                    "{}\n{}\nPersonal data: only for what the person asked.\n{}",
                     describe(&entry.label, entry.hint.as_deref(), &entry.secret),
+                    not_held(&[&entry.secret]),
                     chip_line(&mark)
                 ),
                 false,
@@ -690,6 +709,37 @@ mod tests {
         parse(&dict(json!({"phones": [], "address_line1": "", "hint": ""})), &mut record, &mut secret).unwrap();
         assert!(!secret.contains_key("phones") && !secret.contains_key("address_line1") && !record.contains_key("hint"));
         assert_eq!(secret["city"], "Paris");
+    }
+
+    #[test]
+    fn a_civility_and_a_missing_birth_date_are_asked_never_guessed() {
+        // select-option-direct, 13/11: « Madame » picked by the agent for « Camille Testeur »
+        let plain = dict(json!({"full_name": "Camille Testeur"}));
+        let dated = dict(json!({"full_name": "Camille Testeur", "birth_date": "1991-03-14"}));
+        let said = not_held(&[&plain]);
+        assert!(
+            said.starts_with(
+                "These details hold no civility or title (Madame / Monsieur, Mr / Ms, Frau / Herr, Sr. / Sra.) and no \
+                 birth date:"
+            ),
+            "{said}"
+        );
+        assert!(said.contains("ask your person") && said.contains("not from the first name"), "{said}");
+        assert!(!not_held(&[&dated]).contains("birth date") && not_held(&[&plain, &dated]).contains("no civility"));
+        // the browser skill says it the same way (§ 4b)
+        assert!(crate::browsers::skill().contains("no civility of your own, not even from the first name"));
+    }
+
+    #[test]
+    fn review_sod_the_civility_question_is_asked_in_the_persons_language() {
+        // review 14/11: the example question is French (« Madame ou Monsieur ? ») and nothing said to ask it in the
+        // person's language, as could_not_start (browser_mcp.rs) and card_pay.rs say for theirs; an English, German or
+        // Spanish form's « Title » / « Anrede » / « Tratamiento » wasn't named either
+        let said = not_held(&[&dict(json!({"full_name": "Camille Testeur"}))]);
+        assert!(said.contains("in their language"), "{said}");
+        for word in ["Mr / Ms", "Frau / Herr", "Sr. / Sra.", "Title", "Anrede", "Tratamiento"] {
+            assert!(said.contains(word), "{word}: {said}");
+        }
     }
 
     #[test]

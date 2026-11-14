@@ -1,0 +1,101 @@
+"""A drop-down list's choice through bip-browser-mcp (select-option-direct, 13/11) in a real Chromium, behind the
+stand-in for stealth-browser-mcp (fixtures/signup_guard/stealth_cdp.py) with its `select_option`: a `value` or an
+`index` set by a script declaring `const select` at the page's top level, its error never read. On the lab the same
+evening, with the real server and its Chrome: the sign-up page's three birth date lists given 14, 03 and 1991 by value
+answered true three times and held ["14", "", ""]; the site refused the form.
+
+Needs a Chromium (`BIP_CHROME`) and the proxy (`BIP_BROWSER_MCP`): skipped without."""
+import time
+
+import pytest
+
+from test_signup_guard_chrome import Session, pytestmark  # noqa: F401
+
+LISTS = "['birthday-day', 'birthday-month', 'birthday-year'].map((i) => document.getElementById(i).value)"
+
+
+@pytest.fixture(scope="module")
+def browser():
+    session = Session()
+    yield session
+    session.close()
+
+
+def open_form(browser):
+    browser.tool("navigate", url=f"{browser.base}/signup.html")
+    browser.tool("click_element", selector="#open-register")
+    time.sleep(1)
+
+
+def test_the_three_birth_date_lists_of_one_page_are_all_chosen(browser):
+    open_form(browser)
+    said = [browser.tool("select_option", selector=f"#birthday-{part}", value=value)
+            for part, value in (("day", "14"), ("month", "03"), ("year", "1991"))]
+    assert browser.page(LISTS) == ["14", "03", "1991"], said
+
+
+def test_a_choice_by_its_shown_text_by_its_number_or_by_its_place(browser):
+    open_form(browser)
+    browser.tool("select_option", selector="#birthday-month", text="mars")
+    browser.tool("select_option", selector="#birthday-day", value="3")      # « 3 » for the list's « 03 »
+    browser.tool("select_option", selector="#birthday-year", index=36)      # « Année », 2026 … 1991
+    assert browser.page(LISTS) == ["03", "03", "1991"]
+    browser.tool("select_option", selector="//select[@id='birthday-year']", value="1990")   # an XPath
+    assert browser.page(LISTS)[2] == "1990"
+    # the site's own handlers hear it as a person's choice
+    browser.page("window.heard = []; document.getElementById('birthday-day').addEventListener('change', "
+                 "(e) => window.heard.push(e.target.value))")
+    browser.tool("select_option", selector="#birthday-day", value="21")
+    assert browser.page("window.heard") == ["21"]
+
+
+def test_a_choice_the_list_lacks_is_said_with_the_lists_choices(browser):
+    open_form(browser)
+    said = browser.tool("select_option", selector="#birthday-month", value="13")
+    assert said.startswith("Not done:") and "Décembre" in said and "12" in said, said
+    assert browser.page(LISTS)[1] == ""
+
+
+def test_a_list_of_the_sites_own_is_told_to_take_two_clicks(browser):
+    # signup.html's « Civilité »: a button and its choices, no <select>
+    open_form(browser)
+    said = browser.tool("select_option", selector="#civility", text="Madame")
+    assert said.startswith("Not done:") and "click_element" in said, said
+    assert browser.page("document.getElementById('civility-value').value") == ""
+    said = browser.tool("select_option", selector="#nothing-here", value="1")
+    assert said.startswith("Not done:"), said
+
+
+def test_the_sites_hidden_field_behind_its_own_list_points_to_that_list(browser):
+    # the « after » bench, 13/11, DeepSeek run 11: select_option on « #civility-value », the hidden input the site's
+    # own « Civilité » list fills (review 14/11: told « a list of the site's own », as if it could be clicked)
+    open_form(browser)
+    said = browser.tool("select_option", selector="#civility-value", text="Madame")
+    assert said.startswith("Not done: that is a hidden field"), said
+    assert "#civility (Civilité)" in said and "click_element" in said, said
+    assert browser.page("document.getElementById('civility-value').value") == ""
+
+
+def test_a_list_looked_for_under_a_guessed_name_gets_the_pages_lists(browser):
+    # the « after » bench, GLM-5.3 Flash (2 runs of 9 stopped there): « Civilité » looked for as
+    # `select[name="civilite"], #civilite`, then `select#*civility`, never found; the answer now names the page's lists,
+    # the site's own among them, with their labels
+    open_form(browser)
+    for guess in ('select[name="civilite"], #civilite', "select#*civility"):
+        said = browser.tool("select_option", selector=guess, text="Madame")
+        assert said.startswith("Not done:"), said
+        assert "#birthday-month" in said and "#civility (Civilité)" in said and "click_element" in said, said
+    assert browser.page("document.getElementById('civility-value').value") == ""
+
+
+@pytest.mark.parametrize("choice", [{"text": "Provisoire123!"}, {"value": "Provisoire123!"}, {"index": 1}])
+def test_a_password_field_is_never_typed_into_through_select_option(browser, choice):
+    # the review's bench, 14/11 (DeepSeek V4.1 Flash, run 17): select_option on « #register-password » with an 11-letter
+    # text, answered « a field to type into: type_text into it ». The real server's select_option types its `text` into
+    # whatever it is aimed at (`send_keys`), past the guard of type_text: refused as typing into a password field is
+    open_form(browser)
+    time.sleep(1)
+    said = browser.tool("select_option", selector="#register-password", **choice)
+    typed = browser.page("document.getElementById('register-password').value")
+    assert typed == "" and said.startswith("Not done: this is a password field"), (typed, said)
+    assert "type_text into it" not in said, said

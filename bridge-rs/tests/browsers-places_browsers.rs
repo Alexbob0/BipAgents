@@ -101,6 +101,10 @@ fn read_json(path: &Path) -> Value {
 async fn an_install_hands_out_only_its_own_range_and_moves_a_browser_from_outside_it() {
     let mut s = setup();
     s.config.browser.ports = 4;
+    // a range of its own (19700…): the browsers' DevTools secrets are kept per port for the whole test process, and
+    // its « other » place on 19602 made another test's secret there vanish (a flake of
+    // an_agent_gets_its_own_browser_container_and_desktop, second review of select-option-direct, 14/11)
+    s.config.browser.first_port = 19700;
     let place = s.tmp.join("browsers").join("budget");
     std::fs::create_dir_all(place.join("profile")).unwrap();
     std::fs::write(place.join("profile").join("Cookies"), "kept").unwrap();
@@ -109,18 +113,18 @@ async fn an_install_hands_out_only_its_own_range_and_moves_a_browser_from_outsid
         [("cdp".to_string(), 9600), ("vnc".to_string(), 9601)].into_iter().collect();
     assert!(!browsers::in_range(&s.config, &outside));
     let agent = s.setup_budget(&s.host.clone()).await;
-    assert_eq!(read_json(&place.join("ports.json")), json!({"cdp": 19600, "vnc": 19601}));
-    assert_eq!(agent.desktop_vnc.as_deref(), Some("tcp://127.0.0.1:19601"));
+    assert_eq!(read_json(&place.join("ports.json")), json!({"cdp": 19700, "vnc": 19701}));
+    assert_eq!(agent.desktop_vnc.as_deref(), Some("tcp://127.0.0.1:19701"));
     assert_eq!(std::fs::read_to_string(place.join("profile").join("Cookies")).unwrap(), "kept");
     let secret = std::fs::read_to_string(place.join("cdp.token")).unwrap().trim().to_string();
-    assert_eq!(written(&s)["browser"]["cdp_url"], json!(format!("http://127.0.0.1:19600/t/{secret}")));
+    assert_eq!(written(&s)["browser"]["cdp_url"], json!(format!("http://127.0.0.1:19700/t/{secret}")));
     std::fs::create_dir_all(s.tmp.join("browsers").join("other")).unwrap();
     std::fs::write(
         s.tmp.join("browsers").join("other").join("ports.json"),
-        json!({"cdp": 19602, "vnc": 19603}).to_string(),
+        json!({"cdp": 19702, "vnc": 19703}).to_string(),
     )
     .unwrap();
-    // 19600-19603 all handed out: the range is full
+    // 19700-19703 all handed out: the range is full
     assert!(browsers::pick_ports(&s.config, &|_| true).is_err());
 }
 
