@@ -137,6 +137,18 @@ pub const VAULT_DIRECT: [&str; 5] = [
     "!mcp__bipagents_vault__accept_terms",
 ];
 
+/// Paying with the person's card (card_pay.rs), in view for an agent its person lets pay, with its browser (a card for
+/// it, payments on, an « open » agent: `card_pay::shopping` is `Card`, as the payments block of its SOUL.md says; never
+/// the family's agent nor a project agent). Behind the search, 14/11 (the cards
+/// lab, GLM-5.3 Flash, a watcher's restock): at the payment page the agent read pay_with_card with tool_describe, then
+/// called it by name; the call ended on the in-view create_page (pages « paiement-de-la-… »), then propose_task again
+/// and again until the brake, at both restocks of the run: no payment asked, the ticket not bought.
+pub const PAY_DIRECT: [&str; 3] = [
+    "!mcp__bipagents_pay__pay_with_card",
+    "!mcp__bipagents_pay__confirm_payment",
+    "!mcp__bipagents_pay__cancel_payment",
+];
+
 /// Reading one mail (mailbox.rs).
 const MAIL_READ: &str = "mail_read";
 
@@ -623,6 +635,13 @@ pub fn current(config: &Config, agent: &AgentConfig) -> Option<Diet> {
             }
         }
     }
+    if browser && matches!(crate::card_pay::shopping(config, agent), crate::souls::Shopping::Card(_)) {
+        for entry in PAY_DIRECT {
+            if !out.defer.iter().any(|d| d == entry) {
+                out.defer.push(entry.to_string());
+            }
+        }
+    }
     // the connectors the person approved are called like any tool (connectors.rs)
     for entry in crate::connectors::direct_entries(config, agent) {
         if !out.defer.contains(&entry) {
@@ -771,6 +790,18 @@ mod tests {
         let tools: Vec<String> =
             crate::vault_logins::tools().iter().filter_map(|t| t["name"].as_str().map(str::to_string)).collect();
         for name in VAULT_DIRECT {
+            assert!(tools.iter().any(|t| name.ends_with(&format!("__{t}"))), "{name}");
+        }
+    }
+
+    #[test]
+    fn paying_is_named_as_hermes_names_it() {
+        // 14/11: behind the search, the call meant for pay_with_card ended on create_page
+        let entry = |tool: &str| format!("!mcp__{}__{tool}", crate::card_pay::SERVER_NAME);
+        assert_eq!(PAY_DIRECT, [entry(crate::card_pay::PAY), entry(crate::card_pay::CONFIRM), entry(crate::card_pay::CANCEL)]);
+        let tools: Vec<String> =
+            crate::card_pay::tools().iter().filter_map(|t| t["name"].as_str().map(str::to_string)).collect();
+        for name in PAY_DIRECT {
             assert!(tools.iter().any(|t| name.ends_with(&format!("__{t}"))), "{name}");
         }
     }

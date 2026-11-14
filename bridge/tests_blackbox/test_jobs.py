@@ -6,6 +6,7 @@ names in a task's instructions, in the tools' words and in the pushes are in the
 import json
 import os
 import re
+import time
 
 import pytest
 
@@ -166,11 +167,38 @@ def test_an_agent_proposes_a_task_the_person_starts(bridges, fakes):
     junk = call(bridge, "propose_task", {"title": "x", "prompt": "No"})
     assert junk["isError"] and "ask_secret" in text_of(junk) and "sandbox_sites_request" in text_of(junk), junk
     assert len(bridge.get("/v1/jobs", headers=AUTH).json()["jobs"]) == jobs_before
-    for _ in range(5):
-        call(bridge, "propose_task", {"title": "Encore", "prompt": "Encore un dossier à préparer."})
-    too_many = call(bridge, "propose_task", {"title": "Encore", "prompt": "Encore un dossier à préparer."})
+    for i in range(5):
+        call(bridge, "propose_task", {"title": f"Encore {i}", "prompt": f"Encore un dossier à préparer, le n° {i}."})
+    too_many = call(bridge, "propose_task", {"title": "Encore", "prompt": "Encore un dossier à préparer, le dernier."})
     # (a turn no run carries: the brake's note that the same tool comes back often, after the answer)
     assert too_many["isError"] and text_of(too_many).startswith("enough of your proposals are waiting for the person already")
+
+
+def test_the_same_proposal_again_is_not_proposed_twice(bridges, fakes):
+    """The cards lab of 14/11 (GLM-5.3 Flash, a watcher's turn): the same propose_task again and again, each one a new
+    waiting task and a push to the person, until the brake stopped the turn; the next turn began with it again. The
+    same task already waiting for the person: not proposed again, said plainly."""
+    bridge = with_device(bridges)
+    give_token(bridge)
+    args = {"title": "Supprimer la page", "prompt": "Delete the page with id paiement-de-la-place.", "budget": "small"}
+    first = call(bridge, "propose_task", args)
+    assert not first["isError"] and text_of(first).startswith("Proposed"), first
+    for again in ({**args}, {**args, "title": "Supprimer la page en double"},
+                  {**args, "prompt": "  delete the page with id  paiement-de-la-place. "}):
+        said = call(bridge, "propose_task", again)
+        assert not said["isError"] and text_of(said).startswith("Already proposed: « Supprimer la page »"), said
+        assert "Don't propose it again" in text_of(said)
+    proposed = [j for j in bridge.get("/v1/jobs", headers=AUTH).json()["jobs"] if j["state"] == "proposed"]
+    assert len(proposed) == 1
+    assert wait_until(lambda: fakes.apns.payloads())
+    time.sleep(1)
+    assert len([p for p in fakes.apns.payloads() if p.get("t") == "task"]) == 1, "one push, not one per call"
+    # another task: proposed
+    other = call(bridge, "propose_task", {**args, "prompt": "Prépare le dossier de location."})
+    assert text_of(other).startswith("Proposed"), other
+    # the first one forgotten by the person: it may be proposed again
+    assert bridge.delete(f"/v1/jobs/{proposed[0]['id']}", headers=AUTH).status_code == 200
+    assert text_of(call(bridge, "propose_task", args)).startswith("Proposed")
 
 
 @pytest.mark.slow
