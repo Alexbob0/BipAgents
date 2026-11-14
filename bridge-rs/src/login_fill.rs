@@ -46,7 +46,7 @@ pub fn frame_on(frame_url: &str, origin: &str) -> bool {
 pub async fn find(page: &mut Page, origin: &str) -> Result<Option<Fields>, FillError> {
     let mut focused = Vec::new();
     let mut fallback = Vec::new();
-    for (session, frame_id, frame_url) in page.frames().await? {
+    for crate::card_fill::FrameSeen { session, id: frame_id, url: frame_url, .. } in page.frames().await? {
         if !frame_on(&frame_url, origin) {
             continue; // another site's frame: never looked at, never typed into
         }

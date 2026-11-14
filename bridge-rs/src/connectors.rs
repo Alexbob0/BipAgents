@@ -861,7 +861,9 @@ standard error. Keep it gentle: an RSS feed or an official API when there is one
 robots.txt and terms respected.";
 
 const SECRET_RULE: &str = "Never ask for a password, key or code in the conversation, and never write one in a \
-message, a file, a task or a log: always ask_secret. You never see the value; the person types it in a card.";
+message, a file, a task or a log: always ask_secret. You never see the value; the person types it in a card. Never \
+for a payment card (its number, expiry, holder or security code): refused; payments go only through pay_with_card, \
+the person confirming with « Oui, payer », and when it can't fill the form, hand_over_payment (« Panier prêt »).";
 
 pub fn tools() -> Vec<Value> {
     let icons = icon_keys().join(", ");
@@ -1259,6 +1261,15 @@ fn listing_for_agent(state: &AppState, agent: &AgentConfig) -> Dict {
 
 async fn ask_secret_tool(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> anyhow::Result<Dict> {
     let config = state.config();
+    // A payment card's details are never asked (card-guards, 14/11: Vie asked Alex for his card's number this way,
+    // then typed it into the shop's form): by its kind or its words, in four languages.
+    let words: Vec<String> =
+        ["name", "identifier_label", "identifier", "reason"].iter().map(|k| arg(arguments, k)).collect();
+    let words: Vec<&str> = words.iter().map(String::as_str).collect();
+    if crate::card_details::asks_for_card(&arg(arguments, "kind"), &words) {
+        tracing::info!(agent = %agent.name, "secret card refused: a payment card's details");
+        return Ok(refusal(crate::card_details::SECRET_REFUSED));
+    }
     let name = arg(arguments, "name").to_lowercase();
     if !secrets::valid_name(&name) {
         return Ok(refusal("name: lower-case letters, digits and _, 2 to 32 characters, a letter first (e.g. garmin)."));

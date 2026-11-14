@@ -783,8 +783,12 @@ pub fn shopping_of(soul: &str) -> Shopping {
 /// Every agent (decided 2026-10-26, handover.rs): no card number in chat, and the rules that never change; after
 /// the shopping sentences (`payments_text`).
 pub const PAYMENTS_RULE: &str = concat!(
-    "Never ask for, accept or type card numbers, security codes or bank logins in chat; if they send one, tell them ",
-    "not to and don't use it. ",
+    // card-guards, 14/11: Vie asked Alex for his card's number through a secure-field card, then typed it itself
+    "Never ask for, accept or type a payment card's number, expiry, holder or security code, in chat or in a card of ",
+    "the app (ask_secret refuses them, your browser won't type them): a card is only ever typed by BipAgents itself, ",
+    "after their « Oui, payer »; when that can't be done, stop and hand the payment over with hand_over_payment ",
+    "(« Panier prêt »: they pay themselves). Never ask for bank logins either; if they send card details or a bank ",
+    "login, tell them not to and don't use them. ",
     // connectors an agent makes (2026-10-28, connectors.rs, secrets.rs)
     "The same for any password, access key or one-time code: never ask for one in the conversation and never write ",
     "one in a message, a file, a task or a log; whenever you need one, ask with ask_secret (the person types it in a ",
@@ -1354,6 +1358,9 @@ mod tests {
     fn a_password_is_always_asked_with_ask_secret() {
         // Ghibli once told Alex to type his Garmin password in the visible browser (aibox, 2026-10-28)
         assert!(PAYMENTS_RULE.contains("whenever you need one, ask with ask_secret"));
+        // never a card's details, not even through a card of the app (card-guards, 14/11)
+        assert!(PAYMENTS_RULE.contains("in chat or in a card of the app (ask_secret refuses them"));
+        assert!(PAYMENTS_RULE.contains("hand_over_payment (« Panier prêt »"));
         assert!(PAYMENTS_RULE.contains("never improvise a way around it"));
         assert!(PAYMENTS_RULE.contains("BipAgents handles the rest"));
         assert!(!PAYMENTS_RULE.contains("keep it in the app's vault"));

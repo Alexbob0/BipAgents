@@ -14,9 +14,12 @@
 //! The card is never typed into the document the agent prepared (security audit 2026-11-11, BV-1): an agent misled by
 //! a page could have run script in it before asking (a listener copying what is typed, fields of its own found first).
 //! Under the payment's hold, `fresh` closes every other tab, removes the site's service workers and reloads the page
-//! from the network; the fields are looked for in that new document only, and only in frames of the page's own site,
-//! of the card's sites or of a known payment provider (`Frames`). After the payment the tab is left on an empty page
-//! (`blank`) unless the page moved on to a new document by itself.
+//! from the network; the fields are looked for in that new document only, and only in the page's own frames or a
+//! known payment provider's frame embedded in it (`Frames`, `PROVIDERS`; strict since card-guards, 14/11: never another
+//! site's frame, a provider's frame inside one included). The page itself may be a provider's own payment page
+//! (CAWL, PayZen, Monetico…) when this tab came there from the card's site through the pages' own links and forms
+//! (`reached_from`). After the payment the tab is left on an empty page (`blank`) unless the page moved on to a new
+//! document by itself.
 
 use std::collections::VecDeque;
 use std::time::Duration;
@@ -38,38 +41,99 @@ const POLL: Duration = Duration::from_millis(200);
 /// the card's form, for `findButton`.
 const ANCHOR: &str = "function () { globalThis.__bipPay.anchor(this); return true; }";
 
-/// The payment providers whose frames hold a card form inside a shop's page (hosted fields: Stripe Elements, Adyen,
-/// Checkout.com Frames, Mollie, PayPlug, Braintree, PayPal, Square, Shopify, Lyra/PayZen/SystemPay, Stancer,
-/// Worldline, Recurly, Chargebee): a frame on one of these sites (or below one) may get the card. Any other frame of
-/// another site than the page's own and the card's is left alone; a page whose card form is only there ends as a
-/// hand-over to the person (card_pay.rs).
-pub const PROVIDERS: &[&str] = &[
-    "js.stripe.com",
-    "adyen.com",
-    "checkout.com",
-    "mollie.com",
-    "payplug.com",
-    "braintreegateway.com",
-    "paypal.com",
-    "squarecdn.com",
-    "squareup.com",
-    "pci.shopifyinc.com",
-    "lyra.com",
-    "payzen.eu",
-    "systempay.fr",
-    "stancer.com",
-    "worldline-solutions.com",
-    "recurly.com",
-    "chargebee.com",
+/// A payment provider whose card form the vault may fill (card-guards, 14/11: Alex's test on pharmaciedesdrakkars.com,
+/// whose « Carte bancaire » goes to CAWL's payment page, Crédit Agricole × Worldline): `frames`, the hosts of its
+/// fields embedded in a shop's page (hosted fields, in a cross-origin frame); `pages`, the hosts of its own payment
+/// page a shop sends the tab to (a redirect, or a form posted there). Host suffixes: « adyen.com » covers
+/// checkoutshopper-live.adyen.com.
+#[derive(Debug)]
+pub struct Provider {
+    pub name: &'static str,
+    pub frames: &'static [&'static str],
+    pub pages: &'static [&'static str],
+}
+
+/// The providers a card may be typed into, and nowhere else outside the shop's own pages: a frame of another site
+/// that is not one of these is never typed into, nor a page of one of these that the tab did not reach from the
+/// card's site (`reached_from`). A page whose card form is elsewhere ends as a hand-over (card_pay.rs).
+pub const PROVIDERS: &[Provider] = &[
+    Provider { name: "Stripe", frames: &["js.stripe.com"], pages: &["checkout.stripe.com", "buy.stripe.com"] },
+    Provider { name: "Adyen", frames: &["adyen.com"], pages: &["checkoutshopper-live.adyen.com",
+        "checkoutshopper-live-us.adyen.com", "checkoutshopper-live-au.adyen.com", "checkoutshopper-live-apse.adyen.com",
+        "checkoutshopper-live-in.adyen.com", "checkoutshopper-test.adyen.com"] },
+    Provider { name: "Checkout.com", frames: &["checkout.com"], pages: &["pay.checkout.com", "pay.sandbox.checkout.com"] },
+    Provider { name: "Mollie", frames: &["mollie.com"], pages: &["www.mollie.com", "pay.mollie.com"] },
+    Provider { name: "PayPlug", frames: &["payplug.com"], pages: &["secure.payplug.com"] },
+    Provider { name: "Braintree", frames: &["braintreegateway.com"], pages: &[] },
+    Provider { name: "PayPal", frames: &["paypal.com"], pages: &[] },
+    Provider { name: "Square", frames: &["squarecdn.com", "squareup.com"], pages: &[] },
+    Provider { name: "Shopify", frames: &["pci.shopifyinc.com"], pages: &[] },
+    // Lyra's brands: PayZen, Systempay (Caisse d'Épargne, Banque Populaire), Sogecommerce, Scellius, Clic&Pay
+    Provider { name: "PayZen", frames: &["lyra.com", "payzen.eu"], pages: &["secure.payzen.eu", "secure.lyra.com"] },
+    Provider { name: "Systempay", frames: &["systempay.fr"], pages: &["paiement.systempay.fr"] },
+    Provider { name: "Sogecommerce", frames: &["sogecommerce.societegenerale.eu"],
+               pages: &["sogecommerce.societegenerale.eu"] },
+    Provider { name: "Scellius", frames: &["scelliuspaiement.labanquepostale.fr"],
+               pages: &["scelliuspaiement.labanquepostale.fr"] },
+    Provider { name: "Clic&Pay", frames: &["clicandpay.groupecdn.fr"], pages: &["clicandpay.groupecdn.fr"] },
+    // Crédit Agricole: CAWL (with Worldline, on its Direct platform: payment.cawl-solutions.fr is
+    // default.ogone.giservices.io, as payment.direct.worldline-solutions.com), and Up2Pay e-Transactions (Paybox)
+    Provider { name: "CAWL", frames: &["cawl-solutions.fr"], pages: &["cawl-solutions.fr"] },
+    Provider { name: "Up2Pay e-Transactions", frames: &["e-transactions.fr", "paybox.com"],
+               pages: &["e-transactions.fr", "paybox.com"] },
+    // Worldline: Direct / Online Payments (Ogone's successor, Ingenico ePayments), and Sips (Mercanet, Sogenactif)
+    Provider { name: "Worldline", frames: &["worldline-solutions.com", "ogone.com", "secured-by-ingenico.com"],
+               pages: &["direct.worldline-solutions.com", "secure.ogone.com", "secured-by-ingenico.com",
+                        "sips-services.com", "mercanet.bnpparibas.net", "sogenactif.com"] },
+    // Crédit Mutuel / CIC
+    Provider { name: "Monetico", frames: &["monetico-services.com"], pages: &["monetico-services.com"] },
+    Provider { name: "Axepta", frames: &["axepta.bnpparibas"], pages: &["axepta.bnpparibas"] },
+    Provider { name: "Payline", frames: &["payline.com"], pages: &["payline.com"] },
+    Provider { name: "HiPay", frames: &["hipay.com"], pages: &["hipay.com"] },
+    Provider { name: "Stancer", frames: &["stancer.com"], pages: &["stancer.com"] },
+    Provider { name: "Recurly", frames: &["recurly.com"], pages: &[] },
+    Provider { name: "Chargebee", frames: &["chargebee.com"], pages: &[] },
 ];
 
-/// Which frames' fields a card may be typed into: the page's own site (its host, a subdomain of it, `www.` aside),
-/// one of the card's sites (none: no more than the page's own), a known payment provider (`PROVIDERS`). Only https
+/// The provider whose fields a frame on `host` holds.
+pub fn provider_frame(host: &str) -> Option<&'static Provider> {
+    PROVIDERS.iter().find(|p| p.frames.iter().any(|f| at_or_below(host, f)))
+}
+
+/// The provider whose own payment page `host` is.
+pub fn provider_page(host: &str) -> Option<&'static Provider> {
+    PROVIDERS.iter().find(|p| p.pages.iter().any(|f| at_or_below(host, f)))
+}
+
+/// Every provider host (frames and pages), for the browser proxy's guard (browser_mcp.rs: a frame of one of them is
+/// a card form; a script never sends the tab to one).
+pub fn provider_hosts() -> Vec<&'static str> {
+    let mut hosts: Vec<&'static str> = PROVIDERS.iter().flat_map(|p| p.frames.iter().chain(p.pages)).copied().collect();
+    hosts.sort_unstable();
+    hosts.dedup();
+    hosts
+}
+
+/// `[vault] test_payment_providers` (bridge.toml, the black-box tests' fake providers): loopback names only
+/// (`localhost`, `*.localhost`), so no setting ever adds a real site to `PROVIDERS`.
+pub fn test_providers(config: &crate::config::Config) -> Vec<String> {
+    config.test_payment_providers.iter().filter(|h| is_loopback_name(h)).cloned().collect()
+}
+
+/// `localhost` or a name under it: the browser's own machine, never a site of the web.
+pub fn is_loopback_name(host: &str) -> bool {
+    host == "localhost" || host.ends_with(".localhost")
+}
+
+/// Which frames' fields a card may be typed into (strict, card-guards 14/11): the page's own (its main frame, and frames
+/// of its own site: its host or below it, `www.` aside), and a known payment provider's (`PROVIDERS`' `frames`, or a
+/// test provider) — each one only when every frame above it is one of these too (`pick`: a provider's frame inside an
+/// ad's frame is not the shop's). Never another frame, a frame of another of the card's sites included. Only https
 /// frames (or a test page on this machine), never one without a web address (about:blank, data:, blob:).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Frames {
     top: String,
-    sites: Vec<String>,
+    test: Vec<String>,
 }
 
 fn at_or_below(host: &str, site: &str) -> bool {
@@ -77,11 +141,16 @@ fn at_or_below(host: &str, site: &str) -> bool {
 }
 
 impl Frames {
-    /// The rule for the page at `top_url` and a card for `sites`.
-    pub fn new(top_url: &str, sites: &[String]) -> Frames {
+    /// The rule for the page at `top_url`.
+    pub fn new(top_url: &str) -> Frames {
         let top = origin_of(top_url).map(|(_, host)| host).unwrap_or_default();
-        let sites = sites.iter().map(|s| s.trim().trim_end_matches('.').to_lowercase()).filter(|s| !s.is_empty());
-        Frames { top, sites: sites.collect() }
+        Frames { top, test: Vec::new() }
+    }
+
+    /// With the test providers of `config` (`test_providers`).
+    pub fn with_tests(mut self, config: &crate::config::Config) -> Frames {
+        self.test = test_providers(config);
+        self
     }
 
     pub fn allows(&self, frame_url: &str) -> bool {
@@ -90,9 +159,12 @@ impl Frames {
             return false;
         }
         let own = self.top.strip_prefix("www.").unwrap_or(&self.top);
-        at_or_below(&host, own)
-            || self.sites.iter().any(|s| at_or_below(&host, s))
-            || PROVIDERS.iter().any(|p| at_or_below(&host, p))
+        at_or_below(&host, own) || provider_frame(&host).is_some() || self.test.iter().any(|t| at_or_below(&host, t))
+    }
+
+    /// A field's frame and every frame above it (`Field::ancestors`) allowed.
+    pub fn allows_field(&self, field: &Field) -> bool {
+        self.allows(&field.frame_url) && field.ancestors.iter().all(|a| self.allows(a))
     }
 }
 
@@ -100,12 +172,58 @@ impl Frames {
 /// before a frame's.
 pub fn pick(found: &[Field], rule: Option<&Frames>) -> Vec<Field> {
     let mut out: Vec<Field> = Vec::new();
-    for field in found.iter().filter(|f| rule.is_none_or(|r| r.allows(&f.frame_url))) {
+    for field in found.iter().filter(|f| rule.is_none_or(|r| r.allows_field(f))) {
         if !out.iter().any(|f| f.kind == field.kind) {
             out.push(field.clone());
         }
     }
     out
+}
+
+/// What a frame above a field is when the page doesn't say (its parent not reported): never allowed.
+pub const UNKNOWN_FRAME: &str = "unknown:";
+
+/// One entry of a tab's history (`Page.getNavigationHistory`): its address and how it was reached (`transitionType`:
+/// « link », « form_submit », « typed »…).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Visit {
+    pub url: String,
+    pub transition: String,
+}
+
+/// A provider's payment page (`entries[current]`, its host one of `PROVIDERS`' `pages`, or a test provider) reached
+/// from the card's site in this same tab: the entries before it on that page's own origin, back to the first one, were
+/// each reached by the pages themselves (a link, a form sent, a script of the page: « link », « form_submit »), never
+/// by an address the browser was sent to (« typed »: the agent's navigate, an address bar, a bookmark), nor reloaded;
+/// and the entry right before them is an https page of one of the card's sites (any site for a card without sites).
+/// That site's host, or None. A script of the agent's that sends the tab there from the shop's page looks like the
+/// shop's own: browser_mcp.rs refuses a script that names a provider's host.
+pub fn reached_from(entries: &[Visit], current: usize, sites: &[String], test: &[String]) -> Option<String> {
+    let here = entries.get(current)?;
+    let (scheme, host) = origin_of(&here.url)?;
+    let tested = test.iter().any(|t| at_or_below(&host, t));
+    if !secure(&scheme, &host) || (provider_page(&host).is_none() && !tested) {
+        return None;
+    }
+    let origin = url::Url::parse(&here.url).ok()?.origin();
+    let mut first = current;
+    loop {
+        let entry = &entries[first];
+        if !matches!(entry.transition.as_str(), "link" | "form_submit") {
+            return None;
+        }
+        if first == 0 {
+            return None; // nothing before the provider's page in this tab
+        }
+        let before = &entries[first - 1];
+        let same = url::Url::parse(&before.url).ok().is_some_and(|u| u.origin() == origin);
+        if !same {
+            let (scheme, shop) = origin_of(&before.url)?;
+            return (secure(&scheme, &shop) && crate::cards::site_allowed(sites, &shop) && provider_page(&shop).is_none())
+                .then_some(shop);
+        }
+        first -= 1;
+    }
 }
 
 type Ws = tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
@@ -166,6 +284,9 @@ pub struct Field {
     pub tag: String,
     pub fmt: String,
     pub empty: bool,
+    /// The addresses of the frames above its frame, nearest first (none for the page's main frame); `UNKNOWN_FRAME`
+    /// for one the page did not report.
+    pub ancestors: Vec<String>,
 }
 
 /// What to type. Not `Debug`: never printed; wiped from memory when dropped (the security code, given by the person
@@ -369,26 +490,68 @@ pub struct Page {
     pub session: String,
     /// The tab's target id (the same across reloads and navigations).
     pub target: String,
-    /// The out-of-process frames' sessions found so far: Chrome reports each one once per connection, and a page is
-    /// looked at several times while its form appears (card_pay.rs).
-    children: Vec<String>,
+    /// The out-of-process frames' sessions found so far, each with the frame it was attached under when Chrome said:
+    /// Chrome reports each one once per connection, and a page is looked at several times while its form appears
+    /// (card_pay.rs).
+    children: Vec<(String, Option<String>)>,
     /// The fields `fill` typed into (or began to), in order: what `clear` empties afterwards.
     pub typed: Vec<Typed>,
 }
 
-fn frames_of(tree: &Value, out: &mut Vec<(String, String)>) {
+/// One frame of the page as a session reports it: the session that reaches it, its id, its address and the frame
+/// above it (None: the page's main frame, or not said).
+#[derive(Debug, Clone, PartialEq)]
+pub struct FrameSeen {
+    pub session: String,
+    pub id: String,
+    pub url: String,
+    pub parent: Option<String>,
+}
+
+/// The frames of a frame tree, each with the frame above it: its parent in the tree, else (the tree's root, an
+/// out-of-process frame in its own session) the `parentId` Chrome gives it, else `root_parent`.
+fn frames_of(tree: &Value, parent: Option<&str>, root_parent: Option<&str>, out: &mut Vec<(String, String, Option<String>)>) {
+    let mut own = None;
     if let Some(frame) = tree.get("frame") {
         let id = frame.get("id").and_then(Value::as_str).unwrap_or("").to_string();
         let url = frame.get("url").and_then(Value::as_str).unwrap_or("").to_string();
+        let above = parent
+            .map(str::to_string)
+            .or_else(|| frame.get("parentId").and_then(Value::as_str).map(str::to_string))
+            .or_else(|| root_parent.map(str::to_string));
         if !id.is_empty() {
-            out.push((id, url));
+            out.push((id.clone(), url, above));
+            own = Some(id);
         }
     }
     if let Some(Value::Array(children)) = tree.get("childFrames") {
         for child in children {
-            frames_of(child, out);
+            frames_of(child, own.as_deref(), None, out);
         }
     }
+}
+
+/// The addresses of the frames above `frame`, nearest first, from what the sessions reported (`frames`): the main
+/// frame's (no parent) ends it; a parent nobody reported is `UNKNOWN_FRAME`.
+pub fn ancestors_of(frame: &str, seen: &[FrameSeen]) -> Vec<String> {
+    let parent_of = |id: &str| seen.iter().filter(|f| f.id == id).find_map(|f| f.parent.clone());
+    let mut out = Vec::new();
+    let mut at = parent_of(frame);
+    while let Some(parent) = at {
+        if out.len() > 32 {
+            out.push(UNKNOWN_FRAME.to_string());
+            break;
+        }
+        match seen.iter().find(|f| f.id == parent) {
+            Some(above) => out.push(above.url.clone()),
+            None => {
+                out.push(UNKNOWN_FRAME.to_string());
+                break;
+            }
+        }
+        at = parent_of(&parent);
+    }
+    out
 }
 
 impl Page {
@@ -621,6 +784,20 @@ impl Page {
         Ok(tabs.len())
     }
 
+    /// The tab's history and the index of the page shown in it (`Page.getNavigationHistory`), for `reached_from`.
+    pub async fn history(&mut self) -> Result<(Vec<Visit>, usize), FillError> {
+        let session = self.session.clone();
+        let got = self.cdp.call("Page.getNavigationHistory", json!({}), Some(&session)).await?;
+        let current = got.get("currentIndex").and_then(Value::as_u64).unwrap_or(0) as usize;
+        let text = |e: &Value, k: &str| e.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+        let entries = got
+            .get("entries")
+            .and_then(Value::as_array)
+            .map(|items| items.iter().map(|e| Visit { url: text(e, "url"), transition: text(e, "transitionType") }).collect())
+            .unwrap_or_default();
+        Ok((entries, current))
+    }
+
     /// The main frame's id.
     async fn main_frame(&mut self) -> Result<String, FillError> {
         let session = self.session.clone();
@@ -645,10 +822,11 @@ impl Page {
             .ok_or_else(|| protocol("no main frame"))
     }
 
-    /// Every frame of the page, with the session that reaches it: the page's own, then each out-of-process frame's.
-    pub async fn frames(&mut self) -> Result<Vec<(String, String, String)>, FillError> {
+    /// Every frame of the page, with the session that reaches it and the frame above it: the page's own, then each
+    /// out-of-process frame's.
+    pub async fn frames(&mut self) -> Result<Vec<FrameSeen>, FillError> {
         let mut sessions = vec![self.session.clone()];
-        sessions.extend(self.children.iter().cloned());
+        sessions.extend(self.children.iter().map(|(s, _)| s.clone()));
         let mut gone = Vec::new();
         let mut out = Vec::new();
         let mut index = 0;
@@ -660,8 +838,9 @@ impl Page {
                 continue;
             };
             let mut frames = Vec::new();
-            frames_of(tree.get("frameTree").unwrap_or(&Value::Null), &mut frames);
-            out.extend(frames.into_iter().map(|(id, url)| (session.clone(), id, url)));
+            let attached_under = self.children.iter().find(|(s, _)| *s == session).and_then(|(_, p)| p.clone());
+            frames_of(tree.get("frameTree").unwrap_or(&Value::Null), None, attached_under.as_deref(), &mut frames);
+            out.extend(frames.into_iter().map(|(id, url, parent)| FrameSeen { session: session.clone(), id, url, parent }));
             let auto = json!({"autoAttach": true, "waitForDebuggerOnStart": false, "flatten": true});
             if self.cdp.call("Target.setAutoAttach", auto, Some(&session)).await.is_err() {
                 continue;
@@ -676,12 +855,19 @@ impl Page {
                 if let (Some("iframe"), Some(child)) = (kind, params.get("sessionId").and_then(Value::as_str)) {
                     if !sessions.iter().any(|s| s == child) {
                         sessions.push(child.to_string());
+                        // the frame it is attached under, when Chrome says (its root frame's `parentId` says it too)
+                        let parent = params
+                            .get("targetInfo")
+                            .and_then(|t| t.get("parentFrameId"))
+                            .and_then(Value::as_str)
+                            .map(str::to_string);
+                        self.children.push((child.to_string(), parent));
                     }
                 }
             }
         }
         let main = self.session.clone();
-        self.children = sessions.into_iter().filter(|s| *s != main && !gone.contains(s)).collect();
+        self.children.retain(|(s, _)| *s != main && !gone.contains(s) && sessions.contains(s));
         Ok(out)
     }
 
@@ -698,7 +884,9 @@ impl Page {
     /// Every card field of every frame, frame by frame (a frame seen twice keeps the reading that found the most).
     pub async fn found(&mut self) -> Result<Vec<Field>, FillError> {
         let mut found: Vec<(String, Vec<Field>)> = Vec::new();
-        for (session, frame_id, frame_url) in self.frames().await? {
+        let seen = self.frames().await?;
+        for FrameSeen { session, id: frame_id, url: frame_url, .. } in seen.clone() {
+            let ancestors = ancestors_of(&frame_id, &seen);
             let world = json!({"frameId": frame_id, "worldName": WORLD, "grantUniveralAccess": false});
             let Ok(created) = self.cdp.call("Page.createIsolatedWorld", world, Some(&session)).await else { continue };
             let Some(context) = created.get("executionContextId").and_then(Value::as_i64) else { continue };
@@ -717,6 +905,7 @@ impl Page {
                         tag: item.get("tag").and_then(Value::as_str).unwrap_or("input").to_string(),
                         fmt: item.get("fmt").and_then(Value::as_str).unwrap_or("").to_string(),
                         empty: item.get("empty").and_then(Value::as_bool).unwrap_or(true),
+                        ancestors: ancestors.clone(),
                     })
                 })
                 .collect();
@@ -829,8 +1018,8 @@ impl Page {
         let frames = self.frames().await?;
         for field in typed.iter().filter(|t| t.node != 0) {
             // A frame is reported by its parent's session and, out of process, by its own: the one that reaches it.
-            for (session, _, _) in frames.iter().filter(|(_, id, _)| *id == field.frame) {
-                if self.empty_node(session, field).await {
+            for seen in frames.iter().filter(|f| f.id == field.frame) {
+                if self.empty_node(&seen.session, field).await {
                     cleared += 1;
                     break;
                 }
@@ -929,7 +1118,7 @@ impl Page {
             r"(?i)3ds|threeds|/acs|acs\.|challenge|authenticat|securecode|verifiedbyvisa|cardinalcommerce|3dsecure|3d-secure",
         )
         .ok();
-        if frames.iter().any(|(_, _, url)| bank.as_ref().is_some_and(|b| b.is_match(url))) {
+        if frames.iter().any(|f| bank.as_ref().is_some_and(|b| b.is_match(&f.url))) {
             return true;
         }
         let Ok(context) = self.main_world().await else { return false };
@@ -997,9 +1186,10 @@ pub fn origin_of(url: &str) -> Option<(String, String)> {
     Some((scheme, host))
 }
 
-/// A page a card may be typed into: https, or plain http on this machine's own names (a test page).
+/// A page a card may be typed into: https, or plain http on this machine's own names (a test page; `*.localhost`
+/// is this machine too for Chrome).
 pub fn secure(scheme: &str, host: &str) -> bool {
-    scheme == "https" || matches!(host, "localhost" | "127.0.0.1" | "[::1]")
+    scheme == "https" || matches!(host, "127.0.0.1" | "[::1]") || is_loopback_name(host)
 }
 
 #[cfg(test)]
@@ -1017,6 +1207,7 @@ mod tests {
             tag: "input".into(),
             fmt: fmt.into(),
             empty: true,
+            ancestors: Vec::new(),
         }
     }
 
@@ -1045,31 +1236,134 @@ mod tests {
     }
 
     #[test]
-    fn a_card_goes_only_to_the_page_s_site_the_card_s_sites_and_known_providers() {
-        let shop = Frames::new("https://www.shop.example/checkout?step=pay", &["Shop.example.".into()]);
+    fn a_card_goes_only_to_the_page_s_own_frames_and_known_providers() {
+        let shop = Frames::new("https://www.shop.example/checkout?step=pay");
         assert!(shop.allows("https://www.shop.example/checkout"));
         assert!(shop.allows("https://pay.shop.example/frame")); // below the page's own site, `www.` aside
         assert!(shop.allows("https://js.stripe.com/v3/elements-inner-card.html"));
         assert!(shop.allows("https://checkoutshopper-live.adyen.com/checkoutshopper/securedfields/x.html"));
+        assert!(shop.allows("https://payment.cawl-solutions.fr/hostedtokenization/x")); // CAWL (Worldline)
+        assert!(shop.allows("https://static.payzen.eu/static/js/krypton-client/V4.0/x.html"));
         assert!(!shop.allows("https://js.psp.example/f")); // a provider nobody knows
         assert!(!shop.allows("https://evil-stripe.com/f") && !shop.allows("https://stripe.com.evil.example/f"));
         assert!(!shop.allows("http://js.stripe.com/f")); // no https
         for no_address in ["about:blank", "about:srcdoc", "data:text/html,<input>", "blob:https://www.shop.example/1"] {
             assert!(!shop.allows(no_address), "{no_address}");
         }
-        // The card's sites count too; a card for any site adds none.
-        let other = Frames::new("https://tickets.example/pay", &["tickets.example".into(), "pay-tickets.example".into()]);
-        assert!(other.allows("https://secure.pay-tickets.example/card"));
-        assert!(!Frames::new("https://tickets.example/pay", &[]).allows("https://secure.pay-tickets.example/card"));
-        // A test page on this machine: its own host and the card's sites.
-        let local = Frames::new("http://127.0.0.1:8123/elements.html", &["localhost".into()]);
-        assert!(local.allows("http://127.0.0.1:8123/x") && local.allows("http://localhost:9000/provider.html"));
-        assert!(!Frames::new("http://127.0.0.1:8123/elements.html", &[]).allows("http://localhost:9000/provider.html"));
+        // Strict (card-guards, 14/11): another of the card's sites is no frame for the card, nor a test host.
+        assert!(!Frames::new("https://tickets.example/pay").allows("https://secure.pay-tickets.example/card"));
+        assert!(!Frames::new("http://127.0.0.1:8123/elements.html").allows("http://localhost:9000/provider.html"));
+        // A test page on this machine: its own host, and a test provider of the bridge's settings.
+        let mut local = Frames::new("http://127.0.0.1:8123/elements.html");
+        local.test = vec!["psp.localhost".into()];
+        assert!(local.allows("http://127.0.0.1:8123/x") && local.allows("http://psp.localhost:9000/provider.html"));
+        assert!(!local.allows("http://localhost:9000/provider.html"));
+        // a provider's frame counts only when every frame above it is allowed too (not inside an ad's frame)
+        let inside = |ancestors: &[&str]| Field {
+            frame_url: "https://js.stripe.com/v3/card".into(),
+            ancestors: ancestors.iter().map(|a| a.to_string()).collect(),
+            ..field("number", "")
+        };
+        assert!(shop.allows_field(&inside(&["https://www.shop.example/checkout"])));
+        assert!(shop.allows_field(&inside(&["https://pay.shop.example/f", "https://www.shop.example/checkout"])));
+        assert!(!shop.allows_field(&inside(&["https://ads.example/slot", "https://www.shop.example/checkout"])));
+        assert!(!shop.allows_field(&inside(&[UNKNOWN_FRAME])));
+    }
+
+    #[test]
+    fn only_loopback_names_are_ever_test_providers() {
+        let mut config = crate::config::Config::with_key("k");
+        config.test_payment_providers = vec!["psp.localhost".into(), "localhost".into(), "js.psp.example".into(),
+                                             "localhost.example".into()];
+        assert_eq!(test_providers(&config), vec!["psp.localhost".to_string(), "localhost".to_string()]);
+    }
+
+    #[test]
+    fn a_frame_s_ancestors_are_read_from_every_session() {
+        let seen = |session: &str, id: &str, url: &str, parent: Option<&str>| FrameSeen {
+            session: session.into(),
+            id: id.into(),
+            url: url.into(),
+            parent: parent.map(str::to_string),
+        };
+        let frames = vec![
+            seen("page", "main", "https://shop.example/pay", None),
+            seen("page", "wrap", "https://shop.example/wrap", Some("main")),
+            seen("psp", "card", "https://js.stripe.com/v3/card", Some("wrap")), // out of process, its parentId
+            seen("ads", "ad", "https://ads.example/x", Some("gone")),            // its parent never reported
+        ];
+        assert!(ancestors_of("main", &frames).is_empty());
+        assert_eq!(ancestors_of("card", &frames), vec!["https://shop.example/wrap", "https://shop.example/pay"]);
+        assert_eq!(ancestors_of("ad", &frames), vec![UNKNOWN_FRAME.to_string()]);
+        // a tree: children under their frame, an out-of-process root under the frame Chrome names
+        let mut out = Vec::new();
+        let tree = json!({"frame": {"id": "main", "url": "u0"}, "childFrames": [{"frame": {"id": "a", "url": "u1"}}]});
+        frames_of(&tree, None, None, &mut out);
+        let root = json!({"frame": {"id": "c", "url": "u2", "parentId": "a"}});
+        frames_of(&root, None, Some("ignored"), &mut out);
+        let attached = json!({"frame": {"id": "d", "url": "u3"}});
+        frames_of(&attached, None, Some("a"), &mut out);
+        assert_eq!(out, vec![
+            ("main".to_string(), "u0".to_string(), None),
+            ("a".into(), "u1".into(), Some("main".into())),
+            ("c".into(), "u2".into(), Some("a".into())),
+            ("d".into(), "u3".into(), Some("a".into())),
+        ]);
+    }
+
+    fn visits(list: &[(&str, &str)]) -> Vec<Visit> {
+        list.iter().map(|(u, t)| Visit { url: u.to_string(), transition: t.to_string() }).collect()
+    }
+
+    #[test]
+    fn a_providers_payment_page_counts_only_when_the_shop_sent_the_tab_there() {
+        let sites = vec!["pharmaciedesdrakkars.com".to_string()];
+        let cawl = "https://payment.cawl-solutions.fr/hostedcheckout/PaymentMethods/Selection/e61340e5";
+        // the shop's payment step posts its form (or sends the tab) to CAWL's page, which then shows the card's form
+        let sent = visits(&[
+            ("https://www.pharmaciedesdrakkars.com/mon-panier", "typed"),
+            ("https://www.pharmaciedesdrakkars.com/commande/paiement", "link"),
+            (cawl, "form_submit"),
+            ("https://payment.cawl-solutions.fr/hostedcheckout/PaymentMethods/Card/e61340e5", "link"),
+        ]);
+        assert_eq!(reached_from(&sent, 3, &sites, &[]).as_deref(), Some("www.pharmaciedesdrakkars.com"));
+        assert_eq!(reached_from(&sent, 2, &sites, &[]).as_deref(), Some("www.pharmaciedesdrakkars.com"));
+        // any site for a card without sites, but always a shop's page right before
+        assert_eq!(reached_from(&sent, 2, &[], &[]).as_deref(), Some("www.pharmaciedesdrakkars.com"));
+        // another shop sent it there: not this card's site
+        assert_eq!(reached_from(&sent, 2, &["shop.example".to_string()], &[]), None);
+        // the agent's navigate (typed), a reload, a new tab with nothing before, a page that is no provider's
+        for (list, at) in [
+            (vec![("https://www.pharmaciedesdrakkars.com/commande/paiement", "link"), (cawl, "typed")], 1),
+            (vec![("https://www.pharmaciedesdrakkars.com/commande/paiement", "link"), (cawl, "reload")], 1),
+            (vec![(cawl, "link")], 0),
+            (vec![("https://www.pharmaciedesdrakkars.com/commande", "link"), ("https://pay.evil.example/c", "link")], 1),
+            (vec![("http://www.pharmaciedesdrakkars.com/commande", "link"), (cawl, "link")], 1), // no https before
+            (vec![("https://www.pharmaciedesdrakkars.com/commande", "link"), (cawl, "link"),
+                  ("https://payment.cawl-solutions.fr/hostedcheckout/x", "typed")], 2),
+        ] {
+            assert_eq!(reached_from(&visits(&list), at, &sites, &[]), None, "{list:?}");
+        }
+        // CAWL's page sent on to another provider's: the shop is not right before it
+        let chained = visits(&[
+            ("https://www.pharmaciedesdrakkars.com/commande", "link"),
+            (cawl, "link"),
+            ("https://secure.payzen.eu/vads-payment/", "link"),
+        ]);
+        assert_eq!(reached_from(&chained, 2, &sites, &[]), None);
+        // a test provider (bridge.toml, loopback names only)
+        let local = visits(&[("http://127.0.0.1:8123/cart.html", "typed"), ("http://psp.localhost:9000/pay", "form_submit")]);
+        assert_eq!(reached_from(&local, 1, &["127.0.0.1".into()], &["psp.localhost".into()]).as_deref(), Some("127.0.0.1"));
+        assert_eq!(reached_from(&local, 1, &["127.0.0.1".into()], &[]), None);
+        assert_eq!(provider_page("payment.cawl-solutions.fr").map(|p| p.name), Some("CAWL"));
+        assert_eq!(provider_page("payment.direct.worldline-solutions.com").map(|p| p.name), Some("Worldline"));
+        assert!(provider_page("js.stripe.com").is_none() && provider_page("shop.example").is_none());
+        assert!(provider_hosts().contains(&"cawl-solutions.fr") && provider_hosts().contains(&"js.stripe.com"));
     }
 
     #[test]
     fn one_field_of_each_kind_from_the_frames_allowed() {
-        let rule = Frames::new("https://shop.example/pay", &[]);
+        let rule = Frames::new("https://shop.example/pay");
         let found = vec![
             in_frame("number", "https://js.psp.example/f"), // a frame of a site nobody knows, found first
             in_frame("name", "https://shop.example/pay"),

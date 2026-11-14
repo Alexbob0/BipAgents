@@ -155,6 +155,170 @@ your person « Oui / Non », and on « Oui » the box is ticked for you. Nothing
 pub const NOT_PASSWORDS: &str = "Never into a password field, not even a temporary password nor one your person wrote \
 to you: to sign up, vault_create_login has the person's vault make and type it; to log in, browser_vault fill.";
 
+// --- a payment card's details (card-guards, 14/11) ------------------------------------------------------------------
+//
+// Alex's test on 14/11 (pharmaciedesdrakkars.com, his own test card): the vault's card fill could not fill the shop's
+// payment page; Vie then asked him for the card's number through a secure-field card and typed it into the form
+// itself, then asked for the holder, the expiry and the security code. The agent never types a card's number, expiry,
+// security code or holder (card_details.rs), and never asks for them: payments go only through pay_with_card (the
+// person's « Oui, payer »), and when it can't fill the form, the person pays themselves (hand_over_payment, « Panier
+// prêt »). Checked before a call (`guard`: the target is a card's field, a payment provider's frame, or the text is a
+// card's number; a script naming a card's field, holding a card's number, or sending the tab to a payment service) and
+// after it (`guard_after`: a card's field or any field that got a card's number is emptied). A card's number is
+// never in what the agent reads (`hide_cards`). A provider's cross-origin frame can't be looked into from the page:
+// typing into it (its frame focused) is refused, and only the vault's fill reaches its fields.
+
+/// Typing into a card's field, or a card's number anywhere (`guard`).
+pub const CARD_REFUSED: &str = "Not done: this is a payment card's field (its number, expiry, security code or \
+holder), or a card's number: you never type a card's details yourself, and you never ask your person for them. \
+Payments go only through pay_with_card: your person confirms in the app with « Oui, payer ». If pay_with_card can't \
+fill this form, stop and hand the payment over with hand_over_payment (« Panier prêt »): your person pays themselves, \
+on their phone or by taking over your browser in the app. Nothing was typed.";
+
+/// A script on a card's field, or holding a card's number (`script_card_refusal`).
+pub const SCRIPT_CARD_REFUSED: &str = "Not done: a script never writes or reads a payment card's field (its number, \
+expiry, security code or holder), nor holds a card's number. Payments go only through pay_with_card (your person \
+confirms with « Oui, payer »); if it can't fill the form, hand the payment over with hand_over_payment (« Panier \
+prêt »). Never ask your person for a card's details. Nothing was run.";
+
+/// A script sending the tab to a payment service's page (`script_goes_to_provider`): only the shop's own pages send it
+/// there (card_fill.rs `reached_from`).
+pub const PROVIDER_SCRIPT_REFUSED: &str = "Not done: a script never sends your browser to a payment service's page, \
+nor sends a form there: go to the payment through the shop's own buttons (click_element), so the payment page is the \
+shop's own. Nothing was run.";
+
+/// What the agent reads when the check after its call erased a card's details.
+pub const CARD_UNDONE: &str = "Not done: that put a payment card's details into the page, and you never type them \
+yourself: they were erased. Payments go only through pay_with_card (your person confirms with « Oui, payer »); if it \
+can't fill the form, hand the payment over with hand_over_payment (« Panier prêt »). Never ask your person for a \
+card's details.";
+
+/// Added to `type_text`, `paste_text` and `select_option` in the tool list (`tame_tool_list`).
+pub const NOT_CARDS: &str = "Never a payment card's number, expiry, security code or holder: payments go only through \
+pay_with_card, and when it can't, hand_over_payment.";
+
+/// What names a card's field in a script (on `card_details::folded` text): its autocomplete token, the usual names and
+/// ids, in four languages.
+static CARD_TARGET: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"\bcc ?(number|num|exp|csc|name)|card ?(number|num\b|no\b|holder|verification|expir|cvc|cvv|code)|cardnumber|ccnum|\bcvc|\bcvv|\bcsc\b|cryptogramme|exp ?date|expdate|expiry|nameoncard|numero ?(de )?(la )?carte|\bnum ?carte|kartennummer|kartenprufnummer|ablaufdatum|karteninhaber|tarjeta",
+    )
+    .expect("valid regex")
+});
+/// What sends the tab somewhere from a script (with a payment service's host: `script_goes_to_provider`).
+static NAVIGATES: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r#"(?i)\blocation\b\s*(=[^=]|\.\s*(href\s*=[^=]|assign|replace))|\bopen\s*\(|\.(action|href)\s*=[^=]|setattribute\s*\(\s*["'`](action|href|formaction)|formaction|\.submit\s*\(|requestsubmit|\.click\s*\("#,
+    )
+        .expect("valid regex")
+});
+
+/// A script naming a payment service's host (card_fill.rs `provider_hosts`) and sending the tab or a form somewhere.
+pub fn script_goes_to_provider(script: &str) -> bool {
+    let lower = script.to_lowercase();
+    NAVIGATES.is_match(script) && crate::card_fill::provider_hosts().iter().any(|h| lower.contains(h))
+}
+
+/// What the page held before a call about cards (`guard_before`'s `cards`, `cardtext`): card fields, and whether one
+/// holds text. None (the page couldn't say): both, to be safe.
+pub fn page_cards(before: Option<&Value>) -> (bool, bool) {
+    let Some(before) = before else { return (true, true) };
+    let cards = before.get("cards").and_then(Value::as_object).is_some_and(|c| !c.is_empty());
+    (cards, before.get("cardtext").and_then(Value::as_bool) == Some(true))
+}
+
+/// A script that would write or read a card's details (card-guards, 14/11), its `args` read with it: one holding a
+/// card's number; one sending the tab to a payment service (`script_goes_to_provider`); one naming a card's field
+/// (`CARD_TARGET`) that writes a value, or touches one on a page with card fields; one reading all of a form's values
+/// while a card field holds text; one writing values and sending on a page with card fields. Decided from the page
+/// (`before`). The refusal's text, or None.
+pub fn script_card_refusal(script: &str, before: Option<&Value>) -> Option<&'static str> {
+    if crate::card_details::holds_card_number(script) {
+        return Some(SCRIPT_CARD_REFUSED);
+    }
+    if script_goes_to_provider(script) {
+        return Some(PROVIDER_SCRIPT_REFUSED);
+    }
+    let (cards, holds_text) = page_cards(before);
+    if CARD_TARGET.is_match(&crate::card_details::folded(script))
+        && (WRITES.is_match(script) || cards && VALUE_ACCESS.is_match(script))
+    {
+        return Some(SCRIPT_CARD_REFUSED);
+    }
+    if holds_text && (FORM_DATA.is_match(script) || ALL_FIELDS.is_match(script) && VALUE_ACCESS.is_match(script)) {
+        return Some(SCRIPT_CARD_REFUSED);
+    }
+    (cards && WRITES.is_match(script) && SENDS.is_match(script)).then_some(SCRIPT_CARD_REFUSED)
+}
+
+/// The text a call would type or choose (`type_text`, `paste_text`: its text; `select_option`: its value, text or
+/// index; `press_key`: its key).
+pub fn typed_text(tool: &str, args: &Dict) -> String {
+    let field = |k: &str| args.get(k).map(|v| v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string()));
+    match tool {
+        "type_text" | "paste_text" => field("text").unwrap_or_default(),
+        "select_option" => ["value", "text", "index"].iter().filter_map(|k| field(k)).collect::<Vec<_>>().join(" "),
+        "press_key" => field("key").unwrap_or_default(),
+        _ => String::new(),
+    }
+}
+
+/// Every card number in a tool's answer replaced (`card_details::hide_card_numbers`), images' data left alone: true
+/// when one was.
+pub fn hide_cards(response: &mut Dict) -> bool {
+    fn walk(value: &mut Value, changed: &mut bool) {
+        match value {
+            Value::String(text) => {
+                if crate::card_details::holds_card_number(text) {
+                    *text = crate::card_details::hide_card_numbers(text);
+                    *changed = true;
+                }
+            }
+            Value::Array(items) => items.iter_mut().for_each(|v| walk(v, changed)),
+            Value::Object(map) => {
+                for (key, v) in map.iter_mut() {
+                    if key != "data" {
+                        walk(v, changed);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut changed = false;
+    if let Some(result) = response.get_mut("result") {
+        walk(result, &mut changed);
+    }
+    changed
+}
+
+/// The page's look at fields for cards (`target_script`, `guard_before`, `guard_after`): the rules of card_details.rs
+/// (`js_rules`), a field's words (its autocomplete token, name, id, placeholder, aria and title, labels, data-*), a
+/// payment provider's frame (by its address's host, card_fill.rs `provider_hosts`, or its name, title, id or class),
+/// and `cardOf(e, ctx)`: the part of a card a field is (« Titulaire » or « Code » only beside a card's number or a
+/// provider's frame: `ctx`).
+pub fn card_js() -> String {
+    let hosts = serde_json::to_string(&crate::card_fill::provider_hosts()).unwrap_or_else(|_| "[]".into());
+    format!(
+        "{rules}const PROV = {hosts}; \
+const words = (e) => {{ const p = [e.getAttribute('autocomplete'), e.name, e.id, e.getAttribute('placeholder'), e.getAttribute('aria-label'), e.getAttribute('title')]; \
+if (e.labels) for (const l of e.labels) p.push(l.textContent); const by = e.getAttribute('aria-labelledby'); \
+if (by) for (const i of by.split(/\\s+/)) {{ const r = e.ownerDocument.getElementById(i); if (r) p.push(r.textContent); }} \
+for (const a of e.attributes) if (a.name.startsWith('data-')) p.push(a.value); return p.filter(Boolean).join(' ').slice(0, 600); }}; \
+const FRAME_WORDS = /\\bcard|carte (bancaire|de paiement|de credit)|kartennummer|tarjeta|\\bcvc|\\bcvv|cryptogramme|hosted ?field|secure ?field|payment ?field|tokeniz|stripe|adyen|braintree|mollie|payplug|stancer|payzen|lyra|krypton|worldline|ingenico|ogone|paybox|monetico|systempay|cawl|hipay|payline/; \
+const hostOf = (u) => {{ try {{ return new URL(u, location.href).hostname.toLowerCase(); }} catch (x) {{ return ''; }} }}; \
+const payFrame = (f) => {{ const hh = hostOf(f.getAttribute('src') || ''); if (hh && PROV.some((p) => hh === p || hh.endsWith('.' + p))) return true; \
+return FRAME_WORDS.test(fold([f.name, f.title, f.id, typeof f.className === 'string' ? f.className : '', f.getAttribute('src'), f.getAttribute('aria-label')].filter(Boolean).join(' '))); }}; \
+const NOT_TEXT = ['hidden', 'submit', 'button', 'image', 'reset', 'checkbox', 'radio', 'file', 'email', 'range', 'color', 'url']; \
+const fieldish = (e) => ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.tagName) && !NOT_TEXT.includes((e.getAttribute('type') || '').toLowerCase()); \
+const scopeOf = (e) => e.form || e.ownerDocument; \
+const cardScope = (scope) => [...scope.querySelectorAll('input, select, textarea')].some((o) => fieldish(o) && cardKind(words(o), false) === 'number') \
+|| [...scope.querySelectorAll('iframe, frame')].some(payFrame); \
+const cardOf = (e, ctx) => {{ if (!fieldish(e)) return ''; const w = words(e); return cardKind(w, false) || (ctx === undefined ? cardScope(scopeOf(e)) : ctx) && cardKind(w, true) || ''; }}; ",
+        rules = crate::card_details::js_rules()
+    )
+}
+
 /// A tool call's answer as it goes to Hermes, never with `isError` nor as a JSON-RPC error (module doc above): true
 /// when it was a failure.
 pub fn soften(response: &mut Dict) -> bool {
@@ -239,7 +403,7 @@ pub fn own_refusal(response: &Dict) -> bool {
         .and_then(Value::as_str)
         .unwrap_or("");
     [PASSWORD_REFUSED, SCRIPT_PASSWORD_REFUSED, SCRIPT_SENDS_REFUSED, PASSWORD_SHOWN, TERMS_REFUSED, RESCUE_REFUSED,
-     crate::credit::BROWSER_REFUSED]
+     crate::credit::BROWSER_REFUSED, CARD_REFUSED, SCRIPT_CARD_REFUSED, PROVIDER_SCRIPT_REFUSED]
         .contains(&text)
 }
 
@@ -447,10 +611,15 @@ pub fn presses_a_character(args: &Dict) -> bool {
 /// shadow root, fifth). `invalid`: a selector the page can't read. Read only; the selector passed as a JSON string.
 pub fn target_script(selector: &str) -> String {
     let selector = serde_json::to_string(selector).unwrap_or_else(|_| "\"\"".into());
+    let cards = card_js();
     format!(
-        "(() => {{ const sel = {selector}; let el = null; {LABEL_JS}\
-if (sel) {{ try {{ el = document.querySelector(sel); }} catch (e) {{ return JSON.stringify({{found: false, invalid: true}}); }} }} \
+        "(() => {{ const sel = {selector}; let el = null; {LABEL_JS}{cards}\
+if (sel) {{ try {{ el = /^\\(*\\//.test(sel) ? document.evaluate(sel, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue \
+: document.querySelector(sel); }} catch (e) {{ return JSON.stringify({{found: false, invalid: true}}); }} }} \
 else {{ el = document.activeElement; while (el && el.shadowRoot && el.shadowRoot.activeElement) el = el.shadowRoot.activeElement; }} \
+for (let n = 0; el && (el.tagName === 'IFRAME' || el.tagName === 'FRAME') && n < 5; n++) {{ let d = null; try {{ d = el.contentDocument; }} catch (x) {{}} \
+if (!d) break; let a = d.activeElement; while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement; \
+if (!a || a === d.body || a === d.documentElement) break; el = a; }} \
 if (!el) return JSON.stringify({{found: false}}); \
 const holder = el.tagName === 'LABEL' ? el : (el.closest && el.closest('label')); \
 const link = el.closest && el.closest('a, button'); \
@@ -460,7 +629,10 @@ const attr = (n) => ((el.getAttribute && el.getAttribute(n)) || '').toLowerCase(
 const password = el.tagName === 'INPUT' && attr('type') === 'password'; \
 let terms = ''; \
 if (el.tagName === 'INPUT' && attr('type') === 'checkbox' && !el.checked) terms = label(el); \
-return JSON.stringify({{found: true, password: password, terms: terms.slice(0, 300)}}); }})()"
+const frame = el.tagName === 'IFRAME' || el.tagName === 'FRAME'; \
+const card = frame ? (payFrame(el) ? 'frame' : '') : cardOf(el); \
+const other = !frame && !!el.attributes && CD.np.test(fold(words(el))); \
+return JSON.stringify({{found: true, password: password, terms: terms.slice(0, 300), card: card, other: other}}); }})()"
     )
 }
 
@@ -469,7 +641,8 @@ return JSON.stringify({{found: true, password: password, terms: terms.slice(0, 3
 pub const LATE_FIELD_TRIES: u32 = 12;
 
 /// The tools whose effect on the page is checked (`guard_before`, `guard_after`).
-pub const GUARDED: [&str; 5] = ["click_element", "type_text", "paste_text", "press_key", "execute_script"];
+pub const GUARDED: [&str; 6] =
+    ["click_element", "type_text", "paste_text", "press_key", "select_option", "execute_script"];
 
 /// What makes a box the site's terms in the page's scripts (as `terms_box`): its label, the text it is labelled by, the
 /// short text around a box without a label (a `<label>` tied to nothing right after it included: fourth review 13/11;
@@ -506,20 +679,42 @@ pub const GUARD_BEFORE: &str = "/* bipagents guard: before */ (() => { ";
 
 /// The full script before a call (`GUARD_BEFORE`, `LABEL_JS`, `GUARD_JS`).
 pub fn guard_before() -> String {
+    let cards = card_js();
     format!(
-        "{GUARD_BEFORE}{LABEL_JS}{GUARD_JS}const pw = {{}}, known = [], boxes = []; \
+        "{GUARD_BEFORE}{LABEL_JS}{GUARD_JS}{cards}{CARD_FIELDS_JS}const pw = {{}}, known = [], boxes = []; \
 inputs.forEach(({{e, k}}) => {{ if (kind(e) === 'password') {{ pw[k] = e.value ? h(e.value) : ''; if (e.value) known.push(h(e.value)); }} \
 else if (kind(e) === 'checkbox' && !e.checked && isTerms(label(e))) boxes.push(k); }}); \
-return JSON.stringify({{pw: pw, known: known, boxes: boxes}}); }})()"
+const cards = {{}}; let cardtext = false; fields.forEach(({{e, k}}) => {{ const v = valueOf(e); const c = cardOf(e, ctxOf(e)); \
+if (c || (e.tagName !== 'SELECT' && holdsCard(v))) {{ cards[k] = e.tagName === 'SELECT' ? v : h(v); if (c && e.tagName !== 'SELECT' && v) cardtext = true; }} }}); \
+return JSON.stringify({{pw: pw, known: known, boxes: boxes, cards: cards, cardtext: cardtext}}); }})()"
     )
 }
+
+/// The page's fields for the card checks around a call (`guard_before`, `guard_after`): inputs, selects and text
+/// areas of the page, its open shadow roots and its own site's frames (`roots`), keyed as `GUARD_JS` keys inputs; a
+/// field's value (a select's: its option's rank, never secret); the scopes (forms, documents) holding a card's number
+/// field or a provider's frame (`ctxOf`).
+const CARD_FIELDS_JS: &str = "const fields = []; roots.forEach((r, ri) => { const own = [...r.querySelectorAll('input, select, textarea')]; \
+own.forEach((e, i) => fields.push({e: e, k: (ri ? 'r' + ri + ':' : '') + (e.id ? '#' + e.id : (e.name ? e.tagName + '|' + e.name + '|' \
++ own.filter((x) => x.name === e.name).indexOf(e) : e.tagName + '@' + i))})); }); \
+const valueOf = (e) => e.tagName === 'SELECT' ? 's' + e.selectedIndex : String(e.value || ''); \
+const scopes = new Map(); const ctxOf = (e) => { const sc = scopeOf(e); if (!scopes.has(sc)) scopes.set(sc, cardScope(sc)); return scopes.get(sc); }; ";
 
 /// After it, with what `guard_before` answered: a password field holding text it didn't hold before (not a value the
 /// page already had: a field drawn again) is emptied; a terms box ticked is unticked. How many of each.
 pub fn guard_after(before: &Value) -> String {
     let before = serde_json::to_string(before).unwrap_or_else(|_| "{}".into());
+    let cards = card_js();
     format!(
-        "/* bipagents guard: after */ (() => {{ const B = {before}; {GUARD_JS}\
+        "/* bipagents guard: after */ (() => {{ const B = {before}; {GUARD_JS}{cards}{CARD_FIELDS_JS}\
+const C = B.cards || {{}}; let cards = 0; \
+const setv = (e, v) => {{ const w = e.ownerDocument.defaultView; const proto = e.tagName === 'TEXTAREA' ? w.HTMLTextAreaElement.prototype : w.HTMLInputElement.prototype; \
+Object.getOwnPropertyDescriptor(proto, 'value').set.call(e, v); e.dispatchEvent(new Event('input', {{bubbles: true}})); e.dispatchEvent(new Event('change', {{bubbles: true}})); }}; \
+fields.forEach(({{e, k}}) => {{ const v = valueOf(e); const c = cardOf(e, ctxOf(e)); const select = e.tagName === 'SELECT'; \
+if (!c && (select || !holdsCard(v))) return; const had = k in C ? C[k] : null; \
+if (select) {{ if (had === null ? e.selectedIndex <= 0 : had === v) return; e.selectedIndex = had === null ? 0 : parseInt(had.slice(1), 10); \
+e.dispatchEvent(new Event('change', {{bubbles: true}})); cards++; return; }} \
+if (!v || had === h(v)) return; setv(e, ''); cards++; }}); \
 const set = (e, v) => Object.getOwnPropertyDescriptor(e.ownerDocument.defaultView.HTMLInputElement.prototype, 'value').set.call(e, v); \
 const pw = B.pw || {{}}, known = B.known || [], boxes = B.boxes || []; let passwords = 0, terms = 0; \
 inputs.forEach(({{e, k}}) => {{ \
@@ -528,7 +723,7 @@ if (had === now || (had === null && known.includes(now))) return; \
 set(e, ''); e.dispatchEvent(new Event('input', {{bubbles: true}})); e.dispatchEvent(new Event('change', {{bubbles: true}})); passwords++; }} \
 else if (kind(e) === 'checkbox' && e.checked && boxes.includes(k)) {{ e.click(); \
 if (e.checked) {{ e.checked = false; e.dispatchEvent(new Event('change', {{bubbles: true}})); }} terms++; }} }}); \
-return JSON.stringify({{passwords: passwords, terms: terms}}); }})()"
+return JSON.stringify({{passwords: passwords, terms: terms, cards: cards}}); }})()"
     )
 }
 
@@ -810,12 +1005,18 @@ pub fn tame_call(tool: &str, params: &mut Value) -> Vec<String> {
 pub fn tame_tool_list(result: &mut Value) {
     let Some(tools) = result.get_mut("tools").and_then(Value::as_array_mut) else { return };
     for tool in tools {
-        // never a password (fix-signup-hold, 13/11: the agent typed « a provisional password » itself)
-        if matches!(tool.get("name").and_then(Value::as_str), Some("type_text" | "paste_text")) {
+        // never a password (fix-signup-hold, 13/11: the agent typed « a provisional password » itself), never a
+        // card's details (card-guards, 14/11)
+        if matches!(tool.get("name").and_then(Value::as_str), Some("type_text" | "paste_text" | "select_option")) {
+            let typing = tool.get("name").and_then(Value::as_str) != Some("select_option");
             if let Some(Value::String(text)) = tool.get_mut("description") {
-                if !text.contains(NOT_PASSWORDS) {
+                if typing && !text.contains(NOT_PASSWORDS) {
                     text.push_str("\n\n");
                     text.push_str(NOT_PASSWORDS);
+                }
+                if !text.contains(NOT_CARDS) {
+                    text.push_str(if typing { " " } else { "\n\n" });
+                    text.push_str(NOT_CARDS);
                 }
             }
             continue;
@@ -1312,6 +1513,9 @@ impl Proxy {
                 }
             }
             response.insert("id".into(), ident.clone());
+            if calling && tool != "take_screenshot" && hide_cards(&mut response) {
+                log(&format!("{tool}: a card's number in the answer, hidden"));
+            }
             if calling {
                 if rewrite_too_large(&tool, &mut response) {
                     log(&format!("{tool}: a result too large, plain guidance instead of its file"));
@@ -1445,30 +1649,47 @@ impl Proxy {
             // review 13/11: a « mot de passe oublié » e-mail asked for by a script)
             let script = args.get("script").and_then(Value::as_str).unwrap_or("");
             let with_args = format!("{script} {}", args.get("args").map(Value::to_string).unwrap_or_default());
+            if let Some(text) = script_card_refusal(&with_args, before) {
+                return Some(refused(text));
+            }
             if page_holds(before).0 && (script_touches_password(&with_args) || script_reads_password(&with_args, before)) {
                 return Some(refused(SCRIPT_PASSWORD_REFUSED));
             }
             return script_fills_and_sends(script, before).then(|| refused(SCRIPT_SENDS_REFUSED));
         }
         let typing = matches!(tool, "type_text" | "paste_text") || (tool == "press_key" && presses_a_character(args));
+        let choosing = tool == "select_option";
         let selector = args.get("selector").and_then(Value::as_str).unwrap_or("");
         let ticking = tool == "click_element" && !selector.is_empty();
-        if !(typing || ticking) || instance.is_empty() {
+        // a card's number is never typed, wherever (unless the field says it's something else: a SIRET…)
+        let card_number = typing && crate::card_details::holds_card_number(&typed_text(tool, args));
+        if card_number && instance.is_empty() {
+            return Some(refused(CARD_REFUSED));
+        }
+        if !(typing || ticking || choosing) || instance.is_empty() {
             return None;
         }
         let script = target_script(selector);
         let mut target = Value::Null;
         for attempt in 0..=LATE_FIELD_TRIES {
-            target = match self.script(instance, &script).await? {
-                Value::String(text) => serde_json::from_str::<Value>(&text).ok()?,
+            // the page can't say: a card's number is refused all the same, the rest goes on (checked after it)
+            let read = match self.script(instance, &script).await {
+                Some(Value::String(text)) => serde_json::from_str::<Value>(&text).ok(),
                 other => other,
             };
+            let Some(read) = read else { return card_number.then(|| refused(CARD_REFUSED)) };
+            target = read;
             let missing = target.get("found").and_then(Value::as_bool) == Some(false)
                 && target.get("invalid").and_then(Value::as_bool) != Some(true);
-            if !(typing && missing && !selector.is_empty()) || attempt == LATE_FIELD_TRIES {
+            if !((typing || choosing) && missing && !selector.is_empty()) || attempt == LATE_FIELD_TRIES {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+        let card_field = target.get("card").and_then(Value::as_str).is_some_and(|c| !c.is_empty());
+        let other = target.get("other").and_then(Value::as_bool) == Some(true);
+        if (typing || choosing) && (card_field || card_number && !other) {
+            return Some(refused(CARD_REFUSED));
         }
         if typing && target.get("password").and_then(Value::as_bool) == Some(true) {
             return Some(refused(PASSWORD_REFUSED));
@@ -1485,7 +1706,10 @@ impl Proxy {
             other => other,
         };
         let count = |k: &str| report.get(k).and_then(Value::as_u64).unwrap_or(0);
-        if count("passwords") > 0 {
+        if count("cards") > 0 {
+            log("the agent put a card's details into the page: erased");
+            Some(CARD_UNDONE)
+        } else if count("passwords") > 0 {
             log("a password field got text from the agent: erased");
             Some(PASSWORD_UNDONE)
         } else if count("terms") > 0 {
@@ -1526,7 +1750,7 @@ impl Proxy {
             false => None,
         };
         if let Some(refusal) = self.guard(tool, &args, &instance, early.as_ref()).await {
-            log(&format!("{tool}: refused (a password field, or the site's terms)"));
+            log(&format!("{tool}: refused (a password field, the site's terms, or a card's details)"));
             return Ok(refusal);
         }
         if tool == "get_page_content"
@@ -2345,7 +2569,10 @@ out of your reach";
     fn the_skill_gives_the_same_script() {
         let skill = crate::browsers::skill();
         assert!(skill.contains(&format!("`{AROUND_A_WORD}`")), "visible-browser/SKILL.md § 2 and AROUND_A_WORD");
-        assert!(skill.contains("version: 1.12.1"));
+        assert!(skill.contains("version: 1.13.0"));
+        // card-guards, 14/11: never a card's details typed or asked; the hand-over when the vault can't fill the form
+        assert!(skill.contains("never ask the person for them") && skill.contains("`ask_secret` refuses it"));
+        assert!(skill.contains("call `hand_over_payment` (« Panier prêt »)"));
         // never an argument the relay takes off (tame_call): the agent would say it quit the browser, and it did not
         assert!(!skill.contains("quit_browser:") && !skill.contains("browser_args"), "visible-browser/SKILL.md");
     }
@@ -2558,7 +2785,8 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         let (before, after) = (guard_before(), guard_after(&json!({"pw": {"#pw": "1a2b"}, "known": ["1a2b"], "boxes": ["#cgu"]})));
         // nothing kept in the page (third review 13/11): no global written, no function of the page replaced
         assert!(!before.contains("window[") && !before.contains("defineProperty") && !before.contains("prototype.submit"));
-        assert!(before.contains("isTerms(label(e))") && before.contains("JSON.stringify({pw: pw, known: known, boxes: boxes})"));
+        assert!(before.contains("isTerms(label(e))")
+            && before.contains("JSON.stringify({pw: pw, known: known, boxes: boxes, cards: cards, cardtext: cardtext})"));
         assert!(after.contains("const B = {") && after.contains("\"boxes\":[\"#cgu\"]") && after.contains("\"#pw\":\"1a2b\""), "{after}");
         assert!(!after.contains("window[") && after.contains("set(e, '')"));
         // the page's open shadow roots and its own site's frames looked into (fifth review 13/11)
@@ -2603,9 +2831,95 @@ themselves). Do not use the browser until they hand it back: tell them you are w
                                         {"name": "paste_text"}, {"name": "navigate", "description": "Go."}]});
         tame_tool_list(&mut list);
         let first = list["tools"][0]["description"].as_str().unwrap().to_string();
-        assert!(first.ends_with(NOT_PASSWORDS) && first.starts_with("Type text into an input field."));
+        assert!(first.contains(NOT_PASSWORDS) && first.starts_with("Type text into an input field."));
+        assert!(first.ends_with(NOT_CARDS), "never a card's details either (card-guards, 14/11)");
         assert_eq!(list["tools"][2]["description"], "Go.");
         tame_tool_list(&mut list);
         assert_eq!(list["tools"][0]["description"].as_str().unwrap(), first, "once");
+        let mut choose = json!({"tools": [{"name": "select_option", "description": "Select an option."}]});
+        tame_tool_list(&mut choose);
+        let said = choose["tools"][0]["description"].as_str().unwrap();
+        assert!(said.ends_with(NOT_CARDS) && !said.contains(NOT_PASSWORDS));
+    }
+
+    #[test]
+    fn a_cards_details_are_never_typed_nor_scripted() {
+        // card-guards, 14/11: Vie typed Alex's card number into the shop's form itself
+        let empty = json!({"pw": {}, "known": [], "boxes": [], "cards": {}, "cardtext": false});
+        let with_cards = json!({"pw": {}, "known": [], "boxes": [], "cards": {"#cc": "811c9dc5"}, "cardtext": false});
+        let typed = json!({"pw": {}, "known": [], "boxes": [], "cards": {"#cc": "1a2b3c"}, "cardtext": true});
+        // a card's number anywhere in a script, its args included
+        for script in [
+            "document.querySelector('#notes').value = '4242 4242 4242 4242'",
+            "(function(n){ document.forms[0].elements[0].value = n })('4242424242424242')",
+        ] {
+            assert_eq!(script_card_refusal(script, Some(&empty)), Some(SCRIPT_CARD_REFUSED), "{script}");
+        }
+        // a card's field named and written, whatever the page holds
+        for script in [
+            "document.querySelector('input[autocomplete=cc-number]').value = x",
+            "document.getElementById('cardNumber').value = '1'",
+            "document.querySelector('#cvc').value = '123'",
+            "$('#card-expiry').val('12/30')",
+            "document.querySelector('[name=\"numero_carte\"]').setAttribute('value', '1')",
+            "const s = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; s.call(document.querySelector('#cc-exp'), '1230')",
+        ] {
+            assert_eq!(script_card_refusal(script, Some(&empty)), Some(SCRIPT_CARD_REFUSED), "{script}");
+        }
+        // read where the page has card fields
+        assert_eq!(script_card_refusal("return document.querySelector('#cvc').value", Some(&with_cards)),
+                   Some(SCRIPT_CARD_REFUSED));
+        assert_eq!(script_card_refusal("return document.querySelector('#cvc').value", Some(&empty)), None);
+        // all of a form's values read while a card field holds text
+        let all = "return [...document.querySelectorAll('input')].map(e => e.value)";
+        assert_eq!(script_card_refusal(all, Some(&typed)), Some(SCRIPT_CARD_REFUSED));
+        assert_eq!(script_card_refusal(all, Some(&with_cards)), None);
+        assert_eq!(script_card_refusal(all, None), Some(SCRIPT_CARD_REFUSED), "the page couldn't say");
+        // values written and sent on a page with card fields
+        let fill = "for (const e of document.querySelectorAll('input')) e.value = 'x'; document.forms[0].submit()";
+        assert_eq!(script_card_refusal(fill, Some(&with_cards)), Some(SCRIPT_CARD_REFUSED));
+        // the tab sent to a payment service's page (only the shop's own pages send it there)
+        for script in [
+            "location.href = 'https://payment.cawl-solutions.fr/hostedcheckout/x'",
+            "window.open('https://checkout.stripe.com/c/pay/x')",
+            "document.forms[0].action = 'https://secure.payzen.eu/vads-payment/'; document.forms[0].submit()",
+        ] {
+            assert_eq!(script_card_refusal(script, Some(&empty)), Some(PROVIDER_SCRIPT_REFUSED), "{script}");
+        }
+        // ordinary scripts go on
+        for script in [
+            AROUND_A_WORD,
+            "document.getElementById('lastname').value = 'Testeur'",
+            "return location.href",
+            "return [...document.querySelectorAll('a')].map(a => a.href).filter(h => h.includes('stripe.com'))",
+            "document.querySelector('#siret').value = '73282932000074'",
+            "return document.title",
+        ] {
+            assert_eq!(script_card_refusal(script, Some(&with_cards)), None, "{script}");
+        }
+        // what a call types or chooses
+        assert_eq!(typed_text("type_text", &dict(json!({"text": "4242"}))), "4242");
+        assert_eq!(typed_text("select_option", &dict(json!({"value": "12", "index": 3}))), "12 3");
+        assert_eq!(typed_text("press_key", &dict(json!({"key": "4"}))), "4");
+        // a card's number never in what the agent reads; an image's data left alone
+        let mut answer = dict(json!({"result": {"content": [
+            {"type": "text", "text": "Carte 4242 4242 4242 4242"}, {"type": "image", "data": "4242424242424242"}],
+            "structuredContent": {"result": {"value": "4242424242424242"}}}}));
+        assert!(hide_cards(&mut answer));
+        assert_eq!(answer["result"]["content"][0]["text"], format!("Carte {}", crate::card_details::HIDDEN));
+        assert_eq!(answer["result"]["content"][1]["data"], "4242424242424242");
+        assert_eq!(answer["result"]["structuredContent"]["result"]["value"], crate::card_details::HIDDEN);
+        let mut plain = dict(json!({"result": {"content": [{"type": "text", "text": "Commande 12345, le 12/30"}]}}));
+        assert!(!hide_cards(&mut plain));
+        // the page's checks know a card's fields and the providers' frames
+        let target = target_script("#cc");
+        assert!(target.contains("cardOf(el)") && target.contains("payFrame(el)") && target.contains("document.evaluate"));
+        assert!(target.contains("cawl-solutions.fr") && target.contains("js.stripe.com"));
+        assert!(guard_before().contains("cardtext: cardtext") && guard_after(&with_cards).contains("cards++"));
+        assert!(GUARDED.contains(&"select_option"));
+        for refusal in [CARD_REFUSED, SCRIPT_CARD_REFUSED, CARD_UNDONE] {
+            assert!(refusal.contains("pay_with_card") && refusal.contains("« Panier prêt »"), "{refusal}");
+            assert!(refusal.contains("Never ask your person") || refusal.contains("never ask your person"), "{refusal}");
+        }
     }
 }

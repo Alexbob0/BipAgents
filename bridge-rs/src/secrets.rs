@@ -538,6 +538,12 @@ pub async fn give(
     if request.identifier_required() && identifier.is_empty() {
         return Err(GiveError::Invalid("the identifier is required".into()));
     }
+    // card-guards, 14/11: a card's number never goes through a secure-field card (nor back to the agent with its
+    // identifier), whatever it was asked for
+    if crate::card_details::holds_card_number(&value) || crate::card_details::holds_card_number(&identifier) {
+        tracing::info!(agent = %agent, secret = %request.name, "secret not kept: a payment card's number");
+        return Err(GiveError::Invalid(crate::card_details::GIVEN_REFUSED.into()));
+    }
     if !confirmed_others && crate::vault::others_facing(&config, &agent) {
         tracing::info!(agent = %agent, secret = %request.name, "secret not kept: other people talk to the agent, not confirmed");
         return Err(GiveError::ConfirmOthers);

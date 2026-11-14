@@ -101,7 +101,7 @@ return JSON.stringify({{count: 1, label: shown, terms: terms, ticked: box.checke
 /// What `box_script` answered in the frames of `origin` (the first frame that has the box), or what to tell the agent.
 async fn find_box(page: &mut Page, origin: &str, wanted: &str, apply: bool) -> Result<Value, FillError> {
     let mut best = json!({"count": 0});
-    for (session, frame_id, frame_url) in page.frames().await? {
+    for crate::card_fill::FrameSeen { session, id: frame_id, url: frame_url, .. } in page.frames().await? {
         if !crate::login_fill::frame_on(&frame_url, origin) {
             continue; // another site's frame: never looked at
         }

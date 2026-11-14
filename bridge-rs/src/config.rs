@@ -781,6 +781,10 @@ pub struct Config {
     /// until the person turns them on. Not in the serialized form either.
     #[serde(skip)]
     pub cards: String,
+    /// `[vault] test_payment_providers` (card_fill.rs `test_providers`): the black-box tests' fake payment providers,
+    /// loopback names only (`localhost`, `*.localhost`; any other name is ignored). Not serialized either.
+    #[serde(skip)]
+    pub test_payment_providers: Vec<String>,
     /// `[payments]` (cards.rs): the offer's switch for agent card payments on its places. Not serialized either.
     #[serde(skip)]
     pub payments: PaymentsConfig,
@@ -883,6 +887,7 @@ impl Config {
             phone_exit: crate::phone_exit::Settings::default(),
             archive_records: ArchiveRecordsConfig::default(),
             cards: "auto".into(),
+            test_payment_providers: Vec::new(),
             payments: PaymentsConfig::default(),
             archives: Vec::new(),
             push_service_url: None,
@@ -1849,6 +1854,15 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
     if !["auto", "on", "off"].contains(&cards.as_str()) {
         return Err(ConfigError::new("vault.cards must be 'auto', 'on' or 'off'"));
     }
+    let test_payment_providers: Vec<String> = match table(data, "vault").get("test_payment_providers") {
+        Some(Value::Array(items)) => items
+            .iter()
+            .filter_map(Value::as_str)
+            .map(|h| h.trim().trim_end_matches('.').to_lowercase())
+            .filter(|h| crate::card_fill::is_loopback_name(h))
+            .collect(),
+        _ => Vec::new(),
+    };
     let payments_t = table(data, "payments");
     let payments = PaymentsConfig {
         offer_cards: b(payments_t, "offer_cards", false),
@@ -1916,6 +1930,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         phone_exit: crate::phone_exit::Settings::from_table(table(data, "phone_exit")),
         archive_records,
         cards,
+        test_payment_providers,
         payments,
         archives: match data.get("archives") {
             Some(Value::Array(items)) => items.iter().filter(|v| v.is_object()).cloned().collect(),
