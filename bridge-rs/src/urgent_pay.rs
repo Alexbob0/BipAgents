@@ -480,48 +480,64 @@ const CONJUNCTIONS: &[&str] = &[
     "TOUTEFOIS", "ALLERDINGS",
 ];
 
-/// The exact code word anywhere in a line (« Tout est prêt… [REHEARSAL OK] », « No blocking issue…, but [REHEARSAL
-/// BLOCKED] the site asks for an SMS code »): its verdict, and the line's own words without it (None: nothing but
-/// it, markdown or an emoji). Third review of 14/11: it was read at the start of a line only.
-fn code_word_in(line: &str) -> Option<(Verdict, Option<String>)> {
+/// Every bracketed verdict in a line, wherever it stands: the code word (« Tout est prêt… [REHEARSAL OK] », « No
+/// blocking issue…, but [REHEARSAL BLOCKED] the site asks for an SMS code ») or a bracketed translation (« … [RÉPÉTITION
+/// GÉNÉRALE OK] », the lab of 14/11), each one taken out, and the line's own words without them (None: nothing but
+/// them, markdown or an emoji). « [… BLOCKED] » with no reason inside takes the words after it, up to the next verdict,
+/// as its reason. None: no bracketed verdict in the line (a line quoted from a page, « > … », never has one).
+fn verdicts_in(line: &str) -> Option<(Vec<Verdict>, Option<String>)> {
     let orig: Vec<char> = line.chars().collect();
-    let plain: String = orig.iter().map(|c| plain_char(*c)).collect();
-    let plain: Vec<char> = plain.chars().collect();
-    let find = |needle: &str| {
-        let n: Vec<char> = needle.chars().collect();
-        (0..plain.len().saturating_sub(n.len() - 1)).find(|i| plain[*i..].starts_with(&n))
-    };
-    let words = |chars: &[char]| -> Option<String> {
-        let text: String = chars.iter().collect();
-        let text = text.trim_matches(|c: char| !c.is_alphanumeric() && !".!?»)…".contains(c)).trim().to_string();
-        text.chars().any(char::is_alphanumeric).then_some(text)
-    };
-    if let Some(at) = find("[REHEARSAL OK]") {
-        let end = at + "[REHEARSAL OK]".chars().count();
-        let left: Vec<char> = orig[..at].iter().chain([' '].iter()).chain(orig[end..].iter()).copied().collect();
-        return Some((Verdict { ok: true, why: String::new(), code: true }, words(&left)));
+    if orig.iter().find(|c| !c.is_whitespace()) == Some(&'>') {
+        return None;
     }
-    let at = find("[REHEARSAL BLOCKED")?;
-    let after = at + "[REHEARSAL BLOCKED".chars().count();
-    let close = (after..orig.len()).find(|i| orig[*i] == ']').unwrap_or(orig.len());
-    let inside: String = orig[after..close].iter().collect();
-    let tail: String = orig[(close + 1).min(orig.len())..].iter().collect();
-    let tidy = |t: &str| {
+    // the bracketed verdicts: (start, end past its « ] », the verdict)
+    let mut found: Vec<(usize, usize, Verdict)> = Vec::new();
+    let mut i = 0;
+    while i < orig.len() {
+        if orig[i] == '[' {
+            if let Some(close) = (i + 1..orig.len()).find(|j| orig[*j] == ']') {
+                let segment: String = orig[i..=close].iter().collect();
+                if let Some(v) = verdict_of(&segment) {
+                    found.push((i, close + 1, v));
+                    i = close + 1;
+                    continue;
+                }
+            }
+        }
+        i += 1;
+    }
+    if found.is_empty() {
+        return None;
+    }
+    let tidy = |t: &str| -> String {
         t.trim_start_matches(|c: char| c.is_whitespace() || c.is_ascii_punctuation() || "\u{2014}\u{2013}".contains(c))
             .trim_end_matches(|c: char| c.is_whitespace() || "]*`".contains(c))
             .trim()
             .chars()
             .take(200)
-            .collect::<String>()
+            .collect()
     };
-    // « [REHEARSAL BLOCKED: why] the rest » or « [REHEARSAL BLOCKED] why »
-    let (why, rest) = if tidy(&inside).is_empty() { (tidy(&tail), None) } else { (tidy(&inside), words(&tail.chars().collect::<Vec<_>>())) };
-    let before = words(&orig[..at]);
-    let left = match (before, rest) {
-        (Some(b), Some(r)) => Some(format!("{b} {r}")),
-        (b, r) => b.or(r),
-    };
-    Some((Verdict { ok: false, why, code: true }, left))
+    let mut kept: Vec<char> = Vec::new();
+    let mut verdicts = Vec::new();
+    let mut at = 0;
+    for (n, (start, end, mut v)) in found.iter().cloned().enumerate() {
+        kept.extend(&orig[at..start]);
+        kept.push(' ');
+        at = end;
+        if !v.ok && v.why.is_empty() {
+            // « [REHEARSAL BLOCKED] why »: the words after it, up to the next verdict, are what blocked
+            let until = found.get(n + 1).map_or(orig.len(), |next| next.0);
+            v.why = tidy(&orig[end..until].iter().collect::<String>());
+            at = until;
+        }
+        verdicts.push(v);
+    }
+    kept.extend(&orig[at..]);
+    let text: String = kept.iter().collect();
+    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let text = text.trim_matches(|c: char| !c.is_alphanumeric() && !".!?»)…".contains(c)).trim().to_string();
+    let words = text.chars().any(char::is_alphanumeric).then_some(text);
+    Some((verdicts, words))
 }
 
 /// `c` upper-case without its accent, one char for one (so a position in it is one in the original).
@@ -640,12 +656,12 @@ fn verdict_of(line: &str) -> Option<Verdict> {
 /// else the translations, a blocked one anywhere winning. None: no verdict.
 pub fn read_rehearsal(text: &str) -> Option<(bool, String, String)> {
     let text = crate::tools_knowledge::strip(text).trim().to_string();
-    // each line: the code word anywhere in it (its own words kept), else a verdict at its start, else words
+    // each line: its bracketed verdicts wherever they stand (its own words kept), else a verdict at its start, else words
     let read: Vec<(String, Option<Verdict>)> = text
         .lines()
-        .flat_map(|l| match code_word_in(l) {
-            Some((v, left)) => {
-                let mut out = vec![(String::new(), Some(v))];
+        .flat_map(|l| match verdicts_in(l) {
+            Some((found, left)) => {
+                let mut out: Vec<(String, Option<Verdict>)> = found.into_iter().map(|v| (String::new(), Some(v))).collect();
                 out.extend(left.map(|w| (w, None)));
                 out
             }
@@ -1239,6 +1255,50 @@ mod rcl3_review_probes {
         assert_eq!(
             read_rehearsal("Rien n'a été bloqué. [REHEARSAL OK]").map(|r| (r.0, r.2)),
             Some((true, "Rien n'a été bloqué.".into()))
+        );
+    }
+}
+
+
+// -- fourth re-review of cards-lab-fixes (14/11, 36d5329d0): its probes, failing on 36d5329d0, kept as tests ---
+#[cfg(test)]
+mod rcl4_review_probes {
+    use super::*;
+
+    /// Both code words on one line: the blocked one wins (as among lines), and neither is left in the words.
+    #[test]
+    fn rcl4_blocked_and_ok_code_words_on_one_line_is_blocked() {
+        let read = read_rehearsal("[REHEARSAL BLOCKED] le site demande un SMS, donc pas de [REHEARSAL OK] possible")
+            .expect("a verdict");
+        assert!(!read.0 && !read.2.contains("REHEARSAL"), "{read:?}");
+    }
+
+    /// The code word twice on one line: none of it left in the person's words.
+    #[test]
+    fn rcl4_a_repeated_code_word_never_left_in_the_words() {
+        let read = read_rehearsal("[REHEARSAL OK] Tout est prêt jusqu'au paiement. [REHEARSAL OK]").expect("a verdict");
+        assert!(read.0 && !read.2.contains("REHEARSAL"), "{read:?}");
+    }
+
+    /// The lab's own translation (« [RÉPÉTITION GÉNÉRALE OK] », 14/11) at the end of a line of words: read, never shown.
+    #[test]
+    fn rcl4_a_bracketed_translation_at_the_end_of_a_line_is_read() {
+        let read = read_rehearsal("Tout est prêt jusqu'à la page de paiement. [RÉPÉTITION GÉNÉRALE OK]");
+        assert_eq!(read, Some((true, String::new(), "Tout est prêt jusqu'à la page de paiement.".into())));
+    }
+
+    /// A bracketed blocked translation inside a line, its reason after it; an ok code word with a blocked translation
+    /// on the same line (the code word decides); a bracket that is no verdict stays the person's.
+    #[test]
+    fn rcl4_more_forms_on_one_line() {
+        assert_eq!(
+            read_rehearsal("Pas de chance. [RÉPÉTITION BLOQUÉE] code SMS demandé"),
+            Some((false, "code SMS demandé".into(), "Pas de chance.".into()))
+        );
+        assert_eq!(read_rehearsal("[REHEARSAL OK] (la [RÉPÉTITION BLOQUÉE] d'hier est réglée)").map(|r| r.0), Some(true));
+        assert_eq!(
+            read_rehearsal("Voir [la page 2] du site. [REHEARSAL OK]"),
+            Some((true, String::new(), "Voir [la page 2] du site.".into()))
         );
     }
 }
