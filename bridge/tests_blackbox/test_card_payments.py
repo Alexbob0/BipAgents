@@ -574,7 +574,9 @@ def test_no_pay_button_hands_the_payment_over(bridges, fakes):
         refused = tool(bridge, "confirm_payment", {"button": "Payer 12,50 €"})
         text = refused["content"][0]["text"]
         assert refused["isError"] is True and "No pay button" in text and "don't try again" in text
-        assert "cancel_payment" in text and "hand_over_payment" in text and "card's numbers" in text
+        assert "cancel_payment" in text and "hand_over_payment" in text
+        # never asked for a card's details, in the chat or in a card (card-guards, 14/11)
+        assert "card's number, expiry, holder or security code, in the chat or in a card" in text
         assert chrome.clicks == []
     finally:
         chrome.stop()
