@@ -317,6 +317,11 @@ class ScriptedModel:
             opening = self.say(run, "Je cherche ça. ")
             self.tool(run, "web_search", {"query": "horaires piscine"},
                       lambda: "3 résultats : piscine Jean-Bouin, ouverte de 7 h à 21 h.", calls, results)
+        if "#note" in words:
+            # the turn acts first (a note to its memory): words sent while it then answers wait for its next step
+            # (Hermes' steer) and never restart it (bridge-rs/src/turn_restart.rs: only a turn that did nothing yet is)
+            self.tool(run, "memory", {"action": "add", "target": "memory", "content": "Raconter en détail."},
+                      lambda: "Noted.", calls, results)
         if "#secret" in words and "secret" in self.calls:
             opening = self.say(run, "Il me faut ton identifiant, je te le demande. ")
             self.tool(run, "mcp_bipagents_connectors_ask_secret", {"name": "exemple", "site": "exemple.com"},

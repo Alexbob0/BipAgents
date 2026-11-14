@@ -315,8 +315,12 @@ def thread_hints(journey, seconds):
 
 
 def test_j18_a_message_no_turn_took_shows_not_sent_and_goes_again(journey):
-    started(journey.send(cid(18), "Raconte-moi tout #lent"))
-    assert journey.send(cid(180), "Hello?").json()["state"] == "steered"
+    # a turn that acted already (#note: a call that changes things), so the words wait for its next step (Hermes'
+    # steer) instead of restarting it (turn_restart.rs); stopped before that step, no turn ever takes them
+    started(journey.send(cid(18), "Raconte-moi tout #note #lent"))
+    time.sleep(1)   # its note made (the hub has seen the call) before the words come, as on a phone
+    steered = journey.send(cid(180), "Hello?").json()
+    assert steered["state"] == "steered" and not steered.get("restarted"), steered
     # a phone holding the conversation: its last item is the message being sent
     held = the_message(journey.page(), cid(180))
     assert held.get("sending") is True, held
@@ -341,11 +345,25 @@ def test_j18_a_message_no_turn_took_shows_not_sent_and_goes_again(journey):
     displayable.check(journey.bridge, page, AGENT)
 
 
+def test_j18_words_sent_while_an_answer_did_nothing_yet_are_taken(journey):
+    """Since steer-interrupt (de02e9f22, turn_restart.rs): words sent while the agent answers but did nothing yet stop
+    that answer and start it again with both: one answer for both, the message taken, never « Pas envoyé » (the case
+    J18 builds needs a turn that acted already)."""
+    started(journey.send(cid(184), "Raconte-moi tout #lent"))
+    restarted = journey.send(cid(185), "Hello?").json()
+    assert restarted["state"] == "steered" and restarted.get("restarted"), restarted
+    page = reply_done(journey, "Bien reçu")
+    assert the_message(page, cid(185)).get("not_sent") is None, the_message(page, cid(185))
+    displayable.check(journey.bridge, page, AGENT)
+
+
 def test_j18_a_deleted_conversation_forgets_its_messages_not_sent(journey):
     """6/11: « Pas envoyé » messages of a deleted conversation came back in the main thread started again (kept two
     days in `thread_sends`, by the thread's id the main one keeps)."""
-    started(journey.send(cid(181), "Raconte-moi tout #lent"))
-    assert journey.send(cid(182), "Hello?").json()["state"] == "steered"
+    started(journey.send(cid(181), "Raconte-moi tout #note #lent"))
+    time.sleep(1)   # its note made (the hub has seen the call) before the words come, as on a phone
+    steered = journey.send(cid(182), "Hello?").json()
+    assert steered["state"] == "steered" and not steered.get("restarted"), steered
     journey.bridge.post(f"/v1/threads/{journey.thread}/stop", headers=AUTH, json={"agent": AGENT})
     journey.idle()
     time.sleep(11)
