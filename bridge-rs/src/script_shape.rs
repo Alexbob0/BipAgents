@@ -183,6 +183,13 @@ impl Reader<'_> {
                 let name = id.name.as_str();
                 self.names.declared.contains(name) && !self.names.functions.values().any(|f| f == name)
             }
+            // `f.bind(x)` gives a function (read as one: a method of the page taken as a value acts later)
+            Some(Expression::CallExpression(call))
+                if call.callee.without_parentheses().as_member_expression().and_then(|m| m.static_property_name()).and_then(|n| n.as_str())
+                    == Some("bind") =>
+            {
+                false
+            }
             Some(e) => e.as_member_expression().is_none() || first_is_text(arguments),
         }
     }
