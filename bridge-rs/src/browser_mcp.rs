@@ -1231,8 +1231,11 @@ pub const REFUSED_SCHEMES: [&str; 7] =
 /// Addresses that run a script in the page or make one (review of card-guards, 14/11: `navigate` with
 /// `javascript:void(document.getElementById('numero').value='4242…')` filled a card field, a password field, ticked a
 /// site's terms, with none of the guard's checks around it: navigate is no guarded tool). A script goes through
-/// execute_script, whose checks apply.
-pub const SCRIPT_SCHEMES: [&str; 3] = ["javascript:", "vbscript:", "data:"];
+/// execute_script, whose checks apply. And addresses of a document a script made (second review: a page built by the
+/// agent's script, `URL.createObjectURL(new Blob(…))` or a file of `webkitRequestFileSystem`, is of the shop's own
+/// origin: opened, it loaded the shop's form in a frame and filled it). A site's own blob: download link clicked with
+/// click_element is not an address the agent gives: unaffected.
+pub const SCRIPT_SCHEMES: [&str; 5] = ["javascript:", "vbscript:", "data:", "blob:", "filesystem:"];
 
 /// A tool's call to an address of `REFUSED_SCHEMES` or `SCRIPT_SCHEMES` (its `url` argument: `navigate`, `new_tab`;
 /// Chrome drops tabs, newlines, spaces and control characters from an address, so they are dropped here too): the
@@ -1247,8 +1250,9 @@ pub fn refused_address(tool: &str, args: &Dict) -> Option<Dict> {
     }
     let text = if script {
         format!(
-            "{tool} refused: an address never runs a script in your browser (javascript:, data:, vbscript:). To run \
-             one in the page, use execute_script; to open a page, give its https address. Nothing was run."
+            "{tool} refused: an address never runs a script in your browser, nor opens a document a script made \
+             (javascript:, data:, vbscript:, blob:, filesystem:). To run one in the page, use execute_script; to open \
+             a page, give its https address. Nothing was run."
         )
     } else {
         format!(
@@ -3166,6 +3170,8 @@ themselves). Do not use the browser until they hand it back: tell them you are w
             "vbscript:msgbox(1)",
             "data:text/html,<script>opener.document.forms[0].submit()</script>",
             "DATA:text/html;base64,PHNjcmlwdD48L3NjcmlwdD4=",
+            "blob:https://shop.example/0b7e3a52-49a5-4a39-9d1c-6c1b8d0f4c11",
+            " Filesystem:https://shop.example/temporary/p.html",
         ] {
             for tool in ["navigate", "new_tab"] {
                 let refused = refused_address(tool, &args(url)).unwrap_or_else(|| panic!("{tool} {url:?} not refused"));
