@@ -156,6 +156,70 @@ def test_gc_keeps_what_a_place_points_at_or_a_process_runs(tmp_path):
     assert sorted(p.name for p in base.iterdir()) == ["pinned", "pointed", "running"]
 
 
+def test_gc_deletes_nothing_while_a_place_s_hermes_cannot_be_read(tmp_path):
+    """A place whose encrypted space is locked (after a reboot, or closed by hand): its ~/.hermes is a link into the
+    space's open view (bridge-rs/src/space.rs), empty, so which version it runs is unknown; no version is deleted until
+    it can be read again (else the place, once open, would point at a deleted Hermes). Found by the disk breakdown's
+    third review (14/11)."""
+    base = tmp_path / "opt"
+    for name in ("old", "new"):
+        (base / name).mkdir(parents=True)
+    home = tmp_path / "home" / "bip2"
+    view = home / ".local" / "share" / "bipagents" / "space" / "open"
+    view.mkdir(parents=True)
+    (home / ".hermes").symlink_to(view / "hermes")                 # locked: the open view empty
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    assert shared_hermes.gc(hermes.Runner(), base, [home], keep=["new"], proc=proc) == []
+    assert sorted(p.name for p in base.iterdir()) == ["new", "old"]
+    # its agents' own spaces locked the same way (the bridge's data entries are links into the open view too)
+    other = tmp_path / "home" / "bip3"
+    (other / ".hermes").mkdir(parents=True)
+    (other / ".local" / "share" / "bipagents").mkdir(parents=True)
+    (other / ".local" / "share" / "bipagents" / "spaces").symlink_to(
+        other / ".local" / "share" / "bipagents" / "space" / "open" / "spaces")
+    (view / "hermes").mkdir()
+    (view / "hermes" / "shared").symlink_to(base / "new")         # place 2 open again
+    assert shared_hermes.gc(hermes.Runner(), base, [home, other], keep=["new"], proc=proc) == []
+    (other / ".local" / "share" / "bipagents" / "spaces").unlink()
+    assert shared_hermes.gc(hermes.Runner(), base, [home, other], keep=["new"], proc=proc) == ["old"]
+
+
+def test_gc_a_place_cannot_stop_the_server_s_gc_by_a_link_of_its_own(tmp_path):
+    """Only a link into the place's own encrypted space's open view counts as locked: any other link of a place's
+    leading nowhere (`ln -s /nowhere ~/.local/share/bipagents/spaces`, no space at all) never holds the whole server's
+    gc. (The disk breakdown's fourth review, 14/11.)"""
+    base = tmp_path / "opt"
+    for name in ("old", "new"):
+        (base / name).mkdir(parents=True)
+    two, three = tmp_path / "home" / "bip2", tmp_path / "home" / "bip3"
+    for home in (two, three):
+        (home / ".hermes").mkdir(parents=True)
+        (home / ".hermes" / "shared").symlink_to(base / "new")
+    (three / ".local" / "share" / "bipagents").mkdir(parents=True)
+    (three / ".local" / "share" / "bipagents" / "spaces").symlink_to("/nowhere")
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    assert shared_hermes.gc(hermes.Runner(), base, [two, three], keep=["new"], proc=proc) == ["old"]
+
+
+def test_the_seat_agent_logs_what_the_gc_says(tmp_path, monkeypatch, capsys):
+    """Its « all kept » line (or what it removed) reaches the seat agent's log, not dropped."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("seat_agent_gc", Path(__file__).resolve().parents[1] / "cloud"
+                                                  / "seat-agent.py")
+    agent = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(agent)
+    repo = tmp_path / "repo"
+    (repo / "installer").mkdir(parents=True)
+    monkeypatch.setattr(agent, "SHARED_REPO", str(repo))
+    monkeypatch.setattr(agent, "shared_on", lambda: True)
+    said = "All kept: 1 place folder(s) behind a locked encrypted space, their Hermes version unknown.\n"
+    monkeypatch.setattr(agent.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout=said, stderr=""))
+    agent.shared_gc()
+    assert "shared Hermes gc: All kept: 1 place folder(s) behind a locked encrypted space" in capsys.readouterr().out
+
+
 def test_install_points_at_the_shared_hermes_when_root_built_it(tmp_path, monkeypatch):
     base = tmp_path / "opt"
     version = shared_hermes.version_id()

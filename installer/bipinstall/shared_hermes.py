@@ -577,11 +577,45 @@ def running_versions(base: Path, proc: Path = Path("/proc")) -> Dict[str, int]:
     return found
 
 
+SPACE_VIEW = Path(".local") / "share" / "bipagents" / "space" / "open"   # a place's encrypted space, open (space.rs)
+
+
+def locked(homes: Iterable[Path]) -> List[str]:
+    """The places' Hermes homes root can't read because their encrypted space is locked (after a reboot, or closed by
+    hand) or closed to root: ~/.hermes, or their agents' spaces folder, a link into the place's own space's open view
+    (bridge-rs/src/space.rs makes them so) that root can't list. Which version they run is unknown. Any other link of
+    a place's that leads nowhere is not this: it never holds the gc (one would, for the whole server)."""
+    found = []
+    for home in homes:
+        view = os.path.normpath(home / SPACE_VIEW)
+        for path in (home / ".hermes", home / ".local" / "share" / "bipagents" / "spaces"):
+            if not path.is_symlink():
+                continue
+            try:
+                target = os.path.normpath(os.path.join(path.parent, os.readlink(path)))
+            except OSError:
+                continue
+            if target != view and not target.startswith(view + os.sep):
+                continue
+            try:
+                os.listdir(path)   # the folder it leads to, as root sees it
+            except OSError:
+                found.append(str(path))
+    return found
+
+
 def gc(runner: hermes.Runner, base: Path, homes: Iterable[Path], keep: Iterable[str] = (),
        proc: Path = Path("/proc")) -> List[str]:
     """The versions nothing uses any more, deleted: no place points at them, no process runs them, and not the one
-    this BipAgents pins (the next place to update needs it). Unfinished builds too, unless one is under way."""
+    this BipAgents pins (the next place to update needs it). Unfinished builds too, unless one is under way. Nothing
+    is deleted while a place's encrypted space is locked (`locked`): it may run any of them, and no process shows it
+    (2026-11-14: a locked place's version was deleted, users_of can't read through its locked ~/.hermes)."""
     if not base.is_dir():
+        return []
+    homes = list(homes)
+    held = locked(homes)
+    if held:
+        say(f"All kept: {len(held)} place folder(s) behind a locked encrypted space, their Hermes version unknown.")
         return []
     used = set(users_of(base, homes)) | set(running_versions(base, proc)) | set(keep)
     removed = []
