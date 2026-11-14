@@ -85,7 +85,7 @@ la bêta.
 
 | N° | Parcours | Ce que la personne doit voir | Automatisé |
 |---|---|---|---|
-| J18 | « Pas envoyé » puis renvoyer | « Pas envoyé · Toucher pour réessayer » sous un message qu'aucun tour n'a pris ; un toucher le renvoie, la réponse vient, le message une seule fois | P, i, A |
+| J18 | « Pas envoyé » puis renvoyer | « Pas envoyé · Toucher pour réessayer » sous un message qu'aucun tour n'a pris (envoyé pendant un tour qui a déjà agi, `#note`, puis « Arrêter » avant son étape suivante ; pendant un tour qui n'a encore rien fait, le message le relance et il est pris : pas de « Pas envoyé », turn_restart.rs) ; un toucher le renvoie, la réponse vient, le message une seule fois | P, i, A |
 | J19 | « En attente » montre chaque sorte de message | Une photo, un document, un texte « Après » envoyés pendant une réponse : chacun dans « En attente » avec ce qu'il est (jamais une ligne vide) | P, i, A |
 
 ### Boîte, notifications, le reste
