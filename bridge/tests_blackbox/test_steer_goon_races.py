@@ -216,3 +216,37 @@ def test_a_restarted_continuations_card_is_not_pushed_while_the_app_shows_it(bri
         pushed = [p for p in fakes.apns.payloads() if p["aps"].get("category") == "APPROVAL"]
         finish.set()
     assert pushed == [], "the restarted continuation's card pushed while the app shows the conversation"
+
+
+# -- the « no turn took it » case steer-interrupt makes (J18 builds its own with a turn that acted: test_journeys.py) ----
+
+HELLO_J18 = "Hello?"
+CID_J18 = "C0FFEE00-0000-4000-8000-0000000000L1"
+
+
+# Words sent while the answer did nothing yet plan its restart; the person's Stop lands before it starts (Stop wins,
+# fix-steer-goon-races): no turn ever took the words, so the conversation must offer them again (« Pas envoyé »)
+def test_stop_before_the_restart_starts_shows_not_sent(bridges, fakes):
+    bridge = bridges.new().start()
+    thread = thread_of(bridge, fakes)
+    gate = threading.Event()
+    fakes.hermes.runs["run_vie"] = [sse("message.delta", run_id="run_vie", delta="Je regarde la Fnac…"), gate,
+                                    sse("run.cancelled", run_id="run_vie")]
+    fakes.hermes.runs["r1"] = turn("r1", FOUND)
+    watch = {"agent": "wellness", "run_id": "run_vie", "session_id": "api_c"}
+    assert bridge.post("/v1/watch", headers=AUTH, json=watch).status_code == 200
+    assert wait_until(lambda: fakes.hermes.seen("/v1/runs/run_vie/events"))
+    sent = bridge.post(f"/v1/threads/{thread}/messages", headers=AUTH,
+                       json={"agent": "wellness", "client_id": CID_J18, "text": HELLO_J18}).json()
+    assert sent.get("restarted"), sent
+    stopped = bridge.post(f"/v1/threads/{thread}/stop", headers=AUTH, json={"agent": "wellness"})
+    assert stopped.status_code == 200, stopped.text
+    gate.set()                         # Hermes ends the stopped turn: the restart finds its plan withdrawn
+    time.sleep(12)                     # send.rs LOST_AFTER (10 s) + 1
+
+    def ours():
+        page = bridge.get(f"/v1/threads/{thread}/timeline", headers=AUTH, params={"agent": "wellness"}).json()
+        return [i for i in page["items"] if i.get("client_id") == CID_J18 or i.get("id") == f"s_{CID_J18}"]
+
+    assert list(fakes.hermes.started) == [], fakes.hermes.started
+    assert wait_until(lambda: ours() and ours()[0].get("not_sent") is True, timeout=10), ours()
