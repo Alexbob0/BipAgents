@@ -330,13 +330,15 @@ pub fn describe(label: &str, hint: Option<&str>, secret: &Dict) -> String {
 /// What the details the agent reads never hold, said after them (select-option-direct, 13/11: on a sign-up form with
 /// « Civilité », DeepSeek V4.1 Flash picked « Madame » itself for « Camille Testeur » in 3 runs of 4 after the change and
 /// 5 of 9 before, the rule « no civility of your own » being in the visible-browser skill and this tool's description
-/// only): a civility, and a birth date when none of `secrets` has one, are asked, never guessed.
+/// only): a civility, and a birth date when none of `secrets` has one, are asked, never guessed; in the person's
+/// language, the titles of other languages' forms named (review 14/11).
 pub fn not_held(secrets: &[&Dict]) -> String {
     let dated = secrets.iter().any(|s| s.get(BIRTH_DATE).map(py::py_str).is_some_and(|d| !d.trim().is_empty()));
     format!(
-        "These details hold no civility (Madame / Monsieur…){}: when a form asks for one, ask your person in one \
-         short question (« Madame ou Monsieur ? »), unless they told you in this conversation; never pick one \
-         yourself, not from the first name either.",
+        "These details hold no civility or title (Madame / Monsieur, Mr / Ms, Frau / Herr, Sr. / Sra.){}: when a form \
+         asks for one (Civilité, Title, Anrede, Tratamiento…), ask your person in one short question, in their \
+         language (« Madame ou Monsieur ? »), unless they told you in this conversation; never pick one yourself, not \
+         from the first name either.",
         if dated { "" } else { " and no birth date" }
     )
 }
@@ -715,7 +717,13 @@ mod tests {
         let plain = dict(json!({"full_name": "Camille Testeur"}));
         let dated = dict(json!({"full_name": "Camille Testeur", "birth_date": "1991-03-14"}));
         let said = not_held(&[&plain]);
-        assert!(said.starts_with("These details hold no civility (Madame / Monsieur…) and no birth date:"), "{said}");
+        assert!(
+            said.starts_with(
+                "These details hold no civility or title (Madame / Monsieur, Mr / Ms, Frau / Herr, Sr. / Sra.) and no \
+                 birth date:"
+            ),
+            "{said}"
+        );
         assert!(said.contains("ask your person") && said.contains("not from the first name"), "{said}");
         assert!(!not_held(&[&dated]).contains("birth date") && not_held(&[&plain, &dated]).contains("no civility"));
         // the browser skill says it the same way (§ 4b)
