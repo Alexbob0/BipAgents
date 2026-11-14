@@ -45,7 +45,7 @@ SCRIPT_CARD_REFUSED = "Not done: a script never writes or reads a payment card's
 PROVIDER_SCRIPT_REFUSED = "Not done: a script never sends your browser to another page"
 CARD_UNDONE = "Not done: that put a payment card's details into the page"
 HIDDEN = "[card number hidden]"
-SCRIPT_LATER_REFUSED = "Not done: a script runs at once and ends"
+SCRIPT_LATER_REFUSED = "Not done: this script writes or clicks later"
 SCRIPT_TAMPERS_REFUSED = "Not done: a script never changes how the page's own code"
 SCRIPT_LATER_ON_CARDS_REFUSED = "Not done: on a page with payment card fields, a script runs at once"
 

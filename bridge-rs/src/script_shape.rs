@@ -107,6 +107,8 @@ struct Frame {
 #[derive(Default)]
 struct Names {
     own: HashSet<String>,
+    /// Every name the script declares (`const`, `let`, `var`, a function's).
+    declared: HashSet<String>,
     functions: HashMap<u32, String>,
     called: HashSet<u32>,
     passed_at_once: HashSet<u32>,
@@ -116,6 +118,7 @@ struct Names {
 impl<'a> Visit<'a> for Names {
     fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
         if let BindingPattern::BindingIdentifier(id) = &it.id {
+            self.declared.insert(id.name.to_string());
             if let Some(init) = &it.init {
                 let init = init.without_parentheses();
                 if is_own_object(init) {
@@ -132,6 +135,7 @@ impl<'a> Visit<'a> for Names {
     fn visit_function(&mut self, it: &Function<'a>, flags: ScopeFlags) {
         if let Some(id) = &it.id {
             self.functions.insert(it.span.start, id.name.to_string());
+            self.declared.insert(id.name.to_string());
         }
         walk::walk_function(self, it, flags);
     }
@@ -169,6 +173,20 @@ struct Reader<'s> {
 }
 
 impl Reader<'_> {
+    /// A timer's first argument that isn't a function: a string, a template, a sum, a call's result, a name the script
+    /// gives something else (a page's own name, undeclared here, is left: what it holds is unknown).
+    fn timer_runs_text(&self, arguments: &[Argument]) -> bool {
+        match arguments.first().and_then(|a| a.as_expression()).map(|e| e.without_parentheses()) {
+            None => false,
+            Some(Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)) => false,
+            Some(Expression::Identifier(id)) => {
+                let name = id.name.as_str();
+                self.names.declared.contains(name) && !self.names.functions.values().any(|f| f == name)
+            }
+            Some(e) => e.as_member_expression().is_none() || first_is_text(arguments),
+        }
+    }
+
     fn act(&mut self) {
         self.shape.acts = true;
         if self.frames.last().is_some_and(|f| f.later || f.awaited) {
@@ -266,7 +284,7 @@ impl<'a> Visit<'a> for Reader<'_> {
         match callee {
             Expression::Identifier(id) => {
                 let name = id.name.as_str();
-                if name == "eval" || name == "Function" || (TIMERS.contains(&name) && first_is_text(&it.arguments)) {
+                if name == "eval" || name == "Function" || (TIMERS.contains(&name) && self.timer_runs_text(&it.arguments)) {
                     self.shape.code_from_text = true;
                 }
             }
@@ -276,7 +294,11 @@ impl<'a> Visit<'a> for Reader<'_> {
                     match member.static_property_name().and_then(|n| n.as_str()) {
                         Some(method) => {
                             let root = root_name(object);
-                            if TIMERS.contains(&method) && first_is_text(&it.arguments) || method == "eval" {
+                            // `[].constructor.constructor('…')()`: Function by another way
+                            if TIMERS.contains(&method) && self.timer_runs_text(&it.arguments)
+                                || method == "eval"
+                                || method == "constructor"
+                            {
                                 self.shape.code_from_text = true;
                             }
                             if matches!(method, "setAttribute" | "setAttributeNS") {
@@ -638,6 +660,9 @@ mod tests {
             let s = shape(script);
             assert!(s.parsed && !s.acts_later, "{script}: {s:?}");
         }
+        // a function of the script's or the page's own, given to a timer: no text run
+        assert!(!shape("function f() { return 1; } setTimeout(f, 10)").code_from_text);
+        assert!(!shape("setTimeout(window.refresh, 10)").code_from_text);
         // later but only reading: told apart
         let reads_later = shape("setTimeout(() => console.log(document.title), 10)");
         assert!(reads_later.later && !reads_later.acts_later);
@@ -658,7 +683,9 @@ mod tests {
                        "const r = {}; r[k] = 1"] {
             assert!(!shape(script).hidden_names, "{script}");
         }
-        for script in ["eval(c)", "new Function(c)()", "setTimeout('f.submit()', 10)", "el.setAttribute('onclick', 'pay()')"] {
+        for script in ["eval(c)", "new Function(c)()", "setTimeout('f.submit()', 10)", "el.setAttribute('onclick', 'pay()')",
+                       "const c = 'f.submit()'; setTimeout(c, 10)", "setTimeout(String(x), 10)",
+                       "[].constructor.constructor(c)()"] {
             assert!(shape(script).code_from_text, "{script}");
         }
     }
