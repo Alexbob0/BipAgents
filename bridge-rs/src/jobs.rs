@@ -1423,6 +1423,36 @@ make). If you meant something else, call that tool instead: a password, API key 
 mcp__bipagents_connectors__ask_secret; the sites a connector needs → mcp__bipagents_files__sandbox_sites_request; a \
 connector you built → mcp__bipagents_connectors__connector_register (behind the tool search: tool_call with its name).";
 
+/// A task of `agent` with the same words as `prompt` (case and spaces aside) still waiting for the person or under way:
+/// its title and state. The cards lab of 14/11 (GLM-5.3 Flash, a watcher's turn): the same propose_task again and
+/// again, each call a new waiting task and a push, until the brake stopped the turn; the next turn began with it again.
+pub fn same_task(config: &crate::config::Config, agent: &str, prompt: &str) -> Option<(String, String)> {
+    let words = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
+    let wanted = words(prompt);
+    if wanted.is_empty() {
+        return None;
+    }
+    tasks(config)
+        .into_iter()
+        .filter(|j| agent_of(j) == agent)
+        .filter(|j| ["proposed", "queued", "running", "counting", "stopping"].contains(&state_of(j).as_str()))
+        .find(|j| words(&tk::str_or_empty(j.get("prompt"))) == wanted)
+        .map(|j| (tk::str_or_empty(j.get("title")), state_of(&j)))
+}
+
+/// What propose_task / start_task answer for a task already there (`same_task`): never a second one.
+pub fn already_there(title: &str, state: &str) -> Dict {
+    let where_ = if state == "proposed" {
+        "it waits for your person's go in « Tâches de fond »"
+    } else {
+        "it is under way in « Tâches de fond »"
+    };
+    tool_text(
+        &format!("Already proposed: « {title} »: {where_}. Don't propose it again; go on with what you were doing."),
+        false,
+    )
+}
+
 /// The `propose_task` MCP tool (agent_tools.rs). Err: what Python lets through (a task file that cannot be written).
 pub async fn propose_tool(jobs: Option<&Jobs>, agent: &AgentConfig, arguments: &Dict) -> anyhow::Result<Dict> {
     let Some(jobs) = jobs else {
@@ -1441,6 +1471,10 @@ pub async fn propose_tool(jobs: Option<&Jobs>, agent: &AgentConfig, arguments: &
         // model ended ask_secret / sandbox_sites_request, then behind the search, on this in-view name with
         // {"prompt": "No", "title": "x"}; tasks « x » were proposed to the person and the turn went round in circles)
         return Ok(tool_text(NOT_A_TASK, true));
+    }
+    if let Some((title, state)) = same_task(&jobs.config.get(), &agent.name, &prompt) {
+        tracing::info!(agent = %agent.name, title = %title, state = %state, "the same task proposed again: not twice");
+        return Ok(already_there(&title, &state));
     }
     let from = jobs.hub.as_ref().and_then(|hub| hub.asking_session(&agent.name));
     let title = tk::str_or_empty(arguments.get("title"));

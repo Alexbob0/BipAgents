@@ -5,6 +5,7 @@ chose (for their browser fill), and read by an agent only when it was given the 
 only after the person's confirmation for it). All values are made up."""
 import json
 import threading
+import time
 
 import yaml
 
@@ -365,3 +366,34 @@ def test_a_browsing_agent_has_its_account_and_details_tools_in_view(bridges, fak
     for name in ("vault_create_login", "vault_confirm_login", "vault_contact_details", "vault_save_contact_details"):
         assert f"!mcp__bipagents_vault__{name}" in defer(), name
     assert "!mcp__stealth__type_text" in defer()
+
+
+def test_an_agent_that_may_pay_has_its_payment_tools_in_view(bridges, fakes, tmp_path):
+    """The cards lab of 14/11, run 3 (GLM-5.3 Flash, a watcher's restock): behind Hermes' tool search, the agent read
+    pay_with_card with tool_describe (1421 characters), then called it by name; the call ended on the in-view
+    create_page (pages « paiement-de-la-… »), then propose_task again and again until the brake, at both restocks: no
+    payment asked. An agent its person lets pay (a card for it, payments on) has its payment tools in view."""
+    from test_card_payments import CARD
+    space = tmp_path / "spaces" / "vie"
+    bridge = contacts_bridge(bridges, fakes, vie_space=space)
+    wait_registered(bridge, ["vie"])
+    config = space / "profiles" / "vie" / "config.yaml"
+
+    def defer():
+        data = yaml.safe_load(config.read_text()) or {}
+        return ((data.get("tools") or {}).get("tool_search") or {}).get("defer") or []
+
+    def paying():
+        return [d for d in defer() if "bipagents_pay__" in d]
+    assert wait_until(lambda: "!mcp__bipagents_vault__vault_create_login" in defer(), timeout=15), defer()
+    assert paying() == [], "no card for it: behind the search"
+    assert bridge.post("/v1/vault/payments", headers=AUTH, json={"enabled": True}).status_code == 200
+    time.sleep(1)
+    assert paying() == [], "payments on, no card for it yet: behind the search"
+    made = bridge.post("/v1/vault", headers=AUTH, json={**CARD, "agents": ["vie"]})
+    assert made.status_code == 201, made.text
+    assert wait_until(lambda: "!mcp__bipagents_pay__pay_with_card" in defer(), timeout=15), defer()
+    assert "!mcp__bipagents_pay__confirm_payment" in defer() and "!mcp__bipagents_pay__cancel_payment" in defer()
+    # payments suspended by the person: back behind the search (its rules hand the payment over then)
+    assert bridge.post("/v1/vault/payments", headers=AUTH, json={"enabled": False}).status_code == 200
+    assert wait_until(lambda: paying() == [], timeout=15), defer()
