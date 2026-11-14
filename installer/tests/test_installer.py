@@ -261,6 +261,7 @@ def bridge_check(tmp_path: Path, text: str) -> str:
     return done.stdout
 
 
+@pytest.mark.bridge_build   # also run by the battery's Linux installer suite, with the release build it made
 def test_bridge_config_is_valid_for_the_bridge(tmp_path):
     inst = Install(repo=ROOT, home=tmp_path, ports=Ports(9200), tailnet_name="mini.tail0000.ts.net",
                    lan_address="192.168.1.20", model=hermes.Model("custom", "glm", base_url="http://192.168.1.30:8888/v1"),

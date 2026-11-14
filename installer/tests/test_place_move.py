@@ -267,6 +267,7 @@ def test_the_moved_place_keeps_its_keys_and_the_target_its_door_and_ports(tmp_pa
     assert any(word in line for line in runner.log for word in ("restart", "kickstart", "enable"))  # started again
 
 
+@pytest.mark.linux   # GNU rsync 3: the servers' (place moves run there); macOS has another rsync
 @pytest.mark.skipif(b"version 3." not in subprocess.run(["rsync", "--version"], capture_output=True).stdout
                     if shutil.which("rsync") else True, reason="no GNU rsync 3 here")
 def test_rsync_with_the_rules_copies_what_a_backup_takes_plus_the_sidecars(tmp_path):
