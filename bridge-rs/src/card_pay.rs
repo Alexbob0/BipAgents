@@ -502,6 +502,13 @@ fn journal(config: &Config, held: &Held, agent: &str, outcome: &str) {
     cards::journal(config, line);
 }
 
+/// The approval's message with the provider's page named last (`… Approve in the BipAgents app with the card's
+/// security code. Payment page of CAWL (payment.cawl-solutions.fr).`): every app reads the notes it knows where they
+/// were (Android: right after « for "…". », iOS: right before « Approve in »), and skips this one.
+fn hosted_note(message: &str, provider: &str, host: &str) -> String {
+    format!("{message} Payment page of {}.", cards::quoted(&format!("{provider} ({host})"), 120))
+}
+
 /// A payment provider's own page (`card_fill::provider_page`, or a test provider of the settings): the card's site
 /// this tab came from and the provider's name (`card_fill::reached_from`); `Ok(None)` for any other page; `Err` for a
 /// provider's page this tab did not reach from the card's site through the pages' own links and forms.
@@ -1257,11 +1264,6 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
         return Ok(refused);
     }
     let message = cards::approval_message(&entry.payment, cents, &currency, &shown, &card.label, &last4, &merchant);
-    // On a provider's own page: the person is shown the shop, and the page where the card goes (older apps skip it).
-    let message = match &entry.hosted {
-        Some((_, provider)) => cards::with_note(&message, &format!("Payment page of {provider} ({host}).")),
-        None => message,
-    };
     journal(&config, &entry, &agent.name, "asked");
     // Which card: « Card item_… » for the phone that keeps its numbers (the offer), « Card ref item_… » for one the
     // bridge keeps (the phone that remembers its security code finds it so).
@@ -1272,6 +1274,12 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
     // the « Coordonnées » entry used for delivery, shown with the payment (« Livraison : tes coordonnées « Perso » »)
     let message = match &delivery {
         Some(note) => cards::with_note(&message, note),
+        None => message,
+    };
+    // On a provider's own page: the person is shown the shop, and the page where the card goes, at the very end (the
+    // apps read « Card ref » and « Delivery » right after « for … » and right before « Approve in »).
+    let message = match &entry.hosted {
+        Some((_, provider)) => hosted_note(&message, provider, &host),
         None => message,
     };
     let about = About {
@@ -2304,6 +2312,22 @@ mod tests {
             &delivery_note(&entries, "Perso").unwrap(),
         );
         assert!(message.contains("shop.example. Delivery \"Perso\". Approve in the BipAgents app"), "{message}");
+        // a provider's payment page (card-guards, 14/11) is named last: the apps' readings of « Card ref » and
+        // « Delivery » (Android's pattern, iOS's lookahead before « Approve in ») still find them
+        let base = cards::approval_message("pay_0123456789ab", 1250, "EUR", "pharmaciedesdrakkars.com", "Petits achats",
+                                           "4242", "Crème solaire");
+        let full = hosted_note(
+            &cards::with_note(&cards::with_note(&base, "Card ref item_0123456789ab."), "Delivery \"Perso\"."),
+            "CAWL",
+            "payment.cawl-solutions.fr",
+        );
+        assert!(full.ends_with("security code. Payment page of CAWL (payment.cawl-solutions.fr)."), "{full}");
+        let android = regex::Regex::new(r#"^Card payment (pay_[0-9a-f]{12}): ([0-9]+\.[0-9]{2}) ([A-Z]{3}) on (\S+) with card "([^"]*)" ending ([0-9]{4}), for "([^"]*)"\.(?: Card (item_[0-9a-f]{12})\.)?(?: Card ref (item_[0-9a-f]{12})\.)?(?: Delivery "([^"]*)"\.)?"#).unwrap();
+        let caught = android.captures(&full).unwrap();
+        assert_eq!(&caught[4], "pharmaciedesdrakkars.com");
+        assert_eq!(caught.get(9).map(|m| m.as_str()), Some("item_0123456789ab"));
+        assert_eq!(caught.get(10).map(|m| m.as_str()), Some("Perso"));
+        assert!(full.contains(". Card ref item_0123456789ab. Delivery \"Perso\". Approve in the BipAgents app"));
     }
 
     #[test]
