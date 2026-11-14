@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Paiement</title></head>
+<body>
+<!-- Review of refuse-javascript-urls (14/11): a card field, a password field and the site's terms. -->
+<form id="pay" onsubmit="event.preventDefault()">
+  <p><label for="numero">Numéro de carte</label> <input id="numero" name="numero"></p>
+  <p><label for="pw">Mot de passe</label> <input id="pw" type="password" name="password"></p>
+  <p><input type="checkbox" id="cgu"> <label for="cgu">J'accepte les conditions générales de vente</label></p>
+</form>
+<p><a id="jslink" href="javascript:void(document.getElementById('pw').value='Provisoire123!')">Continuer</a></p>
+</body></html>

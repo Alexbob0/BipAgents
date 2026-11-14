@@ -182,6 +182,21 @@ def test_a_script_setting_the_password_the_framework_way_is_refused(browser):
     assert typed == "" and said.startswith(SCRIPT_PASSWORD_REFUSED), (typed, said)
 
 
+def test_a_script_in_an_address_never_reaches_the_page(browser):
+    # review of card-guards, 14/11: navigate with a `javascript:` address ran a script with none of the guard's checks
+    # (navigate is no guarded tool): it wrote the password and ticked the terms, and the proxy said it was done
+    browser.tool("navigate", url=f"{browser.base}/signup.html")
+    browser.tool("click_element", selector="#open-register")
+    time.sleep(1)
+    for url in ["javascript:void(document.getElementById('register-password').value='Provisoire123!')",
+                "  Java\tScript:void(document.getElementById('cgu').checked=true)"]:
+        said = browser.tool("navigate", url=url)
+        assert said.startswith("navigate refused") and "execute_script" in said, (url, said)
+    time.sleep(0.5)
+    assert browser.page("[document.getElementById('register-password').value, document.getElementById('cgu').checked, "
+                        "location.pathname]") == ["", False, "/signup.html"]
+
+
 def test_control_the_plain_cases_are_refused(browser):
     # the harness itself: what the branch does catch is caught here too (this one passes)
     browser.tool("navigate", url=f"{browser.base}/signup.html")

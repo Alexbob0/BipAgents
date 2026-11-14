@@ -1198,19 +1198,38 @@ pub fn never_relayed(method: &str, params: Option<&Value>) -> Option<Value> {
 pub const REFUSED_SCHEMES: [&str; 7] =
     ["file:", "view-source:", "chrome:", "chrome-untrusted:", "devtools:", "chrome-devtools:", "chrome-extension:"];
 
-/// A tool's call to an address of `REFUSED_SCHEMES` (its `url` argument: `navigate`, `new_tab`; Chrome drops tabs,
-/// newlines and spaces from an address, so they are dropped here too): the refusal for the agent, else None.
+/// Addresses that run a script in the page or make one (review of card-guards, 14/11: `navigate` with
+/// `javascript:void(document.getElementById('numero').value='4242…')` filled a card field, a password field, ticked a
+/// site's terms, with none of the guard's checks around it: navigate is no guarded tool). A script goes through
+/// execute_script, whose checks apply. And addresses of a document a script made (second review: a page built by the
+/// agent's script, `URL.createObjectURL(new Blob(…))` or a file of `webkitRequestFileSystem`, is of the shop's own
+/// origin: opened, it loaded the shop's form in a frame and filled it). A site's own blob: download link clicked with
+/// click_element is not an address the agent gives: unaffected.
+pub const SCRIPT_SCHEMES: [&str; 5] = ["javascript:", "vbscript:", "data:", "blob:", "filesystem:"];
+
+/// A tool's call to an address of `REFUSED_SCHEMES` or `SCRIPT_SCHEMES` (its `url` argument: `navigate`, `new_tab`;
+/// Chrome drops tabs, newlines, spaces and control characters from an address, so they are dropped here too): the
+/// refusal for the agent, else None.
 pub fn refused_address(tool: &str, args: &Dict) -> Option<Dict> {
     let url = args.get("url").and_then(Value::as_str)?;
     let plain: String = url.chars().filter(|c| !c.is_ascii_whitespace() && !c.is_ascii_control()).collect();
     let plain = plain.to_ascii_lowercase();
-    if !REFUSED_SCHEMES.iter().any(|s| plain.starts_with(s)) {
+    let script = SCRIPT_SCHEMES.iter().any(|s| plain.starts_with(s));
+    if !script && !REFUSED_SCHEMES.iter().any(|s| plain.starts_with(s)) {
         return None;
     }
-    let text = format!(
-        "{tool} refused: your browser opens web pages only (https or http), never a file of its machine, a page's \
-         source, nor the browser's own pages."
-    );
+    let text = if script {
+        format!(
+            "{tool} refused: an address never runs a script in your browser, nor opens a document a script made \
+             (javascript:, data:, vbscript:, blob:, filesystem:). To run one in the page, use execute_script; to open \
+             a page, give its https address. Nothing was run."
+        )
+    } else {
+        format!(
+            "{tool} refused: your browser opens web pages only (https or http), never a file of its machine, a page's \
+             source, nor the browser's own pages."
+        )
+    };
     json!({"jsonrpc": "2.0", "result": {"isError": true, "content": [{"type": "text", "text": text}]}})
         .as_object()
         .cloned()
@@ -1765,7 +1784,7 @@ impl Proxy {
         let instance = args.get("instance_id").and_then(Value::as_str).unwrap_or("").to_string();
 
         if let Some(refused) = refused_address(tool, &args) {
-            log(&format!("{tool}: an address of the container itself refused"));
+            log(&format!("{tool}: an address of the container, the browser or a script refused"));
             return Ok(refused);
         }
         // what the page holds before a script, for its check before (`guard`) and after (`undone`)
@@ -3040,5 +3059,35 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         assert_eq!(list["tools"][0]["description"].as_str().unwrap(), typing, "once");
         // the skill says it the same way (§ 4b)
         assert!(crate::browsers::skill().contains("a drop-down list: `select_option`"));
+    }
+
+    /// Review of card-guards, 14/11: navigate / new_tab with a `javascript:` address ran a script in the page with
+    /// none of the guard's checks (navigate is no guarded tool): on Chrome 157 it filled a card field, a password
+    /// field, ticked the terms, and the proxy said it was done. A script in an address is refused like any other
+    /// non-web address (`data:`, `vbscript:` too), however it is written.
+    #[test]
+    fn a_script_in_an_address_is_refused() {
+        let args = |url: &str| json!({"instance_id": "abc", "url": url}).as_object().unwrap().clone();
+        for url in [
+            "javascript:void(document.getElementById('numero').value='4242424242424242')",
+            " JavaScript:void(0)",
+            "java\tscript:void(0)",
+            "java\nscript:alert(1)",
+            "\u{1}javascript:void(0)",
+            "vbscript:msgbox(1)",
+            "data:text/html,<script>opener.document.forms[0].submit()</script>",
+            "DATA:text/html;base64,PHNjcmlwdD48L3NjcmlwdD4=",
+            "blob:https://shop.example/0b7e3a52-49a5-4a39-9d1c-6c1b8d0f4c11",
+            " Filesystem:https://shop.example/temporary/p.html",
+        ] {
+            for tool in ["navigate", "new_tab"] {
+                let refused = refused_address(tool, &args(url)).unwrap_or_else(|| panic!("{tool} {url:?} not refused"));
+                let text = refused["result"]["content"][0]["text"].as_str().unwrap();
+                assert!(text.starts_with(&format!("{tool} refused")) && text.contains("execute_script"), "{text}");
+            }
+        }
+        for url in ["https://shop.example/javascript:void(0)", "https://shop.example/?q=data:x", "about:blank"] {
+            assert!(refused_address("navigate", &args(url)).is_none(), "{url}");
+        }
     }
 }
