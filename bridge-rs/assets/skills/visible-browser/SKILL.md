@@ -85,12 +85,12 @@ refuses it; tell them the vault does it):
 1. open the sign-up page; a form folded in a panel opens with a click on its title, and some fields come a moment
    later: read the page again once before deciding a field is missing;
 2. fill the other fields with the person's details: `vault_contact_details` (or `browser_vault` fill) gives their
-   « Coordonnées »: name, birth date, address, phones, e-mails. Never make a detail up, not even a placeholder (no
-   phone, no date, no civility of your own): one the form requires and their details lack, ask them for that one only
-   (one short question), then offer to keep it in their vault (`vault_save_contact_details`). Fill the fields one step
-   at a time (`type_text`; a drop-down list: `select_option`; a list of the site's own, a button that opens its
-   choices: a click on it, then on the choice), never with one script that fills or ticks and clicks (your browser
-   refuses it on a sign-up page);
+   « Coordonnées »: name, birth date, address, phones, e-mails (never a civility). Never make a detail up, not even a
+   placeholder (no phone, no date, no civility of your own, not even from the first name): one the form requires and
+   their details lack, ask them for that one only (one short question), then offer to keep it in their vault
+   (`vault_save_contact_details`). Fill the fields one step at a time (`type_text`; a drop-down list: `select_option`;
+   a list of the site's own, a button that opens its choices: a click on it, then on the choice), never with one
+   script that fills or ticks and clicks (your browser refuses it on a sign-up page);
 3. click into the password field, read the site's password rules if it shows any, and call `vault_create_login` with
    the site, the identifier you sign up with, why (the person sees it) and the rules. A card « Créer un compte »
    asks the person in the app; wait for their answer;
