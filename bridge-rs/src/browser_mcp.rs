@@ -957,19 +957,34 @@ pub fn never_relayed(method: &str, params: Option<&Value>) -> Option<Value> {
 pub const REFUSED_SCHEMES: [&str; 7] =
     ["file:", "view-source:", "chrome:", "chrome-untrusted:", "devtools:", "chrome-devtools:", "chrome-extension:"];
 
-/// A tool's call to an address of `REFUSED_SCHEMES` (its `url` argument: `navigate`, `new_tab`; Chrome drops tabs,
-/// newlines and spaces from an address, so they are dropped here too): the refusal for the agent, else None.
+/// Addresses that run a script in the page or make one (review of card-guards, 14/11: `navigate` with
+/// `javascript:void(document.getElementById('numero').value='4242…')` filled a card field, a password field, ticked a
+/// site's terms, with none of the guard's checks around it: navigate is no guarded tool). A script goes through
+/// execute_script, whose checks apply.
+pub const SCRIPT_SCHEMES: [&str; 3] = ["javascript:", "vbscript:", "data:"];
+
+/// A tool's call to an address of `REFUSED_SCHEMES` or `SCRIPT_SCHEMES` (its `url` argument: `navigate`, `new_tab`;
+/// Chrome drops tabs, newlines, spaces and control characters from an address, so they are dropped here too): the
+/// refusal for the agent, else None.
 pub fn refused_address(tool: &str, args: &Dict) -> Option<Dict> {
     let url = args.get("url").and_then(Value::as_str)?;
     let plain: String = url.chars().filter(|c| !c.is_ascii_whitespace() && !c.is_ascii_control()).collect();
     let plain = plain.to_ascii_lowercase();
-    if !REFUSED_SCHEMES.iter().any(|s| plain.starts_with(s)) {
+    let script = SCRIPT_SCHEMES.iter().any(|s| plain.starts_with(s));
+    if !script && !REFUSED_SCHEMES.iter().any(|s| plain.starts_with(s)) {
         return None;
     }
-    let text = format!(
-        "{tool} refused: your browser opens web pages only (https or http), never a file of its machine, a page's \
-         source, nor the browser's own pages."
-    );
+    let text = if script {
+        format!(
+            "{tool} refused: an address never runs a script in your browser (javascript:, data:, vbscript:). To run \
+             one in the page, use execute_script; to open a page, give its https address. Nothing was run."
+        )
+    } else {
+        format!(
+            "{tool} refused: your browser opens web pages only (https or http), never a file of its machine, a page's \
+             source, nor the browser's own pages."
+        )
+    };
     json!({"jsonrpc": "2.0", "result": {"isError": true, "content": [{"type": "text", "text": text}]}})
         .as_object()
         .cloned()
@@ -1518,7 +1533,7 @@ impl Proxy {
         let instance = args.get("instance_id").and_then(Value::as_str).unwrap_or("").to_string();
 
         if let Some(refused) = refused_address(tool, &args) {
-            log(&format!("{tool}: an address of the container itself refused"));
+            log(&format!("{tool}: an address of the container, the browser or a script refused"));
             return Ok(refused);
         }
         // what the page holds before a script, for its check before (`guard`) and after (`undone`)
