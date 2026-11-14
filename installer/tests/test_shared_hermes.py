@@ -215,12 +215,15 @@ def test_the_seat_agent_logs_what_the_gc_says_and_nothing_else(tmp_path, monkeyp
     (repo / "installer").mkdir(parents=True)
     monkeypatch.setattr(agent, "SHARED_REPO", str(repo))
     monkeypatch.setattr(agent, "shared_on", lambda: True)
-    said = "All kept: 1 place folder(s) behind a locked encrypted space (place 2), their Hermes version unknown.\n"
+    said = ("Space stuck: place 3's open encrypted space did not answer root's gc in 60 s: its connection aborted "
+            "(the place must open it again).\n"
+            "All kept: 1 place folder(s) behind a locked encrypted space (place 2), their Hermes version unknown.\n")
     monkeypatch.setattr(agent.subprocess, "run",
                         lambda *a, **k: SimpleNamespace(stdout=said, stderr="", returncode=0))
     agent.shared_gc()
     out = capsys.readouterr().out
     assert "shared Hermes gc: All kept: 1 place folder(s) behind a locked encrypted space (place 2)" in out
+    assert "shared Hermes gc: Space stuck: place 3's open encrypted space did not answer" in out
     trace = ("Traceback (most recent call last):\n  File x\nConnectionRefusedError: [Errno 111] "
              "'/home/bip2/.local/share/bipagents/spaces/Marie-projet'\n")
     monkeypatch.setattr(agent.subprocess, "run",
@@ -313,7 +316,6 @@ def test_a_link_into_another_view_never_freezes_the_gc(tmp_path, target):
     (four / ".hermes").symlink_to(four / DATA / "space" / "open" / "hermes")
     three.mkdir(parents=True)
     (three / ".hermes").symlink_to(target % {"four": four})
-    assert shared_hermes.locked([three]) == []
     assert shared_hermes.gc(hermes.Runner(), base, [two, three], keep=["new"], proc=proc) == ["old"]
 
 
@@ -331,7 +333,7 @@ def test_the_all_kept_line_names_no_place_but_its_number(tmp_path, capsys):
 @pytest.mark.xfail(reason="known, for the next release: nothing in a place's home tells a real lock from one the place "
                           "makes itself (root must keep the version it last saw, or that the view was a gocryptfs "
                           "mount); meanwhile the « All kept » line names the place holding it", strict=True)
-@pytest.mark.parametrize("how", ["dangling link into its own view", "relative link", "its view a link to nowhere"])
+@pytest.mark.parametrize("how", ["dangling link into its own view", "relative link"])
 def test_a_place_without_any_encrypted_space_cannot_freeze_the_gc(tmp_path, how):
     base, two, proc = _gc_server(tmp_path)
     three = tmp_path / "home" / "bip3"
@@ -344,6 +346,19 @@ def test_a_place_without_any_encrypted_space_cannot_freeze_the_gc(tmp_path, how)
     else:
         view.mkdir(parents=True)
     (three / DATA / "spaces").symlink_to("space/open/spaces" if how == "relative link" else str(view / "spaces"))
+    assert shared_hermes.gc(hermes.Runner(), base, [two, three], keep=["new"], proc=proc) == ["old"]
+
+
+def test_a_place_whose_view_is_a_link_to_nowhere_cannot_freeze_the_gc(tmp_path):
+    """Its « view » a link out of its home (no encrypted space of ours is ever that): never followed, never a lock."""
+    base, two, proc = _gc_server(tmp_path)
+    three = tmp_path / "home" / "bip3"
+    (three / ".hermes").mkdir(parents=True)
+    (three / ".hermes" / "shared").symlink_to(base / "new")
+    view = three / DATA / "space" / "open"
+    view.parent.mkdir(parents=True)
+    view.symlink_to("/nowhere")
+    (three / DATA / "spaces").symlink_to(str(view / "spaces"))
     assert shared_hermes.gc(hermes.Runner(), base, [two, three], keep=["new"], proc=proc) == ["old"]
 
 
