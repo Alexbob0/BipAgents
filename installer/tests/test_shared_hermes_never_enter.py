@@ -3,6 +3,7 @@ breakdown's tenth review): no mount is ever crossed (openat2, RESOLVE_NO_XDEV), 
 space (a gocryptfs FUSE of its uid at its view), only from a disposable child the gc never waits for past its time.
 The FUSE tests need a mount namespace of their own: run under `unshare -rm`."""
 import ctypes
+import json
 import os
 import select
 import signal
@@ -198,6 +199,14 @@ def _open_space(home, base, version="new"):
     return view, str(base / version).encode()
 
 
+@pytest.fixture(autouse=True)
+def record(tmp_path, monkeypatch):
+    """Root's record of the places found stuck, in the test's folder."""
+    path = tmp_path / "shared-hermes-stuck.json"
+    monkeypatch.setattr(shared_hermes, "STUCK", path, raising=False)
+    return path
+
+
 @pytest.fixture
 def quick(monkeypatch):
     """The gc's waits for a place's open space, shortened: killed at 2 s, its connection aborted at 8 s."""
@@ -207,15 +216,41 @@ def quick(monkeypatch):
 
 # -- nothing of a place's is entered ---------------------------------------------------------------------------------
 
-def test_a_link_out_of_the_home_is_never_followed_by_root(tmp_path):
-    """~/.hermes a link out of the place's home (another place's, anywhere): never followed as root; the place points
-    at nothing root reads (its own business: it can only break itself)."""
+def test_a_link_out_of_the_home_is_never_followed_but_keeps_everything(tmp_path, capsys):
+    """~/.hermes a link out of the place's home (a folder elsewhere it can write, its pointer on `old`): never followed
+    as root, and never counted as pointing at nothing (`old` would go, its Hermes broken at its next start): the place
+    is unknown, everything kept, as for a locked space. (The review of c9023e5f4.)"""
     base, (two, three), proc = _server(tmp_path, 3)
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     (elsewhere / "shared").symlink_to(base / "old")
     (three / ".hermes").symlink_to(elsewhere)
-    assert _gc(base, [two, three], proc) == ["old"]
+    assert _gc(base, [two, three], proc) == []
+    assert "(place 3)" in capsys.readouterr().out and sorted(p.name for p in base.iterdir()) == ["new", "old"]
+
+
+def test_a_version_a_place_reaches_through_a_link_out_of_its_home_is_never_deleted(tmp_path):
+    """(The reviewer's.) Place 3's ~/.hermes a link out of its home, its pointer on `old`: `old` never deleted."""
+    base, (two, three), proc = _server(tmp_path, 3)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "shared").symlink_to(base / "old")
+    (three / ".hermes").symlink_to(elsewhere)
+    removed = shared_hermes.gc(hermes.Runner(), base, [two, three], keep=["new"], proc=proc)
+    assert "old" not in removed, "the version place 3 runs was deleted: %r" % removed
+
+
+def test_a_chain_of_links_longer_than_root_follows_keeps_everything(tmp_path):
+    """Past LINK_HOPS links (the kernel follows up to 40), root can't say where the chain ends: unknown, all kept."""
+    base, (two, three), proc = _server(tmp_path, 3)
+    (three / "end").mkdir()
+    (three / "end" / "shared").symlink_to(base / "old")
+    previous = "end"
+    for i in range(shared_hermes.LINK_HOPS + 2):
+        (three / ("l%d" % i)).symlink_to(previous)
+        previous = "l%d" % i
+    (three / ".hermes").symlink_to(previous)
+    assert _gc(base, [two, three], proc) == []
 
 
 @in_namespace
@@ -293,10 +328,10 @@ def test_fuse_a_place_s_open_space_is_read_and_an_unused_version_goes(tmp_path, 
 
 
 @in_namespace
-def test_fuse_a_place_s_space_that_never_answers_is_aborted_and_the_next_gc_reads_again(tmp_path, quick):
+def test_fuse_a_place_s_space_that_never_answers_is_aborted_and_the_next_gc_reads_again(tmp_path, quick, record):
     """Its daemon reads root's request and never answers: the gc's child is killed at VIEW_KILL_S, stays (the request
     read), and only at VIEW_ABORT_S is that connection aborted (said: a broken space shows); everything kept that
-    time. Nothing sticks: the next gc reads the place again."""
+    time. Nothing sticks past STUCK_S: the place is read again then."""
     base, (two, three), proc = _server(tmp_path, 3)
     view, pointer = _open_space(three, base)
     daemon, seen, _ = _space(view, how="stuck", source=str(three / CIPHER).encode())
@@ -312,7 +347,8 @@ def test_fuse_a_place_s_space_that_never_answers_is_aborted_and_the_next_gc_read
     assert 7 <= took < 20 and "Space stuck: place 3" in said and "(place 3)" in said, (took, said)
     assert sorted(p.name for p in base.iterdir()) == ["new", "old"]
     (view / "hermes").mkdir()
-    (view / "hermes" / "shared").symlink_to(base / "new")            # its space as a plain folder again: read
+    (view / "hermes" / "shared").symlink_to(base / "new")            # its space as a plain folder again
+    record.write_text(json.dumps({str(three): time.time() - shared_hermes.STUCK_S - 1}))   # an hour later: read
     assert _gc(base, [two, three], proc) == ["old"]
 
 
@@ -415,3 +451,52 @@ def test_gc_a_place_locked_for_good_keeps_only_what_it_may_run(tmp_path):
         target.symlink_to(base / version)
         removed += shared_hermes.gc(hermes.Runner(), base, [two, three], keep=[version], proc=proc)
     assert "v2" in removed, removed
+
+
+# -- a place found stuck: left alone for an hour (the review of c9023e5f4: the seat agent runs a gc after each place
+#    it updates, ~60 s each time otherwise) -------------------------------------------------------------------------
+
+@in_namespace
+def test_fuse_a_place_found_stuck_is_left_alone_for_an_hour_then_read_again(tmp_path, quick, record):
+    base, (two, three), proc = _server(tmp_path, 3)
+    view, pointer = _open_space(three, base)
+    daemon, seen, _ = _space(view, how="stuck", source=str(three / CIPHER).encode())
+    try:
+        code, said = _within(30, lambda: print(_gc(base, [two, three], proc)), lambda: _release(daemon))
+        assert code == 0 and "Space stuck: place 3" in said, said
+        assert oct(record.stat().st_mode & 0o777) == "0o600" and record.stat().st_uid == os.geteuid()
+        _requests(seen)
+        started = time.monotonic()
+        code, said = _within(30, lambda: print(_gc(base, [two, three], proc)), lambda: _release(daemon))
+        assert code == 0 and time.monotonic() - started < 3 and _requests(seen) == 0, said
+        assert "Space stuck: place 3 left alone" in said and "(place 3)" in said, said
+        _release(daemon, view)                                           # (its connection aborted by the first)
+        daemon, seen, _ = _space(view, how="stuck", source=str(three / CIPHER).encode())   # still stuck an hour later
+        stuck = json.loads(record.read_text())
+        stuck[str(three)] -= shared_hermes.STUCK_S + 1
+        record.write_text(json.dumps(stuck))
+        code, said = _within(30, lambda: print(_gc(base, [two, three], proc)), lambda: _release(daemon))
+        assert code == 0 and "Space stuck: place 3's open encrypted space" in said and _requests(seen) > 0, said
+    finally:
+        _release(daemon, view)
+
+
+def test_a_place_read_again_leaves_the_stuck_record_and_its_version_can_go(tmp_path, record):
+    """Found stuck an hour ago and more: read again; read, it leaves root's record (nothing sticks)."""
+    base, (two, three), proc = _server(tmp_path, 3)
+    (three / ".hermes").mkdir()
+    (three / ".hermes" / "shared").symlink_to(base / "new")
+    record.write_text(json.dumps({str(three): time.time() - 600}))
+    assert _gc(base, [two, three], proc) == []                       # within the hour: left alone, all kept
+    record.write_text(json.dumps({str(three): time.time() - shared_hermes.STUCK_S - 1}))
+    assert _gc(base, [two, three], proc) == ["old"]
+    assert json.loads(record.read_text()) == {}
+
+
+def test_a_stuck_record_the_gc_can_t_read_is_no_record(tmp_path, record):
+    base, (two, three), proc = _server(tmp_path, 3)
+    (three / ".hermes").mkdir()
+    (three / ".hermes" / "shared").symlink_to(base / "new")
+    record.write_text("not json")
+    assert _gc(base, [two, three], proc) == ["old"]
+

@@ -61,7 +61,7 @@ import tempfile
 import time
 import urllib.request
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 from . import bridgeconf, hermes, release_key
 
@@ -586,6 +586,8 @@ MOUNTINFO = Path("/proc/self/mountinfo")
 FUSECTL = Path("/sys/fs/fuse/connections")          # each FUSE connection's `abort` (the kernel's fusectl)
 VIEW_KILL_S = 10.0     # a place's reading not done by then (its open space slow or stuck): killed, the place unknown
 VIEW_ABORT_S = 60.0    # still there by then (its space's daemon read root's request and never answers): aborted
+STUCK = Path("/var/lib/bipagents/shared-hermes-stuck.json")   # root's: the places found stuck, when
+STUCK_S = 3600.0       # a place found stuck is left alone (unknown, all kept) this long, then read again
 LINK_HOPS = 8          # a place's own links followed inside its home, at most
 O_PATH = getattr(os, "O_PATH", 0)
 DIR_FLAGS = (os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
@@ -752,9 +754,11 @@ class _Place(object):
         return fd
 
     def resolve(self, relative: str) -> Optional[int]:
-        """The folder `relative` under the home, a name at a time from its descriptor: None when it is not there, or
-        is a link out of the home (the place's business: it can only break itself); _Unknown behind a mount but its
-        open space, or unreadable; _Locked missing behind a link into its own space's view."""
+        """The folder `relative` under the home, a name at a time from its descriptor: None when it is not there (a
+        link of the place's inside its home leading nowhere: it can't run anything through it either); _Unknown
+        behind a mount but its open space, through a link out of the home (never followed as root, but a version it
+        runs may be there: never counted as nothing) or past LINK_HOPS links, or unreadable; _Locked missing behind a
+        link into its own space's view."""
         parts, done, hops, into_view = [p for p in relative.split("/") if p not in ("", ".")], [], 0, False
         fd = _open_folder(".", dir_fd=self.fd)
         if fd is None:
@@ -765,7 +769,7 @@ class _Place(object):
                 here = os.path.join(self.home, *done)
                 path = os.path.join(here, name)
                 if name == "..":
-                    return None
+                    raise _Unknown()
                 if path == self.view and self.view_at is not None:
                     found, at = None, None
                     child = self.open_view(fd)
@@ -789,8 +793,8 @@ class _Place(object):
                         except OSError:
                             raise _Unknown()
                         target = os.path.normpath(os.path.join(here, text))
-                        if hops > LINK_HOPS or not target.startswith(self.home + os.sep):
-                            return None
+                        if hops > LINK_HOPS or (target != self.home and not target.startswith(self.home + os.sep)):
+                            raise _Unknown()
                         into_view = into_view or target == self.view or target.startswith(self.view + os.sep)
                         parts = [p for p in target[len(self.home):].split("/") if p] + parts   # from the home again
                         done = []
@@ -888,11 +892,12 @@ def _abort(minor: str) -> bool:
         return False
 
 
-def _read_aside(base: Path, home: Path) -> Optional[List[str]]:
-    """The versions a place's pointers lead to, read in a child of the gc (`_Place`), or None when unknown: unreadable,
-    locked, or not done within VIEW_KILL_S. The child's output goes nowhere (the seat agent reads the gc's to its end:
-    a child it can't kill must not hold it); the gc waits for it to go until VIEW_ABORT_S, then aborts its space's
-    connection (the one it entered, whatever was mounted or unmounted there since) and leaves it."""
+def _read_aside(base: Path, home: Path) -> Tuple[Optional[List[str]], bool]:
+    """(the versions a place's pointers lead to, or None when unknown: unreadable, locked, or not done within
+    VIEW_KILL_S; whether it was found stuck), read in a child of the gc (`_Place`). The child's output goes nowhere
+    (the seat agent reads the gc's to its end: a child it can't kill must not hold it); the gc waits for it to go
+    until VIEW_ABORT_S, then aborts its space's connection (the one it entered, whatever was mounted or unmounted
+    there since) and leaves it: found stuck."""
     import mmap
     import select
     import signal
@@ -953,14 +958,39 @@ def _read_aside(base: Path, home: Path) -> Optional[List[str]]:
                 f"{VIEW_ABORT_S:.0f} s: its connection aborted (the place must open it again).")
         else:
             say(f"Space stuck: place {_number(home)} could not be read in {VIEW_ABORT_S:.0f} s: left waiting.")
-        return None
+        return None, True
     if not done or not os.WIFEXITED(status) or os.WEXITSTATUS(status) != 0:
-        return None
+        return None, False
     try:
         result = json.loads(b"".join(chunks))
     except ValueError:
-        return None
-    return result.get("versions") if "unknown" not in result else None
+        return None, False
+    return (result.get("versions") if "unknown" not in result else None), False
+
+
+def _stuck() -> Dict[str, float]:
+    """Root's record: each home found stuck -> when (time.time())."""
+    try:
+        data = json.loads(STUCK.read_text())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {k: float(v) for k, v in data.items() if isinstance(k, str) and isinstance(v, (int, float))}
+
+
+def _keep_stuck(found: Dict[str, float]) -> None:
+    """Written whole, root's alone (0600)."""
+    try:
+        STUCK.parent.mkdir(parents=True, exist_ok=True)
+        temp = STUCK.with_name(STUCK.name + ".new")
+        fd = os.open(str(temp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            fh.write(json.dumps(found, sort_keys=True))
+        os.chmod(temp, 0o600)
+        os.replace(temp, STUCK)
+    except OSError:
+        pass
 
 
 def _number(home: Path) -> str:
@@ -976,18 +1006,36 @@ def gc(runner: hermes.Runner, base: Path, homes: Iterable[Path], keep: Iterable[
     """The versions nothing uses any more, deleted: no place points at them, no process runs them, and not the one
     this BipAgents pins (the next place to update needs it). Unfinished builds too, unless one is under way. Nothing
     is deleted while a place's pointers can't be read (`_read_aside`: its encrypted space locked, a mount of its own
-    in the way, its open space not answering): it may run any of them, and no process shows it (2026-11-14: a locked
-    place's version was deleted). Each place is read anew at each gc."""
+    in the way, a link out of its home, its open space not answering): it may run any of them, and no process shows it
+    (2026-11-14: a locked place's version was deleted). A place found stuck (`_read_aside`: its space's daemon never
+    answered) is left alone STUCK_S (root's record, STUCK): each gc would wait VIEW_ABORT_S for it again, and the
+    seat agent runs one after each place it updates; then it is read again."""
     if not base.is_dir():
         return []
     held, places, used = [], set(), set()
+    now, stuck = time.time(), _stuck()
+    before = dict(stuck)
     for home in homes:   # place by place: one that can't be read keeps everything, and nothing names it but its number
-        versions = _read_aside(base, Path(home))
+        key = str(home)
+        at = stuck.get(key)
+        if at is not None and now - STUCK_S < at <= now + 60:   # found stuck less than an hour ago: not entered
+            say(f"Space stuck: place {_number(Path(home))} left alone (found stuck less than "
+                f"{STUCK_S / 3600:.0f} h ago), everything kept.")
+            versions = None
+        else:
+            versions, found_stuck = _read_aside(base, Path(home))
+            if found_stuck:
+                stuck[key] = now
+            else:
+                stuck.pop(key, None)
         if versions is None:
-            held.append(str(home))
+            held.append(key)
             places.add(_number(Path(home)))
         else:
             used |= set(versions)
+    stuck = {k: v for k, v in stuck.items() if now - STUCK_S < v <= now + 60}
+    if stuck != before:
+        _keep_stuck(stuck)
     if held:
         numbers = ", ".join(sorted(places, key=lambda n: (not n.isdigit(), int(n) if n.isdigit() else 0)))
         say(f"All kept: {len(held)} place folder(s) behind a locked encrypted space or unreadable (place {numbers}), "
