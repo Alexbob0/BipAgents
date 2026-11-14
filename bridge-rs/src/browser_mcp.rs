@@ -175,8 +175,13 @@ pub const LIST_CHOICE: &str = "A drop-down list: select_option.";
 /// choice in a list of the site's terms or a consent (review 14/11: the box of the same label is refused): one whose
 /// own label (its <label>, aria-labelledby, aria-label; not the text around it nor its name: second review, « Délais
 /// selon nos conditions générales de vente » under a delivery list, a profile's visibility named « privacy ») has
-/// `LABEL_JS`'s words and whose choices hold an accepting one and a declining one (not « Payment terms: Net 30 »), each
-/// judged on its shown text, its value only when it shows none (« J'accepte » valued « 0 »); set as a person's choice
+/// `LABEL_JS`'s words, or, with no label of its own, whose choices are a yes and a no and whose wider label (the text
+/// around it, its name or id: `label`) has them (third review: a shop's text in the cell before, `name="cgv"`). There
+/// a choice that plainly accepts (accept, akzeptieren, acepto, zustimmen, agree, consent, d'accord, de acuerdo, opt
+/// in…) is refused even with no « no » beside it (a required consent: « J'accepte » and the placeholder), a mere yes
+/// (oui, yes, ja, sí, ok, 1…) only beside a no (« Payment terms: Net 30 » is no consent); each choice judged on its
+/// shown text, its value only when it shows none (« J'accepte » valued « 0 »); declining goes on (non, nein, refuser,
+/// reject, ablehnen, rechazar, pas d'accord, en desacuerdo, opt out…); set as a person's choice
 /// is (the `input` and `change` events the site may listen to). Of several lists named, the one shown when the others
 /// are hidden (a form's mobile copy). Its answer, JSON:
 /// `{found, list, chosen, value, text, at, label}`, or why not (`several`, `field`, `hidden`, `box`, `off`, `consent`,
@@ -232,14 +237,18 @@ more: Math.max(opts.length - 40, 0), \
 choices: opts.slice(0, 40).map((o) => [o.value.slice(0, 40), shown(o.text).slice(0, 40)])}}, where)); \
 if (el.disabled || opts[at].disabled) return JSON.stringify({{found: true, list: true, chosen: false, off: true}}); \
 const says = (o) => shown(o.text) || o.value.trim(); \
-const declining = (o) => /^(non|no|nein|nee|nej|n)\\b|refus|rechaz|ablehn|decline|disagree|opt.?out|stimme nicht|\
-nicht einverstanden|ne souhaite pas|n'accepte pas|do not|don't|^(0|false)$/i.test(says(o)); \
-const accepting = (o) => !declining(o) && /^(oui|yes|ja|s[ií]|ok|okay|d'accord|y|1|true|on)\\b|accept|acepto|aceptar|\
-agree|zustimm|stimme zu|einverstanden|consent|autoris/i.test(says(o)); \
+const declining = (o) => /^(non|no|nein|nee|nej|n|0|false)(?![\\p{{L}}\\p{{N}}])|refus|rechaz|ablehn|decline|reject|\
+deny|disagree|desacuerdo|opt.?out|stimme nicht|nicht einverstanden|nicht akzeptier|ne souhaite pas|n'accepte pas|\
+pas d'accord|no acepto|do not|don't/iu.test(says(o)); \
+const plainly = (o) => !declining(o) && /accept|akzept|annehm|acepto|aceptar|zustimm|stimme zu|einwillig|agree|\
+consent|einverstanden|autoris|d'accord|de acuerdo|opt.?in(?![\\p{{L}}])/iu.test(says(o)); \
+const merely = (o) => !declining(o) && /^(oui|yes|ja|s[ií]|ok|okay|y|1|true|on)(?![\\p{{L}}\\p{{N}}])/iu.test(says(o)); \
+const pair = opts.some((o) => plainly(o) || merely(o)) && opts.some(declining); \
 const own = shown([...(el.labels || [])].map((l) => l.innerText).join(' ') || (el.getAttribute('aria-labelledby') || '')\
 .split(/\\s+/).map((i) => i && document.getElementById(i)).filter(Boolean).map((l) => l.innerText).join(' ') \
 || el.getAttribute('aria-label') || ''); \
-if (isTerms(own) && opts.some(accepting) && opts.some(declining) && accepting(opts[at])) \
+const consents = isTerms(own) || (!own && pair && isTerms(label(el))); \
+if (consents && (plainly(opts[at]) || (merely(opts[at]) && pair))) \
 return JSON.stringify({{found: true, list: true, chosen: false, consent: true}}); \
 el.selectedIndex = at; el.dispatchEvent(new Event('input', {{bubbles: true}})); \
 el.dispatchEvent(new Event('change', {{bubbles: true}})); \
@@ -2996,7 +3005,11 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         let script = choose_script("select", Some("03"), None, None);
         assert!(script.contains("querySelectorAll(sel)") && script.contains("ORDERED_NODE_SNAPSHOT_TYPE"), "{script}");
         assert!(script.contains("named.length > 1") && script.contains(LABEL_JS));
-        assert!(script.contains("isTerms(own) && opts.some(accepting) && opts.some(declining)"));
+        assert!(script.contains("const consents = isTerms(own) || (!own && pair && isTerms(label(el)))"));
+        assert!(script.contains("(?![\\p{L}\\p{N}])/iu"), "« Sí »: no word boundary after « í » without /u");
+        // the consent words are the same in the bridge (terms_box) and in the page (LABEL_JS)
+        let js = LABEL_JS.split_once("const TERMS = /").and_then(|(_, rest)| rest.split_once("/i; ")).map(|(w, _)| w);
+        assert_eq!(js, TERMS.as_str().strip_prefix("(?i)"));
         // the consent words, the box guard's too (second review 14/11)
         assert!(terms_box("Acepto la política de privacidad") && terms_box("Einwilligung zur Datenverarbeitung"));
         assert!(terms_box("Acepto la protección de datos") && !terms_box("Visibilité de votre profil"));
