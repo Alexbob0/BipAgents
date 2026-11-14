@@ -235,23 +235,22 @@ def test_a_script_never_writes_reads_or_sends_a_cards_details(browser):
     for field in ("notes", "numero", "crypto"):
         assert value(browser, field) == "", field
     # passed the look before (the number built in the page, the field by its rank): erased after
-    said = browser.tool("execute_script", script="const d = ['4242', '4242', '4242', '4242'].join(''); "
-                                                 "document.querySelectorAll('#order input')[0].value = d; return true")
+    said = browser.tool("execute_script", script="(() => { const d = ['4242', '4242', '4242', '4242'].join(''); "
+                                                 "document.querySelectorAll('#order input')[0].value = d; return true; })()")
     assert said.startswith(CARD_UNDONE) and value(browser, "notes") == "", said
-    said = browser.tool("execute_script", script="document.getElementById('numero').value = ['4242', '42'].join(''); "
-                                                 "return true")
+    said = browser.tool("execute_script", script="document.getElementById('numero').value = ['4242', '42'].join('')")
     assert said.startswith(CARD_UNDONE) and value(browser, "numero") == "", said
-    said = browser.tool("execute_script", script="document.getElementById('mois').selectedIndex = 5; return true")
+    said = browser.tool("execute_script", script="document.getElementById('mois').selectedIndex = 5")
     assert said.startswith(CARD_UNDONE) and value(browser, "mois") == "", said
     # never sent to a payment service's page by a script (only by the shop's own buttons)
     said = browser.tool("execute_script",
-                        script="location.href = 'https://payment.cawl-solutions.fr/hostedcheckout/x'; return true")
+                        script="location.href = 'https://payment.cawl-solutions.fr/hostedcheckout/x'")
     assert said.startswith(PROVIDER_SCRIPT_REFUSED), said
     assert browser.page("location.pathname") == "/checkout.html"
     # a card's number on the page never comes back in what the agent reads
-    said = browser.tool("execute_script", script="return document.getElementById('info').innerText")
+    said = browser.tool("execute_script", script="document.getElementById('info').innerText")
     assert HIDDEN in said and "4242 4242" not in said, said
     # ordinary scripts go on
-    said = browser.tool("execute_script", script="document.getElementById('address').value = '2 rue du Test'; "
-                                                 "return document.title")
+    said = browser.tool("execute_script", script="(() => { document.getElementById('address').value = '2 rue du Test'; "
+                                                 "return document.title; })()")
     assert "Paiement" in said and value(browser, "address") == "2 rue du Test", said
