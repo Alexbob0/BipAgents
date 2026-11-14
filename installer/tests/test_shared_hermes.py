@@ -156,6 +156,197 @@ def test_gc_keeps_what_a_place_points_at_or_a_process_runs(tmp_path):
     assert sorted(p.name for p in base.iterdir()) == ["pinned", "pointed", "running"]
 
 
+def test_gc_deletes_nothing_while_a_place_s_hermes_cannot_be_read(tmp_path):
+    """A place whose encrypted space is locked (after a reboot, or closed by hand): its ~/.hermes is a link into the
+    space's open view (bridge-rs/src/space.rs), empty, so which version it runs is unknown; no version is deleted until
+    it can be read again (else the place, once open, would point at a deleted Hermes). Found by the disk breakdown's
+    third review (14/11)."""
+    base = tmp_path / "opt"
+    for name in ("old", "new"):
+        (base / name).mkdir(parents=True)
+    home = tmp_path / "home" / "bip2"
+    view = home / ".local" / "share" / "bipagents" / "space" / "open"
+    view.mkdir(parents=True)
+    (home / ".hermes").symlink_to(view / "hermes")                 # locked: the open view empty
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    assert shared_hermes.gc(hermes.Runner(), base, [home], keep=["new"], proc=proc) == []
+    assert sorted(p.name for p in base.iterdir()) == ["new", "old"]
+    # its agents' own spaces locked the same way (the bridge's data entries are links into the open view too)
+    other = tmp_path / "home" / "bip3"
+    (other / ".hermes").mkdir(parents=True)
+    (other / ".local" / "share" / "bipagents").mkdir(parents=True)
+    (other / ".local" / "share" / "bipagents" / "spaces").symlink_to(
+        other / ".local" / "share" / "bipagents" / "space" / "open" / "spaces")
+    (view / "hermes").mkdir()
+    (view / "hermes" / "shared").symlink_to(base / "new")         # place 2 open again
+    assert shared_hermes.gc(hermes.Runner(), base, [home, other], keep=["new"], proc=proc) == []
+    (other / ".local" / "share" / "bipagents" / "spaces").unlink()
+    assert shared_hermes.gc(hermes.Runner(), base, [home, other], keep=["new"], proc=proc) == ["old"]
+
+
+def test_gc_a_place_cannot_stop_the_server_s_gc_by_a_link_of_its_own(tmp_path):
+    """Only a link into the place's own encrypted space's open view counts as locked: any other link of a place's
+    leading nowhere (`ln -s /nowhere ~/.local/share/bipagents/spaces`, no space at all) never holds the whole server's
+    gc. (The disk breakdown's fourth review, 14/11.)"""
+    base = tmp_path / "opt"
+    for name in ("old", "new"):
+        (base / name).mkdir(parents=True)
+    two, three = tmp_path / "home" / "bip2", tmp_path / "home" / "bip3"
+    for home in (two, three):
+        (home / ".hermes").mkdir(parents=True)
+        (home / ".hermes" / "shared").symlink_to(base / "new")
+    (three / ".local" / "share" / "bipagents").mkdir(parents=True)
+    (three / ".local" / "share" / "bipagents" / "spaces").symlink_to("/nowhere")
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    assert shared_hermes.gc(hermes.Runner(), base, [two, three], keep=["new"], proc=proc) == ["old"]
+
+
+def test_the_seat_agent_logs_what_the_gc_says_and_nothing_else(tmp_path, monkeypatch, capsys):
+    """Its own lines (« All kept », what it removed) reach the seat agent's log; anything else it prints (a traceback
+    ending with a place's path) never does: « failed (exit N) » instead."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("seat_agent_gc", Path(__file__).resolve().parents[1] / "cloud"
+                                                  / "seat-agent.py")
+    agent = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(agent)
+    repo = tmp_path / "repo"
+    (repo / "installer").mkdir(parents=True)
+    monkeypatch.setattr(agent, "SHARED_REPO", str(repo))
+    monkeypatch.setattr(agent, "shared_on", lambda: True)
+    said = "All kept: 1 place folder(s) behind a locked encrypted space (place 2), their Hermes version unknown.\n"
+    monkeypatch.setattr(agent.subprocess, "run",
+                        lambda *a, **k: SimpleNamespace(stdout=said, stderr="", returncode=0))
+    agent.shared_gc()
+    out = capsys.readouterr().out
+    assert "shared Hermes gc: All kept: 1 place folder(s) behind a locked encrypted space (place 2)" in out
+    trace = ("Traceback (most recent call last):\n  File x\nConnectionRefusedError: [Errno 111] "
+             "'/home/bip2/.local/share/bipagents/spaces/Marie-projet'\n")
+    monkeypatch.setattr(agent.subprocess, "run",
+                        lambda *a, **k: SimpleNamespace(stdout="", stderr=trace, returncode=1))
+    agent.shared_gc()
+    out = capsys.readouterr().out
+    assert "shared Hermes gc failed (exit 1)" in out and "Marie" not in out and "/home" not in out
+
+
+DATA = Path(".local") / "share" / "bipagents"
+in_namespace = pytest.mark.skipif(os.geteuid() != 0, reason="a mount namespace of its own: run under `unshare -rm`")
+
+
+def _gc_server(tmp_path):
+    """Versions old and new; place 2 on new (a plain ~/.hermes); `old` used by nobody."""
+    base = tmp_path / "opt"
+    for name in ("old", "new"):
+        (base / name).mkdir(parents=True)
+    two = tmp_path / "home" / "bip2"
+    (two / ".hermes").mkdir(parents=True)
+    (two / ".hermes" / "shared").symlink_to(base / "new")
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    return base, two, proc
+
+
+@in_namespace
+def test_the_gc_never_says_a_place_s_names_when_a_place_can_t_be_read(tmp_path):
+    """An agent's space « Marie-projet » whose folder is a dead FUSE mount (ENOTCONN; root gets EACCES the same way
+    from a place's mount without allow_other): Path.is_dir() raises there on Python 3.12/3.13. The gc keeps everything
+    (that place unreadable) and says only numbers, run as the seat agent runs it (a python3 child, its output)."""
+    import ctypes
+    import subprocess
+    import sys
+    base, two, proc = _gc_server(tmp_path)
+    space = two / DATA / "spaces" / "Marie-projet"
+    space.mkdir(parents=True)
+    libc = ctypes.CDLL(None, use_errno=True)
+    fd = os.open("/dev/fuse", os.O_RDWR)
+    assert libc.mount(b"rclone", str(space).encode(), b"fuse", 0,
+                      ("fd=%d,rootmode=40000,user_id=0,group_id=0" % fd).encode()) == 0
+    os.close(fd)                                                   # its daemon gone: the mount stays, ENOTCONN
+    try:
+        code = ("import sys; sys.path.insert(0, %r); from pathlib import Path; "
+                "from bipinstall import hermes, shared_hermes; "
+                "print(shared_hermes.gc(hermes.Runner(), Path(%r), [Path(%r)], keep=['new'], proc=Path(%r)))"
+                % (str(Path(__file__).resolve().parents[1]), str(base), str(two), str(proc)))
+        done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
+    finally:
+        subprocess.run(["umount", "-l", str(space)], check=False)
+    said = done.stdout + done.stderr
+    assert "Marie" not in said and str(two) not in said, said
+    assert done.returncode == 0 and "All kept" in said and "(place 2)" in said, said
+    assert sorted(p.name for p in base.iterdir()) == ["new", "old"]
+
+
+def test_a_place_genuinely_locked_keeps_every_version(tmp_path):
+    """As space.rs writes them: absolute links into the view; the view an empty folder (unmounted)."""
+    base, two, proc = _gc_server(tmp_path)
+    three = tmp_path / "home" / "bip3"
+    view = three / DATA / "space" / "open"
+    view.mkdir(parents=True)
+    (three / ".hermes").symlink_to(view / "hermes")
+    (three / DATA / "spaces").symlink_to(view / "data" / "spaces")
+    assert shared_hermes.gc(hermes.Runner(), base, [two, three], keep=["new"], proc=proc) == []
+    assert sorted(p.name for p in base.iterdir()) == ["new", "old"]
+
+
+def test_a_place_open_again_lets_an_unused_version_go(tmp_path):
+    base, two, proc = _gc_server(tmp_path)
+    three = tmp_path / "home" / "bip3"
+    view = three / DATA / "space" / "open"
+    (view / "hermes").mkdir(parents=True)
+    (view / "hermes" / "shared").symlink_to(base / "new")
+    (view / "data" / "spaces").mkdir(parents=True)
+    (three / ".hermes").symlink_to(view / "hermes")
+    (three / DATA / "spaces").symlink_to(view / "data" / "spaces")
+    assert shared_hermes.gc(hermes.Runner(), base, [two, three], keep=["new"], proc=proc) == ["old"]
+
+
+@pytest.mark.parametrize("target", ["%(four)s/.local/share/bipagents/space/open/hermes",
+                                    "/tmp/x/.local/share/bipagents/space/open/hermes",
+                                    ".local/share/bipagents/space/open/../../../../../../bip4/.local/share/bipagents/"
+                                    "space/open/hermes",
+                                    ".local/share/bipagents/space/openx/hermes"])
+def test_a_link_into_another_view_never_freezes_the_gc(tmp_path, target):
+    base, two, proc = _gc_server(tmp_path)
+    three, four = tmp_path / "home" / "bip3", tmp_path / "home" / "bip4"
+    (four / DATA / "space" / "open").mkdir(parents=True)            # place 4: locked for real
+    (four / ".hermes").symlink_to(four / DATA / "space" / "open" / "hermes")
+    three.mkdir(parents=True)
+    (three / ".hermes").symlink_to(target % {"four": four})
+    assert shared_hermes.locked([three]) == []
+    assert shared_hermes.gc(hermes.Runner(), base, [two, three], keep=["new"], proc=proc) == ["old"]
+
+
+def test_the_all_kept_line_names_no_place_but_its_number(tmp_path, capsys):
+    base, two, proc = _gc_server(tmp_path)
+    view = two / DATA / "space" / "open"
+    view.mkdir(parents=True)
+    (two / DATA / "spaces").symlink_to(view / "data" / "spaces")
+    shared_hermes.gc(hermes.Runner(), base, [two], keep=["new"], proc=proc)
+    said = capsys.readouterr().out
+    assert said.startswith("All kept: 1 place folder(s)") and "(place 2)" in said
+    assert "bip2" not in said and str(tmp_path) not in said
+
+
+@pytest.mark.xfail(reason="known, for the next release: nothing in a place's home tells a real lock from one the place "
+                          "makes itself (root must keep the version it last saw, or that the view was a gocryptfs "
+                          "mount); meanwhile the « All kept » line names the place holding it", strict=True)
+@pytest.mark.parametrize("how", ["dangling link into its own view", "relative link", "its view a link to nowhere"])
+def test_a_place_without_any_encrypted_space_cannot_freeze_the_gc(tmp_path, how):
+    base, two, proc = _gc_server(tmp_path)
+    three = tmp_path / "home" / "bip3"
+    (three / ".hermes").mkdir(parents=True)
+    (three / ".hermes" / "shared").symlink_to(base / "new")
+    view = three / DATA / "space" / "open"
+    if how == "its view a link to nowhere":
+        view.parent.mkdir(parents=True)
+        view.symlink_to("/nowhere")
+    else:
+        view.mkdir(parents=True)
+    (three / DATA / "spaces").symlink_to("space/open/spaces" if how == "relative link" else str(view / "spaces"))
+    assert shared_hermes.gc(hermes.Runner(), base, [two, three], keep=["new"], proc=proc) == ["old"]
+
+
 def test_install_points_at_the_shared_hermes_when_root_built_it(tmp_path, monkeypatch):
     base = tmp_path / "opt"
     version = shared_hermes.version_id()
