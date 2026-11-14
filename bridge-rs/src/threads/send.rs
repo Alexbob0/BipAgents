@@ -579,7 +579,13 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
     };
     // what waited for this message (a Live call's recap, the time, the family's news, a feature to propose…)
     let mut waited = None;
-    if let Some(run) = running.as_deref().filter(|r| !body.after && !held && body.attachments.is_empty() && own_turn(r)) {
+    // a turn about to start again with earlier words (runs.rs `restart` starting it): Hermes ended it, it takes no
+    // words; these wait first in line, for the turn after
+    let restarting = |r: &str| state.hub.subscription(&agent.name, r).is_some_and(|sub| sub.restarting());
+    if let Some(run) = running
+        .as_deref()
+        .filter(|r| !body.after && !held && body.attachments.is_empty() && own_turn(r) && !restarting(r))
+    {
         if author.is_none() && state.hub.subscription(&agent.name, run).is_some_and(|sub| !sub.acted()) {
             // the turn did nothing yet (it thinks, writes, reads): stopped and started again with these words too, for
             // one answer to both (turn_restart.rs); Hermes' steer would only reach it after a tool call
@@ -668,7 +674,7 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
     let instructions = body.instructions.as_deref().filter(|i| !i.trim().is_empty());
     let options = crate::turn_thinking::turn_options(&state.config(), agent, &words, body.thinking);
     let thinks = crate::turn_thinking::thought(options.as_ref());
-    let run = match state.hermes.start_run_input(agent, input.clone(), tip, instructions, options).await {
+    let run = match state.hermes.start_run_input(agent, input.clone(), tip, instructions, options.clone()).await {
         Ok(run) => run,
         Err(exc) => match exc.status() {
             Some(status @ (400 | 413 | 415 | 422)) => {
@@ -709,6 +715,8 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
     state.hub.watch(agent, &run, Some(tip), true);
     state.hub.keep(agent, &run, Some(tip));
     state.hub.set_phone(&agent.name, &run, phone);
+    // its continuation, if it ends on a promise, keeps them (runs.rs `go_on`)
+    state.hub.set_turn(&agent.name, &run, instructions, options);
     tracing::info!(agent = %agent.name, run_id = %run, "message sent: a turn started");
     threads.bump(&thread, "sent").await?;
     told(tip);
@@ -724,6 +732,8 @@ pub async fn stop(state: &AppState, agent: &AgentConfig, thread: &Thread) -> Api
     };
     // stopped for new words a moment ago (turn_restart.rs): the person's stop wins, nothing starts again
     state.hub.withdraw_restart(&agent.name, &run);
+    // noted first: a turn that just ended on a promise is not continued either (runs.rs `go_on`)
+    state.hub.ask_stop(&agent.name, &run);
     match state.hermes.stop_run(agent, &run).await {
         Ok(()) => Ok(json!({"stopped": true, "run_id": run})),
         Err(exc) if matches!(exc.status(), Some(404 | 409)) => Ok(json!({"stopped": false, "run_id": run})),

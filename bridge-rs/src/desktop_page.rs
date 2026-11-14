@@ -110,7 +110,34 @@ static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
         .unwrap_or_default()
 });
 
-/// The page tabs of the Chrome behind `port`, most recently active first (Chrome's own order). `token`: the
+/// An address of Chrome's own UI drawn as a web page (« top-chrome » WebUI): its address bar's suggestion popup
+/// (`chrome://omnibox-popup.top-chrome/`, a `page` target since Chrome 157, with no window of its own), tab search,
+/// the side panels (`chrome-untrusted://…top-chrome/`). Never a tab of the agent: not shown, read, closed or blanked.
+/// The browser image starts Chrome without the popup page (browser/open_browser.sh); an older one still has it, and
+/// on 13/11 « Bureau » showed a tab « null » there once the agent's first tab was closed. The address alone is not
+/// enough (review of 13/11): a real tab sent there keeps it (an error page, in a window); `windowless` tells.
+pub fn chrome_ui(url: &str) -> bool {
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return false;
+    };
+    if !scheme.eq_ignore_ascii_case("chrome") && !scheme.eq_ignore_ascii_case("chrome-untrusted") {
+        return false;
+    }
+    let host = rest.split(['/', '?', '#', ':']).next().unwrap_or_default();
+    host.to_ascii_lowercase().ends_with(".top-chrome")
+}
+
+/// Whether the tab `id` has no window of its own (`Browser.getWindowForTarget` fails): Chrome's UI, not a tab.
+async fn windowless(port: u16, id: &str, token: Option<&str>) -> bool {
+    let Ok(mut cdp) = Cdp::connect(port, id, token).await else { return true };
+    let asked = cdp.call("Browser.getWindowForTarget", json!({"targetId": id}));
+    let window = tokio::time::timeout(Duration::from_secs(3), asked).await;
+    cdp.close().await;
+    !matches!(window, Ok(Ok(_)))
+}
+
+/// The page tabs of the Chrome behind `port`, most recently active first (Chrome's own order), neither DevTools,
+/// an extension's page nor Chrome's own UI (`chrome_ui` with no window: asked only for those addresses). `token`: the
 /// person's hold, which the container's relay lets through.
 pub async fn tabs(port: u16, token: Option<&str>) -> Result<Vec<Tab>, String> {
     let mut request = HTTP.get(format!("http://127.0.0.1:{port}/json/list"));
@@ -123,21 +150,20 @@ pub async fn tabs(port: u16, token: Option<&str>) -> Result<Vec<Tab>, String> {
     let answer = request.send().await.map_err(|e| e.to_string())?;
     let list: Value = answer.json().await.map_err(|e| e.to_string())?;
     let items = list.as_array().ok_or("not a list")?;
-    Ok(items
-        .iter()
-        .filter(|t| t.get("type").and_then(Value::as_str) == Some("page"))
-        .filter_map(|t| {
-            let url = t.get("url").and_then(Value::as_str).unwrap_or_default();
-            if url.starts_with("devtools://") || url.starts_with("chrome-extension://") {
-                return None;
-            }
-            Some(Tab {
-                id: t.get("id").and_then(Value::as_str)?.to_string(),
-                url: url.to_string(),
-                title: t.get("title").and_then(Value::as_str).unwrap_or_default().to_string(),
-            })
-        })
-        .collect())
+    let mut tabs = Vec::new();
+    for t in items.iter().filter(|t| t.get("type").and_then(Value::as_str) == Some("page")) {
+        let url = t.get("url").and_then(Value::as_str).unwrap_or_default();
+        let Some(id) = t.get("id").and_then(Value::as_str) else { continue };
+        if url.starts_with("devtools://") || url.starts_with("chrome-extension://") {
+            continue;
+        }
+        if chrome_ui(url) && windowless(port, id, token).await {
+            continue;
+        }
+        let title = t.get("title").and_then(Value::as_str).unwrap_or_default().to_string();
+        tabs.push(Tab { id: id.to_string(), url: url.to_string(), title });
+    }
+    Ok(tabs)
 }
 
 pub fn is_blank(url: &str) -> bool {
@@ -952,6 +978,106 @@ mod tests {
             Some("https://duckduckgo.com/?q=javascript%3Aalert%281%29")
         );
         assert_eq!(address("  "), None);
+    }
+
+    /// A DevTools answering `/json/list` with `list` (one request per connection, as reqwest makes them here), and on
+    /// a tab's own WebSocket, `Browser.getWindowForTarget`: a window for the targets of `windowed`, Chrome's « Browser
+    /// window not found » for the others.
+    async fn devtools_listing(list: Value, windowed: &'static [&'static str]) -> u16 {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let body = list.to_string();
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let body = body.clone();
+                tokio::spawn(async move {
+                    let mut first = [0u8; 32];
+                    let seen = socket.peek(&mut first).await.unwrap_or(0);
+                    if first[..seen].starts_with(b"GET /devtools/page/") {
+                        let Ok(mut ws) = tokio_tungstenite::accept_async(socket).await else { return };
+                        while let Some(Ok(WsMessage::Text(text))) = ws.next().await {
+                            let asked: Value = serde_json::from_str(&text).unwrap_or_default();
+                            let target = asked["params"]["targetId"].as_str().unwrap_or_default();
+                            let none = json!({"code": -32000, "message": "Browser window not found"});
+                            let answer = if windowed.contains(&target) {
+                                json!({"id": asked["id"], "result": {"windowId": 1}})
+                            } else {
+                                json!({"id": asked["id"], "error": none})
+                            };
+                            if ws.send(WsMessage::Text(answer.to_string().into())).await.is_err() {
+                                return;
+                            }
+                        }
+                        return;
+                    }
+                    let mut head = [0u8; 4096];
+                    let _ = socket.read(&mut head).await;
+                    let head = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close";
+                    let answer = format!("{head}\r\nContent-Length: {}\r\n\r\n{body}", body.len());
+                    let _ = socket.write_all(answer.as_bytes()).await;
+                });
+            }
+        });
+        port
+    }
+
+    /// 13/11 (Alex, aibox and an offer's place): Chrome 157 lists its address bar's suggestion popup as a page with no
+    /// window, first once the agent's first tab was closed; « Bureau » showed a tab « null » there. Chrome's own UI
+    /// pages (`*.top-chrome`, chrome:// and chrome-untrusted://, with no window) are never a tab of the agent,
+    /// whatever their order. A real tab at such an address (an error page, in a window) is one (review of 13/11).
+    #[tokio::test]
+    async fn chromes_own_ui_pages_are_never_a_tab() {
+        let port = devtools_listing(
+            json!([
+            {"id": "LOOK", "type": "page", "url": "chrome-untrusted://foo.top-chrome/", "title": "foo.top-chrome"},
+            {"id": "POPUP", "type": "page", "url": "chrome://omnibox-popup.top-chrome/", "title": "null"},
+            {"id": "AIM", "type": "page", "title": "",
+             "url": "chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html"},
+            {"id": "SEARCH", "type": "page", "url": "chrome://tab-search.top-chrome/", "title": "Rechercher"},
+            {"id": "READ", "type": "page", "title": "",
+             "url": "chrome-untrusted://read-anything-side-panel.top-chrome/"},
+            {"id": "SITE", "type": "page", "url": "https://www.lemonde.fr/", "title": "Le Monde"},
+            {"id": "TOOLS", "type": "page", "url": "devtools://devtools/bundled/inspector.html", "title": "DevTools"},
+            {"id": "FRAME", "type": "iframe", "url": "https://pay.example/", "title": ""},
+            {"id": "NEW", "type": "page", "url": "chrome://newtab/", "title": "Nouvel onglet"}
+            ]),
+            &["LOOK", "SITE", "NEW"],
+        )
+        .await;
+        let list = tabs(port, None).await.unwrap();
+        assert_eq!(list.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["LOOK", "SITE", "NEW"]);
+        let only_ui = devtools_listing(
+            json!([{"id": "POPUP", "type": "page", "url": "chrome://omnibox-popup.top-chrome/", "title": "null"}]),
+            &[],
+        )
+        .await;
+        assert_eq!(tabs(only_ui, None).await.unwrap(), Vec::<Tab>::new());
+    }
+
+    #[test]
+    fn chromes_own_ui_is_told_apart_from_pages() {
+        for url in [
+            "chrome://omnibox-popup.top-chrome/",
+            "chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html",
+            "CHROME://Tab-Search.Top-Chrome/",
+            "chrome-untrusted://read-anything-side-panel.top-chrome/?x=1",
+            "chrome://customize-chrome-side-panel.top-chrome",
+        ] {
+            assert!(chrome_ui(url), "{url}");
+        }
+        for url in [
+            "chrome://newtab/",
+            "chrome://settings/",
+            "about:blank",
+            "",
+            "https://www.lemonde.fr/",
+            "http://127.0.0.1:8765/x.top-chrome/",
+            "https://omnibox-popup.top-chrome.example/",
+            "chrome-extension://abc/x.top-chrome/",
+        ] {
+            assert!(!chrome_ui(url), "{url}");
+        }
     }
 
     #[test]

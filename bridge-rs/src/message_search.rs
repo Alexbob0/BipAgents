@@ -498,7 +498,13 @@ pub fn search_store(
         if !matches_all(&content, words) {
             continue;
         }
-        let text = message_text(&content);
+        let role: String = row.get(2)?;
+        let mut text = message_text(&content);
+        if role == "user" {
+            // the bridge's words to the agent in a person's row (a continuation's note quoting the reply): not theirs
+            let theirs = crate::threads::timeline::before_bridge_mark(&text).trim_end().len();
+            text.truncate(theirs);
+        }
         if !matches_all(&text, words) {
             continue;
         }
@@ -516,7 +522,6 @@ pub fn search_store(
         let session_id: String = row.get(1)?;
         let shown = listed.entry(session_id.clone()).or_insert_with(|| listed_session(&session_id, &sessions)).clone();
         let Some(shown) = shown else { continue };
-        let role: String = row.get(2)?;
         let (snippet, parts) = snippet(&text, words);
         let id: i64 = row.get(0)?;
         let stored = crate::threads::source::Row { row: id, uid: row.get::<_, Option<String>>(6)?, ..Default::default() };

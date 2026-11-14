@@ -1077,7 +1077,7 @@ async fn deliver(state: AppState, target: String, path: String, request: Request
     let response = Response::from_parts(response_parts, Body::from(bytes));
     if starts_run {
         // the turn it started followed by the hub, for the brake (loop_brake.rs)
-        return Ok(crate::runs::keep_started(&state.hub, &agent, &body, response).await);
+        return Ok(crate::runs::keep_started(&state.hub, &agent, &body, response, true).await);
     }
     Ok(response)
 }

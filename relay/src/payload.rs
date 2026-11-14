@@ -385,7 +385,9 @@ mod tests {
         ];
         let kept: Vec<Value> = not_payments
             .iter()
-            .map(|p| scrub(p, Audience::Bridge).unwrap()["aps"].get("interruption-level").cloned().unwrap_or(Value::Null))
+            .map(|p| {
+                scrub(p, Audience::Bridge).unwrap()["aps"].get("interruption-level").cloned().unwrap_or(Value::Null)
+            })
             .collect();
         assert_eq!(kept, vec![Value::Null, Value::Null], "time-sensitive kept for pushes that are not urgent payments");
         let categories: Vec<Value> = not_payments
