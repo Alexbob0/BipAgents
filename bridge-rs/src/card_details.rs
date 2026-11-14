@@ -118,6 +118,16 @@ pub fn folded(text: &str) -> String {
 const NOT_PAYMENT_SRC: &str = r"fidelit|loyalt|treue|fidelidad|bonus ?card|club|cadeau|gift|geschenk|regalo|vitale|carte grise|identit|ausweis|identidad|\bdni\b|\bnie\b|passe?port|reisepass|pasaporte|permis|licen[cs]|fuhrerschein|membre|member|mitglied|socio|adherent|abonne|abonnement|subscri|etudiant|student|estudiante|biblioth|library|navigo|transport|\bsim\b|mutuelle|krankenkasse|versicherung|seguro|assurance|insurance|electeur|siret|siren|imei|\biban\b|\bbic\b|\btva\b|\bvat\b";
 static NOT_PAYMENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(NOT_PAYMENT_SRC).expect("valid regex"));
 
+/// A field for a number that is no payment card's and may look like one (a SIRET or an IMEI pass Luhn by design, a
+/// loyalty card's or a parcel's number may): a card's number is typed there (browser_mcp.rs).
+const OTHER_NUMBER_SRC: &str = r"siret|siren|imei|\biban\b|\bbic\b|\btva\b|\bvat\b|ust ?id|\bnif\b|fidelit|loyalt|treue|fidelidad|adherent|member|mitglied|socio|suivi|tracking|sendungsnummer|seguimiento|colis|parcel";
+static OTHER_NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(OTHER_NUMBER_SRC).expect("valid regex"));
+
+/// A field's words (`card_field`'s) say it holds a number that is no payment card's (`OTHER_NUMBER_SRC`).
+pub fn other_number(text: &str) -> bool {
+    OTHER_NUMBER.is_match(&folded(text))
+}
+
 /// Words that name a payment card itself (« carte bancaire », « Kreditkarte », a network's name with « card »).
 const PAYMENT_CARD_SRC: &str = r"carte (bancaire|de credit|de debit|de paiement|bleue|cb)|\bcb\b|credit ?card|debit ?card|bank ?card|payment ?card|kreditkarte|bankkarte|debitkarte|\bec ?karte|girocard|tarjeta (de credito|de debito|bancaria)|(visa|mastercard|master card|american express|\bamex|maestro) ?(card|carte|karte|tarjeta)|(card|carte|karte|tarjeta) (visa|mastercard|american express|amex|maestro)";
 static PAYMENT_CARD: LazyLock<Regex> = LazyLock::new(|| Regex::new(PAYMENT_CARD_SRC).expect("valid regex"));
@@ -186,7 +196,7 @@ pub const GIVEN_REFUSED: &str = "a payment card's number is never kept here: pay
 pub fn js_rules() -> String {
     let re = |src: &str| format!("new RegExp({})", serde_json::to_string(src).unwrap_or_else(|_| "\"$^\"".into()));
     format!(
-        "const CD = {{np: {np}, pc: {pc}, cs: {cs}, cw: {cw}, es: {es}, ew: {ew}, ns: {ns}, hs: {hs}, hw: {hw}, card: {card}}}; \
+        "const CD = {{np: {np}, pc: {pc}, cs: {cs}, cw: {cw}, es: {es}, ew: {ew}, ns: {ns}, hs: {hs}, hw: {hw}, card: {card}, other: {other}}}; \
 const fold = (t) => String(t || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/[_\\-.'\\u2019]/g, ' ').toLowerCase(); \
 const cardKind = (text, ctx) => {{ const t = fold(text); if (!t.trim()) return ''; const pay = CD.pc.test(t); \
 if (CD.np.test(t) && !pay) return ''; const card = ctx || pay || CD.card.test(t); \
@@ -213,6 +223,7 @@ if (d.length >= 13 && luhn(d) && network(d)) return true; }} }} }} return false;
         hs = re(HOLDER_STRONG_SRC),
         hw = re(HOLDER_WEAK_SRC),
         card = re(CARD_WORD_SRC),
+        other = re(OTHER_NUMBER_SRC),
     )
 }
 
@@ -342,6 +353,8 @@ mod tests {
         assert_eq!(card_field("Titulaire du compte", false), None);
         assert_eq!(card_field("Mois", true), Some("exp"));
         // Not a payment card's.
+        assert!(other_number("SIRET") && other_number("Numéro de suivi du colis") && other_number("IMEI"));
+        assert!(!other_number("Numéro de carte cadeau") && !other_number("Instructions de livraison"));
         for other in [
             "Numéro de carte de fidélité",
             "Numéro de carte Vitale",

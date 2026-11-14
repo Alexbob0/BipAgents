@@ -631,7 +631,7 @@ let terms = ''; \
 if (el.tagName === 'INPUT' && attr('type') === 'checkbox' && !el.checked) terms = label(el); \
 const frame = el.tagName === 'IFRAME' || el.tagName === 'FRAME'; \
 const card = frame ? (payFrame(el) ? 'frame' : '') : cardOf(el); \
-const other = !frame && !!el.attributes && CD.np.test(fold(words(el))); \
+const other = !frame && !!el.attributes && CD.other.test(fold(words(el))); \
 return JSON.stringify({{found: true, password: password, terms: terms.slice(0, 300), card: card, other: other}}); }})()"
     )
 }
