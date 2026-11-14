@@ -69,7 +69,8 @@ class FakeChrome:
     """Chrome's DevTools behind the container's relay: `/json/list`, one WebSocket per tab, a screencast frame on
     each start and ack, a DOM snapshot (`PAGE`) and an isolated world where `focus` is what the page has focused.
     `hold(token)`: as the person's hold, only connections showing that token get through. `old`: a relay built
-    before the page view (no version; while held, nothing gets through)."""
+    before the page view (no version; while held, nothing gets through). `windowless`: tabs that are Chrome's own UI
+    (`Browser.getWindowForTarget` answers « Browser window not found », as for Chrome 157's omnibox popup)."""
 
     def __init__(self, tabs):
         self.tabs = tabs
@@ -78,6 +79,7 @@ class FakeChrome:
         self.old = False
         self.focus = {"v": {"w": 1366, "h": 600}, "r": [400, 300, 280, 40], "kind": "field"}
         self.open = []
+        self.windowless = set()
         self.lock = threading.Lock()
         self.server = serve(self.talk, "127.0.0.1", 0, process_request=self.http, compression=None, max_size=None)
         self.port = self.server.socket.getsockname()[1]
@@ -125,6 +127,12 @@ class FakeChrome:
                     result = {"result": {"type": "object", "value": self.focus}}
                 if m["method"] == "Page.getNavigationHistory":
                     result = {"currentIndex": 1, "entries": [{"id": 7, "url": "https://a.fr/"}, {"id": 8, "url": "https://b.fr/"}]}
+                if m["method"] == "Browser.getWindowForTarget":
+                    if (m.get("params") or {}).get("targetId", tab) in self.windowless:
+                        ws.send(json.dumps({"id": m["id"], "error": {"code": -32000,
+                                                                     "message": "Browser window not found"}}))
+                        continue
+                    result = {"windowId": 1, "bounds": {"left": 0, "top": 0, "width": 1366, "height": 742}}
                 ws.send(json.dumps({"id": m["id"], "result": result}))
                 if m["method"] in ("Page.startScreencast", "Page.screencastFrameAck"):
                     ws.send(json.dumps({"method": "Page.screencastFrame", "params": {
@@ -316,6 +324,42 @@ def test_another_tab_in_front_is_shown_instead(bridges, fakes, chrome):
         chrome.tabs.insert(0, {"id": "TAB2", "url": "https://www.service-public.fr/", "title": "Service public"})
         recv_until(ws, lambda m: isinstance(m, dict) and m.get("site") == "service-public.fr")
         assert wait_until(lambda: any(c[0] == "TAB2" for c in chrome.methods("Page.startScreencast")))
+
+
+def test_chromes_own_ui_is_never_the_page_shown(bridges, fakes, chrome):
+    """13/11 (Alex, aibox and an offer's place): Chrome 157 lists its address bar's suggestion popup as a page with no
+    window, first once the agent's first tab was closed, and « Bureau » showed a tab « null » there. Chrome's own UI
+    pages (chrome://…top-chrome/, chrome-untrusted://…top-chrome/) are never what the person watches or reads."""
+    chrome.tabs[:] = [{"id": "POPUP", "url": "chrome://omnibox-popup.top-chrome/", "title": "null"},
+                      {"id": "SIDE", "url": "chrome-untrusted://read-anything-side-panel.top-chrome/", "title": ""},
+                      {"id": "TAB1", "url": "https://www.lemonde.fr/economie/", "title": "Le Monde"}]
+    chrome.windowless.update({"POPUP", "SIDE"})
+    bridge, folder = browser_bridge(bridges, fakes, chrome.port)
+    assert {k: state(bridge)[k] for k in ("state", "site", "title")} == {
+        "state": "active", "site": "lemonde.fr", "title": "Le Monde"}
+    data = bridge.post("/v1/agents/vie/desktop", headers=AUTH).json()
+    assert bridge.get("/" + data["page_path"] + "reader").json()["site"] == "lemonde.fr"
+    with open_ws(bridge.ws_url("/" + data["page_path"] + "ws")) as ws:
+        recv_until(ws, lambda m: m == JPEG)
+    assert {c[0] for c in chrome.methods("Page.startScreencast")} == {"TAB1"}
+    chrome.tabs[:] = chrome.tabs[:2]                   # only Chrome's own UI left: nothing to show
+    assert {k: state(bridge)[k] for k in ("state", "site")} == {"state": "idle", "site": None}
+
+
+def test_a_real_tab_on_an_address_like_chromes_ui_is_still_shown(bridges, fakes, chrome):
+    """Review of 13/11: the filter was by address only, so a real tab sent to chrome-untrusted://….top-chrome/ (an
+    error page that keeps that address, in a window the person sees) was hidden from « Bureau ». Only a page with no
+    window of its own is Chrome's UI."""
+    chrome.tabs[:] = [{"id": "LOOK", "url": "chrome-untrusted://foo.top-chrome/", "title": "foo.top-chrome"},
+                      {"id": "POPUP", "url": "chrome://omnibox-popup.top-chrome/", "title": "null"},
+                      {"id": "TAB1", "url": "https://www.lemonde.fr/economie/", "title": "Le Monde"}]
+    chrome.windowless.add("POPUP")
+    bridge, folder = browser_bridge(bridges, fakes, chrome.port)
+    assert {k: state(bridge)[k] for k in ("state", "title")} == {"state": "active", "title": "foo.top-chrome"}
+    data = bridge.post("/v1/agents/vie/desktop", headers=AUTH).json()
+    with open_ws(bridge.ws_url("/" + data["page_path"] + "ws")) as ws:
+        recv_until(ws, lambda m: m == JPEG)
+    assert {c[0] for c in chrome.methods("Page.startScreencast")} == {"LOOK"}
 
 
 def test_an_old_browser_image_asks_for_an_update(bridges, fakes, chrome):

@@ -75,7 +75,10 @@ commit BipAgents is tested with (`a7b9eea`, set in the `Containerfile`) and appl
 - `stealth.patch`: Chrome's DevTools on a fixed port (`STEALTH_CDP_PORT`), so Hermes and the vault drive the same
   browser; the container's defaults (profile, flags, time zone) when the agent leaves them out; flags the server adds
   in containers that this one does without (`STEALTH_DROP_ARGS`); a browser always shown on the container's screen,
-  even when the agent asks for headless (`STEALTH_HEADFUL`).
+  even when the agent asks for headless (`STEALTH_HEADFUL`); Chrome's own UI pages (its address bar's suggestion
+  popup, a page with no window since Chrome 157: an address of Chrome's UI and no window) never taken for the agent's
+  tab, and Chrome started without that popup page (`WebUIOmniboxPopup`, and `WebUIOmniboxAimPopup` for the second one
+  Fedora's Chromium 156 has, in the last `--disable-features`, the only one Chrome reads, as `open_browser.sh` does).
 - `requirements.txt`: its Python packages at the exact versions tested, installed from PyPI. Among them, **nodriver is
   under the GNU AGPL v3** and certifi under the MPL 2.0: both are installed unmodified, as separate packages.
 - `entrypoint.sh` (the screen, the VNC server), `devtools_relay.py` (Chrome's DevTools from the host, at an address

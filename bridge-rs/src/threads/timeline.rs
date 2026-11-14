@@ -411,10 +411,11 @@ fn peer_of(text: &str) -> Option<(String, String, String)> {
 }
 
 /// The agent's words and Hermes' failed-turn line since the person's last message (the turn cut by a restart); its
-/// calls stay (what it read).
-fn drop_cut_answer(items: &mut Vec<Item>) {
+/// calls stay (what it read). `kept`: what comes before stays too (the turn's own answer before the hidden note that
+/// continued it, runs.rs `go_on`: only the continuation was cut).
+fn drop_cut_answer(items: &mut Vec<Item>, kept: usize) {
     let person = |i: &Item| i.kind() == "message" && matches!(i.body.get("role").and_then(Value::as_str), Some("person" | "peer"));
-    let from = items.iter().rposition(person).map(|at| at + 1).unwrap_or(0);
+    let from = items.iter().rposition(person).map(|at| at + 1).unwrap_or(0).max(kept).min(items.len());
     let tail = items.split_off(from);
     items.extend(tail.into_iter().filter(|i| {
         let words = i.kind() == "message" && i.body.get("role") == Some(&json!("agent"));
@@ -500,6 +501,8 @@ pub fn segment_items(
         }
     }
     let mut items = Vec::new();
+    // where the bridge's note continuing a turn came (runs.rs `go_on`): a restart cuts only what follows it
+    let mut continued_at = 0;
     for (place, shown) in in_place_compaction(rows) {
         let (row, place) = (&rows[shown], &rows[place]);
         let id = message_id(agent, session, row);
@@ -521,6 +524,9 @@ pub fn segment_items(
         };
         match row.role.as_str() {
             "user" => {
+                if raw.contains(crate::go_on::MARK) {
+                    continued_at = items.len();
+                }
                 let (words, steered) = match person_words(&raw) {
                     Err(line) => {
                         // Hermes' failed-turn row just before is replaced by this notice
@@ -551,7 +557,7 @@ pub fn segment_items(
                 if crate::turn_restart::restarted(&raw) {
                     // the turn before was stopped for these words and started again with them (turn_restart.rs): its
                     // cut answer and Hermes' « not processed » line leave the conversation, one answer comes for both
-                    drop_cut_answer(&mut items);
+                    drop_cut_answer(&mut items, continued_at);
                 }
                 *turn = id.clone();
                 let mut body = json!({"kind": "message", "role": "person", "text": text, "attachments": attachments});
