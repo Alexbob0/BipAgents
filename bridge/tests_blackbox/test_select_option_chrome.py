@@ -86,3 +86,16 @@ def test_a_list_looked_for_under_a_guessed_name_gets_the_pages_lists(browser):
         assert said.startswith("Not done:"), said
         assert "#birthday-month" in said and "#civility (Civilité)" in said and "click_element" in said, said
     assert browser.page("document.getElementById('civility-value').value") == ""
+
+
+@pytest.mark.parametrize("choice", [{"text": "Provisoire123!"}, {"value": "Provisoire123!"}, {"index": 1}])
+def test_a_password_field_is_never_typed_into_through_select_option(browser, choice):
+    # the review's bench, 14/11 (DeepSeek V4.1 Flash, run 17): select_option on « #register-password » with an 11-letter
+    # text, answered « a field to type into: type_text into it ». The real server's select_option types its `text` into
+    # whatever it is aimed at (`send_keys`), past the guard of type_text: refused as typing into a password field is
+    open_form(browser)
+    time.sleep(1)
+    said = browser.tool("select_option", selector="#register-password", **choice)
+    typed = browser.page("document.getElementById('register-password').value")
+    assert typed == "" and said.startswith("Not done: this is a password field"), (typed, said)
+    assert "type_text into it" not in said, said
