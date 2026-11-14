@@ -2619,4 +2619,32 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         assert!(refused_address("new_tab", &args("CHROME-UNTRUSTED://tab-search.top-chrome/")).is_some());
         assert!(refused_address("navigate", &args(" chrome-untrusted://new-tab-page/one-google-bar")).is_some());
     }
+
+    /// Review of card-guards, 14/11: navigate / new_tab with a `javascript:` address ran a script in the page with
+    /// none of the guard's checks (navigate is no guarded tool): on Chrome 157 it filled a card field, a password
+    /// field, ticked the terms, and the proxy said it was done. A script in an address is refused like any other
+    /// non-web address (`data:`, `vbscript:` too), however it is written.
+    #[test]
+    fn a_script_in_an_address_is_refused() {
+        let args = |url: &str| json!({"instance_id": "abc", "url": url}).as_object().unwrap().clone();
+        for url in [
+            "javascript:void(document.getElementById('numero').value='4242424242424242')",
+            " JavaScript:void(0)",
+            "java\tscript:void(0)",
+            "java\nscript:alert(1)",
+            "\u{1}javascript:void(0)",
+            "vbscript:msgbox(1)",
+            "data:text/html,<script>opener.document.forms[0].submit()</script>",
+            "DATA:text/html;base64,PHNjcmlwdD48L3NjcmlwdD4=",
+        ] {
+            for tool in ["navigate", "new_tab"] {
+                let refused = refused_address(tool, &args(url)).unwrap_or_else(|| panic!("{tool} {url:?} not refused"));
+                let text = refused["result"]["content"][0]["text"].as_str().unwrap();
+                assert!(text.starts_with(&format!("{tool} refused")) && text.contains("execute_script"), "{text}");
+            }
+        }
+        for url in ["https://shop.example/javascript:void(0)", "https://shop.example/?q=data:x", "about:blank"] {
+            assert!(refused_address("navigate", &args(url)).is_none(), "{url}");
+        }
+    }
 }
