@@ -135,6 +135,10 @@ pub struct RunProgress {
     pub capped: bool,
 }
 
+/// How far a chain of runs taking over from each other is followed (`followed_through`, `remove_listener`): a turn, its
+/// continuation, its restart, a rescue turn… (a bound, never a cycle).
+const CHAIN_MAX: usize = 6;
+
 /// A run whose end on a promise may be continued (runs.rs `go_on`): a person's conversation turn an app started and
 /// follows, not a background task's, a routine's or any unattended turn, a group discussion's, the brake's rescue
 /// turn or a continuation itself, nor a turn the brake stopped, that handed work over or hit its token limit.
@@ -1255,23 +1259,38 @@ impl RunHub {
             }
         }
         drop(st);
-        if let Some(next) = next.and_then(|n| inner.subs.get(&(sub.agent.name.clone(), n)).cloned()) {
-            let mut st = lock(&next.state);
-            if st.watched && st.followers() == 0 && !st.finished {
-                self.push_unseen(&inner, &next, &mut st);
+        // down the chain of runs that took over (a continuation restarted by new words, a restart's rescue turn…)
+        let mut next = next;
+        for _ in 0..CHAIN_MAX {
+            let Some(run) = next.and_then(|n| inner.subs.get(&(sub.agent.name.clone(), n)).cloned()) else { break };
+            if Arc::ptr_eq(&run, sub) {
+                break;
             }
+            let mut st = lock(&run.state);
+            if st.watched && st.followers() == 0 && !st.finished {
+                self.push_unseen(&inner, &run, &mut st);
+            }
+            next = st.continued_by.clone().or(st.restarted_as.clone());
         }
     }
 
-    /// A continuation or rescue turn shows in the stream of the turn it follows (`go_on`, `loop_rescue`): whoever
-    /// follows that turn sees its cards, so they are not pushed. `inner` held, then the continuation's state.
+    /// A continuation, rescue turn or restart shows in the stream of the turn it follows (`go_on`, `loop_rescue`,
+    /// `restart`), and so on up the chain (a continuation restarted by new words: its restart shows through the
+    /// continuation, which shows through the turn): whoever follows one of them sees its cards, so they are not pushed.
+    /// `inner` held, then this run's state, then each one up the chain in turn.
     fn followed_through(inner: &HubInner, sub: &RunSubscription, st: &SubscriptionState) -> bool {
-        st.go_on_of
-            .as_ref()
-            .or(st.rescue_of.as_ref())
-            .or(st.restart_of.as_ref())
-            .and_then(|of| inner.subs.get(&(sub.agent.name.clone(), of.clone())))
-            .is_some_and(|origin| lock(&origin.state).followers() > 0)
+        let of = |st: &SubscriptionState| st.go_on_of.clone().or(st.rescue_of.clone()).or(st.restart_of.clone());
+        let mut up = of(st);
+        for _ in 0..CHAIN_MAX {
+            let Some(run) = up.filter(|r| *r != sub.run_id) else { return false };
+            let Some(origin) = inner.subs.get(&(sub.agent.name.clone(), run)) else { return false };
+            let origin = lock(&origin.state);
+            if origin.followers() > 0 {
+                return true;
+            }
+            up = of(&origin);
+        }
+        false
     }
 
     /// The app stopped showing the run (left the conversation, screen locked) while an approval or a
@@ -1929,107 +1948,102 @@ impl RunHub {
     /// end (« reply ready », the queue). This run is no longer the conversation's (`restarted_as`, set with the plan
     /// cleared under one lock): a stop, a steer or another message goes to the new one; the new one is linked back
     /// (`restart_of`: its cards seen through this run's stream, the conversation nets). While it starts, the plan stays
-    /// here: other words meanwhile are steered (then queued first), and the person's Stop (`stop_asked`, the plan
-    /// withdrawn) wins: nothing starts, or the run just started is stopped. Hermes refusing the start: the words wait
-    /// first in line in the queue.
+    /// here: a second message meanwhile gets no plan of its own and waits first in line in the queue (threads/send.rs:
+    /// never steered into a turn about to start again; Hermes' steer only if it raced that check). The person's Stop
+    /// withdraws the plan (`withdraw_restart`): nothing starts, or the run just started is stopped; words they write
+    /// after their Stop make a plan of their own, which starts (the plan read again before each try). Hermes refusing
+    /// the start: the words wait first in line in the queue.
     async fn restart(self: &Arc<Self>, sub: &Arc<RunSubscription>, terminal: SSEEvent) -> SSEEvent {
-        // the plan stays in `restart` while the new turn starts: a second message meanwhile is refused a plan of its own
-        // (`interrupt`) and goes the steer way, then to the head of the queue; the person's Stop withdraws it
-        let (plan, session, watched, phone, since) = {
+        let (planned, session, watched, phone, since) = {
             let st = lock(&sub.state);
-            (st.restart.clone(), st.session_id.clone(), st.watched, st.phone.clone(), st.followed_since)
+            (st.restart.is_some(), st.session_id.clone(), st.watched, st.phone.clone(), st.followed_since)
         };
-        let (Some(plan), Some(session)) = (plan, session) else { return terminal };
+        let (true, Some(session)) = (planned, session) else { return terminal };
         let agent = sub.agent.clone();
         let cut = matches!(terminal.r#type.as_str(), "run.cancelled" | "run.canceled" | "run.interrupted");
-        let input = plan.input(cut);
-        // Stop tapped, or the plan withdrawn (threads/send.rs `stop`): nothing starts again
-        let withdrawn = || {
-            let st = lock(&sub.state);
-            st.restart.is_none() || st.stop_asked
+        // the plan as it is now: None once the person's Stop withdrew it, another one if they wrote again after it
+        let current = || lock(&sub.state).restart.clone();
+        let same = |a: &crate::turn_restart::Plan, b: &crate::turn_restart::Plan| {
+            a.client_id == b.client_id && a.said == b.said
         };
-        let mut started = None;
-        // Hermes may still be closing the stopped turn (the conversation busy for a moment)
-        for attempt in 0..5u64 {
-            if withdrawn() {
+        let mut attempt = 0u64;
+        let (next, plan) = loop {
+            let Some(plan) = current() else {
                 tracing::info!(agent = %agent.name, run_id = %sub.run_id, "restart: stopped by the person, nothing starts");
-                lock(&sub.state).restart = None;
                 return terminal;
-            }
-            match self
+            };
+            let started = self
                 .hermes
-                .start_run_input(&agent, input.clone(), &session, plan.instructions.as_deref(), plan.options.clone())
-                .await
-            {
+                .start_run_input(&agent, plan.input(cut), &session, plan.instructions.as_deref(), plan.options.clone())
+                .await;
+            let refused = match started {
                 Ok(id) if crate::app::RUN_ID.is_match(&id) => {
-                    started = Some(id);
-                    break;
+                    // the plan done and the new run the conversation's, at once (no message falls between them), unless
+                    // the plan was withdrawn (Stop) or replaced (words after a Stop) while it started
+                    let now = {
+                        let mut inner = lock(&self.inner);
+                        let mut st = lock(&sub.state);
+                        match st.restart.clone() {
+                            Some(now) if same(&now, &plan) => {
+                                st.restart = None;
+                                st.restarted_as = Some(id.clone());
+                                drop(st);
+                                let restarted = self.get_or_start(&mut inner, &agent, &id);
+                                let mut st = lock(&restarted.state);
+                                st.kept = true;
+                                st.watched = watched;
+                                st.end_push = false; // this run's end tells it
+                                st.session_id = Some(session.clone());
+                                st.phone = plan.phone.clone().or(phone.clone());
+                                st.followed_since = since; // the turn's clocks (safety net, working line) from its start
+                                st.restart_of = Some(sub.run_id.clone());
+                                None
+                            }
+                            other => Some(other),
+                        }
+                    };
+                    let Some(other) = now else { break (id, plan) };
+                    tracing::info!(agent = %agent.name, run_id = %sub.run_id, next = %id,
+                        "restart: stopped by the person while it started, the new turn stopped");
+                    if let Err(err) = self.hermes.stop_run(&agent, &id).await {
+                        tracing::warn!(agent = %agent.name, run_id = %id, error = %err, "restart: stop refused");
+                    }
+                    if other.is_none() {
+                        return terminal;
+                    }
+                    false // their words written after the Stop: started in turn
                 }
-                Ok(_) => break,
+                Ok(_) => true,
                 Err(err) => {
                     tracing::info!(agent = %agent.name, run_id = %sub.run_id, error = %err, attempt = attempt,
                         "restart: new turn not started yet");
-                    if attempt < 4 {
-                        tokio::time::sleep(Duration::from_millis(400 * (attempt + 1))).await;
+                    attempt += 1;
+                    attempt >= 5
+                }
+            };
+            if refused {
+                // Hermes takes no new turn: the words wait first in line (none when the Stop withdrew them)
+                let kept = lock(&sub.state).restart.take();
+                let Some(plan) = kept else { return terminal };
+                tracing::warn!(agent = %agent.name, run_id = %sub.run_id, "restart: no new turn, the words wait in line");
+                if let Some(queues) = self.queues.get().and_then(std::sync::Weak::upgrade) {
+                    let sent = crate::msg_queue::Sent {
+                        client_id: plan.client_id.clone(),
+                        input: Some(plan.input(cut)),
+                        phone: plan.phone.clone().or(phone.clone()),
+                        ..crate::msg_queue::Sent::default()
+                    };
+                    if queues.add_first(&agent, &session, &plan.said, sent).is_err() {
+                        tracing::warn!(agent = %agent.name, "restart: the queue is full, the words are lost");
                     }
                 }
-            }
-        }
-        let Some(next) = started else {
-            let stopped = {
-                let mut st = lock(&sub.state);
-                st.restart.take().is_none() || st.stop_asked
-            };
-            if stopped {
-                tracing::info!(agent = %agent.name, run_id = %sub.run_id, "restart: stopped by the person, nothing starts");
                 return terminal;
             }
-            tracing::warn!(agent = %agent.name, run_id = %sub.run_id, "restart: no new turn, the words wait in line");
-            if let Some(queues) = self.queues.get().and_then(std::sync::Weak::upgrade) {
-                let sent = crate::msg_queue::Sent {
-                    client_id: plan.client_id.clone(),
-                    input: Some(input),
-                    phone: plan.phone.clone().or(phone.clone()),
-                    ..crate::msg_queue::Sent::default()
-                };
-                if queues.add_first(&agent, &session, &plan.said, sent).is_err() {
-                    tracing::warn!(agent = %agent.name, "restart: the queue is full, the words are lost");
-                }
-            }
-            return terminal;
-        };
-        let taken_over = {
-            let mut inner = lock(&self.inner);
-            let mut st = lock(&sub.state);
-            if st.restart.is_none() || st.stop_asked {
-                st.restart = None;
-                false
-            } else {
-                // the plan done and the new run the conversation's, at once: no message falls between them
-                st.restart = None;
-                st.restarted_as = Some(next.clone());
-                drop(st);
-                let restarted = self.get_or_start(&mut inner, &agent, &next);
-                let mut st = lock(&restarted.state);
-                st.kept = true;
-                st.watched = watched;
-                st.end_push = false; // this run's end tells it
-                st.session_id = Some(session.clone());
-                st.phone = plan.phone.clone().or(phone);
-                st.followed_since = since; // the turn's clocks (the safety net's, the working line's) from its start
-                st.restart_of = Some(sub.run_id.clone());
-                true
+            // Hermes may still be closing the stopped turn (the conversation busy for a moment)
+            if attempt > 0 {
+                tokio::time::sleep(Duration::from_millis(400 * attempt)).await;
             }
         };
-        if !taken_over {
-            // Stop tapped while it started: the new turn stopped at once, this run's own end
-            tracing::info!(agent = %agent.name, run_id = %sub.run_id, next = %next,
-                "restart: stopped by the person while it started, the new turn stopped");
-            if let Err(err) = self.hermes.stop_run(&agent, &next).await {
-                tracing::warn!(agent = %agent.name, run_id = %next, error = %err, "restart: stop refused");
-            }
-            return terminal;
-        }
         tracing::info!(agent = %agent.name, run_id = %sub.run_id, next = %next, cut = cut, "restart: new turn started");
         if crate::turn_thinking::thought(plan.options.as_ref()) {
             crate::turn_thinking::thinking_run(&next);
