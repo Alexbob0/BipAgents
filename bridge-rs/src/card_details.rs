@@ -18,8 +18,9 @@ use regex::Regex;
 use unicode_normalization::UnicodeNormalization;
 
 /// A card's number among digits: 13 to 19 of them, the Luhn check passed, and a card network's first digits for that
-/// length (Visa, Mastercard, CB on both, American Express, Discover, UnionPay, JCB, Diners, Mir, Maestro, UATP). The
-/// network check keeps a French SIRET (14 digits, Luhn by design) or a phone's IMEI (15, Luhn too) from counting.
+/// length (Visa, Mastercard, CB on both, American Express, Discover, UnionPay, JCB, Diners, Mir, Maestro). The network
+/// check keeps a French SIRET (14 digits, Luhn by design) or a phone's IMEI (15, Luhn too) from counting; UATP (15
+/// digits from 1, airlines' cards) is left out: a man's French social security number reads the same (review of 14/11).
 pub fn is_card_number(digits: &str) -> bool {
     let len = digits.len();
     if !(13..=19).contains(&len) || !digits.bytes().all(|b| b.is_ascii_digit()) || !crate::cards::luhn(digits) {
@@ -37,13 +38,55 @@ pub fn is_card_number(digits: &str) -> bool {
             && (14..=19).contains(&len))
         || ((2200..=2204).contains(&first(4)) && long)
         || ((first(2) == 50 || (56..=69).contains(&first(2))) && long)
-        || (digits.starts_with('1') && len == 15)
 }
 
-/// Runs of digits split by single spaces, dashes or dots (« 4242 4242 4242 4242 », « 4242-4242-… »), each with its
+/// What may stand between a card number's groups: up to three spaces (any, line breaks and tabs included: a number
+/// shown in blocks, a table's cells), dashes (« – » too), dots, slashes, underscores, bars (review of 14/11).
+pub const SEPARATORS: &str = r"[\s\-./_|\u{2010}-\u{2015}\u{2212}]{1,3}";
+/// Runs of digits split by `SEPARATORS` (« 4242 4242 4242 4242 », « 4242-4242-… », « 4242 / 4242… »), each with its
 /// groups' places in the text.
 static RUNS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\d+(?:[ \-.\u{a0}\u{2009}\u{202f}]\d+)*").expect("valid regex"));
+    LazyLock::new(|| Regex::new(&format!(r"\d+(?:{SEPARATORS}\d+)*")).expect("valid regex"));
+/// An IBAN as it is written (its country, its check digits, then its account, spaced or not): its digits may make a
+/// « card number » (~15 % of French ones in groups of four: review of 14/11); one whose check digits hold (mod 97) is
+/// never one.
+static IBANS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"[A-Z]{2}[0-9]{2}(?:[ \u{a0}\-]?[A-Z0-9]){11,30}").expect("valid regex"));
+
+/// An IBAN's check (ISO 13616: the country and check digits moved to the end, letters as 10–35, mod 97 = 1).
+pub fn iban_valid(text: &str) -> bool {
+    let plain: String = text.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>().to_ascii_uppercase();
+    if !(15..=34).contains(&plain.len()) || !plain[..2].bytes().all(|b| b.is_ascii_uppercase()) {
+        return false;
+    }
+    let moved = format!("{}{}", &plain[4..], &plain[..4]);
+    let mut rest: u32 = 0;
+    for c in moved.chars() {
+        let value = match c.to_digit(36) {
+            Some(v) => v,
+            None => return false,
+        };
+        for digit in value.to_string().chars() {
+            rest = (rest * 10 + digit.to_digit(10).unwrap_or(0)) % 97;
+        }
+    }
+    rest == 1
+}
+
+/// Where `text` holds a valid IBAN (byte ranges): the longest valid one from each place an IBAN may start (what
+/// follows it, « BIC AGRIFRPP », is not of it).
+fn ibans(text: &str) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    for found in IBANS.find_iter(text) {
+        let ends = found.as_str().char_indices().filter(|(_, c)| c.is_ascii_alphanumeric()).map(|(i, c)| i + c.len_utf8());
+        let mut ends: Vec<usize> = ends.collect();
+        ends.reverse();
+        if let Some(end) = ends.into_iter().find(|end| iban_valid(&found.as_str()[..*end])) {
+            out.push((found.start(), found.start() + end));
+        }
+    }
+    out
+}
 static GROUPS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").expect("valid regex"));
 
 /// Where `text` holds a card's number (byte ranges): any run of whole groups of digits that makes one
@@ -51,7 +94,11 @@ static GROUPS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").expect("val
 /// written without spaces does not.
 pub fn card_numbers(text: &str) -> Vec<(usize, usize)> {
     let mut out = Vec::new();
+    let ibans = ibans(text);
     for run in RUNS.find_iter(text) {
+        if ibans.iter().any(|(start, end)| run.start() < *end && *start < run.end()) {
+            continue; // an IBAN's digits
+        }
         let groups: Vec<(usize, usize)> =
             GROUPS.find_iter(run.as_str()).map(|g| (run.start() + g.start(), run.start() + g.end())).collect();
         let mut from = 0;
@@ -209,8 +256,14 @@ return (d[0] === '4' && (L === 13 || L === 16 || L === 19)) || (((f(2) >= 51 && 
 || ((f(2) === 34 || f(2) === 37) && L === 15) || ((d.startsWith('6011') || d.startsWith('65') || (f(3) >= 644 && f(3) <= 649)) && long) \
 || (d.startsWith('62') && long) || (f(4) >= 3528 && f(4) <= 3589 && long) \
 || ((f(2) === 36 || f(2) === 38 || f(2) === 39 || (f(3) >= 300 && f(3) <= 305) || f(4) === 3095) && L >= 14 && L <= 19) \
-|| (f(4) >= 2200 && f(4) <= 2204 && long) || ((f(2) === 50 || (f(2) >= 56 && f(2) <= 69)) && long) || (d[0] === '1' && L === 15); }}; \
-const holdsCard = (v) => {{ for (const r of (String(v || '').match(/\\d+(?:[ \\-.\\u00a0\\u2009\\u202f]\\d+)*/g) || [])) {{ const g = r.match(/\\d+/g); \
+|| (f(4) >= 2200 && f(4) <= 2204 && long) || ((f(2) === 50 || (f(2) >= 56 && f(2) <= 69)) && long); }}; \
+const ibanOk = (t) => {{ const p = t.replace(/[^A-Za-z0-9]/g, '').toUpperCase(); if (p.length < 15 || p.length > 34 || !/^[A-Z]{{2}}/.test(p)) return false; \
+let r = 0; for (const c of p.slice(4) + p.slice(0, 4)) {{ const v = parseInt(c, 36); if (isNaN(v)) return false; for (const x of String(v)) r = (r * 10 + +x) % 97; }} return r === 1; }}; \
+const ibanSpans = (v) => {{ const out = []; for (const m of v.matchAll(/[A-Z]{{2}}[0-9]{{2}}(?:[ \\u00a0\\-]?[A-Z0-9]){{11,30}}/g)) {{ \
+for (let e = m[0].length; e >= 15; e--) {{ if (/[A-Za-z0-9]/.test(m[0][e - 1]) && ibanOk(m[0].slice(0, e))) {{ out.push([m.index, m.index + e]); break; }} }} }} return out; }}; \
+const RUN = new RegExp({runs}, 'g'); \
+const holdsCard = (v) => {{ v = String(v || ''); const ib = ibanSpans(v); for (const m of v.matchAll(RUN)) {{ \
+if (ib.some(([s, e]) => m.index < e && s < m.index + m[0].length)) continue; const g = m[0].match(/\\d+/g); \
 for (let a = 0; a < g.length; a++) {{ let d = ''; for (let b = a; b < g.length; b++) {{ d += g[b]; if (d.length > 19) break; \
 if (d.length >= 13 && luhn(d) && network(d)) return true; }} }} }} return false; }}; ",
         np = re(NOT_PAYMENT_SRC),
@@ -224,7 +277,13 @@ if (d.length >= 13 && luhn(d) && network(d)) return true; }} }} }} return false;
         hw = re(HOLDER_WEAK_SRC),
         card = re(CARD_WORD_SRC),
         other = re(OTHER_NUMBER_SRC),
+        runs = serde_json::to_string(&format!(r"\d+(?:{}\d+)*", js_separators())).unwrap_or_default(),
     )
+}
+
+/// `SEPARATORS` for a JavaScript RegExp (no `\u{…}`: `\u2010`).
+fn js_separators() -> String {
+    SEPARATORS.replace(r"\u{2010}", r"\u2010").replace(r"\u{2015}", r"\u2015").replace(r"\u{2212}", r"\u2212")
 }
 
 /// The secure-field card's kinds an agent might give for a card's details (`ask_secret`'s `kind`): not a password,
@@ -234,16 +293,50 @@ static CARD_KINDS: LazyLock<Regex> = LazyLock::new(|| {
         .expect("valid regex")
 });
 
-/// A secure-field card asked for a payment card's details (`ask_secret`): its kind (« card », « cvc »…), or its name,
-/// identifier label, identifier or reason naming a card's number, expiry, security code or holder, or a payment card
-/// (« carte bancaire », « credit card »…), or holding a card's number. Never asked: the person gives only the security
-/// code, and only in the payment's own flow (« Oui, payer »).
+/// A card, in the words of a request (`ask_secret`; on `folded` text): in French, English, Spanish, German, Italian,
+/// Portuguese and Dutch, or by a network's name (review of 14/11: « Les 16 chiffres de ta carte », « Le numéro de ta
+/// Visa », « Numero della carta », « Número do cartão », « Kaartnummer van je bankpas »…).
+static ANY_CARD: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"\b(cartes?|cards?|cartas?|cartao|cartoes|kaart(en)?|karten?|tarjetas?|bankpas|pinpas|betaalpas|mastercard|amex|maestro|girocard|cb|cc)\b|kartennummer|kaartnummer|creditcard|debitcard|cardnumber|card ?holder|carte ?bleue|american express|\bvisa\b",
+    )
+    .expect("valid regex")
+});
+/// A card that is no payment card (loyalty, gift, identity, health, transport, library, SIM, membership…) in a
+/// request's words: such a card's number may be asked.
+static OTHER_CARD: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(cartes?|cards?|cartas?|cartao|kaart|karten?|tarjetas?) (de |d |di |da |do |van |der |des )?(la |el |le )?(fidelite|fidelidad|fedelta|fidelidade|loyalty|klanten|cadeau|regalo|presente|geschenk|kado|vitale|grise|identite|identita|identidade|identidad|bibliotheque|biblioteca|library|navigo|transport|sim|adherent|membre|socio|member|membership|student|etudiant|estudiante|club|bonus)|(loyalty|gift|library|member|membership|student|sim|identity|id|bonus|club|payback|fidelity|navigo|kunden|klanten|geschenk|cadeau|vitale) ?(cards?|cartes?|karten?|kaart)|carte vitale|carte grise|carte d identite|personalausweis|gift ?card",
+    )
+    .expect("valid regex")
+});
+/// A travel visa, not the card network (« ta demande de visa », France-Visas).
+static TRAVEL_VISA: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"demande de visa|visa (pour|de |d |touristique|etudiant|de travail|schengen|application)|e ?visa\b|ambassade|consulat|embassy|immigration")
+        .expect("valid regex")
+});
+
+/// A secure-field card asked for a payment card's details (`ask_secret`): its kind (« card », « cvc »…); its name,
+/// identifier label, identifier or reason, each alone or all together (a meaning split over two fields), naming a
+/// card at all, unless only a card that is no payment card (loyalty, gift, identity…: `OTHER_CARD`), or naming a
+/// card's number, expiry, security code or holder, or a payment card; or holding a card's number. Never asked: the
+/// person gives only the security code, and only in the payment's own flow (« Oui, payer »).
 pub fn asks_for_card(kind: &str, texts: &[&str]) -> bool {
     let kind_folded = folded(kind);
     if !matches!(kind_folded.trim(), "password" | "token" | "code" | "") && CARD_KINDS.is_match(&kind_folded) {
         return true;
     }
-    texts.iter().any(|t| holds_card_number(t) || card_field(t, false).is_some())
+    if texts.iter().any(|t| holds_card_number(t) || card_field(t, false).is_some()) {
+        return true;
+    }
+    let all = folded(&texts.join(" \n "));
+    if PAYMENT_CARD.is_match(&all) {
+        return true;
+    }
+    let other = OTHER_CARD.is_match(&all);
+    let cards: Vec<&str> = ANY_CARD.find_iter(&all).map(|m| m.as_str()).collect();
+    let visa_only = !cards.is_empty() && cards.iter().all(|c| *c == "visa");
+    !cards.is_empty() && !other && !(visa_only && TRAVEL_VISA.is_match(&all))
 }
 
 #[cfg(test)]
@@ -294,6 +387,18 @@ mod tests {
         ] {
             assert!(holds_card_number(text), "{text}");
         }
+        // written otherwise (review of 14/11): double spaces, slashes, dashes, line breaks, a table's cells
+        for text in ["4242  4242  4242  4242", "4242/4242/4242/4242", "4242 – 4242 – 4242 – 4242", "4242\n4242\n4242\n4242",
+                     "4242\t4242\t4242\t4242", "carte_4242_4242_4242_4242"] {
+            assert!(holds_card_number(text), "{text:?}");
+        }
+        // an IBAN (its check digits hold) or a man's social security number is no card's number
+        assert!(iban_valid("FR98 0378 3840 1165 3551 5752 774") && !iban_valid("FR99 0378 3840 1165 3551 5752 774"));
+        for text in ["FR98 0378 3840 1165 3551 5752 774", "IBAN : FR98 0378 3840 1165 3551 5752 774 BIC AGRIFRPP",
+                     "1 48 10 09 262 121 10", "148100926212110"] {
+            assert!(!holds_card_number(text), "{text:?}");
+        }
+        assert!(holds_card_number("IBAN FR99 0378 3840 1165 3551 5752 774, carte 4242 4242 4242 4242"));
         for text in [
             "Commande n° 4242424242424241",
             "SIRET 732 829 320 00074",
@@ -397,9 +502,26 @@ mod tests {
         ] {
             assert!(asks_for_card("password", &["", words]), "{words}");
         }
+        // in other words, other languages, or split over two fields (review of 14/11)
+        for (kind, texts) in [
+            ("password", ["visa", "", "", "Le numéro de ta Visa, pour finir la commande"]),
+            ("password", ["pharmacie", "Les 16 chiffres de ta carte", "", "Pour payer ta commande"]),
+            ("code", ["pharmacie_date", "", "", "Jusqu'à quand ta carte est valable ?"]),
+            ("code", ["pharmacie_nom", "", "", "Le nom imprimé sur ta carte"]),
+            ("code", ["pharmacie_code", "", "", "Les 3 chiffres derrière ta carte"]),
+            ("password", ["negozio", "", "", "Numero della carta di credito"]),
+            ("password", ["loja", "", "", "Número do cartão de crédito"]),
+            ("password", ["winkel", "", "", "Kaartnummer van je bankpas"]),
+            ("password", ["carte", "Numéro", "", "Pour la pharmacie"]),
+            ("password", ["cb", "", "", "pour la commande"]),
+        ] {
+            assert!(asks_for_card(kind, &texts), "{texts:?}");
+        }
         // a password, a token, a code for other things
         for words in ["E-mail de ton compte Garmin", "garmin", "Accès au portail France-Visas", "Code reçu par SMS",
-                      "Numéro de carte de fidélité Carrefour", "Identifiant", "ovh_api"] {
+                      "Numéro de carte de fidélité Carrefour", "Identifiant", "ovh_api", "Ta demande de visa pour le Canada",
+                      "Le code PIN de ta carte SIM", "Numéro de ta carte Navigo", "Code de ta carte cadeau Fnac",
+                      "Accès à ton espace client EDF", "Le mot de passe de ta box"] {
             assert!(!asks_for_card("password", &[words]), "{words}");
             assert!(!asks_for_card("code", &[words]), "{words}");
         }

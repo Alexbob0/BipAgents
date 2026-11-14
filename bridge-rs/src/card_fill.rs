@@ -65,7 +65,7 @@ pub const PROVIDERS: &[Provider] = &[
     Provider { name: "Mollie", frames: &["mollie.com"], pages: &["www.mollie.com", "pay.mollie.com"] },
     Provider { name: "PayPlug", frames: &["payplug.com"], pages: &["secure.payplug.com"] },
     Provider { name: "Braintree", frames: &["braintreegateway.com"], pages: &[] },
-    Provider { name: "PayPal", frames: &["paypal.com"], pages: &[] },
+    Provider { name: "PayPal", frames: &["www.paypal.com"], pages: &[] },
     Provider { name: "Square", frames: &["squarecdn.com", "squareup.com"], pages: &[] },
     Provider { name: "Shopify", frames: &["pci.shopifyinc.com"], pages: &[] },
     // Lyra's brands: PayZen, Systempay (Caisse d'Épargne, Banque Populaire), Sogecommerce, Scellius, Clic&Pay
@@ -91,8 +91,9 @@ pub const PROVIDERS: &[Provider] = &[
     Provider { name: "Payline", frames: &["payline.com"], pages: &["payline.com"] },
     Provider { name: "HiPay", frames: &["hipay.com"], pages: &["hipay.com"] },
     Provider { name: "Stancer", frames: &["stancer.com"], pages: &["stancer.com"] },
-    Provider { name: "Recurly", frames: &["recurly.com"], pages: &[] },
-    Provider { name: "Chargebee", frames: &["chargebee.com"], pages: &[] },
+    // merchants have pages of their own under recurly.com and chargebee.com: only the hosts of the fields' frames
+    Provider { name: "Recurly", frames: &["api.recurly.com", "js.recurly.com"], pages: &[] },
+    Provider { name: "Chargebee", frames: &["js.chargebee.com"], pages: &[] },
 ];
 
 /// The provider whose fields a frame on `host` holds.
@@ -350,10 +351,15 @@ impl Cdp {
     /// Chrome's DevTools on 127.0.0.1:`port` (the browser container's relay, browser/devtools_relay.py); `hold`: the
     /// token of the payment holding the browser (the relay lets only this connection through meanwhile).
     pub async fn connect(port: u16, hold: Option<&str>) -> Result<Cdp, FillError> {
+        Cdp::connect_with(port, crate::browsers::devtools_secret(port), hold).await
+    }
+
+    /// `connect` with the browser's secret given (bip-browser-mcp, which reads it from its file: the guard's own look
+    /// at the page, browser_mcp.rs `isolated`).
+    pub async fn connect_with(port: u16, secret: Option<String>, hold: Option<&str>) -> Result<Cdp, FillError> {
         use tokio_tungstenite::tungstenite::client::IntoClientRequest;
         let http =
             reqwest::Client::builder().timeout(Duration::from_secs(5)).build().map_err(|e| protocol(e.to_string()))?;
-        let secret = crate::browsers::devtools_secret(port);
         let mut asking = http.get(format!("http://127.0.0.1:{port}/json/version"));
         if let Some(secret) = &secret {
             asking = asking.header(crate::browsers::CDP_HEADER, secret);

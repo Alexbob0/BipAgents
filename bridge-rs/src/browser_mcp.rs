@@ -183,9 +183,10 @@ prêt »). Never ask your person for a card's details. Nothing was run.";
 
 /// A script sending the tab to a payment service's page (`script_goes_to_provider`): only the shop's own pages send it
 /// there (card_fill.rs `reached_from`).
-pub const PROVIDER_SCRIPT_REFUSED: &str = "Not done: a script never sends your browser to a payment service's page, \
-nor sends a form there: go to the payment through the shop's own buttons (click_element), so the payment page is the \
-shop's own. Nothing was run.";
+pub const PROVIDER_SCRIPT_REFUSED: &str = "Not done: a script never sends your browser to another page (a payment \
+service's included), nor adds links, forms or frames to a page, nor rewrites where they go: open an address with \
+navigate, follow the page's own links and buttons with click_element, so a payment page is always the shop's own. \
+Nothing was run.";
 
 /// What the agent reads when the check after its call erased a card's details.
 pub const CARD_UNDONE: &str = "Not done: that put a payment card's details into the page, and you never type them \
@@ -196,6 +197,11 @@ card's details.";
 /// Added to `type_text`, `paste_text` and `select_option` in the tool list (`tame_tool_list`).
 pub const NOT_CARDS: &str = "Never a payment card's number, expiry, security code or holder: payments go only through \
 pay_with_card, and when it can't, hand_over_payment.";
+
+/// Added to `execute_script` in the tool list (`tame_tool_list`).
+pub const NOT_WAYS: &str = "Never to send the browser to another page or to add links, forms, frames or HTML to a page \
+(refused: open an address with navigate, follow the page's own links with click_element); never to read or write a \
+payment card's fields; where a page has card fields, no timers, listeners or promises.";
 
 /// What names a card's field in a script (on `card_details::folded` text): its autocomplete token, the usual names and
 /// ids, in four languages.
@@ -213,17 +219,40 @@ static NAVIGATES: LazyLock<Regex> = LazyLock::new(|| {
         .expect("valid regex")
 });
 
-/// A script naming a payment service's host (card_fill.rs `provider_hosts`) and sending the tab or a form somewhere.
+/// What sends the tab somewhere or makes a new way out of the page, whatever address it holds (review of 14/11: a
+/// provider's host built from parts, from atob, or a link added then clicked, « link » in the history like the shop's
+/// own): an assignment to `location`, `window.open`, a link's or a form's address rewritten, HTML put into the page,
+/// a link, form or frame created.
+static MAKES_WAY: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r#"(?i)\blocation\b\s*(=[^=]|\[|\.\s*(href\s*=[^=]|assign|replace|protocol\s*=|host(name)?\s*=|pathname\s*=|search\s*=))|\bopen\s*\(|\.\s*(action|href|formaction|srcdoc)\s*=[^=]|\[\s*["'`](action|href|formaction|srcdoc|innerhtml|outerhtml)["'`]\s*\]\s*=[^=]|setattribute\s*\(\s*["'`](action|href|formaction|src|srcdoc|xlink:href)|setattributens|\b(inner|outer)html\s*\+?=[^=]|insertadjacenthtml|document\s*\.\s*write|createcontextualfragment|domparser|parsehtmlunsafe|sethtmlunsafe|createelement(ns)?\s*\([^)]*["'`]\s*(a|form|iframe|frame|base|meta|area|link|object|embed|svg)\s*["'`]|cloneNode|\.\s*replaceWith\s*\(|import\s*\("#,
+    )
+    .expect("valid regex")
+});
+
+/// Timers, listeners, observers and promises: a script whose effect comes later, after the look that follows it (review
+/// of 14/11: setTimeout writing a card's number 800 ms after the call). Refused where the page has card fields.
+static LATER: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)settimeout|setinterval|requestanimationframe|requestidlecallback|addeventlistener|\bon[a-z]+\s*=[^=]|observer|queuemicrotask|\.then\s*\(|\basync\b|\bawait\b|\bworker\b|promise",
+    )
+    .expect("valid regex")
+});
+
+/// A script naming a payment service's host (card_fill.rs `provider_hosts`) and sending the tab or a form somewhere,
+/// or one that makes a way out of the page at all (`MAKES_WAY`).
 pub fn script_goes_to_provider(script: &str) -> bool {
     let lower = script.to_lowercase();
-    NAVIGATES.is_match(script) && crate::card_fill::provider_hosts().iter().any(|h| lower.contains(h))
+    MAKES_WAY.is_match(script)
+        || NAVIGATES.is_match(script) && crate::card_fill::provider_hosts().iter().any(|h| lower.contains(h))
 }
 
-/// What the page held before a call about cards (`guard_before`'s `cards`, `cardtext`): card fields, and whether one
-/// holds text. None (the page couldn't say): both, to be safe.
+/// What the page held before a call about cards (`guard_before`'s `cards`, `frames`, `cardtext`): card fields or a
+/// payment provider's frame, and whether a card field holds text. None (the page couldn't say): both, to be safe.
 pub fn page_cards(before: Option<&Value>) -> (bool, bool) {
     let Some(before) = before else { return (true, true) };
-    let cards = before.get("cards").and_then(Value::as_object).is_some_and(|c| !c.is_empty());
+    let cards = before.get("cards").and_then(Value::as_object).is_some_and(|c| !c.is_empty())
+        || before.get("frames").and_then(Value::as_u64).unwrap_or(0) > 0;
     (cards, before.get("cardtext").and_then(Value::as_bool) == Some(true))
 }
 
@@ -240,6 +269,9 @@ pub fn script_card_refusal(script: &str, before: Option<&Value>) -> Option<&'sta
         return Some(PROVIDER_SCRIPT_REFUSED);
     }
     let (cards, holds_text) = page_cards(before);
+    if cards && LATER.is_match(script) {
+        return Some(SCRIPT_CARD_REFUSED);
+    }
     if CARD_TARGET.is_match(&crate::card_details::folded(script))
         && (WRITES.is_match(script) || cards && VALUE_ACCESS.is_match(script))
     {
@@ -249,6 +281,14 @@ pub fn script_card_refusal(script: &str, before: Option<&Value>) -> Option<&'sta
         return Some(SCRIPT_CARD_REFUSED);
     }
     (cards && WRITES.is_match(script) && SENDS.is_match(script)).then_some(SCRIPT_CARD_REFUSED)
+}
+
+/// An address the agent opens (`navigate`, `new_tab`) holding a card's number, as written or decoded (review of
+/// 14/11: `navigate …&cc=4242…` sent it to the site in its address).
+pub fn address_holds_card(args: &Dict) -> bool {
+    let Some(url) = args.get("url").and_then(Value::as_str) else { return false };
+    let decoded = percent_encoding::percent_decode_str(&url.replace('+', " ")).decode_utf8_lossy().into_owned();
+    crate::card_details::holds_card_number(url) || crate::card_details::holds_card_number(&decoded)
 }
 
 /// The text a call would type or choose (`type_text`, `paste_text`: its text; `select_option`: its value, text or
@@ -304,7 +344,14 @@ pub fn card_js() -> String {
 const words = (e) => {{ const p = [e.getAttribute('autocomplete'), e.name, e.id, e.getAttribute('placeholder'), e.getAttribute('aria-label'), e.getAttribute('title')]; \
 if (e.labels) for (const l of e.labels) p.push(l.textContent); const by = e.getAttribute('aria-labelledby'); \
 if (by) for (const i of by.split(/\\s+/)) {{ const r = e.ownerDocument.getElementById(i); if (r) p.push(r.textContent); }} \
-for (const a of e.attributes) if (a.name.startsWith('data-')) p.push(a.value); return p.filter(Boolean).join(' ').slice(0, 600); }}; \
+for (const a of e.attributes) if (a.name.startsWith('data-')) p.push(a.value); \
+const fs = e.closest && e.closest('fieldset'); const lg = fs && fs.querySelector('legend'); if (lg) p.push(lg.textContent); \
+const grp = e.closest && e.closest('[role=group]'); if (grp) p.push(grp.getAttribute('aria-label') || ''); \
+return p.filter(Boolean).join(' ').slice(0, 600); }}; \
+const deepFocus = (d) => {{ let a = d.activeElement; for (let n = 0; a && n < 8; n++) {{ while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement; \
+if (!a || (a.tagName !== 'IFRAME' && a.tagName !== 'FRAME')) break; let c = null; try {{ c = a.contentDocument; }} catch (x) {{}} \
+if (!c || !c.activeElement || c.activeElement === c.body) break; a = c.activeElement; }} return a; }}; \
+const takesKeys = (e) => !!e && !e.disabled && (e.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT', 'IFRAME', 'FRAME'].includes(e.tagName)); \
 const FRAME_WORDS = /\\bcard|carte (bancaire|de paiement|de credit)|kartennummer|tarjeta|\\bcvc|\\bcvv|cryptogramme|hosted ?field|secure ?field|payment ?field|tokeniz|stripe|adyen|braintree|mollie|payplug|stancer|payzen|lyra|krypton|worldline|ingenico|ogone|paybox|monetico|systempay|cawl|hipay|payline/; \
 const hostOf = (u) => {{ try {{ return new URL(u, location.href).hostname.toLowerCase(); }} catch (x) {{ return ''; }} }}; \
 const payFrame = (f) => {{ const hh = hostOf(f.getAttribute('src') || ''); if (hh && PROV.some((p) => hh === p || hh.endsWith('.' + p))) return true; \
@@ -630,8 +677,10 @@ const password = el.tagName === 'INPUT' && attr('type') === 'password'; \
 let terms = ''; \
 if (el.tagName === 'INPUT' && attr('type') === 'checkbox' && !el.checked) terms = label(el); \
 const frame = el.tagName === 'IFRAME' || el.tagName === 'FRAME'; \
-const card = frame ? (payFrame(el) ? 'frame' : '') : cardOf(el); \
+let card = frame ? (payFrame(el) ? 'frame' : '') : cardOf(el); \
 const other = !frame && !!el.attributes && CD.other.test(fold(words(el))); \
+if (!card && !takesKeys(el)) {{ const f = deepFocus(document); if (f && f !== el) {{ \
+card = (f.tagName === 'IFRAME' || f.tagName === 'FRAME') ? (payFrame(f) ? 'frame' : '') : (f.attributes ? cardOf(f) : ''); }} }} \
 return JSON.stringify({{found: true, password: password, terms: terms.slice(0, 300), card: card, other: other}}); }})()"
     )
 }
@@ -684,9 +733,14 @@ pub fn guard_before() -> String {
         "{GUARD_BEFORE}{LABEL_JS}{GUARD_JS}{cards}{CARD_FIELDS_JS}const pw = {{}}, known = [], boxes = []; \
 inputs.forEach(({{e, k}}) => {{ if (kind(e) === 'password') {{ pw[k] = e.value ? h(e.value) : ''; if (e.value) known.push(h(e.value)); }} \
 else if (kind(e) === 'checkbox' && !e.checked && isTerms(label(e))) boxes.push(k); }}); \
-const cards = {{}}; let cardtext = false; fields.forEach(({{e, k}}) => {{ const v = valueOf(e); const c = cardOf(e, ctxOf(e)); \
-if (c || (e.tagName !== 'SELECT' && holdsCard(v))) {{ cards[k] = e.tagName === 'SELECT' ? v : h(v); if (c && e.tagName !== 'SELECT' && v) cardtext = true; }} }}); \
-return JSON.stringify({{pw: pw, known: known, boxes: boxes, cards: cards, cardtext: cardtext}}); }})()"
+const cards = {{}}; let cardtext = false, cleared = 0, frames = 0; \
+roots.forEach((r) => {{ for (const f of r.querySelectorAll('iframe, frame')) if (payFrame(f)) frames++; }}); \
+fields.forEach(({{e, k}}) => {{ let v = valueOf(e); const c = cardOf(e, ctxOf(e)); const select = e.tagName === 'SELECT'; \
+const number = !select && holdsCard(v) && !isOther(e); \
+if (!select && v && (c || number)) {{ setv(e, ''); v = ''; cleared++; }} \
+if (c || number) {{ cards[k] = select ? v : h(v); }} }}); \
+return JSON.stringify({{pw: pw, known: known, boxes: boxes, cards: cards, cardtext: cardtext, cleared: cleared, frames: frames, \
+origin: location.origin}}); }})()"
     )
 }
 
@@ -698,7 +752,10 @@ const CARD_FIELDS_JS: &str = "const fields = []; roots.forEach((r, ri) => { cons
 own.forEach((e, i) => fields.push({e: e, k: (ri ? 'r' + ri + ':' : '') + (e.id ? '#' + e.id : (e.name ? e.tagName + '|' + e.name + '|' \
 + own.filter((x) => x.name === e.name).indexOf(e) : e.tagName + '@' + i))})); }); \
 const valueOf = (e) => e.tagName === 'SELECT' ? 's' + e.selectedIndex : String(e.value || ''); \
-const scopes = new Map(); const ctxOf = (e) => { const sc = scopeOf(e); if (!scopes.has(sc)) scopes.set(sc, cardScope(sc)); return scopes.get(sc); }; ";
+const scopes = new Map(); const ctxOf = (e) => { const sc = scopeOf(e); if (!scopes.has(sc)) scopes.set(sc, cardScope(sc)); return scopes.get(sc); }; \
+const isOther = (e) => CD.other.test(fold(words(e))); \
+const setv = (e, v) => { const w = e.ownerDocument.defaultView; const proto = e.tagName === 'TEXTAREA' ? w.HTMLTextAreaElement.prototype : w.HTMLInputElement.prototype; \
+Object.getOwnPropertyDescriptor(proto, 'value').set.call(e, v); e.dispatchEvent(new Event('input', {bubbles: true})); e.dispatchEvent(new Event('change', {bubbles: true})); }; ";
 
 /// After it, with what `guard_before` answered: a password field holding text it didn't hold before (not a value the
 /// page already had: a field drawn again) is emptied; a terms box ticked is unticked. How many of each.
@@ -708,10 +765,8 @@ pub fn guard_after(before: &Value) -> String {
     format!(
         "/* bipagents guard: after */ (() => {{ const B = {before}; {GUARD_JS}{cards}{CARD_FIELDS_JS}\
 const C = B.cards || {{}}; let cards = 0; \
-const setv = (e, v) => {{ const w = e.ownerDocument.defaultView; const proto = e.tagName === 'TEXTAREA' ? w.HTMLTextAreaElement.prototype : w.HTMLInputElement.prototype; \
-Object.getOwnPropertyDescriptor(proto, 'value').set.call(e, v); e.dispatchEvent(new Event('input', {{bubbles: true}})); e.dispatchEvent(new Event('change', {{bubbles: true}})); }}; \
 fields.forEach(({{e, k}}) => {{ const v = valueOf(e); const c = cardOf(e, ctxOf(e)); const select = e.tagName === 'SELECT'; \
-if (!c && (select || !holdsCard(v))) return; const had = k in C ? C[k] : null; \
+if (!c && (select || !holdsCard(v) || isOther(e))) return; const had = k in C ? C[k] : null; \
 if (select) {{ if (had === null ? e.selectedIndex <= 0 : had === v) return; e.selectedIndex = had === null ? 0 : parseInt(had.slice(1), 10); \
 e.dispatchEvent(new Event('change', {{bubbles: true}})); cards++; return; }} \
 if (!v || had === h(v)) return; setv(e, ''); cards++; }}); \
@@ -972,6 +1027,11 @@ pub fn loads_a_page(tool: &str) -> bool {
     matches!(tool, "navigate" | "click_element" | "go_back" | "go_forward" | "reload_page")
 }
 
+/// Where bip-browser-mcp writes down the agent's scripts (`note_script`), beside the browser's `busy` file.
+pub const SCRIPTS_FILE: &str = "scripts.jsonl";
+/// Kept at about its last 200 lines past this size.
+const SCRIPTS_MAX: u64 = 64 * 1024;
+
 /// The only `spawn_browser` arguments the agent's call keeps (audit 11/11, BV-3): the window's size and what pages
 /// not to load. Everything else changes how Chrome is launched, and the agent is the model a page or an e-mail may
 /// steer: `browser_args` (`--no-proxy-server` displaced the egress proxy's flag, so no send guard), `proxy`,
@@ -1017,6 +1077,16 @@ pub fn tame_tool_list(result: &mut Value) {
                 if !text.contains(NOT_CARDS) {
                     text.push_str(if typing { " " } else { "\n\n" });
                     text.push_str(NOT_CARDS);
+                }
+            }
+            continue;
+        }
+        // a script never makes a way out of the page; no timers where a card's fields are (review of 14/11)
+        if tool.get("name").and_then(Value::as_str) == Some("execute_script") {
+            if let Some(Value::String(text)) = tool.get_mut("description") {
+                if !text.contains(NOT_WAYS) {
+                    text.push_str("\n\n");
+                    text.push_str(NOT_WAYS);
                 }
             }
             continue;
@@ -1689,7 +1759,7 @@ impl Proxy {
         let mut target = Value::Null;
         for attempt in 0..=LATE_FIELD_TRIES {
             // the page can't say: a card's number is refused all the same, the rest goes on (checked after it)
-            let read = match self.script(instance, &script).await {
+            let read = match self.look(instance, &script).await {
                 Some(Value::String(text)) => serde_json::from_str::<Value>(&text).ok(),
                 other => other,
             };
@@ -1717,7 +1787,7 @@ impl Proxy {
     /// After a guarded call: what it wrote into a password field erased, a terms box it ticked unticked
     /// (`guard_after`), and what the agent reads then; None when nothing had to be undone (or the page can't say).
     async fn undone(&self, instance: &str, before: &Value) -> Option<&'static str> {
-        let report = match self.script(instance, &guard_after(before)).await? {
+        let report = match self.look(instance, &guard_after(before)).await? {
             Value::String(text) => serde_json::from_str::<Value>(&text).ok()?,
             other => other,
         };
@@ -1759,6 +1829,10 @@ impl Proxy {
         if let Some(refused) = refused_address(tool, &args) {
             log(&format!("{tool}: an address of the container, the browser or a script refused"));
             return Ok(refused);
+        }
+        if address_holds_card(&args) {
+            log(&format!("{tool}: a card's number in an address refused"));
+            return Ok(refused(CARD_REFUSED));
         }
         // what the page holds before a script, for its check before (`guard`) and after (`undone`)
         let early = match tool == "execute_script" && !instance.is_empty() {
@@ -1827,6 +1901,9 @@ impl Proxy {
             (None, false) => None,
         };
         let response = self.request("tools/call", sent.as_ref()).await?;
+        if tool == "execute_script" {
+            self.note_script(before.as_ref());
+        }
         if loads_a_page(tool) && !instance.is_empty() {
             let failed = response.contains_key("error")
                 || response.get("result").and_then(|r| r.get("isError")).and_then(Value::as_bool) == Some(true);
@@ -1851,7 +1928,7 @@ impl Proxy {
     /// An answer that holds what a password field of the page holds (`shows_password`) is not passed on.
     async fn unless_shown(&self, instance: &str, response: Dict) -> Dict {
         let answer = serde_json::to_string(&response).unwrap_or_default();
-        let shown = self.script(instance, &shows_password(&answer)).await;
+        let shown = self.look(instance, &shows_password(&answer)).await;
         if matches!(&shown, Some(Value::Bool(true))) || matches!(&shown, Some(Value::String(t)) if t == "true") {
             log("an answer held a password: not passed on");
             return refused(PASSWORD_SHOWN);
@@ -1861,10 +1938,105 @@ impl Proxy {
 
     /// What the page holds before a guarded call (`guard_before`); None when it can't say.
     async fn page_before(&self, instance: &str) -> Option<Value> {
-        match self.script(instance, &guard_before()).await {
+        let before = match self.look(instance, &guard_before()).await {
             Some(Value::String(text)) => serde_json::from_str::<Value>(&text).ok(),
             _ => None,
+        };
+        let cleared = before.as_ref().and_then(|b| b.get("cleared")).and_then(Value::as_u64).unwrap_or(0);
+        if cleared > 0 {
+            log(&format!("{cleared} card field(s) held a card's details before the call: emptied"));
         }
+        before
+    }
+
+    /// A script of the agent's ran on a page: its origin and the time written down (`scripts.jsonl` beside `busy`,
+    /// the `scripts` setting), for card_pay.rs: a provider's payment page reached from the card's site is never filled
+    /// after a script there (review of 14/11: a link to another merchant's page at the same provider, added by a script
+    /// and clicked, looks like the shop's own). The page's origin unknown: written as « unknown » (any site).
+    fn note_script(&self, before: Option<&Value>) {
+        let origin = before.and_then(|b| b.get("origin")).and_then(Value::as_str).unwrap_or("unknown");
+        let path = match self.config.get("scripts").and_then(Value::as_str).filter(|p| !p.is_empty()) {
+            Some(path) => PathBuf::from(path),
+            None => match self.config.get("busy").and_then(Value::as_str).filter(|p| !p.is_empty()) {
+                Some(busy) => Path::new(busy).with_file_name(SCRIPTS_FILE),
+                None => return,
+            },
+        };
+        let line = json!({"t": crate::py::time_time(), "origin": origin});
+        if std::fs::metadata(&path).is_ok_and(|m| m.len() > SCRIPTS_MAX) {
+            let kept = std::fs::read_to_string(&path).unwrap_or_default();
+            let lines: Vec<&str> = kept.lines().collect();
+            let tail = lines[lines.len().saturating_sub(200)..].join("\n");
+            let _ = std::fs::write(&path, format!("{tail}\n"));
+        }
+        let written = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .and_then(|mut f| writeln!(f, "{line}"));
+        if written.is_err() {
+            log("a script's record could not be written");
+        }
+    }
+
+    /// The guard's own look at the page (`guard_before`, `target_script`, `guard_after`, `shows_password`): in a world
+    /// of its own (`Page.createIsolatedWorld` through Chrome's DevTools, as card_fill.rs does), in the tab the real
+    /// server drives (its `get_active_tab`), so a script the agent ran before can't change what it sees (review of
+    /// 14/11: `HTMLInputElement.prototype.name` made to say « iban », `String.prototype.match` made to find nothing).
+    /// Through the real server's execute_script (the page's own world) only when DevTools can't be reached (no port,
+    /// an older setting, the browser held for a payment).
+    async fn look(&self, instance: &str, script: &str) -> Option<Value> {
+        match self.isolated(instance, script).await {
+            Ok(value) => value,
+            Err(()) => self.script(instance, script).await,
+        }
+    }
+
+    /// `script` in a world of its own in the agent's tab: its value (None: it failed there), or Err when that world
+    /// can't be had.
+    async fn isolated(&self, instance: &str, script: &str) -> Result<Option<Value>, ()> {
+        let port = self.config.get("cdp_port").and_then(Value::as_u64).filter(|p| (1..65536).contains(p)).ok_or(())?;
+        let tab = self.active_tab(instance).await.ok_or(())?;
+        let secret = self
+            .config
+            .get("cdp_secret_file")
+            .and_then(Value::as_str)
+            .filter(|p| !p.is_empty())
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let connecting = crate::card_fill::Cdp::connect_with(port as u16, secret, None);
+        let mut cdp = tokio::time::timeout(Duration::from_secs(5), connecting).await.map_err(|_| ())?.map_err(|_| ())?;
+        let attached =
+            cdp.call("Target.attachToTarget", json!({"targetId": tab, "flatten": true}), None).await.map_err(|_| ())?;
+        let session = attached.get("sessionId").and_then(Value::as_str).ok_or(())?.to_string();
+        let tree = cdp.call("Page.getFrameTree", json!({}), Some(&session)).await.map_err(|_| ())?;
+        let frame = tree.pointer("/frameTree/frame/id").and_then(Value::as_str).ok_or(())?.to_string();
+        let world = json!({"frameId": frame, "worldName": "bipagents-guard", "grantUniveralAccess": false});
+        let created = cdp.call("Page.createIsolatedWorld", world, Some(&session)).await.map_err(|_| ())?;
+        let context = created.get("executionContextId").and_then(Value::as_i64).ok_or(())?;
+        Ok(cdp.evaluate(&session, context, script).await.ok())
+    }
+
+    /// The target id of the tab the real server drives for `instance` (its `get_active_tab`), None when it can't say.
+    async fn active_tab(&self, instance: &str) -> Option<String> {
+        let params = json!({"name": "get_active_tab", "arguments": {"instance_id": instance}});
+        let response = self.request("tools/call", Some(&params)).await.ok()?;
+        let result = response.get("result")?;
+        if result.get("isError").and_then(Value::as_bool) == Some(true) {
+            return None;
+        }
+        let from = |v: &Value| {
+            v.get("tab_id")
+                .or_else(|| v.get("result").and_then(|r| r.get("tab_id")))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        };
+        if let Some(id) = result.get("structuredContent").and_then(from) {
+            return Some(id).filter(|id| !id.is_empty());
+        }
+        let text = first_text(result.as_object()?);
+        serde_json::from_str::<Value>(&text).ok().as_ref().and_then(from).filter(|id| !id.is_empty())
     }
 
     /// A script run in the page through the real server's `execute_script`: its result, None when it failed.
@@ -2585,7 +2757,8 @@ out of your reach";
     fn the_skill_gives_the_same_script() {
         let skill = crate::browsers::skill();
         assert!(skill.contains(&format!("`{AROUND_A_WORD}`")), "visible-browser/SKILL.md § 2 and AROUND_A_WORD");
-        assert!(skill.contains("version: 1.13.0"));
+        assert!(skill.contains("version: 1.13.1"));
+        assert!(skill.contains("never changes where a page goes"));
         // card-guards, 14/11: never a card's details typed or asked; the hand-over when the vault can't fill the form
         assert!(skill.contains("never ask the person for them") && skill.contains("`ask_secret` refuses it"));
         assert!(skill.contains("call `hand_over_payment` (« Panier prêt »)"));
@@ -2802,7 +2975,7 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         // nothing kept in the page (third review 13/11): no global written, no function of the page replaced
         assert!(!before.contains("window[") && !before.contains("defineProperty") && !before.contains("prototype.submit"));
         assert!(before.contains("isTerms(label(e))")
-            && before.contains("JSON.stringify({pw: pw, known: known, boxes: boxes, cards: cards, cardtext: cardtext})"));
+            && before.contains("JSON.stringify({pw: pw, known: known, boxes: boxes, cards: cards, cardtext: cardtext, cleared"));
         assert!(after.contains("const B = {") && after.contains("\"boxes\":[\"#cgu\"]") && after.contains("\"#pw\":\"1a2b\""), "{after}");
         assert!(!after.contains("window[") && after.contains("set(e, '')"));
         // the page's open shadow roots and its own site's frames looked into (fifth review 13/11)
@@ -2856,6 +3029,10 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         tame_tool_list(&mut choose);
         let said = choose["tools"][0]["description"].as_str().unwrap();
         assert!(said.ends_with(NOT_CARDS) && !said.contains(NOT_PASSWORDS));
+        let mut script = json!({"tools": [{"name": "execute_script", "description": "Execute JavaScript."}]});
+        tame_tool_list(&mut script);
+        tame_tool_list(&mut script);
+        assert_eq!(script["tools"][0]["description"], format!("Execute JavaScript.\n\n{NOT_WAYS}"));
     }
 
     #[test]
@@ -2933,6 +3110,30 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         assert!(target.contains("cawl-solutions.fr") && target.contains("js.stripe.com"));
         assert!(guard_before().contains("cardtext: cardtext") && guard_after(&with_cards).contains("cards++"));
         assert!(GUARDED.contains(&"select_option"));
+        // review of 14/11: a way out of the page made by a script, however its address is written; timers where the
+        // page has card fields (or a provider's frame); a card's number in an address
+        for script in [
+            "location.href = 'https://payment.cawl-' + 'solutions.fr/x'",
+            "location.href = atob('aHR0cHM6Ly9wYXltZW50LmNhd2wtc29sdXRpb25zLmZyL3g=')",
+            "const a = document.createElement('a'); a.href = x; document.body.append(a); a.click()",
+            "document.body.insertAdjacentHTML('beforeend', '<a id=z href=x>Payer</a>')",
+            "document.querySelector('#box').innerHTML = '<form action=x></form>'",
+            "document.forms[0]['action'] = x",
+            "window.location = x",
+            "open(x)",
+        ] {
+            assert_eq!(script_card_refusal(script, Some(&empty)), Some(PROVIDER_SCRIPT_REFUSED), "{script}");
+        }
+        let frames = json!({"pw": {}, "known": [], "boxes": [], "cards": {}, "frames": 1, "cardtext": false});
+        for script in ["setTimeout(() => {}, 10)", "document.addEventListener('input', f)", "new MutationObserver(f)",
+                       "fetch(u).then(r => r.text())", "x.oninput = f"] {
+            assert_eq!(script_card_refusal(script, Some(&with_cards)), Some(SCRIPT_CARD_REFUSED), "{script}");
+            assert_eq!(script_card_refusal(script, Some(&frames)), Some(SCRIPT_CARD_REFUSED), "{script}");
+            assert_eq!(script_card_refusal(script, Some(&empty)), None, "{script}");
+        }
+        assert!(address_holds_card(&dict(json!({"url": "https://shop.example/pay?cc=4242424242424242&exp=1230"}))));
+        assert!(address_holds_card(&dict(json!({"url": "https://shop.example/?n=4242%204242%204242%204242"}))));
+        assert!(!address_holds_card(&dict(json!({"url": "https://shop.example/commande/12345?siret=73282932000074"}))));
         for refusal in [CARD_REFUSED, SCRIPT_CARD_REFUSED, CARD_UNDONE] {
             assert!(refusal.contains("pay_with_card") && refusal.contains("« Panier prêt »"), "{refusal}");
             assert!(refusal.contains("Never ask your person") || refusal.contains("never ask your person"), "{refusal}");

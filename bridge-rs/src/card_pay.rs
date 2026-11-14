@@ -522,6 +522,32 @@ async fn hosted_page(page: &mut Page, host: &str, sites: &[String], test: &[Stri
     card_fill::reached_from(&entries, current, sites, test).map(|shop| Some((shop, name))).ok_or(())
 }
 
+/// How long before a provider's payment page a script of the agent's on the card's site keeps it from being filled.
+const SCRIPTED_WINDOW: f64 = 3600.0;
+
+/// A script of the agent's ran on a page of `shop` (its host) within the hour (bip-browser-mcp writes each one down,
+/// browser_mcp.rs `note_script`; « unknown » counts for any site): the provider's page the tab then reached may be
+/// another merchant's (review of 14/11: a link added by a script and clicked is « link » in the history, like the
+/// shop's own). The shop's own payment page is then never filled: the agent hands the payment over.
+fn scripted_before(config: &Config, agent: &str, shop: &str) -> bool {
+    let path = crate::browsers::folder(config, agent).join(crate::browser_mcp::SCRIPTS_FILE);
+    let text = std::fs::read_to_string(path).unwrap_or_default();
+    let since = crate::py::time_time() - SCRIPTED_WINDOW;
+    text.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok()).any(|line| {
+        let recent = line.get("t").and_then(Value::as_f64).is_some_and(|t| t >= since);
+        let origin = line.get("origin").and_then(Value::as_str).unwrap_or("unknown");
+        let host = card_fill::origin_of(origin).map(|(_, h)| h);
+        recent && (origin == "unknown" || origin == "null" || host.as_deref() == Some(shop))
+    })
+}
+
+fn scripted_text(shop: &str, page: &str) -> String {
+    format!(
+        "A script of yours ran on {shop} before your browser came to this payment page ({page}): BipAgents can't be sure \
+         it is the shop's own payment page, so it fills no card here. Nothing was asked or typed. {HAND_IT_OVER}"
+    )
+}
+
 /// The page without its fragment: moving on means another page.
 fn page_of(url: &str) -> &str {
     url.split('#').next().unwrap_or(url)
@@ -1235,6 +1261,10 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
     // A payment provider's own page (the shop sent the tab to CAWL, PayZen, Monetico…): only when this tab came there
     // from the card's site, by the pages' own links or forms (card_fill.rs `reached_from`).
     match hosted_page(&mut page, &host, &sites, &card_fill::test_providers(&config)).await {
+        Ok(Some((shop, _))) if scripted_before(&config, &agent.name, &shop) => {
+            journal(&config, &entry, &agent.name, "refused_script");
+            return Ok(refusal(&scripted_text(&shop, &host)));
+        }
         Ok(hosted) => entry.hosted = hosted,
         Err(()) => {
             journal(&config, &entry, &agent.name, "refused_site");
@@ -1543,6 +1573,9 @@ async fn fresh_page(
                 "The payment page was opened again while the person was asked, not from {shop}: nothing was typed. \
                  {HAND_IT_OVER}"
             ));
+        }
+        if scripted_before(config, agent, shop) {
+            return Err(scripted_text(shop, &entry.site));
         }
     }
     let lost = format!(

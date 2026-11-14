@@ -18,6 +18,9 @@ from bbkit.common import AUTH, answered
 from bbkit.mcp import give_token
 from bbkit.servers import free_port, wait_until
 
+# card_pay.rs's look at a leftover hold (browsers.rs `stale_check_command`), run at the bridge's start
+STALE_CHECK = '[ "$(head -c 4 /tmp/bipagents-hold 2>/dev/null)" = card ] && exit 7; exit 0'
+
 TOKEN = "agent-token-for-vie-0123456789abcdef"
 VAULT = "/v1/agent-tools/vault"
 ANSWER = json.dumps({"id": "vault_1", "removed": True}) + "\n"
@@ -355,6 +358,11 @@ def test_the_persons_hold_is_respected(bridges, fakes):
         assert waiting["isError"] is True and "using your browser" in waiting["content"][0]["text"]
         assert cards(bridge) == [] and chrome.typed == []
         hold.unlink()
+        # The card payments' sweep of leftover holds runs once as the bridge starts (card_pay.rs
+        # `end_stale_holds_forever`) with a `podman exec … sh -c` of its own: on a loaded machine it could come after the
+        # rule below and use it up (review of card-guards, 14/11: 2 failures in 2 there, 1 in 10 on int-release-next).
+        # Its first look is waited for before the rule (a few seconds at most: an install without it goes on).
+        wait_until(lambda: any(argv[-1] == STALE_CHECK for argv in bridge.commands.of("podman")), timeout=10)
         # Taken by the person while they were asked: the flag is there, nothing is typed.
         bridge.commands.rule("podman", ["exec", "bipagents-browser-vie", "sh", "-c"], exit=3, times=1)
         held, card = create(bridge)

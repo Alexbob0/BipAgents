@@ -947,6 +947,10 @@ pub fn proxy_config(config: &Config, agent: &str, engine: &str, ports: &IndexMap
         "stop": [systemctl, "--user", "stop", unit],
         "cache": place.join("mcp-cache.json").to_string_lossy(), "busy": place.join("busy").to_string_lossy(),
         "cdp_port": ports.get("cdp").copied().unwrap_or(0),
+        // the guard's own look at the page, in a world of its own through DevTools (browser_mcp.rs `isolated`): the
+        // relay's secret, as Hermes' `browser.cdp_url` holds it; and where the agent's scripts are written down
+        "cdp_secret_file": place.join(CDP_SECRET).to_string_lossy(),
+        "scripts": place.join(crate::browser_mcp::SCRIPTS_FILE).to_string_lossy(),
         "idle": config.browser.idle_minutes as u64 * 60,
         "ended": place.join("ended").to_string_lossy(), "after_run": crate::browser_mcp::AFTER_RUN_SECONDS,
         "rescue": place.join("rescue").to_string_lossy(),
