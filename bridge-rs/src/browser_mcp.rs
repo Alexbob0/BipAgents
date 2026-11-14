@@ -207,7 +207,8 @@ if (!found.length) return JSON.stringify({{found: false, lists: lists()}}); \
 const named = [...new Set(found.flatMap((e) => e.tagName === 'SELECT' ? [e] : [...e.querySelectorAll('select')]))]; \
 if (named.length > 1) return JSON.stringify({{found: true, list: false, several: named.length, lists: lists()}}); \
 if (!named.length) {{ const e = found[0], type = (e.getAttribute('type') || '').toLowerCase(); \
-const why = e.tagName === 'INPUT' && type === 'hidden' ? {{hidden: true}} \
+const why = e.tagName === 'INPUT' && type === 'password' ? {{password: true}} \
+: e.tagName === 'INPUT' && type === 'hidden' ? {{hidden: true}} \
 : e.tagName === 'INPUT' && ['checkbox', 'radio'].includes(type) ? {{box: true}} \
 : (e.tagName === 'INPUT' && !['button', 'submit', 'reset', 'image'].includes(type)) || e.tagName === 'TEXTAREA' \
 || e.isContentEditable ? {{field: true}} : {{}}; \
@@ -307,6 +308,9 @@ pub fn chosen_answer(answer: &Value, asked: &str) -> Option<Dict> {
     let found = flag("found")?;
     if !found {
         return Some(refused(&format!("{LIST_NOT_FOUND}{}", lists_text(&page))));
+    }
+    if flag("password") == Some(true) {
+        return Some(refused(PASSWORD_REFUSED));
     }
     if flag("list") == Some(false) {
         let why = if page.get("several").and_then(Value::as_u64).is_some_and(|n| n > 1) {
@@ -677,7 +681,8 @@ return JSON.stringify({{found: true, password: password, terms: terms.slice(0, 3
 pub const LATE_FIELD_TRIES: u32 = 12;
 
 /// The tools whose effect on the page is checked (`guard_before`, `guard_after`).
-pub const GUARDED: [&str; 5] = ["click_element", "type_text", "paste_text", "press_key", "execute_script"];
+pub const GUARDED: [&str; 6] =
+    ["click_element", "type_text", "paste_text", "press_key", "execute_script", "select_option"];
 
 /// What makes a box the site's terms in the page's scripts (as `terms_box`): its label, the text it is labelled by, the
 /// short text around a box without a label (a `<label>` tied to nothing right after it included: fourth review 13/11;
@@ -1665,7 +1670,11 @@ impl Proxy {
             }
             return script_fills_and_sends(script, before).then(|| refused(SCRIPT_SENDS_REFUSED));
         }
-        let typing = matches!(tool, "type_text" | "paste_text") || (tool == "press_key" && presses_a_character(args));
+        // select_option's `text` is typed into what it is aimed at by the real server (`send_keys`), and a `value` may
+        // be a password too (review's bench 14/11: aimed at « #register-password »)
+        let typing = matches!(tool, "type_text" | "paste_text")
+            || (tool == "press_key" && presses_a_character(args))
+            || (tool == "select_option" && (args.contains_key("text") || args.contains_key("value")));
         let selector = args.get("selector").and_then(Value::as_str).unwrap_or("");
         let ticking = tool == "click_element" && !selector.is_empty();
         if !(typing || ticking) || instance.is_empty() {
@@ -2955,6 +2964,9 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         assert_eq!(text(json!({"found": true, "list": false, "box": true})), BOX_NOT_LIST);
         assert_eq!(text(json!({"found": true, "list": false})), NOT_A_LIST);
         assert_eq!(text(json!({"found": true, "list": true, "chosen": false, "consent": true})), TERMS_REFUSED);
+        // a password field (review's bench 14/11): never « type_text into it »
+        assert_eq!(text(json!({"found": true, "list": false, "password": true})), PASSWORD_REFUSED);
+        assert!(GUARDED.contains(&"select_option"));
         // the list chosen in is named, with its label when it has one
         let chosen = |at: &str, label: &str| {
             let answer = json!({"found": true, "list": true, "chosen": true, "value": "03", "text": "Mars"});
