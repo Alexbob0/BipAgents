@@ -2000,7 +2000,6 @@ impl Proxy {
     /// can't be had.
     async fn isolated(&self, instance: &str, script: &str) -> Result<Option<Value>, ()> {
         let port = self.config.get("cdp_port").and_then(Value::as_u64).filter(|p| (1..65536).contains(p)).ok_or(())?;
-        let tab = self.active_tab(instance).await.ok_or(())?;
         let secret = self
             .config
             .get("cdp_secret_file")
@@ -2011,6 +2010,8 @@ impl Proxy {
             .filter(|s| !s.is_empty());
         let connecting = crate::card_fill::Cdp::connect_with(port as u16, secret, None);
         let mut cdp = tokio::time::timeout(Duration::from_secs(5), connecting).await.map_err(|_| ())?.map_err(|_| ())?;
+        // the tab asked once DevTools answer: without them the real server is asked nothing more than before
+        let tab = self.active_tab(instance).await.ok_or(())?;
         let attached =
             cdp.call("Target.attachToTarget", json!({"targetId": tab, "flatten": true}), None).await.map_err(|_| ())?;
         let session = attached.get("sessionId").and_then(Value::as_str).ok_or(())?.to_string();
