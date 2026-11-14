@@ -239,9 +239,11 @@ if (el.disabled || opts[at].disabled) return JSON.stringify({{found: true, list:
 const says = (o) => shown(o.text) || o.value.trim(); \
 const declining = (o) => /^(non|no|nein|nee|nej|n|0|false)(?![\\p{{L}}\\p{{N}}])|refus|rechaz|ablehn|decline|reject|\
 deny|disagree|desacuerdo|opt.?out|stimme nicht|nicht einverstanden|nicht akzeptier|ne souhaite pas|n'accepte pas|\
-pas d'accord|no acepto|do not|don't/iu.test(says(o)); \
+pas d'accord|no acepto|nicht zustimm|ne pas accept|n'autorise pas|ne consens pas|willige nicht|no consiento|\
+don't allow|not allow|do not|don't/iu.test(says(o)); \
 const plainly = (o) => !declining(o) && /accept|akzept|annehm|acepto|aceptar|zustimm|stimme zu|einwillig|agree|\
-consent|einverstanden|autoris|d'accord|de acuerdo|opt.?in(?![\\p{{L}}])/iu.test(says(o)); \
+consent|consens|consient|einverstanden|autoris|autoriz|authori[sz]|willige\\s+ein|allow|erlaub|zulass|d'accord|\
+de acuerdo|opt.?in(?![\\p{{L}}])/iu.test(says(o)); \
 const merely = (o) => !declining(o) && /^(oui|yes|ja|s[ií]|ok|okay|y|1|true|on)(?![\\p{{L}}\\p{{N}}])/iu.test(says(o)); \
 const pair = opts.some((o) => plainly(o) || merely(o)) && opts.some(declining); \
 const own = shown([...(el.labels || [])].map((l) => l.innerText).join(' ') || (el.getAttribute('aria-labelledby') || '')\
@@ -3036,6 +3038,9 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         assert!(script.contains("querySelectorAll(sel)") && script.contains("ORDERED_NODE_SNAPSHOT_TYPE"), "{script}");
         assert!(script.contains("named.length > 1") && script.contains(LABEL_JS));
         assert!(script.contains("const consents = isTerms(own) || (!own && pair && isTerms(label(el)))"));
+        // other words of consent and of declining (fourth review 14/11), the declining ones read first
+        assert!(script.contains("willige\\s+ein|allow|erlaub|zulass"));
+        assert!(script.contains("nicht zustimm|ne pas accept|n'autorise pas|ne consens pas|willige nicht"));
         assert!(script.contains("(?![\\p{L}\\p{N}])/iu"), "« Sí »: no word boundary after « í » without /u");
         // the consent words are the same in the bridge (terms_box) and in the page (LABEL_JS)
         let js = LABEL_JS.split_once("const TERMS = /").and_then(|(_, rest)| rest.split_once("/i; ")).map(|(w, _)| w);
