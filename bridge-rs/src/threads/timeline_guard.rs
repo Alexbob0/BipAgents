@@ -263,7 +263,8 @@ fn check(letters: &[char], items: &[Item], days: &Days, w: &Want, running: bool)
     }
     // `layout` fields: only for the page's items, never for the turn going on (undecided)
     let decided = layout::layout(items, range.clone(), running);
-    if let Some(n) = decided.fields.keys().find(|k| !range.contains(k) || (running && **k >= going_on)) {
+    // `*k`: the parser's crates (script_shape.rs) bring more `PartialOrd` impls for usize, `contains(k)` no longer infers
+    if let Some(n) = decided.fields.keys().find(|k| !range.contains(*k) || (running && **k >= going_on)) {
         return Err(format!("layout fields for item {n}, outside the page {range:?} or in the turn going on"));
     }
     for (k, item) in page.items.iter().enumerate() {

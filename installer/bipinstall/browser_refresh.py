@@ -250,9 +250,15 @@ def secure_devtools(home: Path, agent: str) -> bool:
         text = settings["unit"]["text"]
     except (OSError, ValueError, KeyError, TypeError):
         settings = None
-    if settings is not None and with_cdp_mount(text, place) != text:
-        settings["unit"]["text"] = with_cdp_mount(text, place)
-        _write(mcp, json.dumps(settings, indent=2, ensure_ascii=False) + "\n")
+    if settings is not None:
+        # the browser proxy's own look at the page goes through DevTools with the same secret (card-guards, 14/11:
+        # the bridge writes these keys at its start too; whichever comes first)
+        wanted = {"cdp_secret_file": str(place / CDP_SECRET), "scripts": str(place / "scripts.jsonl")}
+        missing = {key: value for key, value in wanted.items() if settings.get(key) != value}
+        if with_cdp_mount(text, place) != text or missing:
+            settings["unit"]["text"] = with_cdp_mount(text, place)
+            settings.update(missing)
+            _write(mcp, json.dumps(settings, indent=2, ensure_ascii=False) + "\n")
     roots = [home / ".hermes"] + sorted((home / ".local" / "share" / "bipagents" / "spaces").glob("*"))
     for config in (root / "profiles" / agent / "config.yaml" for root in roots):
         try:

@@ -47,6 +47,7 @@ CARD_UNDONE = "Not done: that put a payment card's details into the page"
 HIDDEN = "[card number hidden]"
 SCRIPT_LATER_REFUSED = "Not done: a script runs at once and ends"
 SCRIPT_TAMPERS_REFUSED = "Not done: a script never changes how the page's own code"
+SCRIPT_LATER_ON_CARDS_REFUSED = "Not done: on a page with payment card fields, a script runs at once"
 
 
 def serve(folder):
@@ -270,10 +271,10 @@ def test_a_script_never_writes_reads_or_sends_a_cards_details(browser):
     # a change to how the page's own code works: refused on every page
     said = browser.tool("execute_script", script="String.prototype.match = function () { return null; }; 'ok'")
     assert said.startswith(SCRIPT_TAMPERS_REFUSED), said
-    # timers and listeners are refused where the page has card fields
+    # timers and listeners are refused where the page has card fields, even doing nothing
     browser.fresh()
     said = browser.tool("execute_script", script="setTimeout(() => {}, 10); document.addEventListener('input', () => {})")
-    assert said.startswith(SCRIPT_CARD_REFUSED), said
+    assert said.startswith(SCRIPT_LATER_ON_CARDS_REFUSED), said
     # ordinary scripts go on
     said = browser.tool("execute_script", script="(() => { document.getElementById('address').value = '2 rue du Test'; "
                                                  "return document.title; })()")

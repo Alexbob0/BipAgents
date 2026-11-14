@@ -1,7 +1,7 @@
 ---
 name: visible-browser
 description: "Browse the web with your own visible browser: a real Chrome on your desktop, which the person can watch and take over from the BipAgents app. Use its `stealth` tools for every website, including sites that block automated browsers."
-version: 1.13.3
+version: 1.13.4
 author: BipAgents
 license: MIT
 metadata:
@@ -126,8 +126,9 @@ browser tools (`browser_navigate`, `browser_snapshot`, `browser_click`, `browser
 person would not see what they do. Only the vault (`browser_vault`) is for you, on the page your browser shows.
 A script never changes where a page goes (no `location = …`, no link, form or HTML added): open an address with
 `navigate`, follow the page's own links and buttons with `click_element` (your browser refuses such a script). A
-script runs at once and ends: no timers, listeners or observers, no waiting then writing or clicking, never a change
-to how the page's own code works; to wait, call your tools again.
+script runs at once and ends: it never writes or clicks from a timer, a listener, an observer or another callback,
+nor after an await (where a page has card fields, no such code at all); it names what it writes plainly (no names
+put together or decoded); never a change to how the page's own code works. To wait, call your tools again.
 Never fall back to a web search for something the person asked you to do on a website. Never read back a password
 field (no script on it), never write a password in a message.
 

@@ -176,6 +176,9 @@ def test_browsers_set_up_before_the_secret_get_theirs_before_any_restart(tmp_pat
         assert len(secret) == 64 and (place / "cdp.token").stat().st_mode & 0o777 == 0o600
         mount = f"-v {place}/cdp.token:/run/bipagents/cdp.token:ro,Z -p 127.0.0.1:"
         assert mount in json.loads((place / "mcp.json").read_text())["unit"]["text"]
+        # the browser proxy's own look goes through DevTools with it too (card-guards, third review of 14/11)
+        settings = json.loads((place / "mcp.json").read_text())
+        assert settings["cdp_secret_file"] == str(place / "cdp.token") and settings["scripts"] == str(place / "scripts.jsonl")
         if agent != "new":
             assert mount in (units / f"bipagents-browser-{agent}.service").read_text()
         port = json.loads((place / "ports.json").read_text())["cdp"]

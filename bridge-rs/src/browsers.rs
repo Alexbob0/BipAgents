@@ -261,8 +261,19 @@ pub fn edit_proxy_settings(
     if !edit(&mut settings) {
         return Ok(false);
     }
-    let body = format!("{}\n", crate::py::Dumps::new().indent(2).dumps(&Value::Object(settings)));
-    std::fs::write(&path, body).map(|()| true)
+    write_proxy_settings(&path, &Value::Object(settings)).map(|()| true)
+}
+
+/// `mcp.json` written whole or not at all (a file beside it, then renamed: the installer's night refresh writes it the
+/// same way), keeping its mode (third review of card-guards, 14/11).
+fn write_proxy_settings(path: &Path, settings: &Value) -> std::io::Result<()> {
+    let body = format!("{}\n", crate::py::Dumps::new().indent(2).dumps(settings));
+    let partial = path.with_file_name("mcp.json.part");
+    std::fs::write(&partial, body)?;
+    if let Ok(meta) = std::fs::metadata(path) {
+        let _ = std::fs::set_permissions(&partial, meta.permissions());
+    }
+    std::fs::rename(&partial, path)
 }
 
 /// A browser set up before the guard's own world (card-guards, 14/11): its `mcp.json` given the DevTools secret's
@@ -1120,7 +1131,11 @@ pub async fn setup_with(
         settings["unit"] = json!({"path": unit.to_string_lossy(), "text": text});
         settings["profile"] = json!(place.join("profile").to_string_lossy());
         settings["reload"] = json!([systemctl, "--user", "daemon-reload"]);
-        std::fs::write(&path, format!("{}\n", crate::py::Dumps::new().indent(2).dumps(&settings)))?;
+        {
+            // one writer at a time, whole or not at all (`edit_proxy_settings`)
+            let _one = SETTINGS_WRITING.lock().unwrap_or_else(|e| e.into_inner());
+            write_proxy_settings(&path, &settings)?;
+        }
         if !deferred {
             run(args(&["systemctl", "--user", "disable", &stem]), no_env()).await?;
         }

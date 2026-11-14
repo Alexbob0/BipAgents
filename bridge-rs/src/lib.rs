@@ -219,6 +219,7 @@ pub mod card_details;
 pub mod card_fill;
 pub mod card_pay;
 pub mod handover;
+pub mod script_shape; // what an agent's script does, from its syntax (browser_mcp.rs)
 pub mod link_wallet;
 pub mod cards;
 pub mod cloud_setup;
