@@ -1,8 +1,8 @@
 diff --git a/src/browser_manager.py b/src/browser_manager.py
-index a614108..b1b7ae5 100644
+index a614108..27f5413 100644
 --- a/src/browser_manager.py
 +++ b/src/browser_manager.py
-@@ -56,6 +56,217 @@ def _parse_nonnegative_int_env(
+@@ -56,6 +56,282 @@ def _parse_nonnegative_int_env(
      return parsed
  
  
@@ -158,7 +158,7 @@ index a614108..b1b7ae5 100644
 +                # None runs yet: started apart with the flags nodriver would have used, then connected to like a
 +                # Chrome the person opened from the app (open_browser.sh with no flags).
 +                config.host, config.port = "127.0.0.1", port
-+                _launch_detached(_without_dropped_args(config()))
++                _launch_detached(_bip_features_off(_without_dropped_args(config())))
 +                if not await _wait_for_chrome(port, seconds):
 +                    raise Exception(f"Chrome did not open its DevTools on port {port} within {seconds:.0f} s")
 +            config.host, config.port = "127.0.0.1", port
@@ -200,6 +200,71 @@ index a614108..b1b7ae5 100644
 +    return [a for a in args if a not in dropped]
 +
 +
++# Chrome's own UI drawn as a web page (« top-chrome » WebUI): its address bar's suggestion popup
++# (chrome://omnibox-popup.top-chrome/, a `page` target since Chrome 157, with no window: Browser.getWindowForTarget
++# answers « Browser window not found »), tab search, the side panels (chrome-untrusted://…top-chrome/). nodriver's
++# main_tab and first tab are the first page target: once the agent's first tab was closed, that popup. The server took
++# it at spawn, at reconnect and as the navigation tab's fallback, and every call failed (13/11, aibox and an offer's
++# place, about ten minutes). Chrome is started without it (_bip_features_off); it is never the agent's tab all the same.
++# By its address AND its having no window: a real tab sent to such an address (an error page that keeps it, in a window
++# the person sees) stays the agent's (review of 13/11).
++_FEATURES_OFF_ALWAYS = ("IsolateOrigins", "site-per-process")   # nodriver's own switch (its Config), kept
++# Fedora's Chromium 156 (the ARM image) also has chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html, another popup
++# page with no window, unless WebUIOmniboxAimPopup is off too (second review of 13/11).
++_FEATURES_OFF = ("WebUIOmniboxPopup", "WebUIOmniboxAimPopup")
++_WINDOW_SECONDS = 5.0   # a window question left unanswered: that page counts as Chrome's UI (its address is one)
++
++
++def _chrome_ui(tab) -> bool:
++    url = str(getattr(getattr(tab, "target", None), "url", "") or "")
++    scheme, found, rest = url.partition("://")
++    if not found or scheme.lower() not in ("chrome", "chrome-untrusted"):
++        return False
++    host = rest
++    for end in "/?#:":
++        host = host.split(end, 1)[0]
++    return host.lower().endswith(".top-chrome")
++
++
++async def _has_window(browser, tab) -> bool:
++    try:
++        asked = browser.connection.send(uc.cdp.browser.get_window_for_target(tab.target.target_id))
++        await asyncio.wait_for(asked, timeout=_WINDOW_SECONDS)
++        return True
++    except Exception:   # Chrome's « Browser window not found », or no answer in time
++        return False
++
++
++async def _bip_tabs(browser) -> list:
++    """The browser's tabs, in nodriver's order, but Chrome's own UI pages (asked for their window only when their
++    address is one of Chrome's UI)."""
++    return [tab for tab in browser.tabs if not _chrome_ui(tab) or await _has_window(browser, tab)]
++
++
++async def _bip_first_tab(browser):
++    """The tab to drive when the agent's own is not known: the first of its tabs, else a blank one opened for it."""
++    tabs = await _bip_tabs(browser)
++    if tabs:
++        return tabs[0]
++    return await browser.get("about:blank", new_tab=True)
++
++
++def _bip_features_off(args):
++    """Chrome reads only the last --disable-features: every one given (nodriver's, the container's in
++    STEALTH_BROWSER_ARGS) merged into one, nodriver's own two and _FEATURES_OFF with them, last."""
++    features, rest = [], []
++    for arg in args:
++        if arg.startswith("--disable-features="):
++            features += [f.strip() for f in arg.split("=", 1)[1].split(",")]
++        else:
++            rest.append(arg)
++    merged = []
++    for feature in (*_FEATURES_OFF_ALWAYS, *features, *_FEATURES_OFF):
++        if feature and feature not in merged:
++            merged.append(feature)
++    return rest + ["--disable-features=" + ",".join(merged)]
++
++
 +async def _bip_last_tab(browser):
 +    """In a Chrome connected to again, the tab the agent last used (its target id in _STATE), if it is still open."""
 +    if not _shared_chrome(browser):
@@ -209,7 +274,7 @@ index a614108..b1b7ae5 100644
 +        return None
 +    try:
 +        await browser.update_targets()
-+        for tab in browser.tabs:
++        for tab in await _bip_tabs(browser):
 +            if str(getattr(getattr(tab, "target", None), "target_id", "")) == wanted:
 +                return tab
 +    except Exception as e:
@@ -220,7 +285,7 @@ index a614108..b1b7ae5 100644
  class BrowserManager:
      """Manages multiple browser instances."""
  
-@@ -78,6 +289,72 @@ class BrowserManager:
+@@ -78,6 +354,72 @@ class BrowserManager:
              minimum=1,
          )
          self._idle_reaper_task: Optional[asyncio.Task] = None
@@ -259,7 +324,7 @@ index a614108..b1b7ae5 100644
 +            try:
 +                blank = await asyncio.wait_for(browser.get("about:blank", new_tab=True), timeout=10)
 +                await browser.update_targets()
-+                for tab in list(browser.tabs):
++                for tab in await _bip_tabs(browser):
 +                    if self._get_tab_target_id(tab) != self._get_tab_target_id(blank):
 +                        try:
 +                            await tab.close()
@@ -293,7 +358,7 @@ index a614108..b1b7ae5 100644
  
      @staticmethod
      def _append_user_agent_arg(args: List[str], user_agent: Optional[str]) -> List[str]:
-@@ -255,7 +532,7 @@ class BrowserManager:
+@@ -255,7 +597,7 @@ class BrowserManager:
              pass
          self._idle_reaper_task = None
  
@@ -302,7 +367,7 @@ index a614108..b1b7ae5 100644
          """
          Spawn a new browser instance with given options.
  
-@@ -265,7 +542,21 @@ class BrowserManager:
+@@ -265,7 +607,21 @@ class BrowserManager:
          Returns:
              BrowserInstance: The spawned browser instance.
          """
@@ -325,27 +390,29 @@ index a614108..b1b7ae5 100644
  
          instance = BrowserInstance(
              instance_id=instance_id,
-@@ -321,7 +612,7 @@ class BrowserManager:
+@@ -321,7 +677,8 @@ class BrowserManager:
                  caller_args,
                  launch_proxy_server,
              )
 -            launch_args = merge_browser_args(caller_args)
-+            launch_args = _without_dropped_args(merge_browser_args(caller_args))   # BipAgents: STEALTH_DROP_ARGS
++            # BipAgents: STEALTH_DROP_ARGS, one --disable-features
++            launch_args = _bip_features_off(_without_dropped_args(merge_browser_args(caller_args)))
              
              config = uc.Config(
                  headless=options.headless,
-@@ -331,8 +622,8 @@ class BrowserManager:
+@@ -331,8 +688,9 @@ class BrowserManager:
                  browser_args=launch_args
              )
  
 -            browser = await uc.start(config=config)
 -            tab = browser.main_tab
 +            browser = await _start_on_fixed_port(config)   # BipAgents: STEALTH_CDP_PORT
-+            tab = await _bip_last_tab(browser) or browser.main_tab   # BipAgents: the page the agent was on
++            # BipAgents: the page the agent was on, else its first tab (never Chrome's own UI)
++            tab = await _bip_last_tab(browser) or await _bip_first_tab(browser)
              config_obj = getattr(browser, "config", None)
              actual_user_data_dir = getattr(config_obj, "user_data_dir", options.user_data_dir)
              uses_custom_data_dir = getattr(
-@@ -404,6 +695,8 @@ class BrowserManager:
+@@ -404,6 +762,8 @@ class BrowserManager:
  
              instance.state = BrowserState.READY
              instance.update_activity()
@@ -354,7 +421,7 @@ index a614108..b1b7ae5 100644
  
              persistent_storage.store_instance(instance_id, {
                  'state': instance.state.value,
-@@ -470,7 +763,17 @@ class BrowserManager:
+@@ -470,7 +830,17 @@ class BrowserManager:
              Optional[dict]: The browser instance data if found, else None.
          """
          async with self._lock:
@@ -373,7 +440,7 @@ index a614108..b1b7ae5 100644
  
      async def list_instances(self) -> List[BrowserInstance]:
          """
-@@ -479,10 +782,11 @@ class BrowserManager:
+@@ -479,10 +849,11 @@ class BrowserManager:
          Returns:
              List[BrowserInstance]: List of all browser instances.
          """
@@ -386,7 +453,7 @@ index a614108..b1b7ae5 100644
          """
          Close and remove a browser instance.
  
-@@ -493,7 +797,13 @@ class BrowserManager:
+@@ -493,7 +864,13 @@ class BrowserManager:
              bool: True if closed successfully, False otherwise.
          """
          import asyncio
@@ -401,7 +468,25 @@ index a614108..b1b7ae5 100644
          async def _do_close():
              async with self._lock:
                  if instance_id not in self._instances:
-@@ -924,6 +1234,8 @@ class BrowserManager:
+@@ -748,13 +1125,14 @@ class BrowserManager:
+             await browser.update_targets()
+             tracked_target_id = self._get_tab_target_id(tracked_tab)
+             if tracked_target_id:
+-                for candidate_tab in browser.tabs:
++                for candidate_tab in await _bip_tabs(browser):   # BipAgents: never Chrome's own UI
+                     if self._get_tab_target_id(candidate_tab) == tracked_target_id:
+                         await candidate_tab
+                         return candidate_tab
+ 
+-            if browser.tabs:
+-                fallback_tab = browser.tabs[0]
++            tabs = await _bip_tabs(browser)   # BipAgents: the first tab, never Chrome's own UI listed before it
++            if tabs:
++                fallback_tab = tabs[0]
+                 await fallback_tab
+                 async with self._lock:
+                     if instance_id in self._instances:
+@@ -924,6 +1302,8 @@ class BrowserManager:
          if data:
              if touch_activity:
                  await self.touch_instance(instance_id)
@@ -410,7 +495,34 @@ index a614108..b1b7ae5 100644
              return data['tab']
          return None
  
-@@ -1214,7 +1526,7 @@ class BrowserManager:
+@@ -966,7 +1346,7 @@ class BrowserManager:
+         await browser.update_targets()
+ 
+         tabs = []
+-        for tab in browser.tabs:
++        for tab in await _bip_tabs(browser):   # BipAgents: never Chrome's own UI
+             await tab
+             tabs.append({
+                 'tab_id': str(tab.target.target_id),
+@@ -995,7 +1375,7 @@ class BrowserManager:
+         await browser.update_targets()
+ 
+         target_tab = None
+-        for tab in browser.tabs:
++        for tab in await _bip_tabs(browser):   # BipAgents: never Chrome's own UI
+             if str(tab.target.target_id) == tab_id:
+                 target_tab = tab
+                 break
+@@ -1041,7 +1421,7 @@ class BrowserManager:
+             return False
+ 
+         target_tab = None
+-        for tab in browser.tabs:
++        for tab in await _bip_tabs(browser):   # BipAgents: never Chrome's own UI
+             if str(tab.target.target_id) == tab_id:
+                 target_tab = tab
+                 break
+@@ -1214,7 +1594,7 @@ class BrowserManager:
                      to_close.append(instance_id)
  
          for instance_id in to_close:
@@ -419,14 +531,14 @@ index a614108..b1b7ae5 100644
  
          return len(to_close)
  
-@@ -1226,4 +1538,4 @@ class BrowserManager:
+@@ -1226,4 +1606,4 @@ class BrowserManager:
          """
          instance_ids = list(self._instances.keys())
          for instance_id in instance_ids:
 -            await self.close_instance(instance_id)
 +            await self.close_instance(instance_id, keep_pages=True)   # BipAgents: the server ends, Chrome stays
 diff --git a/src/server.py b/src/server.py
-index b5ad386..1deefa1 100644
+index b5ad386..557979e 100644
 --- a/src/server.py
 +++ b/src/server.py
 @@ -3,6 +3,7 @@

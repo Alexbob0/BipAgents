@@ -13,10 +13,10 @@
 //!
 //! The card is never typed into the document the agent prepared (security audit 2026-11-11, BV-1): an agent misled by
 //! a page could have run script in it before asking (a listener copying what is typed, fields of its own found first).
-//! Under the payment's hold, `fresh` closes every other tab, removes the site's service workers and reloads the page
-//! from the network; the fields are looked for in that new document only, and only in frames of the page's own site,
-//! of the card's sites or of a known payment provider (`Frames`). After the payment the tab is left on an empty page
-//! (`blank`) unless the page moved on to a new document by itself.
+//! Under the payment's hold, `fresh` closes every other tab (Chrome's own UI aside, `tab_targets`), removes the site's
+//! service workers and reloads the page from the network; the fields are looked for in that new document only, and
+//! only in frames of the page's own site, of the card's sites or of a known payment provider (`Frames`). After the
+//! payment the tab is left on an empty page (`blank`) unless the page moved on to a new document by itself.
 
 use std::collections::VecDeque;
 use std::time::Duration;
@@ -391,6 +391,44 @@ fn frames_of(tree: &Value, out: &mut Vec<(String, String)>) {
     }
 }
 
+/// The page targets in a `Target.getTargets` answer: (target id, at an address of Chrome's own UI).
+fn page_targets(targets: &Value) -> Vec<(String, bool)> {
+    targets
+        .get("targetInfos")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter(|t| t.get("type").and_then(Value::as_str) == Some("page"))
+                .filter_map(|t| {
+                    let url = t.get("url").and_then(Value::as_str).unwrap_or("");
+                    Some((t.get("targetId").and_then(Value::as_str)?.to_string(), crate::desktop_page::chrome_ui(url)))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The browser's tabs, their target ids: its pages but Chrome's own UI (desktop_page.rs `chrome_ui`: the address
+/// bar's suggestion popup, a page with no window since Chrome 157, which comes back as soon as it is closed), told by
+/// its address and its having no window: a real tab sent to such an address (an error page that keeps it) is a tab
+/// like any other (review of 13/11). A payment never waits for Chrome's UI to close, nor leaves it on an empty page.
+async fn tab_targets(cdp: &mut Cdp) -> Result<Vec<String>, FillError> {
+    let targets = cdp.call("Target.getTargets", json!({}), None).await?;
+    let mut tabs = Vec::new();
+    for (id, ui) in page_targets(&targets) {
+        if ui {
+            match cdp.call("Browser.getWindowForTarget", json!({"targetId": id}), None).await {
+                Ok(_) => {}
+                Err(FillError::Protocol(_)) => continue, // no window: Chrome's own UI
+                Err(other) => return Err(other),
+            }
+        }
+        tabs.push(id);
+    }
+    Ok(tabs)
+}
+
 impl Page {
     /// The tab the agent is on: the only web page, else the visible one.
     pub async fn open(port: u16, hold: Option<&str>) -> Result<Page, FillError> {
@@ -532,20 +570,7 @@ impl Page {
 
     /// The browser's other tabs (and windows, popups): their target ids.
     async fn other_tabs(&mut self) -> Result<Vec<String>, FillError> {
-        let targets = self.cdp.call("Target.getTargets", json!({}), None).await?;
-        Ok(targets
-            .get("targetInfos")
-            .and_then(Value::as_array)
-            .map(|items| {
-                items
-                    .iter()
-                    .filter(|t| t.get("type").and_then(Value::as_str) == Some("page"))
-                    .filter_map(|t| t.get("targetId").and_then(Value::as_str))
-                    .filter(|id| *id != self.target)
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default())
+        Ok(tab_targets(&mut self.cdp).await?.into_iter().filter(|id| *id != self.target).collect())
     }
 
     /// The tab left on an empty page: the document the card was typed into is gone for good (its fields emptied
@@ -587,18 +612,7 @@ impl Page {
     /// `end_stale_holds`). `hold`: the hold's token. The number of tabs left.
     pub async fn leave_every_tab(port: u16, hold: &str) -> Result<usize, FillError> {
         let mut cdp = Cdp::connect(port, Some(hold)).await?;
-        let targets = cdp.call("Target.getTargets", json!({}), None).await?;
-        let tabs: Vec<String> = targets
-            .get("targetInfos")
-            .and_then(Value::as_array)
-            .map(|items| {
-                items
-                    .iter()
-                    .filter(|t| t.get("type").and_then(Value::as_str) == Some("page"))
-                    .filter_map(|t| t.get("targetId").and_then(Value::as_str).map(str::to_string))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let tabs = tab_targets(&mut cdp).await?;
         for target in &tabs {
             let attached = cdp.call("Target.attachToTarget", json!({"targetId": target, "flatten": true}), None).await;
             let session = attached
@@ -1005,6 +1019,28 @@ pub fn secure(scheme: &str, host: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Chrome 157 lists its address bar's suggestion popup as a page; closed, it comes back at once (its image, 13/11):
+    /// `fresh` waited for it to close (« another tab would not close ») and every payment was handed over, nothing
+    /// typed. Those addresses are then asked for their window (`tab_targets`; a real tab on one is closed, the
+    /// black-box test_card_payments_chrome.py).
+    #[test]
+    fn chromes_own_ui_is_no_tab_to_close_or_blank() {
+        let targets = json!({"targetInfos": [
+            {"targetId": "POPUP", "type": "page", "url": "chrome://omnibox-popup.top-chrome/"},
+            {"targetId": "SIDE", "type": "page", "url": "chrome-untrusted://read-anything-side-panel.top-chrome/"},
+            {"targetId": "SW", "type": "service_worker", "url": "https://shop.example/sw.js"},
+            {"targetId": "PAY", "type": "page", "url": "https://shop.example/checkout"},
+            {"targetId": "FRAME", "type": "iframe", "url": "https://js.stripe.com/v3/"},
+            {"targetId": "OTHER", "type": "page", "url": "https://shop.example/cart"},
+            {"targetId": "NEW", "type": "page", "url": "chrome://newtab/"}
+        ]});
+        let pages = page_targets(&targets);
+        let ids = |ui: bool| pages.iter().filter(|(_, u)| *u == ui).map(|(id, _)| id.as_str()).collect::<Vec<_>>();
+        assert_eq!(ids(false), ["PAY", "OTHER", "NEW"]);
+        assert_eq!(ids(true), ["POPUP", "SIDE"]);
+        assert!(page_targets(&json!({})).is_empty());
+    }
 
     fn field(kind: &str, fmt: &str) -> Field {
         Field {

@@ -18,9 +18,14 @@ def test_chrome_opens_no_file_source_internal_or_devtools_page():
     policy = json.loads(read("policies.json"))
     assert {"file://*", "view-source:*", "chrome://*", "devtools://*", "chrome-devtools://*"} <= set(policy["URLBlocklist"])
     assert set(policy["URLAllowlist"]) == {"chrome://newtab", "chrome://new-tab-page"}   # only the new tab page
+    # Not chrome-untrusted://: Chrome's reading mode and Google Lens are pages of it (second review of 13/11); the
+    # bridge refuses those addresses to the agent (browser_mcp.rs), and a tab is Chrome's UI only with no window.
+    assert not [a for a in policy["URLBlocklist"] if a.startswith("chrome-untrusted")]
     for kept in ("PasswordManagerEnabled", "AutofillAddressEnabled", "AutofillCreditCardEnabled",
                  "PasswordLeakDetectionEnabled"):
         assert policy[kept] is False, kept
+    # No ChromeVariations: it drops Chrome's X-Client-Data header to Google, a fingerprint change (Alex, 13/11).
+    assert "ChromeVariations" not in policy
     # Installed where Chrome and Chromium read their managed policies.
     containerfile = read("Containerfile")
     assert "COPY policies.json /opt/stealth/policies.json" in containerfile
