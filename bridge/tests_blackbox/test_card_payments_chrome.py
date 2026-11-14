@@ -75,7 +75,7 @@ def site():
 
 
 class Browser:
-    def __init__(self, url):
+    def __init__(self, url, wait=1.5):
         self.port = free_port()
         self.profile = tempfile.mkdtemp(prefix="bip-chrome-")
         self.proc = subprocess.Popen(
@@ -89,7 +89,7 @@ class Browser:
                 break
             except (httpx.HTTPError, ValueError, KeyError):
                 time.sleep(0.2)
-        time.sleep(1.5)   # the page and its frames loaded
+        time.sleep(wait)   # the page and its frames loaded
 
     def values(self):
         """Each input's value, by target (page, iframe), read through DevTools."""
@@ -158,16 +158,23 @@ class Browser:
         shutil.rmtree(self.profile, ignore_errors=True)
 
 
+def test_providers(*hosts):
+    """The bridge's settings with fake payment providers (`[vault] test_payment_providers`: loopback names only)."""
+    def change(config):
+        config.setdefault("vault", {})["test_payment_providers"] = list(hosts)
+    return change
+
+
 def test_a_providers_frame_on_another_site(bridges, fakes):
     shop, provider = site(), site()
     url = (f"http://127.0.0.1:{shop.server_port}/elements.html"
            f"?psp=http://localhost:{provider.server_port}/provider.html")
     browser = Browser(url)
     try:
-        bridge = pay_bridge(bridges, fakes, browser)
+        # The provider's frame is on another site: a known payment provider's (a test one here, on `localhost`).
+        bridge = pay_bridge(bridges, fakes, browser, change=test_providers("localhost"))
         turn_on(bridge)
-        # The provider's frame is on another site: one of the card's sites here (a test page has no known provider).
-        sites = ["127.0.0.1", "localhost"]
+        sites = ["127.0.0.1"]
         assert bridge.post("/v1/vault", headers=AUTH, json={**CARD, "sites": sites}).status_code == 201
         # The agent prepared the page, and opened another tab of the same site.
         assert browser.run(PLANT, "elements.html") == '["marker"]'
@@ -320,13 +327,103 @@ def test_a_card_form_in_a_frame_of_an_unknown_site_is_never_typed_into(bridges, 
     try:
         bridge = pay_bridge(bridges, fakes, browser)
         turn_on(bridge)
-        bridge.post("/v1/vault", headers=AUTH, json={**CARD, "sites": ["127.0.0.1"]})   # not the frame's site
+        # Not a known provider's frame, even when it is one of the card's sites (strict: card-guards, 14/11).
+        bridge.post("/v1/vault", headers=AUTH, json={**CARD, "sites": ["127.0.0.1", "localhost"]})
         result, asked = pay(bridge, ARGS)
         assert asked is None and result["isError"] is True, result
-        assert "hand_over_payment" in result["content"][0]["text"]
+        said = result["content"][0]["text"]
+        assert "hand_over_payment" in said and "« Panier prêt »" in said and "never type" in said, said
         values = browser.values()
         assert values["provider.html"] == {"number": "", "exp": "", "cvc": "", "zip": ""}
         assert values["elements.html"] == {"holder": "", "ship": ""}
+    finally:
+        browser.stop()
+        shop.shutdown()
+        provider.shutdown()
+
+
+def test_a_providers_frame_inside_another_sites_frame_is_never_typed_into(bridges, fakes):
+    # card-guards, 14/11: a known provider's frame counts only embedded in the shop's own page, not inside another
+    # site's frame (an ad, a widget) that chose where the card goes
+    shop, ad, provider = site(), site(), site()
+    url = (f"http://127.0.0.1:{shop.server_port}/nested.html?ad=http://localhost:{ad.server_port}/ad.html"
+           f"&psp=http://psp.localhost:{provider.server_port}/provider.html")
+    browser = Browser(url, wait=3)
+    try:
+        bridge = pay_bridge(bridges, fakes, browser, change=test_providers("psp.localhost"))
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json={**CARD, "sites": ["127.0.0.1"]})
+        result, asked = pay(bridge, ARGS)
+        assert asked is None and result["isError"] is True, result
+        assert "hand_over_payment" in result["content"][0]["text"], result
+        assert "4242" not in json.dumps(browser.values())
+    finally:
+        browser.stop()
+        shop.shutdown()
+        ad.shutdown()
+        provider.shutdown()
+
+
+def to_hosted_page(browser, how):
+    """The agent clicks the shop's « Payer par carte » (a form sent to the provider's page) or « Payer (redirection) »
+    (the page sends the tab there): the tab is then on the provider's own payment page."""
+    browser.run("document.querySelector('#go button').click()" if how == "form" else
+                "document.getElementById('assign').click()", "cart.html")
+    deadline = time.time() + 10
+    while time.time() < deadline and not any("hosted.html" in u for u in browser.pages()):
+        time.sleep(0.2)
+    time.sleep(1)
+
+
+def test_a_providers_payment_page_the_shop_sent_the_tab_to(bridges, fakes):
+    # card-guards, 14/11: pharmaciedesdrakkars.com's « Carte bancaire » goes to CAWL's own payment page (Crédit
+    # Agricole × Worldline), reached from the shop in the same tab: the card goes there, the person sees the shop.
+    for how in ("form", "assign"):
+        shop, provider = site(), site()
+        hosted = f"http://psp.localhost:{provider.server_port}/hosted.html"
+        browser = Browser(f"http://127.0.0.1:{shop.server_port}/cart.html?psp={hosted}")
+        try:
+            bridge = pay_bridge(bridges, fakes, browser, change=test_providers("psp.localhost"))
+            turn_on(bridge)
+            assert bridge.post("/v1/vault", headers=AUTH, json={**CARD, "sites": ["127.0.0.1"]}).status_code == 201
+            to_hosted_page(browser, how)
+            result, asked = pay(bridge, ARGS)
+            assert result["isError"] is False, (how, result)
+            assert " on 127.0.0.1 with card " in asked and "Payment page of test (psp.localhost)." in asked, asked
+            assert browser.values()["hosted.html"] == {"number": NUMBER, "exp": "12/30", "cvc": CODE,
+                                                       "holder": "Alex Martin"}, how
+            confirmed = tool(bridge, "confirm_payment", {"button": "Payer 12,50 €"})
+            assert "moved on" in confirmed["content"][0]["text"], confirmed
+            assert [u.split("/")[-1] for u in browser.pages()] == ["hosted-done.html"]
+            journal = bridge.get("/v1/vault/payments", headers=AUTH).json()
+            assert "psp.localhost" in json.dumps(journal) and NUMBER not in json.dumps(journal)
+        finally:
+            browser.stop()
+            shop.shutdown()
+            provider.shutdown()
+
+
+def test_a_providers_payment_page_not_reached_from_the_cards_site_is_never_typed_into(bridges, fakes):
+    # the agent sent straight to a provider's page (another merchant's, a page or a message told it to): nothing asked
+    shop, provider = site(), site()
+    hosted = f"http://psp.localhost:{provider.server_port}/hosted.html"
+    browser = Browser(hosted)
+    try:
+        bridge = pay_bridge(bridges, fakes, browser, change=test_providers("psp.localhost"))
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json={**CARD, "sites": ["127.0.0.1"]})
+        result, asked = pay(bridge, ARGS)
+        assert asked is None and result["isError"] is True, result
+        said = result["content"][0]["text"]
+        assert "did not come to it from 127.0.0.1" in said and "hand_over_payment" in said, said
+        # another shop sent the tab there: not this card's site
+        browser.open(f"http://127.0.0.1:{shop.server_port}/cart.html?psp={hosted}")
+        to_hosted_page(browser, "form")
+        bridge.post("/v1/vault", headers=AUTH, json={**CARD, "label": "Autre", "sites": ["shop.example"]})
+        result, asked = pay(bridge, {**ARGS, "card": "autre"})
+        assert asked is None and result["isError"] is True, result
+        assert "did not come to it from shop.example" in result["content"][0]["text"], result
+        assert browser.values()["hosted.html"] == {"number": "", "exp": "", "cvc": "", "holder": ""}
     finally:
         browser.stop()
         shop.shutdown()

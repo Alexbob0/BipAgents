@@ -1,0 +1,14 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Checkout</title></head>
+<body>
+<!-- A shop's page holding another site's frame (an ad, a widget) which holds a payment provider's frame: the card
+     never goes there, the provider's frame is not the shop's own (card-guards, 14/11). -->
+<h1>Paiement</h1>
+<label for="holder">Nom sur la carte</label> <input id="holder" autocomplete="cc-name">
+<iframe id="ad" width="640" height="260"></iframe>
+<button id="pay" onclick="location.href='done.html'">Payer 12,50 €</button>
+<script>
+  const q = new URLSearchParams(location.search);
+  document.getElementById("ad").src = q.get("ad") + "?psp=" + encodeURIComponent(q.get("psp"));
+</script>
+</body></html>

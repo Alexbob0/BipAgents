@@ -5,7 +5,8 @@ fix-signup-hold: the same tools, output schemas and semantics where the guard of
   the selector unused; else `tab.select(selector)` (waits for it); then a JS click (nodriver `Element.click`);
 - type_text: waits for its element up to 10 s (nodriver `tab.select`), focuses it, empties it, types each character;
 - press_key: focuses `selector`, one key; with Shift its text upper-cased (dom_handler.press_key);
-- execute_script: `script`, or `(function() { script })(args…)` with `args` (dom_handler.execute_script).
+- execute_script: `script`, or `(function() { script })(args…)` with `args` (dom_handler.execute_script);
+- paste_text: the value set at once; select_option: an option by value, text or index (card-guards, 14/11).
 
     python3 stealth_cdp.py <page's DevTools websocket URL>
 """
@@ -26,6 +27,8 @@ TOOLS = [
     {"name": "type_text", "inputSchema": {"type": "object"}, "outputSchema": WRAPPED_BOOL},
     {"name": "press_key", "inputSchema": {"type": "object"}, "outputSchema": OBJECT},
     {"name": "execute_script", "inputSchema": {"type": "object"}, "outputSchema": OBJECT},
+    {"name": "paste_text", "inputSchema": {"type": "object"}, "outputSchema": WRAPPED_BOOL},
+    {"name": "select_option", "inputSchema": {"type": "object"}, "outputSchema": WRAPPED_BOOL},
 ]
 
 
@@ -50,12 +53,17 @@ def evaluate(expression):
 
 
 def select(selector, timeout=10.0):
+    if selector.lstrip("(").startswith("/"):   # an XPath, as dom_handler takes one
+        element = (f"document.evaluate({json.dumps(selector)}, document, null, "
+                   "XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue")
+    else:
+        element = f"document.querySelector({json.dumps(selector)})"
     deadline = time.time() + timeout
-    while not evaluate(f"!!document.querySelector({json.dumps(selector)})"):
+    while not evaluate(f"!!{element}"):
         if time.time() > deadline:
             raise Exception(f"Element not found: {selector}")
         time.sleep(0.1)
-    return f"document.querySelector({json.dumps(selector)})"
+    return element
 
 
 FIND = """((t) => { let best = null, gap = Infinity;
@@ -87,6 +95,21 @@ def call(name, args):
         evaluate(f"(() => {{ const e = {element}; e.focus(); e.value = ''; return true; }})()")
         for char in args["text"]:
             cdp("Input.insertText", {"text": char})
+        return True
+    if name == "paste_text":   # dom_handler.paste_text: the value set at once, an input event
+        element = select(args["selector"])
+        evaluate(f"(() => {{ const e = {element}; e.focus(); e.value = {json.dumps(args['text'])}; "
+                 "e.dispatchEvent(new Event('input', {bubbles: true})); return true; })()")
+        return True
+    if name == "select_option":   # dom_handler.select_option: by value, text or index, then a change event
+        element = select(args["selector"])
+        wanted = json.dumps({k: args.get(k) for k in ("value", "text", "index")})
+        found = evaluate(f"(() => {{ const e = {element}; const w = {wanted}; const o = [...e.options].find((o, i) => "
+                         "(w.value != null && o.value === String(w.value)) || (w.text != null && o.text.trim() === w.text) "
+                         "|| (w.index != null && i === Number(w.index))); if (!o) return false; e.value = o.value; "
+                         "e.dispatchEvent(new Event('change', {bubbles: true})); return true; })()")
+        if not found:
+            raise Exception("Option not found")
         return True
     if name == "press_key":
         if args.get("selector"):

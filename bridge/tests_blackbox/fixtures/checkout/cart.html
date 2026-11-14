@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Commande</title></head>
+<body>
+<!-- A shop's last step before paying (card-guards, 14/11: pharmaciedesdrakkars.com sends the tab to its bank's payment
+     page, CAWL): « Payer par carte » sends a form to the payment service's own page (its address in the query), or the
+     page sends the tab there itself. -->
+<p>Total : 12,50 €</p>
+<form id="go" method="get"><button type="submit">Payer par carte</button></form>
+<button id="assign" type="button">Payer (redirection)</button>
+<script>
+  const psp = new URLSearchParams(location.search).get("psp");
+  document.getElementById("go").action = psp;
+  document.getElementById("assign").onclick = () => window.location.assign(psp + "?order=42");
+</script>
+</body></html>

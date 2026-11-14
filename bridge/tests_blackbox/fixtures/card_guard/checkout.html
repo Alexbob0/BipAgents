@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Paiement</title></head>
+<body>
+<!-- A shop's payment step (card-guards, 14/11): its own card form (labels and names, no autocomplete tokens, the
+     expiry in two selects), a payment provider's frame on another site (its address in the query), and the order's
+     other fields, which the agent may fill. -->
+<p id="info">Carte de test du jour : 4242 4242 4242 4242</p>
+<form id="pay" onsubmit="event.preventDefault()">
+  <p><label for="numero">Numéro de carte</label> <input id="numero" name="numero" inputmode="numeric"></p>
+  <p><label for="mois">Mois</label>
+    <select id="mois" name="mois"><option value="">--</option><option>01</option><option>02</option><option>03</option>
+      <option>04</option><option>05</option><option>06</option><option>07</option><option>08</option><option>09</option>
+      <option>10</option><option>11</option><option>12</option></select>
+    <label for="annee">Année</label>
+    <select id="annee" name="annee"><option value="">--</option><option>2026</option><option>2027</option>
+      <option>2028</option><option>2029</option><option>2030</option></select></p>
+  <p><label for="crypto">Cryptogramme visuel</label> <input id="crypto" name="crypto" maxlength="4"></p>
+  <p><label for="titulaire">Titulaire</label> <input id="titulaire" name="titulaire"></p>
+  <iframe id="psp" title="Secure card payment input frame" width="500" height="120"></iframe>
+  <p><button type="button" id="go">Payer 12,50 €</button></p>
+</form>
+<form id="order" onsubmit="event.preventDefault()">
+  <p><label for="notes">Instructions de livraison</label> <input id="notes" name="notes"></p>
+  <p><label for="siret">SIRET</label> <input id="siret" name="siret"></p>
+  <p><label for="address">Adresse</label> <input id="address" name="address"></p>
+  <p><label for="fidelite">Numéro de carte de fidélité</label> <input id="fidelite" name="fidelite"></p>
+</form>
+<script>
+  document.getElementById("psp").src = new URLSearchParams(location.search).get("psp") || "about:blank";
+</script>
+</body></html>

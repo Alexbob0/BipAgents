@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Paiement sécurisé</title></head>
+<body>
+<!-- A payment service's own payment page (CAWL-like), on its own site. -->
+<form onsubmit="event.preventDefault(); location.href = 'hosted-done.html'">
+  <p><label for="number">Numéro de carte</label> <input id="number" name="cardNumber" autocomplete="cc-number"></p>
+  <p><label for="exp">Date d'expiration</label> <input id="exp" name="expiryDate" autocomplete="cc-exp" placeholder="MM/AA"></p>
+  <p><label for="cvc">Cryptogramme visuel</label> <input id="cvc" name="cvv" autocomplete="cc-csc"></p>
+  <p><label for="holder">Titulaire de la carte</label> <input id="holder" name="cardholderName" autocomplete="cc-name"></p>
+  <p><button type="submit">Payer 12,50 €</button></p>
+</form>
+</body></html>
