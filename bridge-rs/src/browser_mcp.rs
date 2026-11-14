@@ -167,36 +167,52 @@ pub const LIST_CHOICE: &str = "A drop-down list: select_option.";
 /// 1991 answered true three times and held « 14 », nothing, nothing; the site refused the form. Its `text` (typed into
 /// the list) works, and a choice the list lacks went unsaid.
 ///
-/// The script: in the list `selector` (CSS, or XPath when it starts with « / »; a `<select>`, or the one inside it; a
-/// list not there yet looked for again, `LATE_FIELD_TRIES`), the choice whose value is `value`, else whose shown text
-/// is `value` or `text` (spaces folded, case ignored), else whose value is `text`, else whose number is theirs (« 3 »
-/// for « 03 »), else the `index`-th; set as a person's choice is (the `input` and `change` events the site may listen
-/// to). Its answer, JSON: `{found, list, chosen, value, text}`, the list's choices when none is the one asked. The
-/// selector and the wanted values passed as JSON strings.
+/// The script: the list `selector` names (CSS, or XPath when it starts with « / »; a `<select>`, or the one inside a
+/// block; a list not there yet looked for again, `LATE_FIELD_TRIES`), only when it names exactly one (review 14/11: a
+/// block or a selector holding the day, the month and the year had its first list set, the month's « 03 » in the day);
+/// in it, the choice whose value is `value`, else whose shown text is `value` or `text` (spaces folded, case ignored),
+/// else whose value is `text`, else whose number is theirs (« 3 » for « 03 »), else the `index`-th; never an accepting
+/// choice in a list of the site's terms or a consent (review 14/11: the box of the same label is refused, `LABEL_JS`'s
+/// words); set as a person's choice is (the `input` and `change` events the site may listen to). Its answer, JSON:
+/// `{found, list, chosen, value, text, at, label}`, or why not (`several`, `field`, `hidden`, `box`, `off`, `consent`,
+/// the list's choices when none is the one asked) with the page's lists. The selector and the wanted values passed as
+/// JSON strings.
 pub fn choose_script(selector: &str, value: Option<&str>, text: Option<&str>, index: Option<i64>) -> String {
     let string =
         |s: Option<&str>| s.map_or_else(|| "null".to_string(), |s| serde_json::to_string(s).unwrap_or_default());
     let index = index.map_or_else(|| "null".to_string(), |i| i.to_string());
     format!(
-        "(() => {{ const sel = {}, want = {{value: {}, text: {}, index: {index}}}; let el = null; \
+        "(() => {{ const sel = {}, want = {{value: {}, text: {}, index: {index}}}; {LABEL_JS}\
 const shown = (s) => String(s == null ? '' : s).replace(/\\s+/g, ' ').trim(); \
 const fold = (s) => shown(s).toLowerCase(); \
+const ident = (e) => e.id ? '#' + CSS.escape(e.id) : (e.getAttribute('name') ? e.tagName.toLowerCase() + '[name=\"' \
++ e.getAttribute('name') + '\"]' : ''); \
+const called = (e) => {{ const by = (e.getAttribute('aria-labelledby') || '').split(/\\s+/)\
+.map((i) => i && document.getElementById(i)).filter(Boolean).map((l) => l.innerText).join(' '); \
+return shown([...(e.labels || [])].map((l) => l.innerText).join(' ') || by || e.getAttribute('aria-label') || '')\
+.slice(0, 40); }}; \
 const lists = () => {{ const out = []; \
 for (const e of document.querySelectorAll('select, [role=combobox], [aria-haspopup=listbox]')) {{ \
 if (!e.getClientRects().length || getComputedStyle(e).visibility === 'hidden') continue; \
 if (e.tagName === 'INPUT' && e.type !== 'button') continue; \
-const at = e.id ? '#' + CSS.escape(e.id) : (e.getAttribute('name') ? e.tagName.toLowerCase() + '[name=\"' \
-+ e.getAttribute('name') + '\"]' : ''); if (!at) continue; \
-const by = (e.getAttribute('aria-labelledby') || '').split(/\\s+/).map((i) => i && document.getElementById(i))\
-.filter(Boolean).map((l) => l.innerText).join(' '); \
-const label = shown([...(e.labels || [])].map((l) => l.innerText).join(' ') || by || e.getAttribute('aria-label') \
-|| '').slice(0, 40); out.push([at, e.tagName === 'SELECT', label]); if (out.length >= 20) break; }} return out; }}; \
-try {{ el = sel.startsWith('/') ? document.evaluate(sel, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null)\
-.singleNodeValue : document.querySelector(sel); }} \
+const at = ident(e); if (!at) continue; out.push([at, e.tagName === 'SELECT', called(e)]); \
+if (out.length >= 20) break; }} return out; }}; \
+let found = []; try {{ if (sel.startsWith('/')) {{ \
+const r = document.evaluate(sel, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null); \
+for (let i = 0; i < r.snapshotLength; i++) found.push(r.snapshotItem(i)); }} \
+else found = [...document.querySelectorAll(sel)]; }} \
 catch (e) {{ return JSON.stringify({{found: false, invalid: true, lists: lists()}}); }} \
-if (!el) return JSON.stringify({{found: false, lists: lists()}}); \
-if (el.tagName !== 'SELECT') {{ const inner = el.querySelector ? el.querySelector('select') : null; \
-if (!inner) return JSON.stringify({{found: true, list: false, lists: lists()}}); el = inner; }} \
+found = found.filter((e) => e.nodeType === 1); \
+if (!found.length) return JSON.stringify({{found: false, lists: lists()}}); \
+const named = [...new Set(found.flatMap((e) => e.tagName === 'SELECT' ? [e] : [...e.querySelectorAll('select')]))]; \
+if (named.length > 1) return JSON.stringify({{found: true, list: false, several: named.length, lists: lists()}}); \
+if (!named.length) {{ const e = found[0], type = (e.getAttribute('type') || '').toLowerCase(); \
+const why = e.tagName === 'INPUT' && type === 'hidden' ? {{hidden: true}} \
+: e.tagName === 'INPUT' && ['checkbox', 'radio'].includes(type) ? {{box: true}} \
+: (e.tagName === 'INPUT' && !['button', 'submit', 'reset', 'image'].includes(type)) || e.tagName === 'TEXTAREA' \
+|| e.isContentEditable ? {{field: true}} : {{}}; \
+return JSON.stringify(Object.assign({{found: true, list: false, lists: lists()}}, why)); }} \
+const el = named[0]; const where = {{at: ident(el), label: called(el)}}; \
 const opts = [...el.options]; const asked = [want.value, want.text].filter((w) => w != null).map(String); \
 let at = want.value == null ? -1 : opts.findIndex((o) => o.value === want.value); \
 if (at < 0) at = opts.findIndex((o) => asked.some((w) => fold(o.text) === fold(w))); \
@@ -204,13 +220,18 @@ if (at < 0) at = opts.findIndex((o) => asked.some((w) => o.value === w)); \
 if (at < 0) at = opts.findIndex((o) => /^\\d+$/.test(o.value) && asked.some((w) => /^\\d+$/.test(w.trim()) \
 && Number(o.value) === Number(w))); \
 if (at < 0 && Number.isInteger(want.index) && want.index >= 0 && want.index < opts.length) at = want.index; \
-if (at < 0) return JSON.stringify({{found: true, list: true, chosen: false, more: Math.max(opts.length - 40, 0), \
-choices: opts.slice(0, 40).map((o) => [o.value.slice(0, 40), shown(o.text).slice(0, 40)])}}); \
+if (at < 0) return JSON.stringify(Object.assign({{found: true, list: true, chosen: false, \
+more: Math.max(opts.length - 40, 0), \
+choices: opts.slice(0, 40).map((o) => [o.value.slice(0, 40), shown(o.text).slice(0, 40)])}}, where)); \
 if (el.disabled || opts[at].disabled) return JSON.stringify({{found: true, list: true, chosen: false, off: true}}); \
+const declines = (o) => o.value === '' || /^(0|false|n|no|non|nein|nee|nej|refuse[rd]?|decline[d]?)$/i.test(o.value.trim()) \
+|| /^(non|no|nein|nee|nej|je refuse|refuser|i decline|decline|je n'accepte pas|i do not|i don't)\\b/i.test(shown(o.text)); \
+if (isTerms(label(el)) && !declines(opts[at])) return JSON.stringify({{found: true, list: true, chosen: false, \
+consent: true}}); \
 el.selectedIndex = at; el.dispatchEvent(new Event('input', {{bubbles: true}})); \
 el.dispatchEvent(new Event('change', {{bubbles: true}})); \
-return JSON.stringify({{found: true, list: true, chosen: true, value: opts[at].value.slice(0, 60), \
-text: shown(opts[at].text).slice(0, 60)}}); }})()",
+return JSON.stringify(Object.assign({{found: true, list: true, chosen: true, value: opts[at].value.slice(0, 60), \
+text: shown(opts[at].text).slice(0, 60)}}, where)); }})()",
         string(Some(selector)),
         string(value),
         string(text),
@@ -223,6 +244,18 @@ pub const LIST_NOT_FOUND: &str = "Not done: nothing on the page answers to that 
 /// … on a list of the site's own (a button and its choices, no `<select>`).
 pub const NOT_A_LIST: &str = "Not done: that is no drop-down list (<select>) but a list of the site's own: \
 click_element on it, then click_element on the choice.";
+/// … on a selector naming several lists (review 14/11): none chosen.
+pub const SEVERAL_LISTS: &str = "Not done: that selector holds several drop-down lists; nothing was chosen. Choose in \
+each list by its own selector.";
+/// … on a field to type into (a text field with suggestions, a date field…: review 14/11).
+pub const FIELD_NOT_LIST: &str = "Not done: that is a field to type into, not a drop-down list: type_text into it \
+(a date as the field shows dates).";
+/// … on the hidden field a site's own list fills (« #civility-value », the « after » bench 13/11).
+pub const HIDDEN_FIELD: &str = "Not done: that is a hidden field the site fills itself from the list it shows: choose \
+in that list (a list of the site's own: click_element on it, then click_element on the choice).";
+/// … on a box or a radio button.
+pub const BOX_NOT_LIST: &str = "Not done: that is a box or a radio button, not a drop-down list: click_element on it \
+(a box accepting the site's terms or a consent: accept_terms).";
 /// … on a list or a choice the site has turned off.
 pub const LIST_OFF: &str = "Not done: the site has that list, or that choice, turned off for now.";
 
@@ -276,11 +309,34 @@ pub fn chosen_answer(answer: &Value, asked: &str) -> Option<Dict> {
         return Some(refused(&format!("{LIST_NOT_FOUND}{}", lists_text(&page))));
     }
     if flag("list") == Some(false) {
-        return Some(refused(&format!("{NOT_A_LIST}{}", lists_text(&page))));
+        let why = if page.get("several").and_then(Value::as_u64).is_some_and(|n| n > 1) {
+            SEVERAL_LISTS
+        } else if flag("hidden") == Some(true) {
+            HIDDEN_FIELD
+        } else if flag("field") == Some(true) {
+            FIELD_NOT_LIST
+        } else if flag("box") == Some(true) {
+            BOX_NOT_LIST
+        } else {
+            NOT_A_LIST
+        };
+        return Some(refused(&format!("{why}{}", lists_text(&page))));
+    }
+    if flag("consent") == Some(true) {
+        return Some(refused(TERMS_REFUSED));
     }
     if flag("chosen") == Some(true) {
         let field = |k: &str| page.get(k).and_then(Value::as_str).unwrap_or("").to_string();
-        let text = format!("Chosen in that list: « {} » (value « {} »).", field("text"), field("value"));
+        // the list named (review 14/11: « Chosen in that list » alone left the agent sure of the wrong one)
+        let mut which: Vec<String> = Vec::new();
+        if !field("at").is_empty() {
+            which.push(field("at"));
+        }
+        if !field("label").is_empty() {
+            which.push(format!("« {} »", field("label")));
+        }
+        let which = if which.is_empty() { String::new() } else { format!(" ({})", which.join(", ")) };
+        let text = format!("Chosen in that list{which}: « {} » (value « {} »).", field("text"), field("value"));
         let done = json!({"jsonrpc": "2.0", "result": {"content": [{"type": "text", "text": text}],
                                                         "structuredContent": {"result": true}}});
         return done.as_object().cloned();
@@ -2882,6 +2938,40 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         // no answer of the script's own: the real server is asked
         assert!(chosen_answer(&json!("did execute_script"), "x").is_none());
         assert!(chosen_answer(&json!(null), "x").is_none());
+    }
+
+    #[test]
+    fn a_choice_goes_only_into_the_one_list_named_never_a_consent_and_says_which_list() {
+        // review 14/11: a selector holding several lists, a field, a hidden field, a box, a consent shown as a list
+        let text = |answer: Value| {
+            chosen_answer(&answer, "x").unwrap()["result"]["content"][0]["text"].as_str().unwrap().to_string()
+        };
+        let lists = json!([["#d", true, "Jour"], ["#m", true, ""]]);
+        let several = text(json!({"found": true, "list": false, "several": 3, "lists": lists}));
+        assert!(several.starts_with(SEVERAL_LISTS) && several.contains("#d (Jour); #m."), "{several}");
+        assert_eq!(text(json!({"found": true, "list": false, "field": true})), FIELD_NOT_LIST);
+        assert!(FIELD_NOT_LIST.contains("type_text") && !FIELD_NOT_LIST.contains("click_element"));
+        assert_eq!(text(json!({"found": true, "list": false, "hidden": true})), HIDDEN_FIELD);
+        assert_eq!(text(json!({"found": true, "list": false, "box": true})), BOX_NOT_LIST);
+        assert_eq!(text(json!({"found": true, "list": false})), NOT_A_LIST);
+        assert_eq!(text(json!({"found": true, "list": true, "chosen": false, "consent": true})), TERMS_REFUSED);
+        // the list chosen in is named, with its label when it has one
+        let chosen = |at: &str, label: &str| {
+            let answer = json!({"found": true, "list": true, "chosen": true, "value": "03", "text": "Mars"});
+            let mut answer = answer.as_object().cloned().unwrap();
+            answer.insert("at".into(), json!(at));
+            answer.insert("label".into(), json!(label));
+            text(Value::Object(answer))
+        };
+        assert_eq!(chosen("#m", ""), "Chosen in that list (#m): « Mars » (value « 03 »).");
+        assert_eq!(chosen("#m", "Mois"), "Chosen in that list (#m, « Mois »): « Mars » (value « 03 »).");
+        assert_eq!(chosen("", ""), "Chosen in that list: « Mars » (value « 03 »).");
+        // the script: every match counted (CSS and XPath), the consent words of the box guard, nothing declared outside
+        let script = choose_script("select", Some("03"), None, None);
+        assert!(script.contains("querySelectorAll(sel)") && script.contains("ORDERED_NODE_SNAPSHOT_TYPE"), "{script}");
+        assert!(script.contains("named.length > 1") && script.contains(LABEL_JS));
+        assert!(script.contains("isTerms(label(el))"));
+        assert!(script.starts_with("(() => {") && script.ends_with("})()"));
     }
 
     #[test]
