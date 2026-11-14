@@ -43,10 +43,15 @@ pub fn is_card_number(digits: &str) -> bool {
 /// What may stand between a card number's groups: up to three spaces (any, line breaks and tabs included: a number
 /// shown in blocks, a table's cells), dashes (« – » too), dots, slashes, underscores, bars (review of 14/11).
 pub const SEPARATORS: &str = r"[\s\-./_|\u{2010}-\u{2015}\u{2212}]{1,3}";
-/// Runs of digits split by `SEPARATORS` (« 4242 4242 4242 4242 », « 4242-4242-… », « 4242 / 4242… »), each with its
-/// groups' places in the text.
-static RUNS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&format!(r"\d+(?:{SEPARATORS}\d+)*")).expect("valid regex"));
+/// The same written as a JSON string's escapes (« \n », « \t », « \u00a0 », « \/ »): what the real server's tools
+/// answer is often JSON read as text (execute_script's `{"result": "4242\n4242…"}`, review of 14/11).
+const ESCAPED_SEPARATORS: &str = r"\\[ntrfv/]|\\u(?:00[aA]0|200[0-9abAB]|201[0-5]|202[fF]|205[fF]|2212|3000)";
+/// Runs of digits split by `SEPARATORS` or their escapes (« 4242 4242 4242 4242 », « 4242-4242-… », « 4242 / 4242… »,
+/// « 4242\n4242… »), each with its groups' places in the text.
+static RUNS: LazyLock<Regex> = LazyLock::new(|| {
+    let one = SEPARATORS.strip_suffix("{1,3}").expect("a class, then how many");
+    Regex::new(&format!(r"\d+(?:(?:{one}|{ESCAPED_SEPARATORS}){{1,3}}\d+)*")).expect("valid regex")
+});
 /// An IBAN as it is written (its country, its check digits, then its account, spaced or not): its digits may make a
 /// « card number » (~15 % of French ones in groups of four: review of 14/11); one whose check digits hold (mod 97) is
 /// never one.
@@ -87,7 +92,8 @@ fn ibans(text: &str) -> Vec<(usize, usize)> {
     }
     out
 }
-static GROUPS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").expect("valid regex"));
+/// A run's groups of digits; an escape's (« \u2010 ») matched too, to be skipped.
+static GROUPS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\\u[0-9a-fA-F]{4}|\d+").expect("valid regex"));
 
 /// Where `text` holds a card's number (byte ranges): any run of whole groups of digits that makes one
 /// (`is_card_number`), so « 4242 4242 4242 4242 12/30 » and « carte 4242424242424242 » count, and a longer number
@@ -99,8 +105,11 @@ pub fn card_numbers(text: &str) -> Vec<(usize, usize)> {
         if ibans.iter().any(|(start, end)| run.start() < *end && *start < run.end()) {
             continue; // an IBAN's digits
         }
-        let groups: Vec<(usize, usize)> =
-            GROUPS.find_iter(run.as_str()).map(|g| (run.start() + g.start(), run.start() + g.end())).collect();
+        let groups: Vec<(usize, usize)> = GROUPS
+            .find_iter(run.as_str())
+            .filter(|g| !g.as_str().starts_with('\\'))
+            .map(|g| (run.start() + g.start(), run.start() + g.end()))
+            .collect();
         let mut from = 0;
         while from < groups.len() {
             let mut found = None;
@@ -415,6 +424,19 @@ mod tests {
             format!("ta carte {HIDDEN} expire le 12/30")
         );
         assert_eq!(hide_card_numbers("rien ici 12/30"), "rien ici 12/30");
+        // in a JSON answer read as text (execute_script's, review of 14/11): line breaks, tabs and spaces as escapes
+        let answer = r#"{"success": true, "result": "4242\n4242\n4242\n4242\n4242\t4242\t4242\t4242", "error": null}"#;
+        assert_eq!(
+            hide_card_numbers(answer),
+            format!(r#"{{"success": true, "result": "{HIDDEN}\n{HIDDEN}", "error": null}}"#)
+        );
+        for text in [r#""4242\u00a04242\u202f4242\u00A04242""#, r#""4242\r\n4242\r\n4242\r\n4242""#,
+                     r#""4242\/4242\/4242\/4242""#] {
+            assert!(holds_card_number(text), "{text}");
+        }
+        // an escape's own digits are no group: « 4242 » then « \u2010 » (a dash) then the rest
+        assert!(holds_card_number(r#""4242\u20104242\u20104242\u20104242""#));
+        assert!(!holds_card_number(r#""n° 4242\u00e94242\u00e94242\u00e94242""#), "a letter between them");
     }
 
     #[test]
