@@ -474,6 +474,56 @@ const NEGATIONS: &[&str] = &[
     "NICHTS", "KEIN", "KEINE", "KEINEN", "OHNE", "NIE", "SIN", "NADA", "NINGUN", "NINGUNA", "NUNCA",
 ];
 
+/// Words a negation's reach ends at, looking back from a blocked word (« pas bloquée mais KO »: blocked).
+const CONJUNCTIONS: &[&str] = &[
+    "MAIS", "BUT", "ABER", "PERO", "SINO", "SONDERN", "HOWEVER", "YET", "SAUF", "EXCEPT", "CEPENDANT", "POURTANT", "DOCH",
+    "TOUTEFOIS", "ALLERDINGS",
+];
+
+/// The exact code word anywhere in a line (« Tout est prêt… [REHEARSAL OK] », « No blocking issue…, but [REHEARSAL
+/// BLOCKED] the site asks for an SMS code »): its verdict, and the line's own words without it (None: nothing but
+/// it, markdown or an emoji). Third review of 14/11: it was read at the start of a line only.
+fn code_word_in(line: &str) -> Option<(Verdict, Option<String>)> {
+    let orig: Vec<char> = line.chars().collect();
+    let plain: String = orig.iter().map(|c| plain_char(*c)).collect();
+    let plain: Vec<char> = plain.chars().collect();
+    let find = |needle: &str| {
+        let n: Vec<char> = needle.chars().collect();
+        (0..plain.len().saturating_sub(n.len() - 1)).find(|i| plain[*i..].starts_with(&n))
+    };
+    let words = |chars: &[char]| -> Option<String> {
+        let text: String = chars.iter().collect();
+        let text = text.trim_matches(|c: char| !c.is_alphanumeric() && !".!?»)…".contains(c)).trim().to_string();
+        text.chars().any(char::is_alphanumeric).then_some(text)
+    };
+    if let Some(at) = find("[REHEARSAL OK]") {
+        let end = at + "[REHEARSAL OK]".chars().count();
+        let left: Vec<char> = orig[..at].iter().chain([' '].iter()).chain(orig[end..].iter()).copied().collect();
+        return Some((Verdict { ok: true, why: String::new(), code: true }, words(&left)));
+    }
+    let at = find("[REHEARSAL BLOCKED")?;
+    let after = at + "[REHEARSAL BLOCKED".chars().count();
+    let close = (after..orig.len()).find(|i| orig[*i] == ']').unwrap_or(orig.len());
+    let inside: String = orig[after..close].iter().collect();
+    let tail: String = orig[(close + 1).min(orig.len())..].iter().collect();
+    let tidy = |t: &str| {
+        t.trim_start_matches(|c: char| c.is_whitespace() || c.is_ascii_punctuation() || "\u{2014}\u{2013}".contains(c))
+            .trim_end_matches(|c: char| c.is_whitespace() || "]*`".contains(c))
+            .trim()
+            .chars()
+            .take(200)
+            .collect::<String>()
+    };
+    // « [REHEARSAL BLOCKED: why] the rest » or « [REHEARSAL BLOCKED] why »
+    let (why, rest) = if tidy(&inside).is_empty() { (tidy(&tail), None) } else { (tidy(&inside), words(&tail.chars().collect::<Vec<_>>())) };
+    let before = words(&orig[..at]);
+    let left = match (before, rest) {
+        (Some(b), Some(r)) => Some(format!("{b} {r}")),
+        (b, r) => b.or(r),
+    };
+    Some((Verdict { ok: false, why, code: true }, left))
+}
+
 /// `c` upper-case without its accent, one char for one (so a position in it is one in the original).
 fn plain_char(c: char) -> char {
     let up = c.to_uppercase().next().unwrap_or(c);
@@ -551,10 +601,18 @@ fn verdict_of(line: &str) -> Option<Verdict> {
     // a blocked word anywhere after the name: blocked (« Rehearsal done but blocked at the payment page »), unless a
     // negation comes just before it (« rien n'a été bloqué », « nothing failed », second review of 14/11)
     // (the words of its own clause only: « le paiement n'est pas passé, bloqué » is blocked)
+    // (never past a conjunction nor another verdict word: « pas bloquée mais KO », « without any SMS but blocked »)
     let words_before = |i: usize| -> Vec<String> {
         let head: String = plain[..i].iter().collect();
         let clause = head.rsplit(|c: char| ",;.:!?()[]".contains(c)).next().unwrap_or("");
-        clause.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).rev().take(4).map(str::to_string).collect()
+        clause
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .rev()
+            .take(4)
+            .take_while(|w| ![CONJUNCTIONS, BLOCKED_WORDS, PASSED_WORDS].iter().any(|list| list.contains(w)))
+            .map(str::to_string)
+            .collect()
     };
     let blocked_from = |from: usize| {
         (from..plain.len())
@@ -582,7 +640,18 @@ fn verdict_of(line: &str) -> Option<Verdict> {
 /// else the translations, a blocked one anywhere winning. None: no verdict.
 pub fn read_rehearsal(text: &str) -> Option<(bool, String, String)> {
     let text = crate::tools_knowledge::strip(text).trim().to_string();
-    let read: Vec<(&str, Option<Verdict>)> = text.lines().map(|l| (l, verdict_of(l))).collect();
+    // each line: the code word anywhere in it (its own words kept), else a verdict at its start, else words
+    let read: Vec<(String, Option<Verdict>)> = text
+        .lines()
+        .flat_map(|l| match code_word_in(l) {
+            Some((v, left)) => {
+                let mut out = vec![(String::new(), Some(v))];
+                out.extend(left.map(|w| (w, None)));
+                out
+            }
+            None => vec![(l.to_string(), verdict_of(l))],
+        })
+        .collect();
     let all: Vec<&Verdict> = read.iter().filter_map(|(_, v)| v.as_ref()).collect();
     if all.is_empty() {
         return None;
@@ -597,7 +666,7 @@ pub fn read_rehearsal(text: &str) -> Option<(bool, String, String)> {
         .or_else(|| blocked.iter().find(|v| !v.why.is_empty()))
         .map(|v| v.why.clone())
         .unwrap_or_default();
-    let rest = read.iter().filter(|(_, v)| v.is_none()).map(|(l, _)| *l).collect::<Vec<_>>().join("\n");
+    let rest = read.iter().filter(|(_, v)| v.is_none()).map(|(l, _)| l.as_str()).collect::<Vec<_>>().join("\n");
     Some((ok, why, rest.trim().to_string()))
 }
 
@@ -1121,5 +1190,55 @@ mod rcl2_review_probes {
         let read = read_rehearsal("[REHEARSAL BLOCKED]: , le site demande un SMS").unwrap();
         assert_eq!(read.1, "le site demande un SMS");
         assert_eq!(read_rehearsal("Probe erfolgreich, nichts blockiert.").map(|r| r.0), Some(true));
+    }
+}
+
+
+// -- third re-review of cards-lab-fixes (14/11, 0bdc7263a): its probes, failing on 0bdc7263a, kept as tests ---
+#[cfg(test)]
+mod rcl3_review_probes {
+    use super::*;
+
+    /// « pas bloquée mais KO »: the negation is of « bloquée », not of « KO » after « mais ».
+    #[test]
+    fn rcl3_not_blocked_but_ko_is_blocked() {
+        let read = read_rehearsal("Répétition réussie jusqu'au panier, pas bloquée mais KO au paiement : code SMS demandé");
+        assert_eq!(read.as_ref().map(|r| r.0), Some(false), "{read:?}");
+    }
+
+    /// « without any SMS but blocked »: « without » is not the negation of « blocked ».
+    #[test]
+    fn rcl3_without_sms_but_blocked_is_blocked() {
+        let read = read_rehearsal("Rehearsal OK without any SMS but blocked at the payment page");
+        assert_eq!(read.as_ref().map(|r| r.0), Some(false), "{read:?}");
+    }
+
+    /// The exact code word at the end of a line of words: read, and never left in the words.
+    #[test]
+    fn rcl3_code_word_at_the_end_of_a_line_is_read() {
+        let read = read_rehearsal("Tout est prêt jusqu'à la page de paiement. [REHEARSAL OK]");
+        assert_eq!(read, Some((true, String::new(), "Tout est prêt jusqu'à la page de paiement.".into())));
+    }
+
+    /// « No blocking issue, but [REHEARSAL BLOCKED] … » on one line: blocked, the code word never in the words.
+    #[test]
+    fn rcl3_code_word_inside_a_line_is_read() {
+        let read = read_rehearsal("No blocking issue until the card form, but [REHEARSAL BLOCKED] the site asks for an SMS code");
+        let read = read.expect("a verdict");
+        assert!(!read.0 && !read.2.contains("REHEARSAL"), "{read:?}");
+    }
+
+    /// The bracketed reason, the words around the code word, markdown and emoji around it.
+    #[test]
+    fn rcl3_the_words_around_the_code_word() {
+        assert_eq!(
+            read_rehearsal("Voilà. [REHEARSAL BLOCKED: le site demande un SMS] Il faudra ton téléphone."),
+            Some((false, "le site demande un SMS".into(), "Voilà. Il faudra ton téléphone.".into()))
+        );
+        assert_eq!(read_rehearsal("**[REHEARSAL OK]** ✅\nTout est prêt."), Some((true, String::new(), "Tout est prêt.".into())));
+        assert_eq!(
+            read_rehearsal("Rien n'a été bloqué. [REHEARSAL OK]").map(|r| (r.0, r.2)),
+            Some((true, "Rien n'a été bloqué.".into()))
+        );
     }
 }
