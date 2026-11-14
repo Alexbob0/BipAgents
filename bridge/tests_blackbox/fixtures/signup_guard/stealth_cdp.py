@@ -6,8 +6,12 @@ fix-signup-hold: the same tools, output schemas and semantics where the guard of
 - type_text: waits for its element up to 10 s (nodriver `tab.select`), focuses it, empties it, types each character;
 - press_key: focuses `selector`, one key; with Shift its text upper-cased (dom_handler.press_key);
 - execute_script: `script`, or `(function() { script })(args…)` with `args` (dom_handler.execute_script);
-- paste_text: the value set at once; select_option: an option by value, text or index (card-guards, 14/11);
-- get_active_tab: the tab's target id, which bip-browser-mcp's checks look at through DevTools (review of 14/11).
+- paste_text: the value set at once (card-guards, 14/11);
+- get_active_tab: the tab's target id, which bip-browser-mcp's checks look at through DevTools (review of 14/11);
+- select_option (added for select-option-direct, 13/11): as dom_handler.select_option, a `value` or an `index` set by a
+  script declaring `const select` at the page's top level, its error never read (nodriver `Tab.evaluate` returns it),
+  so True whatever happened: a page's second list is never set; a `text` typed into the list (`send_keys`: Chrome's
+  type-ahead picks the first choice whose text starts with it, review of select-option-direct 14/11).
 
     python3 stealth_cdp.py <page's DevTools websocket URL>
 """
@@ -29,8 +33,8 @@ TOOLS = [
     {"name": "press_key", "inputSchema": {"type": "object"}, "outputSchema": OBJECT},
     {"name": "execute_script", "inputSchema": {"type": "object"}, "outputSchema": OBJECT},
     {"name": "paste_text", "inputSchema": {"type": "object"}, "outputSchema": WRAPPED_BOOL},
-    {"name": "select_option", "inputSchema": {"type": "object"}, "outputSchema": WRAPPED_BOOL},
     {"name": "get_active_tab", "inputSchema": {"type": "object"}, "outputSchema": OBJECT},
+    {"name": "select_option", "inputSchema": {"type": "object"}, "outputSchema": WRAPPED_BOOL},
 ]
 
 
@@ -105,16 +109,6 @@ def call(name, args):
         evaluate(f"(() => {{ const e = {element}; e.focus(); e.value = {json.dumps(args['text'])}; "
                  "e.dispatchEvent(new Event('input', {bubbles: true})); return true; })()")
         return True
-    if name == "select_option":   # dom_handler.select_option: by value, text or index, then a change event
-        element = select(args["selector"])
-        wanted = json.dumps({k: args.get(k) for k in ("value", "text", "index")})
-        found = evaluate(f"(() => {{ const e = {element}; const w = {wanted}; const o = [...e.options].find((o, i) => "
-                         "(w.value != null && o.value === String(w.value)) || (w.text != null && o.text.trim() === w.text) "
-                         "|| (w.index != null && i === Number(w.index))); if (!o) return false; e.value = o.value; "
-                         "e.dispatchEvent(new Event('change', {bubbles: true})); return true; })()")
-        if not found:
-            raise Exception("Option not found")
-        return True
     if name == "press_key":
         if args.get("selector"):
             evaluate(f"{select(args['selector'])}.focus()")
@@ -130,6 +124,28 @@ def call(name, args):
             return {"success": True, "result": evaluate(expression), "error": None}
         except Exception as exc:
             return {"success": False, "result": None, "error": str(exc)}
+    if name == "select_option":
+        element = select(args["selector"])
+        if args.get("text") is not None:
+            # `send_keys` into the list: Chrome's type-ahead picks the first choice whose text starts with the keys
+            # (the lab, 13/11: day « 14 », month « Mars », year « 1991 » all set this way); typed into anything else
+            typed = json.dumps(str(args["text"]).lower())
+            if evaluate(f"(() => {{ const s = {element}; s.focus(); if (s.tagName !== 'SELECT') return false; "
+                        f"const o = [...s.options].find((x) => x.text.trim().toLowerCase().startsWith({typed})); "
+                        "if (o) { s.value = o.value; s.dispatchEvent(new Event('input', {bubbles: true})); "
+                        "s.dispatchEvent(new Event('change', {bubbles: true})); } return true; })()"):
+                return True
+            for char in str(args["text"]):
+                cdp("Input.insertText", {"text": char})
+            return True
+        target = (f"select.value = {json.dumps(args['value'])};" if args.get("value") is not None else
+                  f"select.selectedIndex = {int(args['index'])};" if args.get("index") is not None else None)
+        if target is None:
+            raise Exception("Failed to select option: No selection criteria provided (value, text, or index)")
+        cdp("Runtime.evaluate", {"expression": f"const select = document.querySelector({json.dumps(args['selector'])});"
+                                               f" if (select) {{ {target} select.dispatchEvent(new Event('change', "
+                                               f"{{bubbles: true}})); }}", "userGesture": True})
+        return True
     raise Exception(f"Unknown tool: {name}")
 
 

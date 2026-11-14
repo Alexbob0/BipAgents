@@ -276,8 +276,15 @@ def shared_gc():
     if not shared_on() or not os.path.isdir(os.path.join(SHARED_REPO, "installer")):
         return
     env = dict(os.environ, PYTHONPATH=os.path.join(SHARED_REPO, "installer"))
-    subprocess.run(["python3", "-m", "bipinstall.shared_hermes", "gc"], env=env, capture_output=True,
-                   timeout=600, cwd=SHARED_REPO)
+    done = subprocess.run(["python3", "-m", "bipinstall.shared_hermes", "gc"], env=env, capture_output=True,
+                          text=True, timeout=600, cwd=SHARED_REPO)
+    # its own lines only (what it removed, or why it kept them all: place numbers, never a name); anything else it
+    # printed (a traceback may end with a place's path) stays out of the journal
+    for line in [line for line in done.stdout.splitlines()
+                 if line.startswith(("Removed: ", "Nothing to remove.", "All kept: "))][-5:]:
+        log("shared Hermes gc: %s" % line)
+    if done.returncode != 0:
+        log("shared Hermes gc failed (exit %d)" % done.returncode)
 
 
 def update(number, commit):

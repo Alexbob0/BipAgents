@@ -179,10 +179,15 @@ pub fn tools_url(config: &Config) -> String {
     format!("{base}{PATH}?v={}", crate::agent_tools::version_of(&tools()))
 }
 
-/// Whether `agent` gets these tools: an install that may offer payments, an agent that may hold credentials (the
-/// person's switch is checked at each call, so turning it on needs no new entry).
+/// Whether `agent` gets these tools: an install that may offer payments, an agent that may hold credentials, and an
+/// « open » agent, whose SOUL.md speaks of paying (agents_admin.rs `open_agent`: never the family's agent nor a project
+/// agent, whose members or friends share its conversation; review of 14/11). The person's switch is checked at each
+/// call, so turning it on needs no new entry.
 pub fn offered(config: &Config, agent: &AgentConfig) -> bool {
-    config.hermes.isolated && cards::allowed(config) && crate::vault::holder(config, agent).is_none()
+    config.hermes.isolated
+        && cards::allowed(config)
+        && crate::vault::holder(config, agent).is_none()
+        && crate::agents_admin::open_agent(config, agent)
 }
 
 /// What `agent` may do when its person shops (its SOUL.md's payments block, souls.rs; rendered again when the vault

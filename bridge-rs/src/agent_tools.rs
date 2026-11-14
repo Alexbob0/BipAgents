@@ -1459,6 +1459,13 @@ pub async fn call_tool(
     carnet: crate::notebook::reads::Turn,
 ) -> anyhow::Result<Dict> {
     if name == PROPOSE_TASK {
+        // the same task already waiting or under way: never a second one, nor a second push (jobs.rs `same_task`)
+        if let Some((title, state)) = jobs
+            .as_ref()
+            .and_then(|j| crate::jobs::same_task(&j.config.get(), &agent.name, &tk::str_or_empty(arguments.get("prompt"))))
+        {
+            return Ok(crate::jobs::already_there(&title, &state));
+        }
         // a small task under « Seulement le critique »: started at once (approval_level.rs)
         if let Some(started) = match jobs.as_ref() {
             Some(jobs) => crate::approval_level::auto_task(jobs, agent, arguments).await,
