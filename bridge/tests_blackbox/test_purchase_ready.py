@@ -261,6 +261,12 @@ def test_a_rehearsal_verdict_translated_is_read_and_never_shown(bridges, fakes):
     assert wait_until(lambda: step(bridge, conn, "rehearsal")["state"] == "ok", timeout=30)
     assert wait_until(lambda: len(said(bridge)) == 3, timeout=20)
     assert "shop.example" in said(bridge)[-1] and said(bridge)[-1].startswith(("Répétition faite", "Rehearsal done"))
+    # the cards lab of 14/11, GLM-5.3 Flash's very words: a word between the name and the verdict
+    fakes.hermes.run_output = ("[RÉPÉTITION GÉNÉRALE OK]\n\nLa répétition est faite : la page de paiement s'est "
+                               "affichée, j'ai tout vidé sans rien payer.")
+    assert wait_until(lambda: bridge.post(rehearse, headers=AUTH).status_code == 202, timeout=20)
+    assert wait_until(lambda: len(said(bridge)) == 4, timeout=30)
+    assert said(bridge)[-1].startswith("La répétition est faite") and step(bridge, conn, "rehearsal")["state"] == "ok"
     assert not [t for t in said(bridge) if "REHEARSAL OK" in t.upper() or "RÉPÉTITION RÉUSSIE" in t.upper()
                 or "BLOCKIERT" in t.upper()]
 

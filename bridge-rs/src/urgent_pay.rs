@@ -448,6 +448,12 @@ words in your person's language. Then one short sentence for them (they never se
 /// wrote « RÉPÉTITION RÉUSSIE » once in three), accents and case aside.
 const REHEARSAL_WORDS: &[&str] =
     &["REHEARSAL", "REPETITION", "PROBEDURCHLAUF", "PROBELAUF", "GENERALPROBE", "PROBE", "TESTLAUF", "ENSAYO", "SIMULACRO"];
+/// Words a model puts between a rehearsal's name and its verdict (« RÉPÉTITION GÉNÉRALE OK », « ENSAYO GENERAL OK »,
+/// « Rehearsal result: OK », « Probe ist erfolgreich »), accents and case aside.
+const BETWEEN_WORDS: &[&str] = &[
+    "GENERALE", "GENERAL", "RESULT", "RESULTAT", "RESULTADO", "ERGEBNIS", "STATUS", "STATUT", "ESTADO", "VERDICT",
+    "VEREDICTO", "IST", "EST", "IS", "ES", "WAS", "WAR", "ETAIT", "FUE",
+];
 /// Its verdict, the same way: it went through, or it was blocked.
 const PASSED_WORDS: &[&str] = &[
     "OK", "OKAY", "PASSED", "PASS", "SUCCESSFUL", "SUCCEEDED", "SUCCESS", "DONE", "REUSSIE", "REUSSI", "VALIDEE", "ERFOLGREICH",
@@ -489,14 +495,21 @@ fn verdict_of(line: &str) -> Option<(bool, String)> {
         })
     };
     at = word_at(at, REHEARSAL_WORDS)?;
-    // « REHEARSAL: OK », « Répétition — réussie », « Probe ist erfolgreich »
-    while plain.get(at).is_some_and(|c| c.is_whitespace() || ":\u{2014}-".contains(*c)) {
-        at += 1;
-    }
-    for filler in ["IST ", "EST ", "IS ", "ES "] {
-        let f: Vec<char> = filler.chars().collect();
-        if plain.get(at..at + f.len()) == Some(&f[..]) {
-            at += f.len();
+    // « REHEARSAL: OK », « Répétition — réussie », « Probe ist erfolgreich », « RÉPÉTITION GÉNÉRALE OK » (GLM-5.3
+    // Flash, the lab of 14/11), « Rehearsal result: OK »: a few known words between the name and the verdict
+    let gap = |at: &mut usize| {
+        while plain.get(*at).is_some_and(|c| c.is_whitespace() || ":\u{2014}-".contains(*c)) {
+            *at += 1;
+        }
+    };
+    gap(&mut at);
+    for _ in 0..3 {
+        match word_at(at, BETWEEN_WORDS) {
+            Some(end) => {
+                at = end;
+                gap(&mut at);
+            }
+            None => break,
         }
     }
     if word_at(at, PASSED_WORDS).is_some() {
@@ -891,6 +904,9 @@ mod tests {
             "Ensayo exitoso",
             "rehearsal passed",
             "REHEARSAL_OK",
+            "[RÉPÉTITION GÉNÉRALE OK]",
+            "Ensayo general: exitoso",
+            "Rehearsal result: OK",
         ] {
             let read = ok(&format!("{line}\nTout est prêt jusqu'au paiement."));
             if line.starts_with("Die ") {
@@ -904,6 +920,7 @@ mod tests {
             ("Répétition — bloquée", ""),
             ("PROBE BLOCKIERT: Captcha", "Captcha"),
             ("Ensayo bloqueado: sin stock", "sin stock"),
+            ("[RÉPÉTITION GÉNÉRALE BLOQUÉE] le site demande un SMS", "le site demande un SMS"),
             ("**[RÉPÉTITION ÉCHOUÉE : connexion refusée]**", "connexion refusée"),
         ] {
             assert_eq!(ok(&format!("{line}\nDésolé.")), Some((false, why.into(), "Désolé.".into())), "{line}");
@@ -916,6 +933,7 @@ mod tests {
         // words that only look like one are the person's
         assert_eq!(ok("La répétition est terminée, tout va bien."), None);
         assert_eq!(ok("Répétitions OK pour demain"), None);
+        assert_eq!(ok("Répétition de demain OK"), None);
         // a reply that is only its verdict: a plain line of ours
         assert_eq!(rehearsal_line("fr", "shop.example", true, ""), "Répétition faite sur shop.example : tout est prêt jusqu'au paiement.");
         assert_eq!(rehearsal_line("fr", "shop.example", false, "code SMS"), "Répétition bloquée sur shop.example : code SMS.");
