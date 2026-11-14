@@ -1009,7 +1009,10 @@ mod tests {
         let (said, _) = w(json!({"page": "Léa Martin", "fix": [{"old": "Aime le jazz", "new": "Pointure : 36"}]}));
         assert!(said.contains("not written back"), "{said}");
         let text = page_text(&config, lea);
-        assert!(!text.contains("36") && text.contains("Aime le jazz"), "{text}");
+        // the page's body: its front matter holds a random id (« p00348b2636 ») that may hold « 36 » (a flake, 14/11)
+        let body = text.strip_prefix("---\n").and_then(|rest| rest.split_once("\n---")).map_or(text.as_str(), |(_, b)| b);
+        assert!(body.len() < text.len(), "{text}");
+        assert!(!body.contains("36") && !text.contains("Pointure") && body.contains("Aime le jazz"), "{text}");
     }
 
     #[test]
