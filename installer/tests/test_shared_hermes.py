@@ -141,6 +141,7 @@ def test_the_bridge_finds_the_shared_python(tmp_path):
     assert not shared_hermes.bridge_config(config, Path("/h/.hermes"))
 
 
+@pytest.mark.linux
 def test_gc_keeps_what_a_place_points_at_or_a_process_runs(tmp_path):
     base = tmp_path / "opt"
     for name in ("old", "pointed", "running", "pinned", "half"):
@@ -156,6 +157,7 @@ def test_gc_keeps_what_a_place_points_at_or_a_process_runs(tmp_path):
     assert sorted(p.name for p in base.iterdir()) == ["pinned", "pointed", "running"]
 
 
+@pytest.mark.linux
 def test_gc_deletes_nothing_while_a_place_s_hermes_cannot_be_read(tmp_path):
     """A place whose encrypted space is locked (after a reboot, or closed by hand): its ~/.hermes is a link into the
     space's open view (bridge-rs/src/space.rs), empty, so which version it runs is unknown; no version is deleted until
@@ -240,6 +242,7 @@ def _gc_server(tmp_path):
     return base, two, proc
 
 
+@pytest.mark.linux
 @in_namespace
 def test_the_gc_never_says_a_place_s_names_when_a_place_can_t_be_read(tmp_path):
     """An agent's space « Marie-projet » whose folder is a dead FUSE mount (ENOTCONN; root gets EACCES the same way
@@ -270,6 +273,7 @@ def test_the_gc_never_says_a_place_s_names_when_a_place_can_t_be_read(tmp_path):
     assert sorted(p.name for p in base.iterdir()) == ["new", "old"]
 
 
+@pytest.mark.linux
 def test_a_place_genuinely_locked_keeps_every_version(tmp_path):
     """As space.rs writes them: absolute links into the view; the view an empty folder (unmounted)."""
     base, two, proc = _gc_server(tmp_path)
@@ -282,6 +286,7 @@ def test_a_place_genuinely_locked_keeps_every_version(tmp_path):
     assert sorted(p.name for p in base.iterdir()) == ["new", "old"]
 
 
+@pytest.mark.linux
 def test_a_place_open_again_lets_an_unused_version_go(tmp_path):
     base, two, proc = _gc_server(tmp_path)
     three = tmp_path / "home" / "bip3"
@@ -294,6 +299,7 @@ def test_a_place_open_again_lets_an_unused_version_go(tmp_path):
     assert shared_hermes.gc(hermes.Runner(), base, [two, three], keep=["new"], proc=proc) == ["old"]
 
 
+@pytest.mark.linux
 def test_the_all_kept_line_names_no_place_but_its_number(tmp_path, capsys):
     base, two, proc = _gc_server(tmp_path)
     view = two / DATA / "space" / "open"
@@ -305,6 +311,7 @@ def test_the_all_kept_line_names_no_place_but_its_number(tmp_path, capsys):
     assert "bip2" not in said and str(tmp_path) not in said
 
 
+@pytest.mark.linux
 def test_a_dangling_link_inside_the_home_never_freezes_the_gc(tmp_path):
     """A link of the place's that stays inside its home and leads nowhere (not into its own view): the place can't run
     anything through it either; never a lock."""
@@ -315,6 +322,7 @@ def test_a_dangling_link_inside_the_home_never_freezes_the_gc(tmp_path):
     assert shared_hermes.gc(hermes.Runner(), base, [two, three], keep=["new"], proc=proc) == ["old"]
 
 
+@pytest.mark.linux
 @pytest.mark.xfail(reason="known, for the next release: nothing in a place's home tells a real lock from one the place "
                           "makes itself, nor where a link out of its home leads without root following it (root must "
                           "keep the version it last saw); meanwhile the « All kept » line names the place holding it",
