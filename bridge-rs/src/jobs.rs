@@ -1091,6 +1091,13 @@ impl Jobs {
 
         async fn ended(&self, agent: &AgentConfig, job: &mut Dict, end: End) {
         let End { mut status, output, usage, error } = end;
+        // Hermes' own lines (background_turn.rs `hermes_line`) are never a report: nothing else, the run was interrupted
+        let words = crate::background_turn::without_hermes_lines(&output);
+        if words.is_empty() && !output.trim().is_empty() && (status == "completed" || status == "gone") {
+            tracing::warn!(agent = %agent.name, job = %tk::str_or_empty(job.get("id")), "the task's run ended on Hermes' line only");
+            status = "interrupted".into();
+        }
+        let output = words;
         let usage = match usage {
             Some(Value::Object(u)) if !u.is_empty() => Some(u),
             // a run stopped (its budget, a pause) comes back without its usage, one lost in a Hermes restart with an

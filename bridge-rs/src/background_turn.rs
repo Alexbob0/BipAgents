@@ -254,13 +254,37 @@ fn ended_with(status: String, output: &str) -> (String, String) {
         tracing::warn!(target: "bipbridge::background_turn", status = %status, "the turn ended without an answer: no report");
         return ("failed".into(), String::new());
     }
-    // Hermes' own line closing a turn it stopped (the brake's stop included): never the agent's words (the cards lab
-    // of 14/11: « [interrupt: no assistant output for this turn] » reached the person as a watcher's message)
-    if crate::threads::layout::interruption_line(text) {
+    // Hermes' own lines closing a turn it stopped (the brake's stop included), one line at a time: never the agent's
+    // words (the cards lab of 14/11: « [interrupt: no assistant output for this turn] » reached the person as a
+    // watcher's message); nothing left but them: the turn was interrupted
+    let words = without_hermes_lines(text);
+    if words.is_empty() && !text.trim().is_empty() {
         tracing::warn!(target: "bipbridge::background_turn", status = %status, "the turn was interrupted: no report");
         return ("cancelled".into(), String::new());
     }
-    (status, text.to_string())
+    (status, words)
+}
+
+/// One of the lines Hermes writes itself where the agent's reply would be, verbatim (models echo them): the turn it
+/// stopped (`abort_turn_on_interrupt`: « [interrupt: … ] », « Operation interrupted: … »), « [response interrupted] »,
+/// the correction scaffold (#81841), the repetition guard's line. A reply of the agent's own that opens on « Operation
+/// interrupted by … » is not one.
+pub fn hermes_line(line: &str) -> bool {
+    let t = line.trim();
+    (t.starts_with("[interrupt:") && t.ends_with(']'))
+        || (t.starts_with("Operation interrupted:") && t.chars().count() <= 120)
+        || t == "Operation interrupted"
+        || t == "[response interrupted]"
+        || t == "[This response was interrupted by a user correction.]"
+        || t == "[the reply degenerated into a repetition loop and was interrupted]"
+}
+
+/// `text` without Hermes' own lines (`hermes_line`), trimmed: the agent's words only.
+pub fn without_hermes_lines(text: &str) -> String {
+    if !text.lines().any(hermes_line) {
+        return text.trim().to_string();
+    }
+    text.lines().filter(|l| !hermes_line(l)).collect::<Vec<_>>().join("\n").trim().to_string()
 }
 
 fn tokens_of(session: &Dict) -> i64 {
@@ -594,5 +618,46 @@ mod tests {
         assert_eq!(end("[interrupt: no assistant output for this turn]"), cancelled);
         assert_eq!(ended_with("cancelled".into(), "Operation interrupted: waiting for model response"), cancelled);
         assert_eq!(end("[response interrupted]"), cancelled);
+    }
+}
+
+// -- independent re-review of cards-lab-fixes (14/11): its probes, failing on 8de44ad67, kept as tests ----------------
+#[cfg(test)]
+mod rcl_review_probes {
+    use super::*;
+
+    const PLACEHOLDER: &str = "[interrupt: no assistant output for this turn]";
+
+    /// The model echoes Hermes' placeholder, then answers: its words are its own (only the placeholder goes).
+    #[test]
+    fn rcl_words_after_hermes_interrupt_line_are_kept() {
+        let out = format!("{PLACEHOLDER}\n\nDu nouveau : le billet Stromae est en stock.");
+        assert_eq!(ended_with("completed".into(), &out), ("completed".into(), "Du nouveau : le billet Stromae est en stock.".into()));
+    }
+
+    /// The placeholder after the words: it never reaches the person.
+    #[test]
+    fn rcl_hermes_interrupt_line_after_words_never_reaches_the_person() {
+        let out = format!("Du nouveau : le billet Stromae est en stock.\n\n{PLACEHOLDER}");
+        let (_, text) = ended_with("completed".into(), &out);
+        assert!(!text.contains("[interrupt:"), "the person reads: {text}");
+    }
+
+    /// An agent's own reply that happens to open on « Operation interrupted »: its words, not Hermes'.
+    #[test]
+    fn rcl_a_reply_opening_on_operation_interrupted_is_the_agents() {
+        let reply = "Operation interrupted by the shop: its payment page is down until 18:00. I'll look again then.";
+        assert_eq!(ended_with("completed".into(), reply), ("completed".into(), reply.into()));
+    }
+
+    /// Hermes' other lines models echo verbatim (#81841: the correction scaffold; the repetition guard's line).
+    #[test]
+    fn rcl_hermes_scaffold_marker_is_no_reply() {
+        assert_eq!(ended_with("completed".into(), "[This response was interrupted by a user correction.]").1, "");
+    }
+
+    #[test]
+    fn rcl_hermes_repetition_line_is_no_reply() {
+        assert_eq!(ended_with("completed".into(), "[the reply degenerated into a repetition loop and was interrupted]").1, "");
     }
 }
