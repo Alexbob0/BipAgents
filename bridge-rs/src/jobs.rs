@@ -1423,29 +1423,30 @@ make). If you meant something else, call that tool instead: a password, API key 
 mcp__bipagents_connectors__ask_secret; the sites a connector needs → mcp__bipagents_files__sandbox_sites_request; a \
 connector you built → mcp__bipagents_connectors__connector_register (behind the tool search: tool_call with its name).";
 
-/// A task of `agent` with the same words as `prompt` (case and spaces aside) still waiting for the person or under way:
-/// its title and state. The cards lab of 14/11 (GLM-5.3 Flash, a watcher's turn): the same propose_task again and
+/// A task of `agent` with the same words as `prompt` (case and spaces aside; its first 8000 characters, as a task keeps
+/// them) still waiting for the person, under way or paused: its title and state. The cards lab of 14/11 (GLM-5.3 Flash, a watcher's turn): the same propose_task again and
 /// again, each call a new waiting task and a push, until the brake stopped the turn; the next turn began with it again.
 pub fn same_task(config: &crate::config::Config, agent: &str, prompt: &str) -> Option<(String, String)> {
     let words = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
-    let wanted = words(prompt);
+    let wanted = words(tk::head(prompt, 8000));
     if wanted.is_empty() {
         return None;
     }
     tasks(config)
         .into_iter()
         .filter(|j| agent_of(j) == agent)
-        .filter(|j| ["proposed", "queued", "running", "counting", "stopping"].contains(&state_of(j).as_str()))
+        .filter(|j| ["proposed", "queued", "running", "counting", "stopping", "paused"].contains(&state_of(j).as_str()))
         .find(|j| words(&tk::str_or_empty(j.get("prompt"))) == wanted)
         .map(|j| (tk::str_or_empty(j.get("title")), state_of(&j)))
 }
 
-/// What propose_task / start_task answer for a task already there (`same_task`): never a second one.
+/// What propose_task answers for a task already there (`same_task`), before its small tasks' automatic start too
+/// (agent_tools.rs): never a second one.
 pub fn already_there(title: &str, state: &str) -> Dict {
-    let where_ = if state == "proposed" {
-        "it waits for your person's go in « Tâches de fond »"
-    } else {
-        "it is under way in « Tâches de fond »"
+    let where_ = match state {
+        "proposed" => "it waits for your person's go in « Tâches de fond »",
+        "paused" => "it is paused in « Tâches de fond »: your person resumes it there when they want",
+        _ => "it is under way in « Tâches de fond »",
     };
     tool_text(
         &format!("Already proposed: « {title} »: {where_}. Don't propose it again; go on with what you were doing."),

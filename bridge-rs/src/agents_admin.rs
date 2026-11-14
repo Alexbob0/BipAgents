@@ -2257,6 +2257,15 @@ pub async fn write_settings(
     Ok(())
 }
 
+/// An agent whose SOUL.md carries the person's own blocks (the payments, the offer's server): not the family's agent
+/// (its members write in its one conversation), not a project agent (friends read it), not one set up by hand on
+/// another HERMES_HOME. Card payments follow it (card_pay.rs `offered`: its tools, their view, `pay`).
+pub fn open_agent(config: &Config, agent: &AgentConfig) -> bool {
+    !crate::family_agent::is_family(config, &agent.name)
+        && !crate::project_agent::is_project(config, &agent.name)
+        && !agent.host_home.as_deref().is_some_and(|h| !h.is_empty())
+}
+
 /// The personality the person edited (or imported), kept in the record and rendered with the bridge's blocks.
 pub fn write_soul(config: &Config, agent: &AgentConfig, soul: &str) -> anyhow::Result<()> {
     soul_record(config, agent)?;
@@ -2277,7 +2286,7 @@ pub fn soul_text(config: &Config, agent: &AgentConfig, personality: &str, lang: 
     let project = crate::project_agent::is_project(config, &agent.name);
     let family = crate::family_agent::is_family(config, &agent.name);
     let closed = family || project;
-    let open = !closed && !agent.host_home.as_deref().is_some_and(|h| !h.is_empty());
+    let open = open_agent(config, agent);
     let text = if open { crate::souls::with_payments(&text, &crate::card_pay::shopping(config, agent)) } else { text };
     let text = crate::souls::with_server(&text, open && crate::handover::on_offer());
     let text = crate::souls::with_notebook(&text, !closed && crate::notebook::enabled(config, &agent.name));

@@ -129,8 +129,9 @@ pub const VAULT_DIRECT: [&str; 5] = [
     "!mcp__bipagents_vault__accept_terms",
 ];
 
-/// Paying with the person's card (card_pay.rs), in view for an agent its person lets pay (a card for it, payments on:
-/// `card_pay::shopping` is `Card`, the payments block of its SOUL.md says so). Behind the search, 14/11 (the cards
+/// Paying with the person's card (card_pay.rs), in view for an agent its person lets pay, with its browser (a card for
+/// it, payments on, an « open » agent: `card_pay::shopping` is `Card`, as the payments block of its SOUL.md says; never
+/// the family's agent nor a project agent). Behind the search, 14/11 (the cards
 /// lab, GLM-5.3 Flash, a watcher's restock): at the payment page the agent read pay_with_card with tool_describe, then
 /// called it by name; the call ended on the in-view create_page (pages « paiement-de-la-… »), then propose_task again
 /// and again until the brake, at both restocks of the run: no payment asked, the ticket not bought.
@@ -624,7 +625,7 @@ pub fn current(config: &Config, agent: &AgentConfig) -> Option<Diet> {
             }
         }
     }
-    if matches!(crate::card_pay::shopping(config, agent), crate::souls::Shopping::Card(_)) {
+    if browser && matches!(crate::card_pay::shopping(config, agent), crate::souls::Shopping::Card(_)) {
         for entry in PAY_DIRECT {
             if !out.defer.iter().any(|d| d == entry) {
                 out.defer.push(entry.to_string());
