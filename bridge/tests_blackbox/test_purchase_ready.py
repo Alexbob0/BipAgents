@@ -373,3 +373,22 @@ def test_a_rehearsal_waiting_for_the_watchers_conversation_never_refuses_its_rea
         assert "rehearsal" not in said_.lower(), f"the watcher's real payment refused as a rehearsal: {said_}"
     finally:
         going.set()
+
+
+def test_hermes_interrupt_line_never_reaches_the_person(bridges, fakes):
+    """The cards lab of 14/11: a watcher's turn the brake stopped came back with Hermes' own closing line, « [interrupt:
+    no assistant output for this turn] », and the person got it as the agent's message. Never the agent's words: the
+    watcher's own line instead."""
+    bridge, conn, _ = setup(bridges, fakes)
+    run = f"/v1/agents/vie/connectors/{conn['id']}/run"
+    assert bridge.post(run, headers=AUTH, params={"wait": "true"}, timeout=120).status_code == 200   # its baseline
+    fakes.hermes.rounds = 1
+    fakes.hermes.run_output = "[interrupt: no assistant output for this turn]"
+    (bridge.root / "value.txt").write_text("en vente")
+    woke = bridge.post(run, headers=AUTH, params={"wait": "true"}, timeout=120)
+    outcome = woke.json()["outcome"]
+    # its turn ran, its words were none (Hermes' line): the watcher's own line sent instead
+    assert (outcome["step"], outcome["woke"], outcome["sent"]) == ("woke", False, True), woke.text
+    assert wait_until(lambda: said(bridge), timeout=30)
+    assert not [t for t in said(bridge) if "interrupt" in t], said(bridge)
+    assert "Billets Stromae" in said(bridge)[-1], said(bridge)

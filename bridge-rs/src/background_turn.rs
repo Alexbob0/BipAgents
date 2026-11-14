@@ -254,6 +254,12 @@ fn ended_with(status: String, output: &str) -> (String, String) {
         tracing::warn!(target: "bipbridge::background_turn", status = %status, "the turn ended without an answer: no report");
         return ("failed".into(), String::new());
     }
+    // Hermes' own line closing a turn it stopped (the brake's stop included): never the agent's words (the cards lab
+    // of 14/11: « [interrupt: no assistant output for this turn] » reached the person as a watcher's message)
+    if crate::threads::layout::interruption_line(text) {
+        tracing::warn!(target: "bipbridge::background_turn", status = %status, "the turn was interrupted: no report");
+        return ("cancelled".into(), String::new());
+    }
     (status, text.to_string())
 }
 
@@ -584,5 +590,9 @@ mod tests {
         assert_eq!(end("  Soleil toute la journée.\n"), ("completed".into(), "Soleil toute la journée.".into()));
         assert_eq!(end("⚠️ Alerte orages ce soir."), ("completed".into(), "⚠️ Alerte orages ce soir.".into()));
         assert_eq!(ended_with("timeout".into(), ""), ("timeout".into(), String::new()));
+        let cancelled = ("cancelled".to_string(), String::new());
+        assert_eq!(end("[interrupt: no assistant output for this turn]"), cancelled);
+        assert_eq!(ended_with("cancelled".into(), "Operation interrupted: waiting for model response"), cancelled);
+        assert_eq!(end("[response interrupted]"), cancelled);
     }
 }
