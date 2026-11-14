@@ -716,8 +716,12 @@ async fn make_after_call(state: &AppState, agent: &AgentConfig, session: &str, l
                     tracing::info!(agent = %agent.name, session = %session, tokens = ran.tokens, status = %ran.status,
                                    replied = delivery.as_written, files = delivery.files.len(), "after the call: made");
                 }
-                None => tracing::warn!(agent = %agent.name, session = %session, status = %ran.status,
-                                       "after the call: the turn ended without a reply"),
+                None => {
+                    // the brake stopped it: its plain line, never silence
+                    let told = pipeline.tell_stopped(agent, &ran, after_call_title(&lang), &format!("aftercall:{live}")).await;
+                    tracing::warn!(agent = %agent.name, session = %session, status = %ran.status, told,
+                                   "after the call: the turn ended without a reply");
+                }
             }
         }
         Err(why) => tracing::warn!(agent = %agent.name, session = %session, why = %why, "after the call: not run"),
@@ -761,6 +765,7 @@ mod tests {
         let agent = AgentConfig { name: "vie".into(), ..Default::default() };
         let ran = |status: &str, text: &str| crate::background_turn::Ran {
             run_id: "run_1".into(), session: "api_s".into(), status: status.into(), text: text.into(), tokens: 1,
+            stopped: None,
         };
         let page = vec!["/bipagents/pages/vie/prononcer.html".to_string()];
         let replied = after_call_delivery(&agent, "fr", "live_1", &ran("completed", "Voilà l'audio."), page.clone()).unwrap();

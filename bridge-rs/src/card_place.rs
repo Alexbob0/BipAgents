@@ -993,7 +993,13 @@ async fn resume_turn(state: &AppState, agent: &AgentConfig, conversation: &str, 
             };
             pipeline.deliver(&delivery).await;
         }
-        Ok(ran) => tracing::info!(agent = %agent.name, status = %ran.status, "resumed turn: nothing to tell"),
+        Ok(ran) => {
+            // the brake stopped it: its plain line, never silence
+            let title = config.agent(Some(&agent.name)).map(|a| a.display_name.clone()).filter(|n| !n.is_empty());
+            let told = !ran.answered()
+                && pipeline.tell_stopped(agent, &ran, &title.unwrap_or_else(|| agent.name.clone()), "handback:card").await;
+            tracing::info!(agent = %agent.name, status = %ran.status, told, "resumed turn: nothing to tell");
+        }
         Err(why) if again(&why) => {
             // the conversation still busy, Hermes unreachable: tried again (`settle`)
             tracing::info!(agent = %agent.name, why = %why, "resumed turn not run yet: tried again");

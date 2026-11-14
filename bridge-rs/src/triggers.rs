@@ -907,6 +907,9 @@ pub async fn fire(state: &AppState, id: &str) {
     let ok = turn.status == "completed" || turn.status == "gone";
     let silent = crate::background_turn::is_silent(&turn.text);
     let mut message = if !ok { format!("ended {}", turn.status) } else if silent { "silent".into() } else { "sent".into() };
+    if !ok && pipeline.tell_stopped(&agent, &turn, &t.name, &format!("trigger:{id}")).await {
+        message.push_str(", told");   // the brake stopped it: its plain line, never silence
+    }
     if ok && !silent {
         // the agent's own message in the routine's conversation, pointed at by the Boîte (no copy of it)
         let delivery = Delivery {

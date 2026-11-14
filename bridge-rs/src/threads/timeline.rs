@@ -501,6 +501,9 @@ pub fn segment_items(
         }
     }
     let mut items = Vec::new();
+    // in the turn a purchase rehearsal's note started, the agent's verdict lines are the app's, never shown (review
+    // of 14/11: « [REHEARSAL OK] » beside the Boîte's message, the watcher removed or not)
+    let mut rehearsal = false;
     // where the bridge's note continuing a turn came (runs.rs `go_on`): a restart cuts only what follows it
     let mut continued_at = 0;
     for (place, shown) in in_place_compaction(rows) {
@@ -524,6 +527,13 @@ pub fn segment_items(
         };
         match row.role.as_str() {
             "user" => {
+                // a rehearsal's note starts its turn; another note, or the person's words, start another (a brake's
+                // steer or a go-on note within it does not)
+                if crate::urgent_pay::rehearsal_note_in(&raw) {
+                    rehearsal = true;
+                } else if raw.contains("<!--bip:") {
+                    rehearsal = false;
+                }
                 if raw.contains(crate::go_on::MARK) {
                     continued_at = items.len();
                 }
@@ -548,7 +558,10 @@ pub fn segment_items(
                     // a photo sent alone still is the person's
                     Ok(None) if images == 0 => continue,
                     Ok(None) => (String::new(), false),
-                    Ok(Some(found)) => found,
+                    Ok(Some(found)) => {
+                        rehearsal = false;
+                        found
+                    }
                 };
                 let (text, attachments) = visible(&words, &id, images);
                 if text.is_empty() && attachments.is_empty() {
@@ -590,6 +603,7 @@ pub fn segment_items(
                     continue;
                 }
                 let (text, attachments) = visible(&raw, &id, images);
+                let text = if rehearsal { crate::urgent_pay::without_verdict(&text).unwrap_or(text) } else { text };
                 let renamed = renamed_in(&raw);
                 if !text.is_empty() || !attachments.is_empty() || !renamed.is_empty() {
                     let mut body =

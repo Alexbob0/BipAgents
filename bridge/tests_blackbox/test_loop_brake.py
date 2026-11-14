@@ -541,3 +541,25 @@ def test_a_reply_that_already_hands_the_file_over_is_left_alone(bridges, fakes):
     events = follow_run(bridge, "r2")
     assert events[-1][1]["output"] == "Le revoici." and [a["path"] for a in events[-1][1]["attachments"]] == [old]
     assert "stale" not in events[-1][1]
+
+
+def test_a_task_the_brake_stops_is_paused_and_its_line_told(bridges, fakes):
+    """13/11, the cards lab: whatever the brake cuts, its person gets a plain line, never silence. A background task it
+    stops is paused « loop » (not « interrupted » by a restart) and the brake's line is pushed with its title."""
+    from test_jobs import TASK, view, with_device
+    bridge = with_device(bridges)
+    fakes.hermes.rounds = 10**6   # the task goes on until the brake stops it
+    fakes.hermes.runs["r1"] = ([sse("tool.started", run_id="r1", tool="mcp_bipagents_notebook_search", preview=f"école {i}")
+                                for i in range(60)]
+                               + [sse("run.completed", run_id="r1", output="Je cherche encore.")])
+    started = bridge.post("/v1/agents/wellness/jobs", headers=AUTH, json=TASK)
+    assert started.status_code == 200, started.text
+    job = started.json()
+    assert wait_until(lambda: fakes.hermes.seen("/v1/runs/r1/stop", "POST"), timeout=30)
+    assert wait_until(lambda: view(bridge, job["id"])["state"] == "paused", timeout=45)
+    assert view(bridge, job["id"])["reason"] == "loop"
+    assert wait_until(lambda: [p for p in fakes.apns.payloads() if p.get("j") == job["id"] or job["id"] in json.dumps(p)],
+                      timeout=20), fakes.apns.payloads()
+    [pushed] = [p for p in fakes.apns.payloads() if p.get("j") == job["id"] or job["id"] in json.dumps(p)]
+    said = bridge.get(f"/v1/notifications/{pushed['n']}", headers=AUTH).json()["preview"]
+    assert "Écoles du quartier" in str(said) and "I stopped" in str(said), said

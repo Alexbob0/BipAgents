@@ -489,6 +489,8 @@ pub struct SubscriptionState {
     /// The brake's count of the run's tool calls, and whether it stopped the run.
     pub turn: crate::loop_brake::TurnCount,
     pub braked: bool,
+    /// The brake's line when it stopped the run (`stop_looping`).
+    pub brake_said: Option<String>,
     /// The brake stopped this conversation turn and a rescue turn is to follow at its end (`loop_rescue`): why, and
     /// the agent's language.
     pub loop_rescue: Option<(crate::loop_brake::Over, String)>,
@@ -583,6 +585,7 @@ impl Default for SubscriptionState {
             unattended: false,
             turn: crate::loop_brake::TurnCount::default(),
             braked: false,
+            brake_said: None,
             loop_rescue: None,
             rescue_of: None,
             go_on_of: None,
@@ -844,6 +847,15 @@ impl RunHub {
             let st = lock(&sub.state);
             RunProgress { tool_steps: st.tool_steps, braked: st.braked, usage: st.usage, capped: st.capped }
         })
+    }
+
+    /// The brake's line (in the agent's language) when it stopped the run, for a turn whose person gets no other word
+    /// (background_turn.rs `Ran::stopped`, jobs.rs).
+    pub fn brake_said(&self, agent: &str, run_id: &str) -> Option<String> {
+        let inner = lock(&self.inner);
+        let sub = inner.subs.get(&(agent.to_string(), run_id.to_string()))?;
+        let st = lock(&sub.state);
+        st.braked.then(|| st.brake_said.clone()).flatten()
     }
 
     /// A room's turn (rooms.rs) or a background task's run (jobs.rs) may take `limit` tokens: stopped by the hub before
@@ -1880,6 +1892,8 @@ impl RunHub {
             && (st.watched || st.ever_followed);
         let data = crate::loop_brake::notice(&over, &lang, rescue);
         let text = data.get("text").and_then(Value::as_str).unwrap_or("").to_string();
+        // the whole line (with what to do next), for a background turn whose person gets no other word
+        st.brake_said = Some(crate::loop_brake::notice_text(&over, &lang));
         tracing::warn!(agent = %sub.agent.name, run_id = %sub.run_id, tool_calls = st.turn.total,
             background = st.background, rescue = rescue, rescue_turn = rescuing,
             reason = %crate::loop_brake::reason(&over), "going round in circles: run stopped");
@@ -3709,6 +3723,10 @@ mod tests {
         hub.dispatch(&task, started.clone());
         hub.same_write_again("daily", "run_task", "mcp__bipagents__create_page", 5);
         assert!(lock(&task.state).braked && notices(&task).len() == 1);
+        // its line kept for whoever tells its person (background_turn.rs `Ran::stopped`): nobody follows a background turn
+        let said = hub.brake_said("daily", "run_task").unwrap_or_default();
+        assert!(said.starts_with("I stopped") && said.ends_with('.'), "{said}");
+        assert!(hub.brake_said("daily", "run_chat").is_some() && hub.brake_said("daily", "run_gone").is_none());
         // nothing followed: nothing to stop
         hub.same_write_again("daily", "run_gone", "mcp__bipagents__create_page", 9);
     }
