@@ -42,7 +42,7 @@ pytestmark = pytest.mark.skipif(not (CHROME and os.path.exists(CHROME) and PROXY
 NUMBER = "4242 4242 4242 4242"   # Visa's published test number
 CARD_REFUSED = "Not done: this is a payment card's field"
 SCRIPT_CARD_REFUSED = "Not done: a script never writes or reads a payment card's field"
-PROVIDER_SCRIPT_REFUSED = "Not done: a script never sends your browser to a payment service's page"
+PROVIDER_SCRIPT_REFUSED = "Not done: a script never sends your browser to another page"
 CARD_UNDONE = "Not done: that put a payment card's details into the page"
 HIDDEN = "[card number hidden]"
 
@@ -83,7 +83,9 @@ class Session:
         config = {"start": ["true"], "ready": ["true"], "active": ["true"], "stop": ["true"],
                   "server": [sys.executable, str(STAND_IN), self.page_ws],
                   "cache": str(self.dir / "cache.json"), "busy": str(self.dir / "busy"),
-                  "credit": str(self.dir / "credit.json"), "cdp_port": free_port(), "idle": 600}
+                  "credit": str(self.dir / "credit.json"), "idle": 600,
+                  # the guard's look runs in a world of its own, through Chrome's DevTools (no secret: Chrome itself)
+                  "cdp_port": self.port}
         (self.dir / "config.json").write_text(json.dumps(config))
         self.proxy = subprocess.Popen([PROXY, str(self.dir / "config.json")], stdin=subprocess.PIPE,
                                       stdout=subprocess.PIPE, stderr=open(self.dir / "proxy.log", "wb"))
@@ -250,6 +252,20 @@ def test_a_script_never_writes_reads_or_sends_a_cards_details(browser):
     # a card's number on the page never comes back in what the agent reads
     said = browser.tool("execute_script", script="document.getElementById('info').innerText")
     assert HIDDEN in said and "4242 4242" not in said, said
+    # a timer set before the card's form came, firing once it is there: erased before the agent's next step
+    browser.tool("navigate", url=browser.url.replace("checkout.html", "later.html"))
+    said = browser.tool("execute_script", script="setTimeout(() => { const f = document.querySelector('#later input'); "
+                                                 "if (f) f.value = ['4242', '4242', '4242', '4242'].join(''); }, 1500); 'ok'")
+    assert "ok" in said, said
+    browser.tool("click_element", selector="#reveal")
+    time.sleep(2.5)
+    assert browser.page("document.querySelector('#later input').value") != ""   # the timer wrote it…
+    browser.tool("execute_script", script="document.title")
+    assert browser.page("document.querySelector('#later input').value") == ""   # …and the next step's look erased it
+    # timers and listeners are refused where the page has card fields
+    browser.fresh()
+    said = browser.tool("execute_script", script="setTimeout(() => {}, 10); document.addEventListener('input', () => {})")
+    assert said.startswith(SCRIPT_CARD_REFUSED), said
     # ordinary scripts go on
     said = browser.tool("execute_script", script="(() => { document.getElementById('address').value = '2 rue du Test'; "
                                                  "return document.title; })()")

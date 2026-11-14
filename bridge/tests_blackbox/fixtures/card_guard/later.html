@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Paiement</title></head>
+<body>
+<!-- A one-page checkout whose card form is drawn by the page only once « Payer par carte » is clicked (card-guards,
+     review of 14/11: a timer set before the form came, firing once it is there). -->
+<p>Total : 12,50 €</p>
+<button id="reveal" type="button">Payer par carte</button>
+<div id="later"></div>
+<script>
+  document.getElementById("reveal").onclick = () => {
+    document.getElementById("later").innerHTML =
+      '<form><label for="cc">Numéro de carte</label> <input id="cc" name="cc"> <button type="button">Payer</button></form>';
+  };
+</script>
+</body></html>

@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Paiement</title></head>
+<body>
+<!-- Review of card-guards (14/11): a card's number in four boxes of four digits (an older bank page's way), named by
+     its fieldset's legend only. -->
+<form id="pay" onsubmit="event.preventDefault()">
+  <fieldset><legend>Numéro de carte</legend>
+    <input name="p1" maxlength="4" size="4" inputmode="numeric"> <input name="p2" maxlength="4" size="4" inputmode="numeric">
+    <input name="p3" maxlength="4" size="4" inputmode="numeric"> <input name="p4" maxlength="4" size="4" inputmode="numeric">
+  </fieldset>
+  <p><button type="button">Payer 12,50 €</button></p>
+</form>
+</body></html>

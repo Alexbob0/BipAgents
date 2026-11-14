@@ -6,7 +6,8 @@ fix-signup-hold: the same tools, output schemas and semantics where the guard of
 - type_text: waits for its element up to 10 s (nodriver `tab.select`), focuses it, empties it, types each character;
 - press_key: focuses `selector`, one key; with Shift its text upper-cased (dom_handler.press_key);
 - execute_script: `script`, or `(function() { script })(args…)` with `args` (dom_handler.execute_script);
-- paste_text: the value set at once; select_option: an option by value, text or index (card-guards, 14/11).
+- paste_text: the value set at once; select_option: an option by value, text or index (card-guards, 14/11);
+- get_active_tab: the tab's target id, which bip-browser-mcp's checks look at through DevTools (review of 14/11).
 
     python3 stealth_cdp.py <page's DevTools websocket URL>
 """
@@ -29,6 +30,7 @@ TOOLS = [
     {"name": "execute_script", "inputSchema": {"type": "object"}, "outputSchema": OBJECT},
     {"name": "paste_text", "inputSchema": {"type": "object"}, "outputSchema": WRAPPED_BOOL},
     {"name": "select_option", "inputSchema": {"type": "object"}, "outputSchema": WRAPPED_BOOL},
+    {"name": "get_active_tab", "inputSchema": {"type": "object"}, "outputSchema": OBJECT},
 ]
 
 
@@ -96,6 +98,8 @@ def call(name, args):
         for char in args["text"]:
             cdp("Input.insertText", {"text": char})
         return True
+    if name == "get_active_tab":   # server.get_active_tab: the tab's target id (the page this stand-in drives)
+        return {"tab_id": sys.argv[1].rstrip("/").split("/")[-1], "url": evaluate("location.href"), "type": "page"}
     if name == "paste_text":   # dom_handler.paste_text: the value set at once, an input event
         element = select(args["selector"])
         evaluate(f"(() => {{ const e = {element}; e.focus(); e.value = {json.dumps(args['text'])}; "
