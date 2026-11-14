@@ -604,6 +604,28 @@ def locked(homes: Iterable[Path]) -> List[str]:
     return found
 
 
+def _readable(home: Path) -> None:
+    """Raises OSError when a folder of the place's Hermes can't be read by root: a dead mount of its own (ENOTCONN), one
+    without allow_other (EACCES), its own or one of its agents' spaces'. Never follows a link (a dangling one is the
+    place's business, not a reason to keep everything)."""
+    for path in (home / ".hermes", home / ".local" / "share" / "bipagents" / "spaces"):
+        if os.path.lexists(path):
+            os.stat(path, follow_symlinks=False)
+    spaces = home / ".local" / "share" / "bipagents" / "spaces"
+    if os.path.isdir(spaces):
+        with os.scandir(spaces) as listing:
+            for entry in listing:
+                os.stat(entry.path, follow_symlinks=False)
+
+
+def _number(home: Path) -> str:
+    """A place's number from its account's home (bip: 1, bip<n>: n), never a name: « ? » for another account."""
+    name = home.name
+    if name == "bip":
+        return "1"
+    return name[3:] if name.startswith("bip") and name[3:].isdigit() else "?"
+
+
 def gc(runner: hermes.Runner, base: Path, homes: Iterable[Path], keep: Iterable[str] = (),
        proc: Path = Path("/proc")) -> List[str]:
     """The versions nothing uses any more, deleted: no place points at them, no process runs them, and not the one
@@ -612,12 +634,24 @@ def gc(runner: hermes.Runner, base: Path, homes: Iterable[Path], keep: Iterable[
     (2026-11-14: a locked place's version was deleted, users_of can't read through its locked ~/.hermes)."""
     if not base.is_dir():
         return []
-    homes = list(homes)
-    held = locked(homes)
+    held, places, used = [], set(), set()
+    for home in homes:   # place by place: one that can't be read keeps everything, and nothing names it but its number
+        try:
+            found = locked([home])
+            if not found:
+                _readable(home)
+                used |= set(users_of(base, [home]))
+        except OSError:
+            found = [str(home)]
+        if found:
+            held += found
+            places.add(_number(home))
     if held:
-        say(f"All kept: {len(held)} place folder(s) behind a locked encrypted space, their Hermes version unknown.")
+        numbers = ", ".join(sorted(places, key=lambda n: (not n.isdigit(), int(n) if n.isdigit() else 0)))
+        say(f"All kept: {len(held)} place folder(s) behind a locked encrypted space or unreadable (place {numbers}), "
+            "their Hermes version unknown.")
         return []
-    used = set(users_of(base, homes)) | set(running_versions(base, proc)) | set(keep)
+    used |= set(running_versions(base, proc)) | set(keep)
     removed = []
     for folder in sorted(p for p in base.iterdir() if p.is_dir()):
         if folder.name in used:
