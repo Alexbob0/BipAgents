@@ -299,6 +299,17 @@ pub fn refresh_proxy_settings(config: &Config, agent: &str) -> bool {
     }
 }
 
+/// At the bridge's start, Hermes or not: `refresh_proxy_settings` for every agent with a browser here, the spare ones
+/// and the abandoned ones the hub's gateway still serves too (as `stale_proxies` looks at them).
+pub fn refresh_all_proxy_settings(config: &Config) {
+    let mut served: Vec<String> = config.agents.values().map(|a| a.name.clone()).collect();
+    served.extend(crate::agent_pool::spares(config).into_iter().map(|s| s.id));
+    served.extend(crate::agent_pool::abandoned(config));
+    for name in served {
+        refresh_proxy_settings(config, &name);
+    }
+}
+
 /// The latest finished downloads, as the agent sees them (« /telechargements/x.pdf (34 KB) »); older than
 /// `DOWNLOADS_KEPT_DAYS` removed on the way. Never through a link.
 pub fn recent_downloads(config: &Config, agent: &str, n: usize) -> Vec<String> {
@@ -1335,8 +1346,6 @@ pub async fn vault_only_all(config: &Config) {
         }
         // Its downloads where the agent can hand them over (a browser set up before: its unit given the policy).
         reload |= refresh_downloads(config, &agent.name);
-        // Its guard's own world: the DevTools secret (a browser set up before card-guards' second round)
-        refresh_proxy_settings(config, &agent.name);
         let home = crate::agents_admin::home_root(config, agent);
         if state(&home, &agent.name) != Some(true) {
             continue;

@@ -87,8 +87,9 @@ def test_rj1_no_spelling_of_a_script_address_runs_in_the_page(browser):
 
 def test_rj2_a_blob_address_made_by_a_script_never_runs(browser):
     open_page(browser)
-    made = browser.tool("execute_script",
-                        script=f"(() => URL.createObjectURL(new Blob([{FRAME}], {{type: 'text/html'}})))()")
+    # the blob made by the page itself: the agent's own script, with its atob(…), is refused since card-guards'
+    # second review (a way out written so its words don't show); its address is what navigate must refuse
+    made = browser.page(f"(() => URL.createObjectURL(new Blob([{FRAME}], {{type: 'text/html'}})))()")
     url = re.search(r"blob:[^\"\\\s]+", made)
     assert url, f"no blob address made: {made!r}"
     said = browser.tool("navigate", url=url.group(0))
@@ -100,7 +101,8 @@ def test_rj2_a_blob_address_made_by_a_script_never_runs(browser):
 
 def test_rj3_a_filesystem_address_made_by_a_script_never_runs(browser):
     open_page(browser)
-    started = browser.tool("execute_script", script=(
+    # made by the page itself, as rj2's blob (the agent's own script, with its atob(…) and its callbacks, is refused)
+    started = browser.page((
         "(() => { if (!window.webkitRequestFileSystem) return 'no filesystem API'; const h = " + FRAME + "; "
         "webkitRequestFileSystem(window.TEMPORARY, 1 << 20, (fs) => fs.root.getFile('p.html', {create: true}, (e) => "
         "e.createWriter((w) => { w.onwriteend = () => { document.title = e.toURL(); }; "

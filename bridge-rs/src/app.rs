@@ -295,6 +295,9 @@ impl AppState {
             self.spawn(Arc::new(watcher).run());
         }
         self.spawn(purge_loop(self.clone()));
+        // the browsers set up before: their guard given the DevTools secret (browsers.rs, card-guards' second review)
+        let settings = self.config.clone();
+        self.spawn(async move { crate::browsers::refresh_all_proxy_settings(&settings.get()) });
         // the family agents' one common conversation (family_thread.rs): the queue's turns reach it; the conversations
         // of before (one per member) cleared once
         crate::family_thread::init(self);
