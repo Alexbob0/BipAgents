@@ -461,7 +461,7 @@ const PASSED_WORDS: &[&str] = &[
 ];
 const BLOCKED_WORDS: &[&str] = &[
     "BLOCKED", "FAILED", "FAIL", "BLOQUEE", "BLOQUE", "ECHOUEE", "ECHEC", "BLOCKIERT", "GESCHEITERT", "FEHLGESCHLAGEN",
-    "BLOQUEADO", "BLOQUEADA", "FALLIDO", "FALLIDA", "FALLO",
+    "BLOQUEADO", "BLOQUEADA", "FALLIDO", "FALLIDA", "FALLO", "KO",
 ];
 
 /// `c` upper-case without its accent, one char for one (so a position in it is one in the original).
@@ -480,12 +480,26 @@ fn plain_char(c: char) -> char {
     }
 }
 
-/// One line read as a verdict: (ok, what blocked). None: not one.
-fn verdict_of(line: &str) -> Option<(bool, String)> {
+/// One line read as a verdict. None: not one (a line quoted from a page, « > Rehearsal OK », is never one).
+#[derive(Debug, Clone, PartialEq)]
+struct Verdict {
+    ok: bool,
+    /// What blocked, as the line says it.
+    why: String,
+    /// The code word itself (« [REHEARSAL …] »), not a translation.
+    code: bool,
+}
+
+fn verdict_of(line: &str) -> Option<Verdict> {
     let orig: Vec<char> = line.chars().collect();
     let plain: Vec<char> = orig.iter().map(|c| plain_char(*c)).collect();
-    let noise = |c: char| c.is_whitespace() || "*`#>[(\u{2014}-:.!_".contains(c);
-    let mut at = plain.iter().position(|c| !noise(*c))?;
+    let first = plain.iter().position(|c| !c.is_whitespace())?;
+    if plain[first] == '>' {
+        return None;
+    }
+    // what opens the line: markdown, a bullet, brackets, an emoji (« ✅ [REHEARSAL OK] »)
+    let mut at = plain.iter().position(|c| c.is_alphanumeric())?;
+    let bracket = plain[..at].contains(&'[');
     let word_at = |at: usize, words: &[&str]| -> Option<usize> {
         words.iter().find_map(|w| {
             let w: Vec<char> = w.chars().collect();
@@ -494,7 +508,9 @@ fn verdict_of(line: &str) -> Option<(bool, String)> {
             whole.then_some(end)
         })
     };
-    at = word_at(at, REHEARSAL_WORDS)?;
+    let named = word_at(at, REHEARSAL_WORDS)?;
+    let code = bracket && plain[at..named].iter().collect::<String>() == "REHEARSAL";
+    at = named;
     // « REHEARSAL: OK », « Répétition — réussie », « Probe ist erfolgreich », « RÉPÉTITION GÉNÉRALE OK » (GLM-5.3
     // Flash, the lab of 14/11), « Rehearsal result: OK »: a few known words between the name and the verdict
     let gap = |at: &mut usize| {
@@ -512,27 +528,70 @@ fn verdict_of(line: &str) -> Option<(bool, String)> {
             None => break,
         }
     }
+    let reason = |end: usize| -> String {
+        let why: String = orig[end..].iter().collect();
+        why.trim_start_matches(|c: char| c.is_whitespace() || "]*`):\u{2014}-".contains(c))
+            .trim_end_matches(|c: char| c.is_whitespace() || "]*`".contains(c))
+            .trim()
+            .chars()
+            .take(200)
+            .collect()
+    };
+    // a blocked word anywhere after the name: blocked (« Rehearsal done but blocked at the payment page »)
+    let blocked_from = |from: usize| {
+        (from..plain.len())
+            .filter(|i| *i == 0 || !plain[*i - 1].is_alphanumeric())
+            .find_map(|i| word_at(i, BLOCKED_WORDS))
+    };
     if word_at(at, PASSED_WORDS).is_some() {
-        return Some((true, String::new()));
+        // the code word as written is its own verdict (« [REHEARSAL OK] rien n'a échoué » stays ok)
+        let after = if code { None } else { blocked_from(at) };
+        return Some(match after {
+            Some(end) => Verdict { ok: false, why: reason(end), code },
+            None => Verdict { ok: true, why: String::new(), code },
+        });
     }
     let end = word_at(at, BLOCKED_WORDS)?;
-    let why: String = orig[end..].iter().collect();
-    let why = why
-        .trim_start_matches(|c: char| c.is_whitespace() || "]*`):\u{2014}-".contains(c))
-        .trim_end_matches(|c: char| c.is_whitespace() || "]*`".contains(c))
-        .trim();
-    Some((false, why.chars().take(200).collect()))
+    Some(Verdict { ok: false, why: reason(end), code })
 }
 
-/// The rehearsal's reply read: (ok, what blocked, its other lines: the words for the person). Its verdict, the code
-/// word or one of its translations, is the first line read as one (any line: a model may end with it), and never in
-/// the words. None: no verdict.
+/// The rehearsal's reply read: (ok, what blocked, the words for the person). Every line that reads as a verdict (the
+/// code word or one of its translations, anywhere in the reply) is the app's: never in the words. A blocked one
+/// anywhere wins over any « ok » (14/11 review: « Étapes : - Répétition OK jusqu'au panier » then « [REHEARSAL
+/// BLOCKED] … » was read ok); what blocked is said by the code word when it says it. None: no verdict.
 pub fn read_rehearsal(text: &str) -> Option<(bool, String, String)> {
     let text = crate::tools_knowledge::strip(text).trim().to_string();
-    let lines: Vec<&str> = text.lines().collect();
-    let (at, (ok, blocked)) = lines.iter().enumerate().find_map(|(i, l)| verdict_of(l).map(|v| (i, v)))?;
-    let rest = lines.iter().enumerate().filter(|(i, _)| *i != at).map(|(_, l)| *l).collect::<Vec<_>>().join("\n");
-    Some((ok, blocked, rest.trim().to_string()))
+    let read: Vec<(&str, Option<Verdict>)> = text.lines().map(|l| (l, verdict_of(l))).collect();
+    let verdicts: Vec<&Verdict> = read.iter().filter_map(|(_, v)| v.as_ref()).collect();
+    if verdicts.is_empty() {
+        return None;
+    }
+    let blocked: Vec<&&Verdict> = verdicts.iter().filter(|v| !v.ok).collect();
+    let ok = blocked.is_empty();
+    let why = blocked
+        .iter()
+        .find(|v| v.code && !v.why.is_empty())
+        .or_else(|| blocked.iter().find(|v| !v.why.is_empty()))
+        .map(|v| v.why.clone())
+        .unwrap_or_default();
+    let rest = read.iter().filter(|(_, v)| v.is_none()).map(|(l, _)| *l).collect::<Vec<_>>().join("\n");
+    Some((ok, why, rest.trim().to_string()))
+}
+
+/// `text` without its rehearsal verdict lines (`read_rehearsal`), for the watcher's conversation as the apps show it
+/// (threads/mod.rs). None: it has none.
+pub fn without_verdict(text: &str) -> Option<String> {
+    read_rehearsal(text).map(|(_, _, rest)| rest)
+}
+
+/// The conversations of `agent`'s purchase watchers (their set-up turns, their rehearsals).
+pub fn purchase_sessions(config: &Config, agent: &str) -> std::collections::HashSet<String> {
+    crate::connectors::of_agent(config, agent)
+        .into_iter()
+        .filter(|c| c.watch.as_ref().is_some_and(|w| w.purchase.is_some()))
+        .map(|c| crate::watchers::load(config, agent, &c.id).session)
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 /// The person's line after a rehearsal that said nothing besides its verdict.
@@ -951,5 +1010,60 @@ mod tests {
         let note = account_note(&purchase, None);
         assert!(note.contains("have no e-mail: ask them for one"), "{note}");
         assert_eq!(unfinished_line("fr", "shop.example"), "Je n'ai pas pu finir sur shop.example. Réessaie dans un moment.");
+    }
+}
+
+// -- independent re-review of cards-lab-fixes (14/11): its probes, failing on 8de44ad67, kept as tests ----------------
+#[cfg(test)]
+mod rcl_review_probes {
+    use super::*;
+
+    /// The code word says blocked; a translated « OK » line before it (a list of steps) must not win.
+    #[test]
+    fn rcl_blocked_code_word_wins_over_an_earlier_ok_line() {
+        let reply = "Étapes :\n- Répétition OK jusqu'au panier\n[REHEARSAL BLOCKED] le site demande un code SMS";
+        let read = read_rehearsal(reply).expect("a verdict");
+        assert!(!read.0, "read as ok: {read:?}");
+    }
+
+    /// A line quoted from the page the agent read (« > Rehearsal OK ») must not win over the code word.
+    #[test]
+    fn rcl_a_quoted_line_never_overrides_the_blocked_code_word() {
+        let reply = "Le site affichait ce bandeau :\n> Rehearsal OK\n[REHEARSAL BLOCKED] paiement impossible";
+        let read = read_rehearsal(reply).expect("a verdict");
+        assert!(!read.0, "read as ok: {read:?}");
+    }
+
+    /// « KO » after the in-between words: blocked, with its reason, and the line never shown.
+    #[test]
+    fn rcl_ko_is_a_blocked_verdict() {
+        let read = read_rehearsal("[RÉPÉTITION GÉNÉRALE KO] le site demande un code SMS\nIl faudra ton téléphone.");
+        assert_eq!(read, Some((false, "le site demande un code SMS".into(), "Il faudra ton téléphone.".into())));
+    }
+
+    /// The code word after an emoji (« ✅ [REHEARSAL OK] »): read, never shown.
+    #[test]
+    fn rcl_code_word_after_an_emoji_is_read() {
+        let read = read_rehearsal("✅ [REHEARSAL OK]\nTout est prêt jusqu'au paiement.");
+        assert_eq!(read, Some((true, String::new(), "Tout est prêt jusqu'au paiement.".into())));
+    }
+
+    /// A translated verdict first, the code word at the end as well: the code word never left in the person's words.
+    #[test]
+    fn rcl_code_word_never_left_in_the_words() {
+        let read = read_rehearsal("Répétition réussie !\nTout est prêt.\n[REHEARSAL OK]").expect("a verdict");
+        assert!(!read.2.contains("REHEARSAL"), "the person reads: {:?}", read.2);
+    }
+}
+
+#[cfg(test)]
+mod rcl_review_probes_2 {
+    use super::*;
+
+    /// Only the word right after the name is read: « done … but blocked » is read as ok.
+    #[test]
+    fn rcl_done_but_blocked_is_not_ok() {
+        let read = read_rehearsal("Rehearsal done but blocked at the payment page: SMS code required.");
+        assert!(read.as_ref().is_none_or(|r| !r.0), "read as ok: {read:?}");
     }
 }

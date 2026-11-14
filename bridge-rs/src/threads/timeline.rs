@@ -635,6 +635,26 @@ pub fn segment_items(
     items
 }
 
+/// The agent's messages without their rehearsal verdict lines (urgent_pay.rs `without_verdict`): one left with no
+/// words and nothing attached goes.
+pub fn without_verdicts(items: &mut Vec<Item>) {
+    let mut emptied = HashSet::new();
+    for item in items.iter_mut() {
+        let b = &mut item.body;
+        if b.get("kind") != Some(&json!("message")) || b.get("role") != Some(&json!("agent")) {
+            continue;
+        }
+        let Some(rest) = b.get("text").and_then(Value::as_str).and_then(crate::urgent_pay::without_verdict) else {
+            continue;
+        };
+        if rest.is_empty() && b.get("attachments").and_then(Value::as_array).is_none_or(|a| a.is_empty()) {
+            emptied.insert(item.id.clone());
+        }
+        b.insert("text".into(), json!(rest));
+    }
+    items.retain(|i| !emptied.contains(&i.id));
+}
+
 /// An agent's message that only says it has nothing to tell (background_turn.rs `is_silent`), nothing attached.
 pub fn silent_reply(item: &Item) -> bool {
     let b = &item.body;
