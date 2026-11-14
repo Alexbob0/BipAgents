@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Commande</title></head>
+<body>
+<!-- Review round 2 (card-guards, 14/11): a one-page checkout whose card form is drawn on « Payer par carte »; its own
+     « Payer » sends what the form holds (here: the page's title says what was sent). -->
+<p>Total : 12,50 €</p>
+<button id="reveal" type="button">Payer par carte</button>
+<div id="later"></div>
+<script>
+  document.getElementById("reveal").onclick = () => {
+    document.getElementById("later").innerHTML =
+      '<form id="pay"><label for="cc">Numéro de carte</label> <input id="cc" name="cc"> ' +
+      '<button id="payer" type="button">Payer</button></form>';
+    document.getElementById("payer").onclick = () => { document.title = "sent:" + document.getElementById("cc").value; };
+  };
+</script>
+</body></html>
