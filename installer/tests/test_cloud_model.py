@@ -171,3 +171,39 @@ def test_the_check_runs_on_the_providers_the_agents_will_use():
         sent.clear()
         assert asyncio.run(models.check(EUROUTER, name, FAKE_KEY, transport=httpx.MockTransport(server))).ok
         assert [body["provider"]["order"] for body in sent] == [order, order]   # the text, then the image
+
+
+def test_a_second_run_leaves_no_eurouter_key_behind(monkeypatch, tmp_path):
+    """After a first run on EUrouter (review of installer-eurouter, N1): another provider's key pointer is its own,
+    a server without a key gets no pointer, and EUrouter's key leaves the .env either way; the other lines stay."""
+    from test_cloud_model_review import FakeHermes   # `hermes config set/unset` applied to the file, as Hermes does
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    eu = hermes.Model("custom", "glm-5.3-flash", base_url=EUROUTER, api_key=FAKE_KEY)
+    for second, pointer, kept in (
+            (hermes.Model("openai-api", "gpt-5.1", base_url="https://api.openai.com/v1", api_key="sk-fake-openai"),
+             "OPENAI_API_KEY", "OPENAI_API_KEY=sk-fake-openai"),
+            (hermes.Model("custom", "glm", base_url="http://192.168.1.30:8888/v1"), None, None)):
+        (tmp_path / "config.yaml").unlink(missing_ok=True)
+        (tmp_path / ".env").write_text("API_SERVER_KEY=hub-key\n")
+        runner = FakeHermes()
+        hermes.set_model(runner, hermes.HUB_PROFILE, eu)
+        assert "CUSTOM_MODEL_API_KEY" in (tmp_path / ".env").read_text()
+        hermes.set_model(runner, hermes.HUB_PROFILE, second)
+        model = yaml.safe_load((tmp_path / "config.yaml").read_text())["model"]
+        assert model.get("key_env") == pointer and model["base_url"] == second.base_url
+        env = (tmp_path / ".env").read_text()
+        assert FAKE_KEY not in env and env.startswith("API_SERVER_KEY=hub-key\n") and (kept is None or kept in env)
+        assert (tmp_path / ".env").stat().st_mode & 0o777 == 0o600
+        assert not any(secret in line for line in runner.log for secret in (FAKE_KEY, "sk-fake-openai"))
+
+
+def test_a_first_run_writes_the_key_pointer_as_before(monkeypatch, tmp_path):
+    """Nothing left by an earlier run: the same commands as before the fix (no pointer for a provider of its own)."""
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    openrouter = hermes.Model("openrouter", "x", base_url="https://openrouter.ai/api/v1", api_key="k")
+    eurouter = hermes.Model("custom", "glm-5.3-flash", base_url=EUROUTER, api_key="k")
+    for model, pointer in ((openrouter, None), (eurouter, "CUSTOM_MODEL_API_KEY")):
+        runner = hermes.Runner(dry=True)
+        hermes.set_model(runner, hermes.HUB_PROFILE, model)
+        log = "\n".join(runner.log)
+        assert ("config set model.key_env" in log) == bool(pointer) and "unset" not in log and "drop " not in log
