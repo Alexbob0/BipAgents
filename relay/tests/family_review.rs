@@ -47,6 +47,9 @@ fn quick() -> FamilyConfig {
 struct Harness {
     url: String,
     http: reqwest::Client,
+    /// The passes given at the links (caller, callee) → pass (added with the fix of « un inconnu coupe une famille »:
+    /// only the households a mailbox linked with may call it).
+    passes: std::sync::Mutex<std::collections::HashMap<(String, String), String>>,
 }
 
 #[derive(Clone)]
@@ -62,7 +65,7 @@ async fn harness(family: FamilyConfig) -> Arc<Harness> {
     tokio::spawn(async move {
         axum::serve(listener, router(relay).into_make_service_with_connect_info::<SocketAddr>()).await.unwrap();
     });
-    Arc::new(Harness { url: format!("http://{addr}"), http: reqwest::Client::new() })
+    Arc::new(Harness { url: format!("http://{addr}"), http: reqwest::Client::new(), passes: Default::default() })
 }
 
 impl Harness {
@@ -80,8 +83,21 @@ impl Harness {
         (answer.status().as_u16(), call, answer.bytes().await.unwrap().to_vec())
     }
 
+    /// `callee` gives `caller` a pass to call it, as the bridges do when they link.
+    async fn link(&self, callee: &Mailbox, caller: &Mailbox) {
+        let made = self.http.post(format!("{}/v1/family/pass", self.url)).bearer_auth(&callee.token).send().await;
+        let pass = made.unwrap().json::<Value>().await.unwrap()["pass"].as_str().unwrap().to_string();
+        self.passes.lock().unwrap().insert((caller.id.clone(), callee.id.clone()), pass);
+    }
+
+    /// A call, with the caller's pass for that mailbox when it was given one.
     fn call(&self, from: &Mailbox, to: &str, body: Vec<u8>) -> reqwest::RequestBuilder {
-        self.http.post(format!("{}/v1/family/call/{to}", self.url)).bearer_auth(&from.token).body(body)
+        let pass = self.passes.lock().unwrap().get(&(from.id.clone(), to.to_string())).cloned();
+        let call = self.http.post(format!("{}/v1/family/call/{to}", self.url)).bearer_auth(&from.token).body(body);
+        match pass {
+            Some(pass) => call.header("x-bip-pass", pass),
+            None => call,
+        }
     }
 
     async fn answer(&self, by: &Mailbox, call: &str, body: Vec<u8>) {
@@ -117,6 +133,7 @@ impl Harness {
 async fn a_stranger_cannot_use_up_the_calls_a_household_may_receive() {
     let relay = harness(FamilyConfig { calls_per_hour: 5, ..quick() }).await;
     let (lea, alex, stranger) = (relay.mailbox().await, relay.mailbox().await, relay.mailbox().await);
+    relay.link(&lea, &alex).await; // Alex and Léa are linked; the stranger only knows her mailbox's id
     for _ in 0..5 {
         let junk = relay.call(&stranger, &lea.id, b"junk".to_vec()).send().await.unwrap();
         assert_eq!(junk.status(), 503, "Léa's bridge is off: away");
@@ -169,6 +186,9 @@ async fn one_caller_cannot_fill_the_room_every_household_shares() {
     let relay = harness(family).await;
     let (attacker, its_own, lea, alex) =
         (relay.mailbox().await, relay.mailbox().await, relay.mailbox().await, relay.mailbox().await);
+    // Alex and Léa are linked; the attacker's own mailbox gives its other one a pass too (it may)
+    relay.link(&lea, &alex).await;
+    relay.link(&its_own, &attacker).await;
     // its own mailbox polled a moment ago (204 after 3 s) and takes nothing: the calls to it wait (≤ 2 s here)
     assert_eq!(relay.next(&its_own).await.0, 204);
     let filling = {
