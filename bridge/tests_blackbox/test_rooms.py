@@ -11,7 +11,6 @@ import contextlib
 import json
 import os
 import threading
-import time
 import uuid
 
 import httpx
@@ -79,14 +78,16 @@ def replies(bridge, room_id):
 @contextlib.contextmanager
 def on_screen(bridge, room_id, **params):
     """An app showing the room: its events stream open with `thread=room:<id>` (presence), the `thread` hints it gets
-    for the room; `params` another stream (`agent=`: a conversation's, none: the home's)."""
-    hints, stop = [], threading.Event()
+    for the room; `params` another stream (`agent=`: a conversation's, none: the home's). Entered once the stream's
+    first line came (the bridge counts the room on screen before it answers), never after a fixed wait."""
+    hints, opened, stop = [], threading.Event(), threading.Event()
 
     def watch():
         with httpx.Client(base_url=bridge.url, headers=AUTH, timeout=30) as client:
             with client.stream("GET", "/v1/threads/events", params=params or {"thread": f"room:{room_id}"}) as resp:
                 event = ""
                 for line in resp.iter_lines():
+                    opened.set()
                     if line.startswith("event: "):
                         event = line[len("event: "):]
                     elif event == "thread" and line.startswith("data: ") and f"room:{room_id}" in line:
@@ -96,7 +97,7 @@ def on_screen(bridge, room_id, **params):
 
     viewer = threading.Thread(target=watch, daemon=True)
     viewer.start()
-    time.sleep(0.5)
+    assert opened.wait(30), "the room's event stream never opened"
     try:
         yield hints
     finally:

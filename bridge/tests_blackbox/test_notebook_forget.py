@@ -3,6 +3,7 @@ the offline copy (ETag, 304), « Ce que tes agents savent de toi », and « Oubl
 never a token), the app's preview gives a token for 10 minutes, once, and the confirmation erases the fact from the
 Carnet, its history and the agents' memories, so that an old turn cannot write it back. Scripted, no model."""
 import json
+import re
 
 from bbkit.common import AUTH
 from bbkit.mcp import call as mcp_call, give_token, text_of
@@ -57,7 +58,13 @@ def test_what_the_agents_know(bridges, fakes):
     assert day["day"] == "Aujourd'hui" and day["rows"][0]["text"] == "Léa"
     assert day["rows"][0]["pages"] == [{"title": "Léa", "path": "Personnes/Léa Martin.md"}]
     assert view["reads"]["older"] == "Plus ancien : effacé après 90 jours." and view["reads"]["empty"] is None
-    assert "36" not in json.dumps(view) and "chocolat" not in json.dumps(view), "names only, never a page's text"
+    # names only, never a page's text: its words (« Pointure », « chocolat ») nowhere, and its « 36 » nowhere but in a
+    # row's read time, the clock's own (« 12:36 » at 12:36: the public CI's « Tests », 15/11), left out of that look
+    shown = json.dumps(view)
+    assert "Pointure" not in shown and "chocolat" not in shown, "names only, never a page's text"
+    for row in (r for d in view["reads"]["days"] for r in d["rows"]):
+        assert re.fullmatch(r"\d\d:\d\d", row.pop("time")), row
+    assert "36" not in json.dumps(view), "names only, never a page's text"
     assert view["footer"].endswith("Kerfy Studio ne lit pas ton Carnet. Pas de pub.")
 
 

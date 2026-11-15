@@ -276,7 +276,10 @@ def test_a_phone_watches_the_page_then_takes_it_over_as_a_phone(bridges, fakes, 
         assert "Android" in agent["userAgent"] and "Chrome/131.0.0.0 Mobile" in agent["userAgent"]
         assert agent["userAgentMetadata"]["mobile"] is True
         assert chrome.methods("Emulation.setTouchEmulationEnabled")[-1][2] == {"enabled": True, "maxTouchPoints": 5}
-        assert chrome.methods("Page.reload")
+        # reloaded once its screencast runs, so the page's first paint as a phone is a frame (15/11: reloaded before,
+        # a still page painted before the screencast began, and the phone kept the desktop's last frame)
+        calls = [c[1] for c in chrome.methods() if c[3] == token]
+        assert "Page.reload" in calls[calls.index("Page.startScreencast"):], calls
         # The person's finger and keys, on the page as on a phone.
         ws.send(json.dumps({"type": "touch", "phase": "start", "points": [[0.5, 0.25]]}))
         ws.send(json.dumps({"type": "touch", "phase": "end"}))

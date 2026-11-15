@@ -24,6 +24,18 @@ def share_body(guichet, agent, **extra):
             "ends": time.time() + 10 * 86400, **extra}
 
 
+def words_in(value):
+    """Every string in `value` (a JSON value), its keys left out."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for v in value.values():
+            yield from words_in(v)
+    elif isinstance(value, list):
+        for v in value:
+            yield from words_in(v)
+
+
 def test_a_project_agent_is_closed_and_its_whole_thread_is_shared(bridges, fakes):
     from test_agents_admin import hermes_args, managed
 
@@ -92,7 +104,9 @@ def test_a_project_agent_is_closed_and_its_whole_thread_is_shared(bridges, fakes
         assert items["meta"]["title"] == "Voyage à Lisbonne"
         assert [items[i]["text"] for i in ("m-1", "m-2", "m-7")] == [
             "On part fin mai ?", "Je regarde les vols.", "Trois jours, voici le plan."]
-        assert "4417" not in json.dumps(items)
+        # the other conversation's words in no item: its texts read, not the numbers beside them (the share's end, a
+        # time of the clock's, may hold « 4417 »)
+        assert not [t for t in words_in(items) if "4417" in t], items
 
         # the project's view: its share, seen by one person; a new end date follows on the share
         seen = {p["agent"]: p for p in bridge.get("/v1/project-agents", headers=AUTH).json()["projects"]}[agent]
