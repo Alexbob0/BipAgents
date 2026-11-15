@@ -7,6 +7,7 @@ is not taken (409 « page_not_fresh »). A real Chromium; the bridge on its DevT
 import functools
 import http.server
 import json
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -48,6 +49,7 @@ def chromium(shop):
     yield port
     proc.terminate()
     proc.wait(timeout=10)
+    shutil.rmtree(profile, ignore_errors=True)
 
 
 def page(port, expression):
