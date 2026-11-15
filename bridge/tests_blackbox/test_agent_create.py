@@ -202,10 +202,20 @@ def description_of(home, agent):
     return (yaml.safe_load((home / "profiles" / agent / "profile.yaml").read_text()) or {}).get("description") or ""
 
 
+def assert_short(description, wish):
+    """The wish as a description: whole, or cut at a word with « … » (review 15/11: « … un plan qui monte doucem »)."""
+    if description == wish:
+        return
+    kept = description.removesuffix("…").rstrip()
+    assert description.endswith("…") and len(description) <= 120, description
+    assert wish.startswith(kept) and wish[len(kept)] in " ,;:.)", f"cut mid-word: « {description} »"
+
+
 def assert_made_as_asked(bridge, home, agent, wish=WISH):
     # its description (the guide's list of agents, Hermes' profile): her words, not the kind's
     description = description_of(home, agent)
-    assert description and wish.startswith(description) and KIND_DESCRIPTION not in description, description
+    assert description and KIND_DESCRIPTION not in description, description
+    assert_short(description, wish)
     # its personality (what the model reads, and « Qui il est » in the apps): her whole wish and tone
     soul = (home / "profiles" / agent / "SOUL.md").read_text()
     assert wish in soul and "doux et encourageant" in soul, soul
@@ -280,4 +290,5 @@ def test_a_family_card_keeps_the_wish_as_the_agents_description(bridges, fakes):
     assert accepted.json()["family"] is True
     assert wish in (home / "profiles" / agent / "SOUL.md").read_text()
     description = description_of(home, agent)
-    assert wish.startswith(description) and len(description) > 20, description
+    assert len(description) > 20, description
+    assert_short(description, wish)

@@ -1858,7 +1858,47 @@ mod tests {
         let schema = &propose_agent_tool()["inputSchema"]["properties"];
         let role = schema["role"]["description"].as_str().unwrap();
         assert!(role.contains("every specific they gave") && !role.contains("one line"), "{role}");
+        // said back to them as their own words (« Ce que tu attends de moi : « … » »): asked as they would ask it
+        // (review 15/11: 3 of 10 bench roles were in the third person, « son activité »)
+        assert!(role.contains("as they would ask it") && role.contains("Me préparer"), "{role}");
         assert!(schema["handover"]["description"].as_str().unwrap().contains("not what it is for"), "{schema}");
+    }
+
+    /// Review 15/11 (fix-created-agent-description, finding 1): a role longer than CARD_ROLE_MAX was cut silently,
+    /// mid-word (« … et un mot g »), and the model was never told: the card, the personality and the agent's first
+    /// words then quote a broken sentence. The tool says the limit, and a longer role is either refused with it (the
+    /// model shortens it) or cut at a word with the cut said in the tool's answer.
+    #[test]
+    fn review_a_role_past_the_cards_limit_is_said_to_the_model() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = managed_place(dir.path(), &[("agent", "Agent")]);
+        let schema = &propose_agent_tool()["inputSchema"]["properties"];
+        let described = schema["role"]["description"].as_str().unwrap();
+        assert!(described.contains(&CARD_ROLE_MAX.to_string()), "the tool doesn't say the limit: {described}");
+        let wish = "Me préparer à mon semi-marathon du 22 mars à Paris : 3 sorties par semaine (mardi et jeudi soir, \
+                    dimanche matin), un plan qui monte doucement de 8 à 18 km, un rappel la veille de chaque séance, \
+                    des conseils pour mon genou droit (tendinite l'an dernier), des étirements après chaque sortie et \
+                    un mot gentil quand j'en rate une";
+        assert!(wish.chars().count() > CARD_ROLE_MAX);
+        let mut args = sport_card();
+        args.insert("role".into(), json!(wish));
+        let result = call(&config, &config.agents["agent"], PROPOSE_AGENT, &args).unwrap();
+        let told = text_of(&result).contains(&CARD_ROLE_MAX.to_string());
+        let state = load(&config);
+        match state.proposals.iter().find(|p| str_of(p, "type") == "agent") {
+            None => assert!(refused(&result) && told, "refused without the limit: {}", text_of(&result)),
+            Some(card) => {
+                let role = str_of(card, "role");
+                if role != wish {
+                    assert!(told, "the role was cut and the model wasn't told: « {role} » / {}", text_of(&result));
+                    let kept = role.trim_end_matches('…').trim_end();
+                    assert!(
+                        wish.starts_with(kept) && wish[kept.len()..].starts_with([' ', ',']),
+                        "cut mid-word: « {role} »"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

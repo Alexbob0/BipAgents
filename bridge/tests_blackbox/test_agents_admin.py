@@ -537,11 +537,13 @@ def test_a_personality_saved_in_the_app_reaches_its_ongoing_conversation(bridges
     saved = bridge.patch("/v1/agents/budget/settings", headers=AUTH, json={"soul": longest})
     assert saved.status_code == 200, saved.text
     assert soul_path.read_text().startswith(longest + "\n")
-    assert refresh in hermes_args(bridge), hermes_args(bridge)
+    # asked once the answer is sent (review 15/11: never under the agents' lock, nor making the app wait)
+    assert wait_until(lambda: refresh in hermes_args(bridge)), hermes_args(bridge)
     # the same text again, or a tool switched: nothing to rebuild
     bridge.commands.clear()
     assert bridge.patch("/v1/agents/budget/settings", headers=AUTH, json={"soul": longest}).status_code == 200
     assert bridge.patch("/v1/agents/budget/settings", headers=AUTH, json={"toolsets": {"web": False}}).status_code == 200
+    time.sleep(1.0)
     assert refresh not in hermes_args(bridge)
     # one character past the limit: refused with the limit, nothing written, nothing asked
     refused = bridge.patch("/v1/agents/budget/settings", headers=AUTH, json={"soul": longest + "y"})
@@ -552,4 +554,4 @@ def test_a_personality_saved_in_the_app_reaches_its_ongoing_conversation(bridges
     # its answer style is the person's change too: its paragraph reaches the conversations as well
     styled = bridge.patch("/v1/agents/budget/settings", headers=AUTH, json={"answer_style": "detailed"})
     assert styled.status_code == 200, styled.text
-    assert refresh in hermes_args(bridge)
+    assert wait_until(lambda: refresh in hermes_args(bridge)), hermes_args(bridge)
