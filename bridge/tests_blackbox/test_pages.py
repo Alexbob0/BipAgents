@@ -101,9 +101,11 @@ def test_every_page_gets_the_kit_and_goes_inside_the_reply(bridge):
     assert kept.index("connect-src bipmap: https://bipmap.invalid bipstore: https://bipstore.invalid;") < kept.index('<style id="bip-kit">') < kept.index('<script id="bip-kit-js">')
     assert kept.index('<script id="bip-kit-js">') < kept.index("<h1>Tes sorties</h1>")
     assert ":where(.kpi .v)" in kept and "window.Bip = {" in kept and "Chart.js v4" not in kept
-    # nothing of the kit reaches the network: no URL but the SVG namespace and the maps' door on Android
+    # nothing of the kit reaches the network: no URL but the SVG namespace and the two doors on Android (the maps', the
+    # page store's: page_store.rs, its kit comes with any page that uses Bip)
     kit = kept[kept.index('<style id="bip-kit">'):kept.index("</script>", kept.index('<script id="bip-kit-js">'))]
-    assert sorted(re.findall(r"https?://[^\s\"')]+", kit)) == ["http://www.w3.org/2000/svg", "https://bipmap.invalid/"]
+    hosts = {u.split("/")[2] for u in re.findall(r"https?://[^\s\"')`]+", kit)}
+    assert hosts == {"www.w3.org", "bipmap.invalid", "bipstore.invalid"}, hosts
 
 
 def test_a_fragment_becomes_a_whole_locked_document(bridge):

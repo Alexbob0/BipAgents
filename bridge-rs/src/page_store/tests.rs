@@ -84,8 +84,9 @@ fn values_and_lines_with_their_versions_and_who_wrote() {
     apply(&config, "queens", &p, &op(json!({"op": "edit", "key": "lignes", "id": "l1", "value": {"what": "Resto", "cents": 4500}})), None, "Léa").unwrap();
     apply(&config, "queens", &p, &op(json!({"op": "drop", "key": "lignes", "id": "l2"})), None, "Alex").unwrap();
     let store = read(&config, "queens", &p);
+    let line = &store["keys"]["lignes"]["items"][0];
     assert_eq!(store["keys"]["lignes"]["items"], json!([{"id": "l1", "value": {"what": "Resto", "cents": 4500}, "by": "Léa",
-                                                          "at": store["keys"]["lignes"]["items"][0]["at"]}]));
+                                                          "at": line["at"], "ver": 2, "was": line["was"]}]));
     assert_eq!(apply(&config, "queens", &p, &op(json!({"op": "drop", "key": "lignes", "id": "l9"})), None, "").unwrap_err().code, "no_line");
     assert_eq!(apply(&config, "queens", &p, &op(json!({"op": "add", "key": "budget", "id": "x", "value": 1})), None, "").unwrap_err().code, "not_a_list");
     // a key deleted

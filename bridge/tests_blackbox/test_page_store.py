@@ -44,7 +44,7 @@ def test_a_page_keeps_what_is_typed_through_the_app_s_door(bridge):
 
     # empty at first; then a value and two lines, each write with its id
     first = store_get(bridge, path)
-    assert first.status_code == 200 and first.json() == {"rev": 0, "keys": {}, "acts": [], "write": True}
+    assert first.status_code == 200 and first.json() == {"rev": 0, "keys": {}, "acts": [], "gen": "", "refused": [], "write": True}
     done = store_post(bridge, path, op="set", key="budget", value=300, a="act-1")
     assert done.status_code == 200, done.text
     assert done.json()["rev"] == 1 and done.json()["entry"]["value"] == 300 and done.json()["acts"] == ["act-1"]

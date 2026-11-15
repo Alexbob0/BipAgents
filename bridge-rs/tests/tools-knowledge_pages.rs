@@ -236,5 +236,6 @@ fn only_a_page_that_remembers_carries_the_kit_s_store() {
     for not in ["myBip.store", "Bipper", "<p>x</p>"] {
         assert!(!pages::uses_store(not), "{not}");
     }
-    assert!(pages::store_js().len() < 16_000 && pages::kit_js().contains("esc: esc"));
+    // (18 000 since the review of 15/11: refusals, waiting, a new store generation, the person's touch)
+    assert!(pages::store_js().len() < 18_000 && pages::kit_js().contains("esc: esc"));
 }

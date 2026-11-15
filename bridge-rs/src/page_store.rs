@@ -978,12 +978,12 @@ pub fn friend_write(
     if !shared {
         return Err(Refused::new(403, "shared_read_only", "not a group's page"));
     }
-    let (op, act) = parse_op(fields, &ACTION_FIELDS).map_err(&refuse)?;
+    let (op, act) = parse_op(fields, &ACTION_FIELDS).map_err(refuse)?;
     // not under the page's budget (`spend`, shared with the owner's page): the guichet already takes at most 20 a
     // minute from each friend, and a round brings everything typed since the last one (review of 15/11: 40 lines
     // waiting, 11 lost)
     let before = rev_of(&read(config, agent, page));
-    let done = apply(config, agent, page, &op, act.as_deref(), by).map_err(&refuse)?;
+    let done = apply(config, agent, page, &op, act.as_deref(), by).map_err(refuse)?;
     Ok(done.get("rev").and_then(Value::as_i64) != Some(before))
 }
 
