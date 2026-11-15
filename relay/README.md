@@ -36,7 +36,7 @@ Nothing to back up, no database: any number of copies can run side by side, and 
 | `POST /v1/register` | `{"platform": "apns"\|"fcm", "token": "…", "environment": "sandbox"\|"production", "audience": "bridge"\|"guichet"}` | `{"relay_token": "r2.…", "expires": 1800000000}` |
 | `POST /v1/relay/push` (or `/v1/push`) | `{"token": "r2.…", "payload": {…}, "push_type": "alert"\|"background"\|"liveactivity", "priority": 5\|10, "collapse_id": "…"}`; a `guichet` token with `Authorization: Bearer <RELAY_GUICHET_KEY>` | `{"status": 200, "reason": null, "apns_id": "…"}` |
 | `POST /v1/report` | `{"reason", "comment", "text", "category", "app", "model", "platform": "ios"\|"android", "lang"}` | `202 {"ok": true}`: « Report this reply » passed on to `RELAY_REPORT_URL` with the secret, kept nowhere; 503 when not set up, 502 when it couldn't go (the app then offers an e-mail) |
-| `GET /health` | | `{"status": "ok", "apns": true, "fcm": true, "family": {"enabled": true, "online": 12}}` |
+| `GET /health` | | `{"status": "ok", "apns": true, "fcm": true, "family": {"enabled": true}}` |
 
 A token sealed by another key, or altered, answers `{"status": 410, "reason": "BadRelayToken"}`; an ended one, or
 one of the first format (`r1.…`, without an end), `{"status": 410, "reason": "ExpiredRelayToken"}` (the bridge
@@ -63,19 +63,33 @@ rendezvous is in memory (`src/family.rs`, the bridge's side: `bridge-rs/src/fami
 
 | Route | | |
 | --- | --- | --- |
-| `POST /v1/family/mailbox` | `{}` or `{"token": "fm1.…"}` (renew) | `{"mailbox": "<22 chars>", "token": "fm1.…", "expires": …}`: the id sealed in the token, nothing stored |
+| `POST /v1/family/mailbox` | `{}`, `{"token": "fm1.…"}` (renew), or `{"invite_until": <unix>}` (an invitation's) | `{"mailbox": "<22 chars>", "token": "fm1.…", "expires": …}`: the id sealed in the token, nothing stored |
+| `POST /v1/family/pass` | the mailbox's token; `{}` or `{"renew": "fp1.…"}` | `{"pass": "fp1.…", "expires": …}`: lets whoever it is given to call this mailbox (sealed: the mailbox, an id, an end) |
 | `GET /v1/family/next` | the mailbox's token | the next call for it (`x-bip-call`, `x-bip-from`, `x-bip-kind`, its bytes), or 204 after 25 s |
-| `POST /v1/family/call/<mailbox>` | the caller's own token, `x-bip-kind: call\|invite`, the sealed bytes (≤ 16 MiB) | the answer, streamed as the other bridge sends it; 503 `away` at once when that bridge is not connected |
+| `POST /v1/family/call/<mailbox>` | the caller's own token, `Content-Length`, `x-bip-kind: call` with `x-bip-pass`, or `invite` (≤ 64 KiB, to an invitation's mailbox), the sealed bytes (≤ 16 MiB) | the answer, streamed as the other bridge sends it; 503 `away` when that bridge is not connected **or the caller has no pass for it** (the same answer) |
 | `POST /v1/family/answer/<call>` | the token of the mailbox that took the call | 204; streamed on to the caller (≤ 64 MiB) |
 
+**Only linked households call a mailbox.** At the link each bridge gives the other a pass to its own mailbox, sealed
+in their exchange. A household's mailbox id is never in a QR code: an invitation has a mailbox of its own, ending with
+it, that takes only an introduction (`invite`). A stranger who learns a mailbox id can't call it, use up its quotas,
+nor tell whether its bridge is on.
+
 **Sealed end to end**: the bridges seal everything with a key of each link that only the two households hold (an
-X25519 exchange at the link, bound to the invitation's one-time code; ChaCha20-Poly1305 frames, a key per call and
-direction, replays refused by the bridge). The relay **sees** the bridges' addresses, which mailbox calls which, when,
-and how many bytes; it **keeps** nothing on disk, logs no call that went through (no record of who talks to whom),
-only refusals (with a mailbox's 8-hex fingerprint) and one count an hour. Quotas per mailbox (calls and bytes, as
-caller and as callee), per address (mailboxes made), sizes capped; a mailbox can be refused by its fingerprint in
-`RELAY_BLOCKED`. Run **one** copy for the families (the rendezvous is in memory). Behind Caddy, answers stream:
-`flush_interval -1` on `/v1/family/*` is advised.
+X25519 exchange at the link, bound to the invitation's one-time code; ChaCha20-Poly1305 frames, a key per call,
+direction and answer, replays refused by the bridge). The relay **sees** the bridges' addresses, which mailbox calls
+which, when, how many bytes, and, while a bridge keeps its poll open, that it is on and from which address. It
+**keeps** nothing on disk and logs no call that went through (no record of who talks to whom): only some refusals
+(quota, blocked mailbox, answer cut, relay full), with a fingerprint of one mailbox keyed by the relay (HMAC-SHA256,
+not computable from the id alone), and one count an hour. In memory: the ids of the mailboxes polling (until an hour
+after), the quotas' counts under unkeyed SHA-256 hashes (forgotten within the hour), the calls while they pass.
+`/health` says whether it is on, nothing of its activity.
+
+**Limits.** A call's bytes are reserved before they are read, against its `Content-Length` (256 MiB held at most,
+every call together; 32 MiB per caller, per callee and per address), and must come in within 30 s; a refused call's
+body is never kept. Quotas: calls and bytes per caller, and per pass (what one household may send another); mailboxes
+and passes made per address. A mailbox or a pass can be refused by its fingerprint in `RELAY_BLOCKED`. Run **one** copy
+for the families (the rendezvous is in memory). Deploy: `RELAY_TRUST_FORWARDED_FOR=1` behind a proxy, a high open-files
+limit (one waiting request per household linked through the relay), `flush_interval -1` in Caddy, logs kept 14 days.
 
 ## Settings (environment only)
 

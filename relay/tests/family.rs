@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bipagents_relay::config::Config;
-use bipagents_relay::family::FamilyConfig;
+use bipagents_relay::family::{fingerprint_key, fingerprint_with, FamilyConfig};
 use bipagents_relay::routes::{router, Relay};
 use bipagents_relay::seal::Sealer;
 use serde_json::{json, Value};
@@ -49,6 +49,9 @@ struct Harness {
     url: String,
     addr: SocketAddr,
     http: reqwest::Client,
+    seal_keys: String,
+    /// The passes given at the links: (caller, callee) → pass.
+    passes: std::sync::Mutex<std::collections::HashMap<(String, String), String>>,
 }
 
 async fn harness(family: FamilyConfig) -> Harness {
@@ -56,13 +59,13 @@ async fn harness(family: FamilyConfig) -> Harness {
 }
 
 async fn harness_with(family: FamilyConfig, blocked: Vec<String>, seal_keys: String) -> Harness {
-    let relay = Arc::new(Relay::new(config(family, blocked, seal_keys), reqwest::Client::new()).unwrap());
+    let relay = Arc::new(Relay::new(config(family, blocked, seal_keys.clone()), reqwest::Client::new()).unwrap());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
         axum::serve(listener, router(relay).into_make_service_with_connect_info::<SocketAddr>()).await.unwrap();
     });
-    Harness { url: format!("http://{addr}"), addr, http: reqwest::Client::new() }
+    Harness { url: format!("http://{addr}"), addr, http: reqwest::Client::new(), seal_keys, passes: Default::default() }
 }
 
 struct Mailbox {
@@ -89,8 +92,24 @@ impl Harness {
         (status, call, from, kind, answer.bytes().await.unwrap().to_vec())
     }
 
+    /// `callee` gives `caller` a pass to call it (what the bridges do at a link).
+    async fn link(&self, callee: &Mailbox, caller: &Mailbox) -> String {
+        let made =
+            self.http.post(format!("{}/v1/family/pass", self.url)).bearer_auth(&callee.token).send().await.unwrap();
+        assert_eq!(made.status(), 200);
+        let pass = made.json::<Value>().await.unwrap()["pass"].as_str().unwrap().to_string();
+        self.passes.lock().unwrap().insert((caller.id.clone(), callee.id.clone()), pass.clone());
+        pass
+    }
+
+    /// A call, with the caller's pass for that mailbox when it has one.
     fn call(&self, from: &Mailbox, to: &str, body: Vec<u8>) -> reqwest::RequestBuilder {
-        self.http.post(format!("{}/v1/family/call/{to}", self.url)).bearer_auth(&from.token).body(body)
+        let pass = self.passes.lock().unwrap().get(&(from.id.clone(), to.to_string())).cloned();
+        let call = self.http.post(format!("{}/v1/family/call/{to}", self.url)).bearer_auth(&from.token).body(body);
+        match pass {
+            Some(pass) => call.header("x-bip-pass", pass),
+            None => call,
+        }
     }
 
     async fn answer(&self, by: &Mailbox, call: &str, body: Vec<u8>) -> u16 {
@@ -133,6 +152,7 @@ async fn a_bridge_gets_a_mailbox_and_renews_it_keeping_its_id() {
 async fn a_call_reaches_the_polling_mailbox_and_its_answer_streams_back() {
     let relay = Arc::new(harness(quick()).await);
     let (alex, lea) = (relay.mailbox().await, relay.mailbox().await);
+    relay.link(&lea, &alex).await;
     // Léa's bridge polls; Alex's calls her mailbox
     let poller = {
         let relay = relay.clone();
@@ -173,6 +193,7 @@ async fn a_call_reaches_the_polling_mailbox_and_its_answer_streams_back() {
 async fn a_mailbox_nobody_polls_is_away_at_once() {
     let relay = harness(quick()).await;
     let (alex, off) = (relay.mailbox().await, relay.mailbox().await);
+    relay.link(&off, &alex).await;
     let started = Instant::now();
     let answer = relay.call(&alex, &off.id, b"x".to_vec()).send().await.unwrap();
     assert_eq!(answer.status(), 503);
@@ -189,6 +210,7 @@ async fn a_mailbox_nobody_polls_is_away_at_once() {
 async fn a_call_its_mailbox_does_not_take_in_time_fails_as_away() {
     let relay = Arc::new(harness(quick()).await);
     let (alex, lea) = (relay.mailbox().await, relay.mailbox().await);
+    relay.link(&lea, &alex).await;
     // Léa's bridge polled a moment ago (204 after 3 s), then went: Alex's call waits for it at most `pickup`
     assert_eq!(relay.next(&lea).await.0, 204);
     let started = Instant::now();
@@ -208,7 +230,9 @@ async fn nobody_calls_reads_or_answers_without_its_own_mailbox() {
     // the push relay's tokens are no mailbox tokens
     let push = Mailbox { id: String::new(), token: "r2.AAAA".into() };
     assert_eq!(relay.next(&push).await.0, 401);
-    assert_eq!(relay.call(&alex, &alex.id, b"x".to_vec()).send().await.unwrap().status(), 400, "no call to itself");
+    relay.link(&alex, &alex).await;
+    assert_eq!(relay.call(&alex, &alex.id, b"x".to_vec()).send().await.unwrap().status(), 503, "no call to itself");
+    relay.link(&lea, &alex).await;
 
     let poller = {
         let relay = relay.clone();
@@ -231,6 +255,7 @@ async fn a_request_too_large_or_too_many_calls_are_refused() {
     let family = FamilyConfig { request_bytes: 1024, calls_per_hour: 3, ..quick() };
     let relay = Arc::new(harness(family).await);
     let (alex, lea) = (relay.mailbox().await, relay.mailbox().await);
+    relay.link(&lea, &alex).await;
     let _poll = {
         let relay = relay.clone();
         let lea = Mailbox { id: lea.id.clone(), token: lea.token.clone() };
@@ -253,6 +278,7 @@ async fn an_answer_past_its_size_reaches_the_caller_cut() {
     let family = FamilyConfig { answer_bytes: 1024, ..quick() };
     let relay = Arc::new(harness(family).await);
     let (alex, lea) = (relay.mailbox().await, relay.mailbox().await);
+    relay.link(&lea, &alex).await;
     let poller = {
         let relay = relay.clone();
         let lea = Mailbox { id: lea.id.clone(), token: lea.token.clone() };
@@ -282,10 +308,8 @@ async fn a_blocked_mailbox_is_refused() {
     let key = Sealer::generate_key();
     let relay = harness_with(quick(), Vec::new(), key.clone()).await;
     let (alex, lea) = (relay.mailbox().await, relay.mailbox().await);
-    let fingerprint: String = {
-        use sha2::Digest;
-        sha2::Sha256::digest(alex.id.as_bytes()).iter().take(4).map(|b| format!("{b:02x}")).collect()
-    };
+    // the keyed fingerprint its refusals log (family.rs `Rendezvous::fingerprint`)
+    let fingerprint = fingerprint_with(&fingerprint_key(&relay.seal_keys), &alex.id);
     // the same relay restarted with Alex's mailbox blocked (`RELAY_BLOCKED`, by the fingerprint its refusals log)
     let blocked = harness_with(quick(), vec![fingerprint], key).await;
     assert_eq!(blocked.next(&alex).await.0, 403);
@@ -308,9 +332,11 @@ async fn the_family_relay_can_be_turned_off() {
 
 #[tokio::test]
 async fn the_bytes_waiting_at_the_relay_are_capped() {
-    let family = FamilyConfig { queued_bytes: 1024, ..quick() };
+    // 8,000 bytes held at most, 1,000 for one caller (an eighth)
+    let family = FamilyConfig { queued_bytes: 8000, ..quick() };
     let relay = Arc::new(harness(family).await);
     let (alex, lea) = (relay.mailbox().await, relay.mailbox().await);
+    relay.link(&lea, &alex).await;
     // Léa's bridge polled a moment ago but does not take the calls now: they would wait in memory
     assert_eq!(relay.next(&lea).await.0, 204);
     let waiting = tokio::spawn(relay.call(&alex, &lea.id, vec![1u8; 800]).send());
@@ -331,4 +357,151 @@ async fn the_bytes_waiting_at_the_relay_are_capped() {
     assert_eq!(status, 200);
     assert_eq!(relay.answer(&lea, &id, b"ok".to_vec()).await, 204);
     assert_eq!(call.await.unwrap().unwrap().bytes().await.unwrap().as_ref(), b"ok");
+}
+
+impl Harness {
+    /// An invitation's mailbox, until `secs` from now.
+    async fn invitation(&self, secs: u64) -> Mailbox {
+        let until = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + secs;
+        let made = self.http.post(format!("{}/v1/family/mailbox", self.url)).json(&json!({"invite_until": until}));
+        let body: Value = made.send().await.unwrap().json().await.unwrap();
+        Mailbox { id: body["mailbox"].as_str().unwrap().into(), token: body["token"].as_str().unwrap().into() }
+    }
+}
+
+#[tokio::test]
+async fn an_invitations_mailbox_takes_an_introduction_without_a_pass_and_nothing_else() {
+    let relay = Arc::new(harness(quick()).await);
+    let (lea, alex) = (relay.mailbox().await, relay.mailbox().await);
+    let invite = relay.invitation(600).await;
+    assert_ne!(invite.id, lea.id, "the QR code carries the invitation's mailbox, never the household's");
+    let introduce = |to: &str, body: Vec<u8>| relay.call(&alex, to, body).header("x-bip-kind", "invite").send();
+    // not polled: away, as anything else
+    assert_eq!(introduce(&invite.id, b"hello".to_vec()).await.unwrap().status(), 503);
+    let poller = {
+        let (relay, invite) = (relay.clone(), Mailbox { id: invite.id.clone(), token: invite.token.clone() });
+        tokio::spawn(async move { relay.next(&invite).await })
+    };
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let call = tokio::spawn(introduce(&invite.id, b"sealed introduction".to_vec()));
+    let (status, id, from, kind, body) = poller.await.unwrap();
+    assert_eq!(
+        (status, from.as_str(), kind.as_str(), body.as_slice()),
+        (200, alex.id.as_str(), "invite", &b"sealed introduction"[..])
+    );
+    assert_eq!(relay.answer(&invite, &id, b"sealed welcome".to_vec()).await, 204);
+    assert_eq!(call.await.unwrap().unwrap().bytes().await.unwrap().as_ref(), b"sealed welcome");
+    // the household's own mailbox takes no introduction without a pass, even while polled
+    let poller = {
+        let (relay, lea) = (relay.clone(), Mailbox { id: lea.id.clone(), token: lea.token.clone() });
+        tokio::spawn(async move { relay.next(&lea).await })
+    };
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(introduce(&lea.id, b"hello".to_vec()).await.unwrap().status(), 503);
+    assert_eq!(poller.await.unwrap().0, 204, "nothing reached Léa's bridge");
+    // an introduction is small; an invitation's mailbox neither calls nor gives passes
+    let poller = {
+        let (relay, invite) = (relay.clone(), Mailbox { id: invite.id.clone(), token: invite.token.clone() });
+        tokio::spawn(async move { relay.next(&invite).await })
+    };
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(introduce(&invite.id, vec![0u8; 65 * 1024]).await.unwrap().status(), 413);
+    let _ = poller.await;
+    assert_eq!(relay.call(&invite, &lea.id, b"x".to_vec()).send().await.unwrap().status(), 403);
+    let pass = relay.http.post(format!("{}/v1/family/pass", relay.url)).bearer_auth(&invite.token).send().await;
+    assert_eq!(pass.unwrap().status(), 403);
+    // an invitation lasts a week at most
+    let too_long = relay
+        .http
+        .post(format!("{}/v1/family/mailbox", relay.url))
+        .json(&json!({"invite_until": 4_000_000_000u64}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(too_long.status(), 400);
+}
+
+#[tokio::test]
+async fn a_pass_opens_one_mailbox_only_and_is_renewed_as_the_same() {
+    let relay = Arc::new(harness(quick()).await);
+    let (lea, alex, paul) = (relay.mailbox().await, relay.mailbox().await, relay.mailbox().await);
+    let pass = relay.link(&lea, &alex).await;
+    assert!(pass.starts_with("fp1.") && !pass.contains(&lea.id), "the mailbox is sealed in the pass");
+    // Léa's pass does not open Paul's mailbox, polled as it is
+    relay.passes.lock().unwrap().insert((alex.id.clone(), paul.id.clone()), pass.clone());
+    let poller = {
+        let (relay, paul) = (relay.clone(), Mailbox { id: paul.id.clone(), token: paul.token.clone() });
+        tokio::spawn(async move { relay.next(&paul).await })
+    };
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(relay.call(&alex, &paul.id, b"x".to_vec()).send().await.unwrap().status(), 503);
+    assert_eq!(poller.await.unwrap().0, 204);
+    // renewed: another pass, for the same mailbox, still opening it
+    let renewed: Value = relay
+        .http
+        .post(format!("{}/v1/family/pass", relay.url))
+        .bearer_auth(&alex.token)
+        .json(&json!({"renew": pass}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let renewed = renewed["pass"].as_str().unwrap().to_string();
+    assert_ne!(renewed, pass);
+    relay.passes.lock().unwrap().insert((alex.id.clone(), lea.id.clone()), renewed);
+    let poller = {
+        let (relay, lea) = (relay.clone(), Mailbox { id: lea.id.clone(), token: lea.token.clone() });
+        tokio::spawn(async move { relay.next(&lea).await })
+    };
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let call = tokio::spawn(relay.call(&alex, &lea.id, b"x".to_vec()).send());
+    let (status, id, ..) = poller.await.unwrap();
+    assert_eq!(status, 200);
+    relay.answer(&lea, &id, b"ok".to_vec()).await;
+    assert_eq!(call.await.unwrap().unwrap().status(), 200);
+    let forged = relay
+        .http
+        .post(format!("{}/v1/family/pass", relay.url))
+        .bearer_auth(&alex.token)
+        .json(&json!({"renew": "fp1.AAAA"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(forged.status(), 401);
+}
+
+#[tokio::test]
+async fn a_call_says_its_length_and_comes_in_time() {
+    let family = FamilyConfig { body_timeout: Duration::from_secs(1), ..quick() };
+    let relay = Arc::new(harness(family).await);
+    let (alex, lea) = (relay.mailbox().await, relay.mailbox().await);
+    let pass = relay.link(&lea, &alex).await;
+    let poll = {
+        let (relay, lea) = (relay.clone(), Mailbox { id: lea.id.clone(), token: lea.token.clone() });
+        tokio::spawn(async move { relay.next(&lea).await })
+    };
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let raw = |head: String, body: &'static [u8]| {
+        let addr = relay.addr;
+        async move {
+            let mut socket = tokio::net::TcpStream::connect(addr).await.unwrap();
+            socket.write_all(head.as_bytes()).await.unwrap();
+            socket.write_all(body).await.unwrap();
+            let mut answer = vec![0u8; 256];
+            let read = tokio::time::timeout(Duration::from_secs(5), socket.read(&mut answer)).await.unwrap().unwrap();
+            String::from_utf8_lossy(&answer[..read]).to_string()
+        }
+    };
+    let common = format!(
+        "POST /v1/family/call/{} HTTP/1.1\r\nHost: relay\r\nAuthorization: Bearer {}\r\nx-bip-pass: {pass}\r\n",
+        lea.id, alex.token
+    );
+    let chunked = raw(format!("{common}Transfer-Encoding: chunked\r\n\r\n"), b"5\r\nhello\r\n0\r\n\r\n").await;
+    assert!(chunked.starts_with("HTTP/1.1 411"), "{chunked}");
+    // says 1,000 bytes, sends 10, then nothing: refused once the body time is over, nothing kept
+    let slow = raw(format!("{common}Content-Length: 1000\r\n\r\n"), b"0123456789").await;
+    assert!(slow.starts_with("HTTP/1.1 408"), "{slow}");
+    poll.abort();
 }

@@ -10,15 +10,19 @@ use std::time::{Duration, Instant};
 const WINDOW: Duration = Duration::from_secs(3600);
 pub const SWEEP_EVERY: Duration = Duration::from_secs(60);
 const SWEEP_ABOVE: usize = 100_000;
+/// Keys counted at most: past it a new key is refused (a flood of new keys never makes every count slow).
+const MAX_KEYS: usize = 1_000_000;
 
 pub struct Quota {
     per_hour: u32,
     seen: Mutex<HashMap<[u8; 16], (Instant, u32)>>,
+    /// When the table was last swept because it was large (once a minute at most, not at every count).
+    swept: Mutex<Option<Instant>>,
 }
 
 impl Quota {
     pub fn new(per_hour: u32) -> Self {
-        Self { per_hour, seen: Mutex::new(HashMap::new()) }
+        Self { per_hour, seen: Mutex::new(HashMap::new()), swept: Mutex::new(None) }
     }
 
     /// Forgets the keys counted more than an hour ago, less the time until the next sweep.
@@ -50,7 +54,14 @@ impl Quota {
         id.copy_from_slice(&digest[..16]);
         let mut seen = self.seen.lock().expect("quota lock");
         if seen.len() > SWEEP_ABOVE {
-            seen.retain(|_, (start, _)| now.duration_since(*start) < WINDOW);
+            let mut swept = self.swept.lock().expect("quota lock");
+            if swept.is_none_or(|at| now.duration_since(at) >= SWEEP_EVERY) {
+                seen.retain(|_, (start, _)| now.duration_since(*start) < WINDOW);
+                *swept = Some(now);
+            }
+        }
+        if seen.len() >= MAX_KEYS && !seen.contains_key(&id) {
+            return false;
         }
         let entry = seen.entry(id).or_insert((now, 0));
         if now.duration_since(entry.0) >= WINDOW {

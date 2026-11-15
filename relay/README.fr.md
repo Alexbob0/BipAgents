@@ -38,7 +38,7 @@ personne ne s'en sert.
 | `POST /v1/register` | `{"platform": "apns"\|"fcm", "token": "…", "environment": "sandbox"\|"production", "audience": "bridge"\|"guichet"}` | `{"relay_token": "r2.…", "expires": 1800000000}` |
 | `POST /v1/relay/push` (ou `/v1/push`) | `{"token": "r2.…", "payload": {…}, "push_type": "alert"\|"background"\|"liveactivity", "priority": 5\|10, "collapse_id": "…"}` ; un jeton `guichet` avec `Authorization: Bearer <RELAY_GUICHET_KEY>` | `{"status": 200, "reason": null, "apns_id": "…"}` |
 | `POST /v1/report` | `{"reason", "comment", "text", "category", "app", "model", "platform": "ios"\|"android", "lang"}` | `202 {"ok": true}` : « Signaler cette réponse » transmis à `RELAY_REPORT_URL` avec le secret, gardé nulle part ; 503 s'il n'est pas réglé, 502 s'il n'a pas pu partir (l'app propose alors un e-mail) |
-| `GET /health` | | `{"status": "ok", "apns": true, "fcm": true, "family": {"enabled": true, "online": 12}}` |
+| `GET /health` | | `{"status": "ok", "apns": true, "fcm": true, "family": {"enabled": true}}` |
 
 Un jeton chiffré avec une autre clé, ou altéré, répond `{"status": 410, "reason": "BadRelayToken"}` ; un jeton
 arrivé à sa fin, ou du premier format (`r1.…`, sans fin), `{"status": 410, "reason": "ExpiredRelayToken"}` (le bridge
@@ -67,20 +67,35 @@ côté pont : `bridge-rs/src/family_rendezvous.rs`).
 
 | Route | | |
 | --- | --- | --- |
-| `POST /v1/family/mailbox` | `{}` ou `{"token": "fm1.…"}` (renouveler) | `{"mailbox": "<22 caractères>", "token": "fm1.…", "expires": …}` : l'identifiant scellé dans le jeton, rien de stocké |
+| `POST /v1/family/mailbox` | `{}`, `{"token": "fm1.…"}` (renouveler) ou `{"invite_until": <unix>}` (celle d'une invitation) | `{"mailbox": "<22 caractères>", "token": "fm1.…", "expires": …}` : l'identifiant scellé dans le jeton, rien de stocké |
+| `POST /v1/family/pass` | le jeton de la boîte ; `{}` ou `{"renew": "fp1.…"}` | `{"pass": "fp1.…", "expires": …}` : permet à qui le reçoit d'appeler cette boîte (scellé : la boîte, un identifiant, une fin) |
 | `GET /v1/family/next` | le jeton de la boîte | l'appel suivant pour elle (`x-bip-call`, `x-bip-from`, `x-bip-kind`, ses octets), ou 204 après 25 s |
-| `POST /v1/family/call/<boîte>` | le jeton de l'appelant, `x-bip-kind: call\|invite`, les octets scellés (≤ 16 Mio) | la réponse, en flux, comme l'autre pont l'envoie ; 503 `away` tout de suite si ce pont n'est pas connecté |
+| `POST /v1/family/call/<boîte>` | le jeton de l'appelant, `Content-Length`, `x-bip-kind: call` avec `x-bip-pass`, ou `invite` (≤ 64 Kio, vers la boîte d'une invitation), les octets scellés (≤ 16 Mio) | la réponse, en flux ; 503 `away` si ce pont n'est pas connecté **ou si l'appelant n'a pas de laissez-passer** (la même réponse) |
 | `POST /v1/family/answer/<appel>` | le jeton de la boîte qui a pris l'appel | 204 ; transmis en flux à l'appelant (≤ 64 Mio) |
+
+**Seuls les foyers reliés appellent une boîte.** Au moment du lien, chaque pont donne à l'autre un laissez-passer pour
+sa propre boîte, scellé dans leur échange. La boîte d'un foyer n'est jamais dans un QR code : une invitation a sa
+propre boîte, qui finit avec elle et ne prend qu'une présentation (`invite`). Un inconnu qui apprend l'identifiant
+d'une boîte ne peut ni l'appeler, ni épuiser ses quotas, ni savoir si son pont est allumé.
 
 **Scellé de bout en bout** : les ponts scellent tout avec une clé propre à chaque lien, que seuls les deux foyers
 détiennent (un échange X25519 au moment du lien, lié au code d'invitation à usage unique ; des trames
-ChaCha20‑Poly1305, une clé par appel et par sens, les rejeux refusés par le pont). Le relais **voit** les adresses des
-ponts, quelle boîte appelle quelle boîte, quand, combien d'octets ; il **ne garde** rien sur disque, ne journalise
-aucun appel réussi (pas de trace de qui parle à qui), seulement les refus (avec une empreinte de 8 caractères de la
-boîte) et un total par heure. Quotas par boîte (appels et octets, comme appelant et comme appelé), par adresse
-(boîtes créées), tailles plafonnées ; une boîte peut être refusée par son empreinte dans `RELAY_BLOCKED`. **Un seul**
-exemplaire pour les familles (le rendez-vous est en mémoire). Derrière Caddy, les réponses vont en flux :
-`flush_interval -1` sur `/v1/family/*` est conseillé.
+ChaCha20‑Poly1305, une clé par appel, par sens et par réponse, les rejeux refusés par le pont). Le relais **voit** les
+adresses des ponts, quelle boîte appelle quelle boîte, quand, combien d'octets, et, tant qu'un pont garde sa requête
+ouverte, qu'il est allumé et depuis quelle adresse. Il **ne garde** rien sur disque et ne journalise aucun appel
+réussi (pas de trace de qui parle à qui) : seulement certains refus (quota, boîte bloquée, réponse coupée, relais
+plein), avec une empreinte d'une boîte calculée avec une clé du relais (HMAC-SHA256, pas recalculable depuis
+l'identifiant seul), et un total par heure. En mémoire : les identifiants des boîtes qui interrogent (jusqu'à une
+heure après), les compteurs des quotas sous des empreintes SHA-256 sans clé (oubliés dans l'heure), les appels le
+temps qu'ils passent. `/health` dit s'il est en marche, rien de son activité.
+
+**Limites.** Les octets d'un appel sont réservés avant d'être lus, d'après son `Content-Length` (256 Mio en tout, tous
+appels confondus ; 32 Mio par appelant, par appelé et par adresse), et doivent arriver en 30 s ; le corps d'un appel
+refusé n'est jamais gardé. Quotas : appels et octets par appelant, et par laissez-passer (ce qu'un foyer peut envoyer
+à un autre) ; boîtes et laissez-passer créés par adresse. Une boîte ou un laissez-passer peut être refusé par son
+empreinte dans `RELAY_BLOCKED`. **Un seul** exemplaire pour les familles (le rendez-vous est en mémoire). Déploiement :
+`RELAY_TRUST_FORWARDED_FOR=1` derrière un proxy, une limite de fichiers ouverts large (une requête en attente par
+foyer relié par le relais), `flush_interval -1` dans Caddy, journaux gardés 14 jours.
 
 ## Réglages (environnement seulement)
 
