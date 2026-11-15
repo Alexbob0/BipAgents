@@ -461,8 +461,13 @@ async fn call(
         "invite" => "invite",
         _ => return refused(StatusCode::BAD_REQUEST, "invalid", "unknown kind of call"),
     };
-    if !family.calls_out.allow(from.as_bytes()) || !family.calls_in.allow(target.as_bytes()) {
-        tracing::info!(from = %fingerprint(&from), to = %fingerprint(&target), "family relay: call over the quota");
+    // a refusal names the one mailbox over its quota, never the pair
+    if !family.calls_out.allow(from.as_bytes()) {
+        tracing::info!(mailbox = %fingerprint(&from), "family relay: calls over the quota (as caller)");
+        return refused(StatusCode::TOO_MANY_REQUESTS, "quota", "too many calls this hour");
+    }
+    if !family.calls_in.allow(target.as_bytes()) {
+        tracing::info!(mailbox = %fingerprint(&target), "family relay: calls over the quota (as callee)");
         return refused(StatusCode::TOO_MANY_REQUESTS, "quota", "too many calls this hour");
     }
     let Some(wait) = family.pickup(&target) else {
@@ -479,7 +484,7 @@ async fn call(
         return refused(StatusCode::SERVICE_UNAVAILABLE, "busy", "the relay is busy: try again in a moment");
     }
     if !family.kib.allow_n(from.as_bytes(), kib(body.len())) {
-        tracing::info!(from = %fingerprint(&from), "family relay: bytes over the quota");
+        tracing::info!(mailbox = %fingerprint(&from), "family relay: bytes over the quota");
         return refused(StatusCode::TOO_MANY_REQUESTS, "quota", "too many bytes this hour");
     }
     family.counts.calls.fetch_add(1, Ordering::Relaxed);
