@@ -35,7 +35,16 @@ impl Quota {
         self.allow_at(key, Instant::now())
     }
 
+    /// Counts `n` more for `key` (bytes in KiB, the family relay's): false, and nothing counted, past the allowance.
+    pub fn allow_n(&self, key: &[u8], n: u32) -> bool {
+        self.allow_n_at(key, n, Instant::now())
+    }
+
     fn allow_at(&self, key: &[u8], now: Instant) -> bool {
+        self.allow_n_at(key, 1, now)
+    }
+
+    fn allow_n_at(&self, key: &[u8], n: u32, now: Instant) -> bool {
         let digest = Sha256::digest(key);
         let mut id = [0u8; 16];
         id.copy_from_slice(&digest[..16]);
@@ -47,10 +56,10 @@ impl Quota {
         if now.duration_since(entry.0) >= WINDOW {
             *entry = (now, 0);
         }
-        if entry.1 >= self.per_hour {
+        if entry.1.saturating_add(n) > self.per_hour {
             return false;
         }
-        entry.1 += 1;
+        entry.1 += n;
         true
     }
 }
@@ -67,6 +76,15 @@ mod tests {
         assert!(!quota.allow_at(b"a", start));
         assert!(quota.allow_at(b"b", start));
         assert!(quota.allow_at(b"a", start + WINDOW));
+    }
+
+    #[test]
+    fn a_weighted_count_stops_at_the_allowance() {
+        let quota = Quota::new(10);
+        let start = Instant::now();
+        assert!(quota.allow_n_at(b"a", 6, start) && quota.allow_n_at(b"a", 4, start));
+        assert!(!quota.allow_n_at(b"a", 1, start));
+        assert!(!quota.allow_n_at(b"b", 11, start) && quota.allow_n_at(b"b", 10, start));
     }
 
     #[test]

@@ -10,9 +10,12 @@
 //!   "collapse_id": "…"}` → `{"status": 200, "reason": null, "apns_id": "…"}`, Apple's answer; `status` 410 means
 //!   the token is dead (the bridge forgets the device). Same shape as the bridges' own relay.
 //! - `GET /health`
+//! - `/v1/family/…`: the family rendezvous (family.rs), two households' bridges that can't reach each other talking
+//!   through here, sealed end to end
 
 pub mod apns;
 pub mod config;
+pub mod family;
 pub mod fcm;
 pub mod limits;
 pub mod payload;

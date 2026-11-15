@@ -10,6 +10,9 @@
 //! - `RELAY_TRUST_FORWARDED_FOR=1` behind a proxy that sets `X-Forwarded-For` (the quotas then count its last address, the
 //!   one the proxy added; an IPv6 address counts by its /64)
 //! - `RELAY_GUICHET_KEY` (or `_FILE`): the key the guichet sends its pushes with (tokens sealed for the guichet)
+//! - `RELAY_FAMILY` (`1`; `0`: off), `RELAY_FAMILY_REQUEST_MB` (16), `RELAY_FAMILY_ANSWER_MB` (64),
+//!   `RELAY_FAMILY_CALLS_PER_HOUR` (3000), `RELAY_FAMILY_MB_PER_HOUR` (2048), `RELAY_FAMILY_MAILBOXES_PER_IP_HOUR` (20):
+//!   the family rendezvous (family.rs)
 //! - `RELAY_R1_UNTIL` (`2026-12-15`, UTC midnight): until then the first token format (`r1.`) is still taken and
 //!   still sealed for older apps, and a guichet token sent without the guichet's key is let through (an older
 //!   guichet); each such use is logged and `/health` warns. `0` closes the transition now.
@@ -17,6 +20,7 @@
 use std::net::SocketAddr;
 
 use crate::apns::ApnsConfig;
+use crate::family::FamilyConfig;
 use crate::fcm::ServiceAccount;
 
 pub struct Config {
@@ -43,6 +47,8 @@ pub struct Config {
     pub guichet_keys: Vec<String>,
     /// The end of the transition from the first token format (Unix seconds; 0: over).
     pub r1_until: u64,
+    /// The family rendezvous (family.rs).
+    pub family: FamilyConfig,
 }
 
 /// The default end of the transition: 2026-12-15, 00:00 UTC.
@@ -141,8 +147,26 @@ impl Config {
                 .collect(),
             r1_until: parse_day(&var("RELAY_R1_UNTIL").unwrap_or_else(|| R1_UNTIL_DEFAULT.into()))
                 .ok_or("RELAY_R1_UNTIL must be a day (YYYY-MM-DD) or 0")?,
+            family: family_from_env()?,
         })
     }
+}
+
+/// `RELAY_FAMILY…`, over [`FamilyConfig::default`].
+fn family_from_env() -> Result<FamilyConfig, String> {
+    let defaults = FamilyConfig::default();
+    let mb = |name: &str, default: usize| -> Result<usize, String> {
+        Ok(number(name, (default >> 20) as u32)? as usize * (1 << 20))
+    };
+    Ok(FamilyConfig {
+        enabled: var("RELAY_FAMILY").is_none_or(|v| !matches!(v.as_str(), "0" | "false" | "off")),
+        request_bytes: mb("RELAY_FAMILY_REQUEST_MB", defaults.request_bytes)?,
+        answer_bytes: mb("RELAY_FAMILY_ANSWER_MB", defaults.answer_bytes)?,
+        calls_per_hour: number("RELAY_FAMILY_CALLS_PER_HOUR", defaults.calls_per_hour)?,
+        kib_per_hour: number("RELAY_FAMILY_MB_PER_HOUR", defaults.kib_per_hour / 1024)?.saturating_mul(1024),
+        mailboxes_per_ip_hour: number("RELAY_FAMILY_MAILBOXES_PER_IP_HOUR", defaults.mailboxes_per_ip_hour)?,
+        ..defaults
+    })
 }
 
 #[cfg(test)]

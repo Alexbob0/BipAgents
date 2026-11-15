@@ -154,6 +154,21 @@ impl Sealer {
         })
     }
 
+    /// `plain` sealed with the first key under `aad` (another kind of token than a device's: family.rs's mailboxes).
+    pub fn seal_bytes(&self, plain: &[u8], aad: &[u8]) -> String {
+        self.sealed(plain, aad)
+    }
+
+    /// What [`Sealer::seal_bytes`] sealed under `aad`, with any of the keys; None if altered or sealed otherwise.
+    pub fn open_bytes(&self, sealed: &str, aad: &[u8]) -> Option<Vec<u8>> {
+        let raw = URL_SAFE_NO_PAD.decode(sealed).ok()?;
+        if raw.len() <= NONCE_LEN {
+            return None;
+        }
+        let (nonce, sealed) = raw.split_at(NONCE_LEN);
+        self.keys.iter().find_map(|key| key.decrypt(XNonce::from_slice(nonce), Payload { msg: sealed, aad }).ok())
+    }
+
     fn sealed(&self, plain: &[u8], aad: &[u8]) -> String {
         let mut nonce = [0u8; NONCE_LEN];
         rand::rngs::OsRng.fill_bytes(&mut nonce);
