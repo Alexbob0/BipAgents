@@ -289,6 +289,7 @@ fn only_a_group_s_page_carries_its_store_to_others() {
 fn a_relative_sees_the_store_of_the_pages_she_sees_and_writes_only_the_family_s() {
     let (_dir, config, _) = setup();
     let data = PathBuf::from(config.data_dir());
+    std::fs::create_dir_all(&data).unwrap();
     // « queens » is a family's agent; « vie » a personal agent with a page made at Marie's request
     std::fs::write(data.join("family-agent.json"), json!({"agent": "queens"}).to_string()).unwrap();
     let family = page(&config, "queens", "Dépenses", true);
