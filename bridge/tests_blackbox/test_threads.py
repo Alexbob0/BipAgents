@@ -252,6 +252,11 @@ def test_the_hermes_store_is_read_without_calling_hermes(bridges, fakes):
                    ])
     db.commit()
     bridge.start()
+    # at its start the bridge lists each agent's conversations once through Hermes, in the background (welcome.rs
+    # `restore_moved_aside_all`): waited for, so that only the opening is counted (on a loaded machine that look came
+    # after `before`, 15/11)
+    started = {"/api/sessions", "/p/coach/api/sessions"}
+    assert wait_until(lambda: started <= {r.path for r in fakes.hermes.seen() if r.path.endswith("/api/sessions")})
     before = len(fakes.hermes.requests)
     page = get(bridge, "/v1/threads/main/timeline", agent="coach")
     assert [i["id"] for i in page["items"]] == ["m_u1", "m_u2", "m_u5"]
