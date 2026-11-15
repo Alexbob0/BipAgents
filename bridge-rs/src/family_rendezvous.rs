@@ -7,9 +7,11 @@
 //!   token, kept in `family-relay.json` next to households.json (0600). The token never leaves this bridge and the
 //!   relay; the id goes only to the households linked through the relay.
 //! - **Passes.** Only the households it linked with may call that mailbox: at the link, each bridge asks the relay for
-//!   a pass to its own mailbox ([`new_pass`]) and gives it to the other, sealed in their exchange; the other presents
-//!   it with each call (`pass` in its entry), renewed before it ends. A stranger who learnt the id can't call it, use
-//!   up its quotas, or tell whether the home's computer is on.
+//!   a pass to its own mailbox, for the other household's mailbox only ([`new_pass`]), and gives it to the other,
+//!   sealed in their exchange (the joiner's goes once it knows the inviter's mailbox: peers.rs `give_pass`); the other
+//!   presents it with each call (`pass` in its entry). The bridge says which of the passes it gave it still accepts
+//!   (`given_pass`: with each poll, and at once when a link is removed, [`announce_passes`]): a household unlinked, or
+//!   whoever holds a copy of a pass, can't call it, use up its quotas, or tell whether the home's computer is on.
 //! - **An invitation** has a mailbox of its own, ending with it ([`invite_mailbox`]): the QR code carries its id
 //!   (`relay`), never the household's. The scanning bridge introduces itself there, sealed with the invitation's code
 //!   ([`accept`]) — or first at the inviter's address, sealed the same way (peers.rs `join`): only a bridge holding the
@@ -49,7 +51,7 @@ use crate::family_seal::{self, AnswerOpener, Broken, Seen, Stale, Way, SALT_LEN}
 use crate::web::HttpError;
 use crate::Dict;
 
-/// A mailbox token or a pass is renewed when it has less than this left (the relay's last 400 days).
+/// A mailbox token is renewed when it has less than this left (the relay's last 400 days).
 const RENEW_BEFORE: f64 = 200.0 * 86400.0;
 /// The most a sealed request may weigh (the relay's own limit).
 pub const REQUEST_BYTES: usize = 16 << 20;
@@ -206,55 +208,70 @@ pub async fn invite_mailbox(state: &AppState, until: f64) -> anyhow::Result<(Str
     Ok((id, token))
 }
 
-/// A pass to call this bridge's mailbox, for a household it links with (the relay seals it): (pass, its end).
-pub async fn new_pass(state: &AppState) -> anyhow::Result<(String, f64)> {
+/// A pass to call this bridge's mailbox, for the household whose mailbox is `holder` (the relay seals it, and it
+/// works for that mailbox only): (pass, its id, its end). Its id goes in what this bridge says it accepts
+/// ([`announce_passes`]), until the link is removed.
+pub async fn new_pass(state: &AppState, holder: &str) -> anyhow::Result<(String, String, f64)> {
     let base = base(&state.config()).ok_or_else(|| anyhow::anyhow!("no family relay set up"))?;
     let (_, token) = mailbox(state).await?;
     let resp = state.http.post(format!("{base}/v1/family/pass")).timeout(Duration::from_secs(10)).bearer_auth(token);
-    let resp = resp.json(&json!({})).send().await?;
+    let resp = resp.json(&json!({"for": holder})).send().await?;
     if !resp.status().is_success() {
         anyhow::bail!("the relay gave no pass ({})", resp.status().as_u16());
     }
     let pass: Value = resp.json().await?;
-    let expires = pass.get("expires").and_then(Value::as_f64).unwrap_or(0.0);
-    let pass = pass.get("pass").and_then(Value::as_str).map(str::to_string).ok_or_else(|| anyhow::anyhow!("no pass"))?;
-    Ok((pass, expires))
+    let field = |k: &str| pass.get(k).and_then(Value::as_str).map(str::to_string);
+    let (Some(made), Some(id)) = (field("pass"), field("id")) else { anyhow::bail!("no pass") };
+    Ok((made, id, pass.get("expires").and_then(Value::as_f64).unwrap_or(0.0)))
 }
 
-/// The end a pass says (it travels sealed by the relay: the bridge keeps it next to the pass).
-fn pass_expiry(entry: &Dict) -> f64 {
-    entry.get("pass_expires").and_then(Value::as_f64).unwrap_or(0.0)
+/// The passes this bridge gave and still accepts: one per household linked through the relay (`given_pass`).
+fn accepted_passes(state: &AppState) -> Vec<String> {
+    let data = state.households.load();
+    let Some(households) = data.get("households").and_then(Value::as_object) else { return Vec::new() };
+    households.values().filter_map(|v| v.get("given_pass").and_then(Value::as_str).map(str::to_string)).collect()
 }
 
-/// Our pass for this household, renewed when it ends within [`RENEW_BEFORE`] (the same pass id, at the relay).
-async fn pass_for(state: &AppState, household: &str, entry: &Dict) -> Option<String> {
-    let pass = entry.get("pass").and_then(Value::as_str)?.to_string();
-    let now = crate::py::time_time();
-    if pass_expiry(entry) - now > RENEW_BEFORE {
-        return Some(pass);
+/// What goes in `x-bip-passes` with each poll of our mailbox (`-`: none).
+fn passes_header(state: &AppState) -> String {
+    let ids = accepted_passes(state);
+    if ids.is_empty() {
+        "-".to_string()
+    } else {
+        ids.join(",")
     }
-    let base = base(&state.config())?;
-    let (_, token) = mailbox(state).await.ok()?;
-    let renewed = state
+}
+
+/// Tells the relay at once which passes our mailbox accepts (a link made or removed): a household unlinked can't
+/// reach it any more, nor tell whether this bridge is on. Our polls say it again with each poll.
+pub async fn announce_passes(state: &AppState) {
+    let Some(base) = base(&state.config()) else { return };
+    let Some(token) = load(&state.config())
+        .get("mailbox")
+        .and_then(|m| m.get("token"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+    else {
+        return;
+    };
+    let sent = state
         .http
-        .post(format!("{base}/v1/family/pass"))
+        .post(format!("{base}/v1/family/passes"))
         .timeout(Duration::from_secs(10))
         .bearer_auth(token)
-        .json(&json!({"renew": pass}))
+        .json(&json!({"accept": accepted_passes(state)}))
         .send()
         .await;
-    let fresh = match renewed {
-        Ok(resp) if resp.status().is_success() => resp.json::<Value>().await.ok(),
-        _ => None,
-    };
-    match fresh.and_then(|f| Some((f.get("pass")?.as_str()?.to_string(), f.get("expires")?.as_f64()?))) {
-        Some((fresh, expires)) => {
-            let _ = state.households.mark(household, "pass", json!(fresh));
-            let _ = state.households.mark(household, "pass_expires", json!(expires));
-            Some(fresh)
-        }
-        None => Some(pass), // the relay out of reach: the pass kept, as long as it lasts
+    match sent {
+        Ok(resp) if resp.status().is_success() => {}
+        Ok(resp) => tracing::warn!(status = resp.status().as_u16(), "family relay: passes accepted not said"),
+        Err(_) => tracing::info!("family relay: passes accepted not said (the relay can't be reached; said at the next poll)"),
     }
+}
+
+/// Our pass for this household's mailbox (it was given for ours; it lasts until they withdraw it).
+fn pass_for(entry: &Dict) -> Option<String> {
+    entry.get("pass").and_then(Value::as_str).filter(|p| !p.is_empty()).map(str::to_string)
 }
 
 /// An invitation made with its own mailbox: its exchange will be sealed with its code's key.
@@ -270,11 +287,13 @@ pub fn remember_invite(config: &Config, code: &str, until: f64, mailbox: (&str, 
     })
 }
 
-/// An invitation still waiting.
+/// An invitation still waiting (or used: kept until its end, so that a second introduction with it opens and is
+/// answered « unknown or expired » as before, not taken for something else).
 struct Invite {
     digest: String,
     key: [u8; 32],
     mailbox: Option<(String, String)>,
+    used: bool,
 }
 
 fn invites(config: &Config) -> Vec<Invite> {
@@ -288,15 +307,21 @@ fn invites(config: &Config) -> Vec<Invite> {
             let key = family_seal::decode_key(v.get("key")?.as_str()?)?;
             let field = |k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
             let mailbox = field("mailbox").filter(|m| valid_mailbox(m)).zip(field("token"));
-            Some(Invite { digest: d.clone(), key, mailbox })
+            let used = v.get("used").and_then(Value::as_bool) == Some(true);
+            Some(Invite { digest: d.clone(), key, mailbox, used })
         })
         .collect()
 }
 
+/// An invitation used: its mailbox no longer polled (it ends at the relay with the invitation), its key kept until
+/// its end (see [`Invite`]).
 fn forget_invite(config: &Config, digest: &str) {
     let _ = edit(config, |data| {
         if let Some(Value::Object(invites)) = data.get_mut("invites") {
-            invites.shift_remove(digest);
+            if let Some(Value::Object(invite)) = invites.get_mut(digest) {
+                invite.insert("used".into(), json!(true));
+                invite.shift_remove("token");
+            }
         }
     });
 }
@@ -350,6 +375,7 @@ fn mailboxes_to_poll(state: &AppState) -> Vec<(String, String, bool)> {
     }
     let mut out: Vec<(String, String, bool)> = invites(&config)
         .into_iter()
+        .filter(|i| !i.used)
         .filter_map(|i| i.mailbox.map(|(id, token)| (id, token, true)))
         .collect();
     let data = state.households.load();
@@ -510,7 +536,7 @@ pub async fn call(
         return not_answering();
     };
     let Some(mailbox) = link.mailbox.as_deref() else { return not_answering() };
-    let Some(pass) = pass_for(&state, &household, &entry).await else {
+    let Some(pass) = pass_for(&entry) else {
         tracing::info!(household = %household, "family relay: no pass for this household's mailbox (link it again)");
         return not_answering();
     };
@@ -630,13 +656,12 @@ async fn poll_one(state: AppState, id: String, token: String, invitation: bool) 
             break;
         }
         let Some(base) = base(&state.config()) else { break };
-        let answer = state
-            .http
-            .get(format!("{base}/v1/family/next"))
-            .timeout(POLL_TIMEOUT)
-            .bearer_auth(&token)
-            .send()
-            .await;
+        let mut ask = state.http.get(format!("{base}/v1/family/next")).timeout(POLL_TIMEOUT).bearer_auth(&token);
+        if !invitation {
+            // the passes our mailbox accepts, said again with each poll (a relay restarted knows them at once)
+            ask = ask.header("x-bip-passes", passes_header(&state));
+        }
+        let answer = ask.send().await;
         match answer {
             Ok(resp) if resp.status() == StatusCode::OK => {
                 pause = Duration::from_secs(1);
@@ -837,9 +862,9 @@ async fn run(state: &AppState, opened: Opened, relay: Option<&str>) -> ([u8; 32]
         }
         (None, Some(digest)) if method == "POST" && path == "/family/accept" => {
             let introduced = Introduced { relay: relay.map(str::to_string) };
-            let response = crate::family_relay::run_accept(&pairs, Bytes::from(opened.body), introduced).await;
+            let response = crate::family_relay::run_accept(state, &pairs, Bytes::from(opened.body), introduced).await;
             if response.status().is_success() {
-                forget_invite(&state.config(), digest); // used: its key and its mailbox go with it
+                forget_invite(&state.config(), digest); // used: its mailbox no longer polled
             }
             response
         }

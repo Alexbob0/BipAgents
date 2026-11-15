@@ -541,21 +541,20 @@ pub(crate) async fn run_in_process(
 /// An invitation's `POST /family/accept` that came sealed with its code (family_rendezvous.rs: through Kerfy Studio's
 /// relay, or straight to our address), run through our own routes with the mark only an in-process request can carry.
 pub(crate) async fn run_accept(
+    state: &AppState,
     pairs: &[(String, String)],
     body: Bytes,
     through: crate::family_rendezvous::Introduced,
 ) -> Response {
-    let Some(router) = ROUTER.lock().unwrap_or_else(|e| e.into_inner()).clone() else {
-        return axum::response::IntoResponse::into_response(HttpError::not_found());
-    };
+    // this very bridge's accept (not a router kept process-wide: several bridges may run in one process, in tests)
     let mut request = Request::new(Body::from(body));
     *request.method_mut() = axum::http::Method::POST;
     *request.uri_mut() = axum::http::Uri::from_static("/family/accept");
     put_headers(request.headers_mut(), pairs);
     request.extensions_mut().insert(through);
-    match tower::ServiceExt::oneshot(router, request).await {
-        Ok(r) => r,
-        Err(never) => match never {},
+    match crate::peers::family_accept(State(state.clone()), request).await {
+        Ok(response) => response,
+        Err(refused) => axum::response::IntoResponse::into_response(refused),
     }
 }
 
