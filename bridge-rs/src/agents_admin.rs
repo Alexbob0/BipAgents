@@ -636,7 +636,7 @@ pub fn plan_agent(config: &Config, body: &NewAgent) -> anyhow::Result<PlannedAge
             return Err(AgentError("unknown category".into()).into());
         }
         let soul = crate::souls::custom_soul(&name, &custom.role, &custom.tone, &custom.rules, Some(&lang));
-        (soul, head(custom.role.trim(), 120))
+        (soul, description_of_role(&custom.role))
     } else if let Some(kind) = body.kind.as_deref().filter(|k| !k.is_empty()) {
         let found = crate::souls::template(kind, Some(&lang));
         let Some(found) = found.filter(|t| t.get("soul").map(crate::py::truthy).unwrap_or(false)) else {
@@ -645,7 +645,7 @@ pub fn plan_agent(config: &Config, body: &NewAgent) -> anyhow::Result<PlannedAge
         let soul = crate::souls::soul_for(&name, kind, Some(&lang)).map_err(|e| AgentError(e.to_string()))?;
         let soul = crate::souls::with_expectations(&soul, body.role.as_deref(), body.tone.as_deref(), Some(&lang));
         let description = match body.role.as_deref().map(str::trim).filter(|r| !r.is_empty()) {
-            Some(role) => head(role, 120),
+            Some(role) => description_of_role(role),
             None => found.get("description").map(crate::py::py_str).unwrap_or_default(),
         };
         (soul, description)
@@ -656,10 +656,28 @@ pub fn plan_agent(config: &Config, body: &NewAgent) -> anyhow::Result<PlannedAge
     Ok(PlannedAgent { profile, name, soul, description })
 }
 
+/// A description's length at most (the guide's list of agents shows it; Hermes' profile keeps it).
+pub const DESCRIPTION_MAX: usize = 120;
+
+/// An agent's description from its role: whole when it fits, else cut at a word with « … » (review 15/11: « … un
+/// plan qui monte doucem »).
+pub fn description_of_role(role: &str) -> String {
+    let role = role.split_whitespace().collect::<Vec<_>>().join(" ");
+    if role.chars().count() <= DESCRIPTION_MAX {
+        return role;
+    }
+    let cut = head(&role, DESCRIPTION_MAX - 1); // room for the « … »
+    let at_word = match cut.rfind(' ') {
+        Some(space) if space > 0 => &cut[..space],
+        _ => cut.as_str(),
+    };
+    format!("{}…", at_word.trim_end_matches(|c: char| c.is_whitespace() || ",;:-–(".contains(c)))
+}
+
 /// The agent's description (its profile.yaml, what `profile create --description` writes): `role`, as a new agent's
 /// is made from it ([`plan_agent`]).
 pub fn write_description(config: &Config, agent: &AgentConfig, role: &str) -> anyhow::Result<()> {
-    let description = head(role.trim(), 120);
+    let description = description_of_role(role);
     crate::profile_files::edit(&profile_folder(config, agent).join("profile.yaml"), |data| {
         data.insert("description", Yaml::str(&description))
     })?;
@@ -2269,7 +2287,7 @@ pub async fn write_settings(
     let config = shared.get();
     let current = config.agent(Some(&agent.name)).cloned().unwrap_or_else(|| agent.clone());
     if read_soul(&config, &current).unwrap_or_default() != soul_before {
-        refresh_prompts(&config, &current, run).await;
+        refresh_prompts_soon(config, current, run.clone());
     }
     Ok(())
 }
@@ -2301,6 +2319,12 @@ pub async fn refresh_prompts(config: &Config, agent: &AgentConfig, run: &Run) {
         Err(exc) => tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %tail(&exc.to_string(), 200),
             "its conversations keep their personality until a new one"),
     }
+}
+
+/// [`refresh_prompts`] once the answer is sent (review 15/11): never under [`LOCK`], nor making the app wait for
+/// Hermes' command line.
+pub fn refresh_prompts_soon(config: Arc<Config>, agent: AgentConfig, run: Run) {
+    tokio::spawn(async move { refresh_prompts(&config, &agent, &run).await });
 }
 
 /// The personality the person edited (or imported), kept in the record and rendered with the bridge's blocks.
@@ -2563,8 +2587,13 @@ async fn put_language(
     let config = state.config();
     let agent = editable(&config, &agent_id).map_err(|_| not_managed())?;
     let _guard = LOCK.lock().await;
-    let previous = read_soul(&config, &agent).ok().and_then(|soul| crate::souls::split_language(&soul).1);
+    let soul_before = read_soul(&config, &agent).unwrap_or_default();
+    let previous = crate::souls::split_language(&soul_before).1;
     let code = set_language(&config, &agent, &body.lang)?;
+    // its ongoing conversations write in it from their next turn (review 15/11), not only the new ones
+    if read_soul(&config, &agent).unwrap_or_default() != soul_before {
+        refresh_prompts_soon(config.clone(), agent.clone(), default_run());
+    }
     // its memory may still be in the old language and pull its replies back to it: translated once when it clearly is
     crate::memory_language::after_change(config.clone(), state.http.clone(), agent.clone(), previous, code.clone());
     Ok(web::ok(json!({"id": agent.name, "language": code})))

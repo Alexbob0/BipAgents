@@ -344,15 +344,19 @@ fn create_project_tool() -> Value {
 }
 
 fn propose_agent_tool() -> Value {
+    // said back to the person as their own words (welcome.rs): asked as they would ask it, never « son activité »
+    let role = format!(
+        "what it is for, as they would ask it, in their own words and language (« Me préparer à mon semi-marathon… », \
+    « Suivre mes colis… »), with every specific they gave (goal, dates, how often, level…), not a label: one or two \
+    sentences, {CARD_ROLE_MAX} characters at most. It becomes its description, personality and first words."
+    );
     json!({
         "name": PROPOSE_AGENT,
         "description": "Propose a new agent: your person sees a card and creates it with one tap (nothing is created otherwise).",
         "inputSchema": {"type": "object", "properties": {
             "kind": {"type": "string", "enum": crate::souls::CATEGORIES},
             "name": {"type": "string"},
-            "role": {"type": "string", "description": "what it is for, in their own words and language, with every \
-    specific they gave (goal, dates, how often, level…), not a label: one or two sentences. It becomes its description, \
-    personality and first words."},
+            "role": {"type": "string", "description": role},
             "tone": {"type": "string"},
             "for": {"type": "string", "enum": ["me", "family"]},
             "members": {"type": "array", "items": {"type": "string"}, "description": "family: first names; none = all"},
@@ -874,6 +878,17 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
             let role = arg(arguments, "role", CARD_ROLE_MAX);
             if !crate::souls::CATEGORIES.contains(&kind.as_str()) || new_name.is_empty() || role.is_empty() {
                 return Ok(tool_text("give a kind from the list, a name and its role", true));
+            }
+            // never cut: a role cut mid-word is a broken sentence on the card, in its personality and its first words
+            let written = tk::chars(&tk::squeeze(&tk::str_or_empty(arguments.get("role"))));
+            if written > CARD_ROLE_MAX {
+                return Ok(tool_text(
+                    &format!(
+                        "the role is {written} characters, {CARD_ROLE_MAX} at most: propose_agent again with a shorter \
+                         one that keeps every specific they gave"
+                    ),
+                    true,
+                ));
             }
             if is_own_name(config, agent, &new_name) {
                 return Ok(tool_text(
@@ -1642,7 +1657,7 @@ async fn accept(
                 crate::answer_style::set(&state.config, &from, &str_of(&proposal, "answer_style"), None)?
             };
             take_proposal(&state.config(), &id)?;
-            crate::agents_admin::refresh_prompts(&state.config(), &changed, &crate::agents_admin::default_run()).await;
+            crate::agents_admin::refresh_prompts_soon(state.config(), changed.clone(), crate::agents_admin::default_run());
             Ok(web::ok(json!({"type": "style", "agent": {"id": changed.name, "name": changed.display_name},
                               "answer_style": crate::answer_style::view(&changed)})))
         }
@@ -1679,7 +1694,7 @@ async fn accept(
             take_proposal(&config, &id)?;
             apply(&config, &agent).await;
             // the conversation it was proposed in takes it from the next message (agents_admin::refresh_prompts)
-            crate::agents_admin::refresh_prompts(&config, &agent, &crate::agents_admin::default_run()).await;
+            crate::agents_admin::refresh_prompts_soon(config.clone(), agent.clone(), crate::agents_admin::default_run());
             Ok(web::ok(json!({"type": "profile", "agent": {"id": agent.name, "name": agent.display_name}})))
         }
     }

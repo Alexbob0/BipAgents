@@ -246,6 +246,9 @@ def test_settings_and_delete(bridges, fakes):
     assert written.startswith("Tu es Budget, sobre.\n") and "write in French." in written   # its language block kept
     assert ["-p", "budget", "tools", "enable", "terminal", "--platform", "api_server"] in hermes_args(bridge)
     assert ["-p", "budget", "tools", "disable", "web", "--platform", "api_server"] in hermes_args(bridge)
+    # its personality changed: its ongoing conversations are told, once the answer is sent (agents_admin.rs
+    # refresh_prompts_soon), before the commands below are counted
+    assert wait_until(lambda: ["-p", "budget", "sessions", "refresh-prompts", "--json"] in hermes_args(bridge))
     bad = bridge.patch("/v1/agents/budget/settings", headers=AUTH, json={"toolsets": {"web; rm -rf": True}})
     assert bad.status_code == 400 and bad.json() == {"detail": "invalid toolset name"}
     skills = bridge.patch("/v1/agents/budget/settings", headers=AUTH, json={"skills": {"nope": True}})

@@ -120,9 +120,19 @@ fn asked(lang: &str) -> Asked {
     }
 }
 
-/// The person's words for what an agent is for, as its first words quote them: on one line, without a closing dot.
+/// A Markdown link or image (`[words](url)`, `![words](url)`): its words only.
+static MARKDOWN_LINK: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"!?\[([^\]\n]*)\]\([^)\n]*\)").expect("valid regex"));
+/// A note of the bridge's (`<!--bip:… -->`, a vault chip…): gone.
+static NOTE: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"(?s)<!--.*?-->").expect("valid regex"));
+
+/// The person's words for what an agent is for, as its first words quote them: on one line, without a closing dot,
+/// words only (review 15/11): the apps draw the first bubble like a reply (Markdown, the bridge's notes), and a role Bip
+/// wrote may hold what it read, so no live link or image and no note.
 fn role_said(role: &str) -> String {
-    let one_line = role.split_whitespace().collect::<Vec<_>>().join(" ");
+    let words = MARKDOWN_LINK.replace_all(role, "$1");
+    let words = NOTE.replace_all(&words, " ");
+    let one_line = crate::tools_knowledge::in_note_line(&words);
     one_line.trim_end_matches(['.', ' ']).to_string()
 }
 
