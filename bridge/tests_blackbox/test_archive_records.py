@@ -3,6 +3,7 @@ archive's index, a model reading the likely documents with a strict JSON answer 
 writes nothing and estimates the whole archive, the full pass as a capped background job (« Tâches de fond »), the
 records' sources linked to their documents, idempotent passes, the agent's `archive_records` tool and the command
 line. Synthetic documents only, a fake model answering canned JSON."""
+import asyncio
 import json
 from datetime import date, timedelta
 
@@ -177,6 +178,36 @@ def test_the_cap_pauses_the_job_and_a_bigger_one_finishes_it(bridges, fakes):
     assert job_of(bridge, offer.json()["id"])["model"] == "small-model"
     switched = bridge.patch(f"/v1/agents/{AGENT}/archives/mails/records", json={"nightly": False}, headers=AUTH)
     assert switched.status_code == 200 and switched.json()["nightly"] is False
+
+
+def test_a_resume_or_a_new_pass_while_the_end_is_told_runs(bridges, fakes):
+    # 15/11 (the cap test above, flaky under load): the worker wrote « paused » or « done », then told it (a push)
+    # still holding the job and the archive. A resume right then got a worker that returned at once (the job left
+    # « running », nobody on it), a new pass failed « being read already ». The phone's push answered after 2 s here
+    # keeps the worker telling while the test goes on.
+    bridge, _ = started(bridges, fakes)
+    assert bridge.post("/v1/devices", headers=AUTH, json={"token": "f" * 64, "environment": "sandbox",
+                                                         "agent_ids": [AGENT]}).status_code == 200
+
+    async def slow(seen):
+        if "/3/device/" in seen.path:
+            await asyncio.sleep(2)
+
+    fakes.apns.override = slow
+    priced = {"model": "big-model", "price_in": 10, "price_out": 50}
+    run = bridge.post(f"/v1/agents/{AGENT}/archives/mails/records/run", json={"budget_eur": 0.05, **priced}, headers=AUTH)
+    assert run.status_code == 200, run.text
+    job_id = run.json()["id"]
+    assert wait_until(lambda: job_of(bridge, job_id)["state"] == "paused", timeout=30), job_of(bridge, job_id)
+    resumed = bridge.post(f"/v1/jobs/{job_id}/resume", json={"budget_eur": 2}, headers=AUTH)
+    assert resumed.status_code == 200, resumed.text
+    assert wait_until(lambda: job_of(bridge, job_id)["state"] == "done", timeout=30), job_of(bridge, job_id)
+    again = bridge.post(f"/v1/agents/{AGENT}/archives/mails/records/run",
+                        json={"budget_eur": 1, "price_in": 0.4, "price_out": 1.6}, headers=AUTH)
+    assert again.status_code == 200, again.text
+    assert wait_until(lambda: job_of(bridge, again.json()["id"])["state"] == "done", timeout=30), \
+        job_of(bridge, again.json()["id"])
+    assert len(fakes.apns.pushes()) >= 2   # the pause and the end were told, each while the test went on
 
 
 def test_the_agent_samples_and_proposes_and_the_command_line_reports(bridges, fakes):

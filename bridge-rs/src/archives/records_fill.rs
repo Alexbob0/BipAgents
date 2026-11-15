@@ -1541,7 +1541,7 @@ pub async fn work(config: Arc<Config>, job_id: String, tell: Tell) {
             WORKERS.lock().unwrap_or_else(|e| e.into_inner()).remove(&self.0);
         }
     }
-    let _done = Done(job_id.clone());
+    let done = Done(job_id.clone());
     let Some(job) = crate::jobs::load(&config, &job_id) else { return };
     let fail = |message: String| {
         let _guard = job_lock();
@@ -1560,7 +1560,7 @@ pub async fn work(config: Arc<Config>, job_id: String, tell: Tell) {
     };
     let lock_path = store_path(&config, &archive);
     let lock = tokio::task::spawn_blocking(move || RunLock::take(&lock_path)).await.ok().flatten();
-    let Some(_lock) = lock else { return fail("this archive is being read already (another pass)".into()) };
+    let Some(lock) = lock else { return fail("this archive is being read already (another pass)".into()) };
     let before_eur = job.get("eur").and_then(Value::as_f64).unwrap_or(0.0);
     let before_in = pointer(&job, "tokens", "input").and_then(Value::as_i64).unwrap_or(0);
     let before_out = pointer(&job, "tokens", "output").and_then(Value::as_i64).unwrap_or(0);
@@ -1593,6 +1593,12 @@ pub async fn work(config: Arc<Config>, job_id: String, tell: Tell) {
             return fail(message);
         }
     };
+    // The archive and the job given back before the job says how it ended: once it reads « paused » or « done », a
+    // resume or a new pass finds them free. Kept until then, a resume right after the pause got a worker that
+    // returned at once (the job left « running », nobody on it) and a new pass right after « done » failed with « being
+    // read already », while this one still told its end (15/11, test_archive_records' cap test under load).
+    drop(lock);
+    drop(done);
     let state = {
         let _guard = job_lock();
         let Some(mut job) = crate::jobs::load(&config, &job_id) else { return };
