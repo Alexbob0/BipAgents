@@ -454,7 +454,8 @@ pub fn mobile_user_agent(product: &str) -> (String, String) {
     )
 }
 
-/// The tab renders as on the person's phone (until `restore`): its size, a mobile user agent, touch; then reloaded.
+/// The tab renders as on the person's phone (until `restore`): its size, a mobile user agent, touch. The caller
+/// reloads it once its screencast runs (`session`), so that the page's first paint as a phone is a frame.
 pub async fn make_mobile(cdp: &mut Cdp, phone: &Phone, desktop_height: f64) -> Result<(), String> {
     let (width, height, ratio) = phone.metrics(desktop_height);
     let version = cdp.call("Browser.getVersion", json!({})).await.unwrap_or(Value::Null);
@@ -476,7 +477,6 @@ pub async fn make_mobile(cdp: &mut Cdp, phone: &Phone, desktop_height: f64) -> R
         cdp.call("Emulation.setUserAgentOverride", json!({"userAgent": agent})).await?;
     }
     cdp.call("Emulation.setTouchEmulationEnabled", json!({"enabled": true, "maxTouchPoints": 5})).await?;
-    cdp.call("Page.reload", json!({})).await?;
     Ok(())
 }
 
@@ -755,6 +755,14 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
         };
         if cdp.send("Page.startScreencast", cast).await.is_err() {
             continue;
+        }
+        // Rendered as a phone: reloaded now that the screencast runs, so the page's first paint at the phone's size
+        // is a frame. Reloaded before it, a still page could paint before the screencast began and send nothing more:
+        // the phone kept the desktop's last frame (15/11, test_desktop_page_chrome under load: 6 of 12).
+        if mobile {
+            if let Err(error) = cdp.call("Page.reload", json!({})).await {
+                tracing::info!(agent = %agent, error = %error, "page view: not reloaded as a phone");
+            }
         }
         let said = json!({"type": "state", "state": "live", "mobile": mobile, "holding": holding});
         if !send_json(&mut app_tx, said.clone()).await {
