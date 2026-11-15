@@ -16,6 +16,7 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import secrets
 import time
 import uuid
@@ -197,7 +198,14 @@ class Guichet(Fake):
             share["viewers"] = [v for v in share["viewers"] if v is not mine[0]]
             return JSONResponse({"ok": True})
         if method == "POST" and rest == ["actions"]:
-            return JSONResponse({"seq": 1}, status_code=201)
+            # a friend's tap or write in a page (J57), kept until the owner's bridge takes it (guichet-rs `act`)
+            if body.get("epoch") != share["epoch"]:
+                return JSONResponse({"detail": "rekey"}, status_code=409)
+            share["action_seq"] = share.get("action_seq", 0) + 1
+            share.setdefault("actions", []).append({"seq": share["action_seq"], "viewer": mine[0]["viewer"],
+                                                    "epoch": share["epoch"], "data": str(body.get("data") or ""),
+                                                    "tag": str(body.get("tag") or ""), "at": time.time()})
+            return JSONResponse({"seq": share["action_seq"]}, status_code=201)
         return JSONResponse({"detail": "no route"}, status_code=404)
 
     def _writer(self, share_id, share, method, rest, body):
@@ -247,9 +255,13 @@ class Guichet(Fake):
                 v.pop("wrapped_epoch", None)
             return JSONResponse({"epoch": share["epoch"]})
         if method == "GET" and rest == ["actions"]:
-            return JSONResponse({"actions": []})
+            waiting = [{k: a[k] for k in ("seq", "viewer", "data", "tag", "at")} for a in share.get("actions", [])
+                       if a["epoch"] == share["epoch"]]
+            return JSONResponse({"actions": waiting})
         if method == "POST" and rest == ["actions", "taken"]:
-            return JSONResponse({"taken": 0})
+            before = len(share.get("actions", []))
+            share["actions"] = [a for a in share.get("actions", []) if a["seq"] > int(body.get("through") or 0)]
+            return JSONResponse({"taken": before - len(share["actions"])})
         if method == "POST" and rest == ["ends"]:
             share["ends"] = float(body.get("ends") or share["ends"])
             return JSONResponse({"ends": share["ends"]})
@@ -343,6 +355,22 @@ class Friend:
         return out
 
 
+    def write_in_page(self, key: bytes, page_item: str, op: Dict[str, Any]) -> str:
+        """What the friend types in a page that remembers (J57), as both apps send it (PageStoreDoor.friendAction):
+        the op sealed with the content key, tagged with the link's secret, posted to the guichet. Its id `a`."""
+        epoch = self.listed()["epoch"]
+        plain = {"s": self.share, "e": epoch, "a": base64.urlsafe_b64encode(os.urandom(12)).decode().rstrip("="),
+                 "kind": "store", "page": page_item, **op}
+        nonce = os.urandom(12)
+        data = base64.b64encode(nonce + AESGCM(key).encrypt(nonce, json.dumps(plain).encode(), None)).decode()
+        tag = hmac.new(self.secret, b"bipagents-act-v1\x00" + self.share.encode() + b"\x00" + data.encode(),
+                       hashlib.sha256).hexdigest()
+        done = self.http.post(f"/v1/rshares/{self.share}/actions", headers=self._auth(),
+                              json={"epoch": epoch, "data": data, "tag": tag})
+        assert done.status_code == 201, done.text
+        return plain["a"]
+
+
 # -- Alex's project, shared -----------------------------------------------------------------------------------------
 
 @dataclass
@@ -388,6 +416,17 @@ def agent_tokens(journey) -> Dict[str, str]:
                           {"markers": [{"place": "Sagrada Família"}, {"place": "Park Güell"}],
                            "area": "Barcelona", "title": "Week-end à Barcelone"})
         journey.model.calls["map"] = map_for
+        original_sheet = journey.model.calls.get("memory_page")
+
+        def sheet_for(run_id: str) -> str:   # a page that remembers, made by the agent whose turn it is (J57)
+            from .journeys import MEMORY_PAGE
+            run = journey.model.runs.get(run_id)
+            token = found.get(run.agent) if run else None
+            if token is None and original_sheet is not None:
+                return original_sheet(run_id)
+            return mcp_as(journey.bridge, token, "/v1/agent-tools/mcp", "create_page",
+                          {"html": MEMORY_PAGE, "title": f"Courses {run_id}"})
+        journey.model.calls["memory_page"] = sheet_for
     return found
 
 
@@ -428,6 +467,25 @@ def project_share(journey, guichet: Guichet, name: str = "Pour les queens") -> P
         "writer": at_guichet["writer"], "guichet": guichet.url, "ends": at_guichet["ends"]})
     assert shared.status_code == 200, shared.text
     return ProjectShare(agent, thread, at_guichet["share"], owner, [words])
+
+
+def project_sheet(bridge, shared: ProjectShare, words: str = "Une liste de courses pour le week-end #memoire") -> str:
+    """J57: a turn of the shared project answering with a page that remembers (made while the thread is shared: the
+    group's, its store goes to the friends); its `MEDIA:` path once the reply is there, the page sent to the guichet."""
+    sent = bridge.post(f"/v1/threads/{shared.thread}/messages", headers=AUTH,
+                       json={"agent": shared.agent, "client_id": str(uuid.uuid4()).upper(), "text": words})
+    assert sent.status_code == 200, sent.text
+
+    def page():
+        return bridge.get(f"/v1/threads/{shared.thread}/timeline", headers=AUTH,
+                          params={"agent": shared.agent, "tz": "Europe/Paris"}).json()
+    assert wait_until(lambda: any("Voici ta liste" in (i.get("text") or "") for i in page()["items"])
+                      and page()["pending"].get("run") is None, timeout=60), page()
+    reply = [i for i in page()["items"] if "Voici ta liste" in (i.get("text") or "")][-1]
+    path = next(a["path"] for a in reply.get("attachments") or [] if a.get("kind") == "page")
+    done = bridge.post(f"/v1/read-shares/{shared.share}/sync", headers=AUTH)
+    assert done.status_code == 200, done.text
+    return path
 
 
 def share_view(bridge, agent: str) -> Dict[str, Any]:

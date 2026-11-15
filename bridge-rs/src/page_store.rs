@@ -553,7 +553,9 @@ fn keep_copy(config: &Config, agent: &str, page: &str, store: &Value) {
         return;
     }
     let next = all.last().map_or(1, |(n, _)| n + 1);
-    if let Err(e) = write_file(&snapshot_path(config, agent, page, next), &serde_json::to_string(store).unwrap_or_default()) {
+    if let Err(e) =
+        write_file(&snapshot_path(config, agent, page, next), &serde_json::to_string(store).unwrap_or_default())
+    {
         tracing::warn!(agent = %agent, page = %page, error = %e, "a page's store not kept as a copy");
         return;
     }
