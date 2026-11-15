@@ -43,9 +43,27 @@ pub struct Shape {
     /// What it writes or calls is named at run time (`a['hr' + 'ef'] = …`, `el[k]()` on the page's objects,
     /// `Reflect.set`, `createElement(String.fromCharCode(97))`).
     pub hidden_names: bool,
-    /// It runs code from text: eval, Function, a timer given a string, an `on…` attribute set.
+    /// It runs code from text: eval, Function, a timer given a string, an `on…` attribute set, a tagged template
+    /// whose tag isn't a function of the script's (`` setTimeout`…` ``), a timer or eval taken as a value, text given
+    /// to a callee that can't be named.
     pub code_from_text: bool,
+    /// Too long or too deeply nested to be read safely (`MAX_SCRIPT_BYTES`, `MAX_NESTING`): never parsed.
+    pub too_big: bool,
 }
+
+/// The longest script read (an agent's are a few kilobytes; fourth review of 15/11: a parser recursing as deep as a
+/// script nests must never exhaust a thread's stack, which aborts the whole bridge).
+pub const MAX_SCRIPT_BYTES: usize = 32 * 1024;
+/// The deepest nesting read: brackets, and runs of prefix operators (`!!!!…`, `- - -…`).
+pub const MAX_NESTING: usize = 256;
+/// The stack of the thread the script is read on: room for `MAX_SCRIPT_BYTES` of the worst nesting the limits let
+/// through, in a debug build too (reserved, not used, by the system).
+const STACK_BYTES: usize = 256 * 1024 * 1024;
+
+/// Functions that run text as code, and timers: never taken as values (`const t = setTimeout`, `[f].forEach(setTimeout)`,
+/// `setTimeout.call(…)`), only called by their name, and then their arguments read.
+const SINKS: &[&str] = &["eval", "Function", "setTimeout", "setInterval", "setImmediate", "execScript", "AsyncFunction",
+    "GeneratorFunction", "AsyncGeneratorFunction"];
 
 /// Methods that act on the page, called on something not the script's own.
 const ACT_METHODS: &[&str] = &[
@@ -109,6 +127,8 @@ struct Names {
     own: HashSet<String>,
     /// Every name the script declares (`const`, `let`, `var`, a function's).
     declared: HashSet<String>,
+    /// Names given a method of the page bound to its object (`const $ = document.querySelector.bind(document)`).
+    bound: HashSet<String>,
     functions: HashMap<u32, String>,
     called: HashSet<u32>,
     passed_at_once: HashSet<u32>,
@@ -127,6 +147,17 @@ impl<'a> Visit<'a> for Names {
                 if let Some(start) = function_start(init) {
                     self.functions.insert(start, id.name.to_string());
                 }
+                if let Expression::CallExpression(call) = init {
+                    let bound = call.callee.without_parentheses().as_member_expression().is_some_and(|m| {
+                        m.static_property_name().and_then(|n| n.as_str()) == Some("bind")
+                            && m.object().without_parentheses().as_member_expression().is_some_and(|inner| {
+                                inner.static_property_name().and_then(|n| n.as_str()).is_some_and(|n| !SINKS.contains(&n))
+                            })
+                    });
+                    if bound {
+                        self.bound.insert(id.name.to_string());
+                    }
+                }
             }
         }
         walk::walk_variable_declarator(self, it);
@@ -141,7 +172,7 @@ impl<'a> Visit<'a> for Names {
     }
 
     fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
-        if let Expression::Identifier(id) = it.callee.without_parentheses() {
+        if let Expression::Identifier(id) = resolved(&it.callee) {
             self.called.insert(id.span.start);
         }
         if calls_at_once(&it.callee) {
@@ -255,19 +286,49 @@ impl Reader<'_> {
 
 impl<'a> Visit<'a> for Reader<'_> {
     fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
-        let callee = it.callee.without_parentheses();
+        let callee = resolved(&it.callee);
         self.invoked.insert(span_of(callee));
+        // a callee that can't be named (a call's result, a choice, a name the script gives a value): text given to it
+        // may be run as code (fourth review of 15/11: fail closed)
+        let named = match callee {
+            Expression::Identifier(id) => {
+                let name = id.name.as_str();
+                !self.names.declared.contains(name)
+                    || self.names.functions.values().any(|f| f == name)
+                    || self.names.bound.contains(name)
+            }
+            Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => true,
+            other => other.as_member_expression().is_some(),
+        };
+        if !named && it.arguments.iter().any(text_like) {
+            self.shape.code_from_text = true;
+        }
         // the functions given: at once (an IIFE, the array's methods…) or maybe later
         if let Some(start) = function_start(callee) {
             self.uses.insert(start, Use::Now);
         }
         if let Some(member) = callee.as_member_expression() {
             // `(function () {…}).call(this)`: at once too
-            if matches!(member.static_property_name().and_then(|n| n.as_str()), Some("call" | "apply")) {
-                if let Some(start) = function_start(member.object().without_parentheses()) {
+            let how = member.static_property_name().and_then(|n| n.as_str());
+            if matches!(how, Some("call" | "apply")) {
+                let object = resolved(member.object());
+                if let Some(start) = function_start(object) {
                     self.uses.insert(start, Use::Now);
                 }
-                self.invoked.insert(span_of(member.object().without_parentheses()));
+                self.invoked.insert(span_of(object));
+                // `setTimeout.call(window, 'code', 10)`: a timer or eval called this way, given text (or an array of
+                // arguments, unread)
+                let sink = match object {
+                    Expression::Identifier(id) => SINKS.contains(&id.name.as_str()),
+                    other => other
+                        .as_member_expression()
+                        .and_then(|m| m.static_property_name())
+                        .and_then(|n| n.as_str())
+                        .is_some_and(|n| SINKS.contains(&n)),
+                };
+                if sink && (how == Some("apply") || it.arguments.iter().skip(1).any(text_like)) {
+                    self.shape.code_from_text = true;
+                }
             }
         }
         let at_once = calls_at_once(&it.callee);
@@ -451,7 +512,54 @@ impl<'a> Visit<'a> for Reader<'_> {
         walk::walk_unary_expression(self, it);
     }
 
+    fn visit_tagged_template_expression(&mut self, it: &TaggedTemplateExpression<'a>) {
+        // `` setTimeout`…//${1500}` `` calls setTimeout(['…'], 1500): a tag is a call given text (fourth review of
+        // 15/11). Only String.raw and the script's own functions read it; any other tag runs it as code, maybe later.
+        let tag = resolved(&it.tag);
+        self.invoked.insert(span_of(tag));
+        let known = match tag {
+            Expression::Identifier(id) => self.names.functions.values().any(|f| f == id.name.as_str()),
+            other => other.as_member_expression().is_some_and(|m| {
+                m.static_property_name().and_then(|n| n.as_str()) == Some("raw")
+                    && matches!(m.object().without_parentheses(), Expression::Identifier(id) if id.name == "String")
+            }),
+        };
+        if !known {
+            self.shape.code_from_text = true;
+        }
+        walk::walk_tagged_template_expression(self, it);
+    }
+
+    fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) {
+        // a timer or eval taken as a value (`const t = setTimeout`, `[f].forEach(setTimeout)`): its later call unread
+        if SINKS.contains(&it.name.as_str()) && !self.invoked.contains(&(it.span.start, it.span.end)) {
+            self.shape.code_from_text = true;
+        }
+    }
+
+    fn visit_computed_member_expression(&mut self, it: &ComputedMemberExpression<'a>) {
+        if literal_name(&it.expression).is_some_and(|n| SINKS.contains(&n.as_str()))
+            && !self.invoked.contains(&(it.span.start, it.span.end))
+        {
+            self.shape.code_from_text = true;
+        }
+        walk::walk_computed_member_expression(self, it);
+    }
+
     fn visit_static_member_expression(&mut self, it: &StaticMemberExpression<'a>) {
+        let name = it.property.name.as_str();
+        // `window.setTimeout` taken as a value; `x.constructor.constructor`, `(() => {}).constructor`: Function
+        if SINKS.contains(&name) && !self.invoked.contains(&(it.span.start, it.span.end)) {
+            self.shape.code_from_text = true;
+        }
+        if name == "constructor" {
+            let object = it.object.without_parentheses();
+            let of_constructor =
+                object.as_member_expression().and_then(|m| m.static_property_name()).and_then(|n| n.as_str()) == Some("constructor");
+            if of_constructor || function_start(object).is_some() || matches!(object, Expression::ClassExpression(_)) {
+                self.shape.code_from_text = true;
+            }
+        }
         // a method of the page taken as a value (`setTimeout(btn.click.bind(btn))`, `new MutationObserver(f.submit)`)
         if !self.invoked.contains(&(it.span.start, it.span.end)) && ACT_METHODS.contains(&it.property.name.as_str()) && !self.own(&it.object) {
             self.shape.later = true;
@@ -529,6 +637,37 @@ fn literal_name(key: &Expression) -> Option<String> {
     }
 }
 
+/// What a callee or a tag is once its parentheses and a comma's leading values are taken off: `(0, setTimeout)` is
+/// setTimeout (fourth review of 15/11).
+fn resolved<'b, 'a>(expression: &'b Expression<'a>) -> &'b Expression<'a> {
+    match expression.without_parentheses() {
+        Expression::SequenceExpression(sequence) => match sequence.expressions.last() {
+            Some(last) => resolved(last),
+            None => expression,
+        },
+        other => other,
+    }
+}
+
+/// An argument that may be text run as code by a callee that can't be named: anything but a function, a number, a
+/// boolean, null, an object or array literal or a regular expression.
+fn text_like(argument: &Argument) -> bool {
+    match argument.as_expression().map(|e| e.without_parentheses()) {
+        None => true,
+        Some(
+            Expression::ArrowFunctionExpression(_)
+            | Expression::FunctionExpression(_)
+            | Expression::NumericLiteral(_)
+            | Expression::BooleanLiteral(_)
+            | Expression::NullLiteral(_)
+            | Expression::ObjectExpression(_)
+            | Expression::ArrayExpression(_)
+            | Expression::RegExpLiteral(_),
+        ) => false,
+        Some(_) => true,
+    }
+}
+
 /// An expression's place in the script (its start and end).
 fn span_of(expression: &Expression) -> (u32, u32) {
     let span = expression.span();
@@ -588,6 +727,58 @@ fn first_is_own(arguments: &[Argument], own: &HashSet<String>) -> bool {
 /// What `script` does (see the module's doc). Parsed as a script whose top level may `return` (the real server runs
 /// it so), then as a module (a top-level `await`).
 pub fn shape(script: &str) -> Shape {
+    if script.len() > MAX_SCRIPT_BYTES || nesting(script) > MAX_NESTING {
+        return Shape { too_big: true, ..Shape::default() };
+    }
+    // on a thread of its own with a stack for the deepest script the limits let through (the caller's may be a
+    // runtime worker's 2 MB); one that can't be had, or a read that fails, counts as too big to read: refused
+    let on_stack = |bytes: usize| {
+        let owned = script.to_string();
+        std::thread::Builder::new().name("script-shape".into()).stack_size(bytes).spawn(move || read(&owned))
+    };
+    // a system that won't reserve that much: a smaller stack, for a short script only
+    let reading = match on_stack(STACK_BYTES) {
+        Ok(thread) => Ok(thread),
+        Err(_) if script.len() <= SHORT_SCRIPT_BYTES => on_stack(SHORT_STACK_BYTES),
+        Err(exc) => Err(exc),
+    };
+    match reading.map(|thread| thread.join()) {
+        Ok(Ok(shape)) => shape,
+        _ => Shape { too_big: true, ..Shape::default() },
+    }
+}
+
+/// When `STACK_BYTES` can't be had: scripts this short, on this stack.
+const SHORT_SCRIPT_BYTES: usize = 2 * 1024;
+const SHORT_STACK_BYTES: usize = 16 * 1024 * 1024;
+
+/// How deep `script` nests, roughly and never less than the parser will recurse for brackets and prefix operators:
+/// the deepest bracket (`(`, `[`, `{`, a template's `${`), and the longest run of `!`, `~`, `+`, `-` (spaces between
+/// them included). Brackets inside strings count too: a script made only of them is no agent's.
+pub fn nesting(script: &str) -> usize {
+    let (mut depth, mut deepest, mut run, mut longest) = (0usize, 0usize, 0usize, 0usize);
+    for c in script.chars() {
+        match c {
+            '(' | '[' | '{' => {
+                depth += 1;
+                deepest = deepest.max(depth);
+            }
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+        match c {
+            '!' | '~' | '+' | '-' => {
+                run += 1;
+                longest = longest.max(run);
+            }
+            ' ' | '\t' | '\n' | '\r' => {}
+            _ => run = 0,
+        }
+    }
+    deepest.max(longest)
+}
+
+fn read(script: &str) -> Shape {
     for source_type in [SourceType::script(), SourceType::mjs()] {
         let allocator = Allocator::default();
         let options = ParseOptions { allow_return_outside_function: true, ..ParseOptions::default() };
@@ -694,6 +885,70 @@ mod tests {
                        "const c = 'f.submit()'; setTimeout(c, 10)", "setTimeout(String(x), 10)",
                        "[].constructor.constructor(c)()"] {
             assert!(shape(script).code_from_text, "{script}");
+        }
+    }
+
+    #[test]
+    fn a_tagged_template_a_timer_as_a_value_or_a_callee_without_a_name_runs_text() {
+        for script in [
+            "setTimeout`document.title = 1 //${1500}`; 'ok'",
+            "setInterval`document.title = 1 //${1500}`; 'ok'",
+            "window.setTimeout`document.title = 1 //${1500}`; 'ok'",
+            "(0, setTimeout)`document.title = 1 //${1500}`; 'ok'",
+            "Function`document.title = 1`(); 'ok'",
+            "unknownTag`x`",
+            "const t = setTimeout; t('b.click()', 10)",
+            "const o = {t: window.setTimeout}; o.t('b.click()', 10)",
+            "[f].forEach(setTimeout)",
+            "setTimeout.call(window, 'b.click()', 10)",
+            "(cond ? setTimeout : f)('b.click()', 10)",
+            "getTimer()('b.click()', 10)",
+            "(async () => {}).constructor('b.click()')()",
+            "window['eval'](c)",
+        ] {
+            assert!(shape(script).code_from_text, "{script}");
+        }
+        for script in [
+            "return String.raw`a\\b`",
+            "function tag(s) { return s.join(''); } return tag`a${1}b`",
+            "const $ = document.querySelector.bind(document); return $('#a').value",
+            "const q = (s) => document.querySelector(s); return q('#a').value",
+            "return x.constructor.name",
+            "return document.body.innerText.search(/setTimeout/i)",
+        ] {
+            let s = shape(script);
+            assert!(s.parsed && !s.code_from_text, "{script}: {s:?}");
+        }
+    }
+
+    #[test]
+    fn a_script_too_long_or_too_deep_is_refused_and_the_deepest_let_through_never_crashes() {
+        assert!(shape(&format!("return {}1{}", "[".repeat(300), "]".repeat(300))).too_big);
+        assert!(shape(&format!("return {}1", "!".repeat(300))).too_big);
+        assert!(shape(&format!("return {}1", "- ".repeat(300))).too_big);
+        assert!(shape(&"x;".repeat(MAX_SCRIPT_BYTES)).too_big);
+        assert!(!shape(&format!("return {}1{}", "[".repeat(200), "]".repeat(200))).too_big);
+        // the deepest each kind of nesting gets within the limits: read on the thread's stack, never a crash (a stack
+        // overflow would abort this test binary)
+        let fill = |unit: &str, end: &str| {
+            let n = (MAX_SCRIPT_BYTES - 64) / unit.len();
+            format!("return {}{end}", unit.repeat(n))
+        };
+        for script in [
+            fill("a=", "1"),
+            fill("a?a:", "1"),
+            fill("a=>", "1"),
+            fill("typeof ", "1"),
+            fill("void ", "1"),
+            fill("new ", "X"),
+            fill("a+", "1"),
+            fill("a.", "a"),
+            format!("return a{}", "()".repeat((MAX_SCRIPT_BYTES - 64) / 2)),
+            format!("{}1", "if(a)".repeat((MAX_SCRIPT_BYTES - 64) / 5)),
+            format!("if(a){{}}{}", "else if(a){}".repeat((MAX_SCRIPT_BYTES - 64) / 13)),
+        ] {
+            let s = shape(&script);
+            assert!(s.parsed || s.too_big, "{}…", &script[..40]);
         }
     }
 

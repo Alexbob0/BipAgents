@@ -232,6 +232,26 @@ runs (pieces put together, decoded, taken from a variable, or through Reflect). 
 pub const SCRIPT_TEXT_CODE_REFUSED: &str = "Not done: this script runs code from text (eval, Function, a timer or an \
 on… attribute given a string, import()). Write the code itself in the script. Nothing was run.";
 
+/// A script that doesn't parse holding code that may run later (`UNREAD_LATER`).
+pub const SCRIPT_UNREADABLE_REFUSED: &str = "Not done: your browser can't read this script as JavaScript (check its \
+syntax), and it holds code that may run later (a timer, a callback, a tagged template). Write it so it parses, \
+runs at once and returns what you need; act with type_text, select_option and click_element. Nothing was run.";
+
+/// In a script that doesn't parse: anything that may run code later or from text (timers, listeners, observers,
+/// promises, schedulers, locks, handlers, a tagged template, Function, eval).
+static UNREAD_LATER: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)settimeout|setinterval|setimmediate|requestanimationframe|requestidlecallback|videoframe|addeventlistener|addlistener|observer|queuemicrotask|worker|postmessage|messagechannel|\.(?:then|catch|finally)\s*\(|\basync\b|\bawait\b|\bpromise\b|posttask|scheduler|\blocks\b|\.on[a-z]{3,}\s*=|\beval\b|(?-i:\bFunction\b)|constructor|[\w$)\]]\s*`",
+    )
+    .expect("valid regex")
+});
+
+/// A script too long or too deeply nested to be read safely (script_shape.rs `MAX_SCRIPT_BYTES`, `MAX_NESTING`; fourth
+/// review of 15/11: the parser's recursion must never exhaust a stack, which aborts the bridge).
+pub const SCRIPT_TOO_BIG_REFUSED: &str = "Not done: this script is too long or nests too deeply for your browser to \
+check it (32 KB and a few hundred levels at most). Write a shorter script, or read the page in smaller steps (one \
+part at a time). Nothing was run.";
+
 /// Fields filled and the form sent (or a button pressed) by a script where the page has card fields.
 pub const SCRIPT_FILLS_ON_CARDS_REFUSED: &str = "Not done: on a page with payment card fields, a script never fills \
 fields and sends the form or presses its buttons. Fill the other fields with type_text or select_option and press \
@@ -376,6 +396,9 @@ pub fn script_refusal(script: &str, args: &str, before: Option<&Value>) -> Optio
     }
     let (cards, holds_text) = page_cards(before);
     let shape = crate::script_shape::shape(script);
+    if shape.too_big {
+        return Some(SCRIPT_TOO_BIG_REFUSED);
+    }
     if shape.parsed {
         if shape.code_from_text {
             return Some(SCRIPT_TEXT_CODE_REFUSED);
@@ -396,6 +419,11 @@ pub fn script_refusal(script: &str, args: &str, before: Option<&Value>) -> Optio
             return Some(SCRIPT_RENAMES_REFUSED);
         }
     } else {
+        // what doesn't parse doesn't run in the page either; but where the parser and the browser could disagree, code
+        // that may run later is never left to the text rules' lists (fourth review of 15/11: fail closed)
+        if UNREAD_LATER.is_match(script) {
+            return Some(SCRIPT_UNREADABLE_REFUSED);
+        }
         if HIDES_WORDS.is_match(script) {
             return Some(SCRIPT_HIDDEN_NAMES_REFUSED);
         }
@@ -434,7 +462,7 @@ pub fn blind_refusal(script: &str, before: Option<&Value>) -> Option<&'static st
         return None;
     }
     let shape = crate::script_shape::shape(script);
-    let acts = if shape.parsed { shape.acts } else { ACTS.is_match(script) };
+    let acts = if shape.parsed { shape.acts } else { shape.too_big || ACTS.is_match(script) };
     acts.then_some(SCRIPT_BLIND_REFUSED)
 }
 
@@ -3678,6 +3706,19 @@ themselves). Do not use the browser until they hand it back: tell them you are w
                        "el.setAttribute('onclick', 'pay()')"] {
             assert_eq!(script_card_refusal(script, Some(&empty)), Some(SCRIPT_TEXT_CODE_REFUSED), "{script}");
         }
+        // a tagged template is a call given text (fourth review of 15/11): a timer's or Function's runs it as code
+        for script in ["setTimeout`document.title = 1 //${1500}`; 'ok'", "(0, setTimeout)`x //${1500}`",
+                       "Function`b.click()`()", "const t = setTimeout; t('b.click()', 10)",
+                       "[() => b.click()].forEach(setTimeout)", "(cond ? setTimeout : f)('b.click()', 10)"] {
+            assert_eq!(script_card_refusal(script, Some(&empty)), Some(SCRIPT_TEXT_CODE_REFUSED), "{script}");
+        }
+        assert_eq!(script_card_refusal("return String.raw`a\\b`", Some(&empty)), None);
+        // too long or too deep to read safely: refused, never parsed (fourth review: a stack overflow aborts the bridge)
+        let deep = format!("return {}1{}", "[".repeat(5000), "]".repeat(5000));
+        assert_eq!(script_card_refusal(&deep, Some(&empty)), Some(SCRIPT_TOO_BIG_REFUSED));
+        let long = "document.title;\n".repeat(3000);
+        assert_eq!(script_card_refusal(&long, Some(&empty)), Some(SCRIPT_TOO_BIG_REFUSED));
+        assert!(SCRIPT_TOO_BIG_REFUSED.contains("smaller steps"));
         // decoding data, an array of strings joined, words in strings: no code of their own (third review)
         for script in ["return JSON.parse(atob(document.getElementById('d').textContent)).price",
                        "return ['Prix : ' + p.innerText, 'Stock : ' + s.innerText].join('\\n')",
