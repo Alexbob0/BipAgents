@@ -661,14 +661,11 @@ pub fn with_block(config: &Config, agent: &str, soul: &str) -> String {
 /// out): the person's change, so an agent's ongoing conversations take the new rule from their next turn
 /// (agents_admin::refresh_prompts, second review 15/11), not only its new ones.
 fn render_souls(config: &std::sync::Arc<Config>, agents: &[String]) {
+    let mut changed = Vec::new();
     for name in agents {
         if let Some(agent) = config.agent(Some(name)) {
             match crate::agents_admin::render_soul(config, agent) {
-                Ok(true) => crate::agents_admin::refresh_prompts_soon(
-                    config.clone(),
-                    agent.clone(),
-                    crate::agents_admin::default_run(),
-                ),
+                Ok(true) => changed.push(agent.clone()),
                 Ok(false) => {}
                 Err(err) => {
                     tracing::warn!(target: "bipbridge::approval_level", agent = %name, error = %format!("{err:#}"), "personality not rendered")
@@ -676,6 +673,8 @@ fn render_souls(config: &std::sync::Arc<Config>, agents: &[String]) {
             }
         }
     }
+    // one after the other: a level set for every agent never starts all their `hermes` commands at once
+    crate::agents_admin::refresh_prompts_soon_each(config.clone(), changed, crate::agents_admin::default_run());
 }
 
 // -- the auto lines ------------------------------------------------------------------------------------------------------

@@ -2334,7 +2334,20 @@ const REFRESH_RETRY: Duration = Duration::from_secs(5);
 /// [`refresh_prompts`] once the answer is sent (review 15/11): never under [`LOCK`], nor making the app wait for
 /// Hermes' command line.
 pub fn refresh_prompts_soon(config: Arc<Config>, agent: AgentConfig, run: Run) {
-    tokio::spawn(async move { refresh_prompts(&config, &agent, &run).await });
+    refresh_prompts_soon_each(config, vec![agent], run);
+}
+
+/// [`refresh_prompts_soon`] for several agents, one after the other (each `hermes` command is ~90 MB: a level set for
+/// all of them never starts them all at once, confirmation review 15/11).
+pub fn refresh_prompts_soon_each(config: Arc<Config>, agents: Vec<AgentConfig>, run: Run) {
+    if agents.is_empty() {
+        return;
+    }
+    tokio::spawn(async move {
+        for agent in &agents {
+            refresh_prompts(&config, agent, &run).await;
+        }
+    });
 }
 
 /// The personality the person edited (or imported), kept in the record and rendered with the bridge's blocks.
