@@ -46,10 +46,11 @@ def test_the_user_data_the_apps_send_sets_up_the_server_and_runs_the_cloud_insta
     clone = next(c for c in commands if "git clone" in c)
     assert "/usr/local/lib/bipagents/repo" in clone   # where the seat agent keeps root's checkout (SHARED_REPO)
     assert commands.index(clone) < commands.index(shared) < commands.index(install)
-    # Root's checkout at main's latest, in words a guichet replaces when its update wave pins a commit
-    # (guichet-rs/src/bootstrap.rs, SHARED_AT): the shared Hermes of the version the places install, once, right
-    # after the clone. Its install line keeps the guichet's other marker (INSTALL).
-    at = "checkout --quiet --force origin/main"
+    # Root's checkout at the default branch's latest (origin/HEAD: stable, or main on the first repository, which
+    # has no stable), in words a guichet replaces when its update wave pins a commit (guichet-rs/src/bootstrap.rs,
+    # SHARED_AT): the shared Hermes of the version the places install, once, right after the clone. Its install
+    # line keeps the guichet's other marker (INSTALL).
+    at = "checkout --quiet --force origin/HEAD"
     checkout = next(c for c in commands if at in c)
     assert checkout.startswith("git -C /usr/local/lib/bipagents/repo ")
     assert render("x" * 43).count(at) == 1
