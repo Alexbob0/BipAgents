@@ -274,7 +274,9 @@ mod tests {
         let folder = crate::agents_admin::profile_folder(&config, config.agent(Some("quotidien")).unwrap());
         std::fs::create_dir_all(folder.join("memories")).unwrap();
         std::fs::write(folder.join("memories/USER.md"), "Prénom : Alex\n§\nAllergique aux arachides").unwrap();
-        let now = crate::py::time_time();
+        // the moment of the last read, not the clock read again after it: both reads are « Aujourd'hui » even when
+        // the test runs across midnight
+        let now = super::super::reads::entries(&config).iter().map(at_of).fold(0.0, f64::max);
         let v = view(&config, "", "fr", now);
         assert_eq!(v["title"], "Ce que tes agents savent de toi");
         assert_eq!(v["always"]["lines"].as_array().unwrap().iter().map(|l| l["text"].clone()).collect::<Vec<_>>(), [json!("Prénom : Alex")], "health left out");
@@ -298,9 +300,20 @@ mod tests {
             let t = texts(lang);
             assert_eq!(view_on(&config, "", lang, now, true)["footer"], format!("{} {}", t.footer, t.no_training));
         }
-        // no page text: the facts of the pages read never appear
-        let text = v.to_string();
-        assert!(!text.contains("36") && !text.contains("12 mars") && !text.contains("arachides"), "{text}");
+        // no page text: the facts of the pages read never appear. A row's read time is the clock's (« 16:36 » at
+        // 16:36), not the page's: left out of the look, so the minute the test runs at never decides it
+        let mut shown = v.clone();
+        for day in shown["reads"]["days"].as_array_mut().unwrap() {
+            for row in day["rows"].as_array_mut().unwrap() {
+                let time = row.as_object_mut().unwrap().remove("time").unwrap();
+                assert!(time.as_str().is_some_and(|t| t.len() == 5 && t.as_bytes()[2] == b':'), "{time}");
+            }
+        }
+        let text = shown.to_string();
+        // its words (« Pointure », « Taille », « arachides »), its numbers and its date
+        for fact in ["Pointure", "Taille", "1,62", "arachides", "36", "12 mars"] {
+            assert!(!text.contains(fact), "{fact}: {text}");
+        }
         // one agent only; past 90 days, nothing
         let only = view(&config, "ancien", "fr", now);
         assert_eq!(only["reads"]["days"][0]["rows"].as_array().unwrap().len(), 1);
