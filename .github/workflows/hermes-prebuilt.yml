@@ -12,7 +12,7 @@ name: Shared Hermes (ready-made)
 
 on:
   push:
-    branches: [main]
+    branches: [main, pre-test, stable]   # pre-test: each publication (stable: already built, skipped)
     paths:
       - "hermes/patches/**"
       - "installer/bipinstall/hermes.py"

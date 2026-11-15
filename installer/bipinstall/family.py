@@ -15,10 +15,11 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
-from . import account, ui
+from . import account, public_repo, ui
 from .ports import FIRST_BLOCK, Ports, candidate_bases, port_free
 
-INSTALL_LINE = "curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash -s --"
+INSTALL_LINE = (f"curl -fsSL https://raw.githubusercontent.com/{public_repo.SLUG}/{public_repo.BRANCH}/install.sh "
+                "| bash -s --")
 CONFIG_CANDIDATES = ("~/.config/bipagents/bridge.toml", "~/.config/hermes-ios/bridge.toml")
 
 

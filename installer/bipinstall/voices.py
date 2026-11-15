@@ -23,11 +23,11 @@ from typing import Callable, List, Optional, Tuple
 
 import httpx
 
-from . import hermes, release_key
+from . import hermes, public_repo, release_key
 
 VOICES_URL = os.environ.get("BIPAGENTS_VOICES_URL", "")
 RELEASE = os.environ.get("BIPAGENTS_VOICES_RELEASE", "")   # a given release instead of the latest
-SLUG = "Alexbob0/BipAgents"
+SLUG = public_repo.SLUG
 API = f"https://api.github.com/repos/{SLUG}/releases"
 DOWNLOADS = f"https://github.com/{SLUG}/releases/download"
 PAGES = 5            # releases looked through (100 a page, the newest first: the bridge's are many)

@@ -10,7 +10,7 @@ name: Bridge binaries (Rust)
 
 on:
   push:
-    branches: [main, rust-bridge]
+    branches: [main, rust-bridge, pre-test, stable]   # pre-test: each publication (stable: already built, skipped)
     paths: ["bridge-rs/**", ".github/workflows/bridge-release.yml"]
   workflow_dispatch:
 

@@ -228,6 +228,13 @@ def test_the_seat_agent_does_only_signed_orders_for_its_server(tmp_path):
     for change in ({"commit": "0123456"}, {"commit": "main"}, {"commit": "0123456789abcdef0123456789abcdef0123456; rm"},
                    {"commit": None}):
         assert agent.accepted(_signed(key, {**update, **change}), "vps-1", set(), now) is None
+    # ... from the public repository it names (2026-11-15: the switch to the organisation's, and back): a known one only
+    old, new = "https://github.com/Alexbob0/BipAgents.git", "https://github.com/BipAgents/BipAgents.git"  # known-public-repos
+    stranger = "https://github.com/someone/BipAgents.git"  # known-public-repos (not one)
+    for repo in (new, old):
+        assert agent.accepted(_signed(key, {**update, "repo": repo}), "vps-1", set(), now) == {**update, "repo": repo}
+    for repo in (stranger, new[:-4], "", 7, new + "; rm -rf /"):
+        assert agent.accepted(_signed(key, {**update, "repo": repo}), "vps-1", set(), now) is None
     # A place pairing again: a pairing secret, nothing else.
     again = {"order": 10, "server": "vps-1", "seat": 1, "action": "reopen", "expires": int(now + 3600), "pair": "q" * 43}
     assert agent.accepted(_signed(key, again), "vps-1", set(), now) == again
@@ -652,15 +659,66 @@ def test_a_new_place_gets_the_shared_hermes_and_images_of_its_version_first(tmp_
     monkeypatch.setattr(agent.os.path, "exists", lambda p: False if str(p).endswith("image-views.service") else exists(p))
     assert agent.main(["--prepare", "main"]) == 0
     assert ran[0][:4] == ["git", "clone", "--quiet", "--filter=blob:none"]
-    assert ran[2][-1] == "origin/main"
-    assert ran[3] == ["python3", "-m", "bipinstall.shared_hermes", "build"]
-    assert ran[4] == ["python3", "-m", "bipinstall.shared_images", "pull", "--timer"]
+    assert ran[0][-2] == "https://github.com/Alexbob0/BipAgents.git"
+    assert ran[2][-1] == "origin/stable"                     # the latest: stable where the repository has it
+    assert ran[3][-1] == "origin/stable"
+    assert ran[4] == ["python3", "-m", "bipinstall.shared_hermes", "build"]
+    assert ran[5] == ["python3", "-m", "bipinstall.shared_images", "pull", "--timer"]
     ran.clear()
     agent.prepare_shared("a" * 40)
     assert ran[2][-1] == "a" * 40
+    # a repository without stable (the first one): main
+    ran.clear()
+
+    class Missing:
+        returncode = 1
+
+    monkeypatch.setattr(agent.subprocess, "run", lambda args, **kw: ran.append(list(args)) or (
+        Missing() if "rev-parse" in args else Done()))
+    agent.prepare_shared("main")
+    assert ran[3][-1] == "origin/main"
+    # the commit lives in the organisation's repository (an update order, add-seat.sh's setup): root's checkout there
+    (tmp_path / "repo" / ".git").mkdir(parents=True)
+    ran.clear()
+    new = "https://github.com/BipAgents/BipAgents.git"  # known-public-repos
+    assert agent.main(["--prepare", "b" * 40, new]) == 0
+    assert ran[0] == ["git", "-C", str(tmp_path / "repo"), "remote", "set-url", "origin", new]
+    assert ran[2][-1] == "b" * 40
+    ran.clear()
+    other = "https://github.com/someone/BipAgents.git"  # known-public-repos (not one)
+    assert agent.main(["--prepare", "b" * 40, other]) == 0
+    assert not any("set-url" in args for args in ran), "an unknown repository is never taken"
     text = (ROOT / "installer" / "cloud" / "add-seat.sh").read_text(encoding="utf-8")
-    prepare = text.index('seat-agent.py" --prepare "${version:-main}"')
+    prepare = text.index('seat-agent.py" --prepare "${version:-main}" $repo')
+    assert 'pin="${pin}BIPAGENTS_TO_REPO=$repo "' in text   # the version's repository, a known one (case above it)
     assert text.index("--ceiling") < prepare < text.index("install.sh |")
+
+
+def test_an_update_order_naming_a_repository_moves_the_place_there(tmp_path, monkeypatch):
+    """2026-11-15: an update order may name the public repository its commit lives in (the switch to the BipAgents
+    organisation's, and its way back): root's checkout and the place's install go there (install.sh moves its origin
+    for BIPAGENTS_TO_REPO); an order naming none leaves both where they are."""
+    import io
+    import types
+    agent = _seat_agent()
+    prepared, ran = [], []
+    monkeypatch.setattr(agent.pwd, "getpwnam", lambda user: types.SimpleNamespace(pw_uid=1002, pw_dir=str(tmp_path)))
+    monkeypatch.setattr(agent, "prepare_shared", lambda commit, repo=None: prepared.append((commit, repo)))
+    for name in ("refresh_tools", "shared_gc", "log"):
+        monkeypatch.setattr(agent, name, lambda *a, **k: None)
+    monkeypatch.setattr(agent, "own_disk", lambda user, settings: None)
+    monkeypatch.setattr(agent, "read_json", lambda path: {})
+    monkeypatch.setattr(agent, "open", lambda *a, **k: io.StringIO(), raising=False)
+    monkeypatch.setattr(agent.subprocess, "run", lambda args, **kw: ran.append(list(args)))
+    new, commit = "https://github.com/BipAgents/BipAgents.git", "c" * 40  # known-public-repos
+    assert agent.update_order(2, commit, moves=str(tmp_path / "moves"), home=str(tmp_path), repo=new)
+    assert prepared == [(commit, new)]
+    assert ran[-1][:2] == ["sudo", "-iu"] and "BIPAGENTS_TO=" + commit in ran[-1]
+    assert "BIPAGENTS_TO_REPO=" + new in ran[-1]
+    assert ran[-1].index("BIPAGENTS_TO_REPO=" + new) < ran[-1].index("BipAgents/install.sh")
+    prepared.clear(), ran.clear()
+    assert agent.update_order(2, commit, moves=str(tmp_path / "moves"), home=str(tmp_path))
+    assert prepared == [(commit, None)] and not any(a.startswith("BIPAGENTS_TO_REPO") for a in ran[-1])
 
 
 def test_only_root_may_ask_the_provider_s_metadata_service():
