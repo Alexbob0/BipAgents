@@ -522,6 +522,12 @@ async fn fresh_for_person(config: &Config, agent: &str, token: &str) -> bool {
             tracing::info!(agent = %agent, "page reloaded before the person takes the browser: a script ran on it");
             true
         }
+        // the new document not loaded in time, but the old one gone (its loader replaced): what a script set up there
+        // is gone with it; the person sees the page finish loading
+        Err(_) if page.loader().await.is_ok_and(|now| !now.is_empty() && now != document) => {
+            tracing::info!(agent = %agent, "page reloading before the person takes the browser: the old document is gone");
+            true
+        }
         Err(e) => {
             tracing::warn!(agent = %agent, error = ?e, "page not reloaded before the person takes the browser");
             false
