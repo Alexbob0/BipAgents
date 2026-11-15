@@ -13,12 +13,15 @@ pinning off (the `provider` object is then that alone), as the bridge does.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 import yaml
 
 DEFAULT_ORDER = ["entrim", "greenpt", "inceptron"]   # bridge-rs/src/model_route.rs DEFAULT_ORDER (2026-10-31)
+# Models with an order of their own, by a part of their name (model_route.rs MODEL_ORDERS, cache audit 2026-11-03):
+# Entrim doesn't serve DeepSeek, GreenPT caches it.
+MODEL_ORDERS: Dict[str, List[str]] = {"deepseek": ["greenpt"]}
 ROUTE_ENTRY = "bipagents-route"
 THINKING_ENTRY = "bipagents-thinking"
 # no training on the request, zero retention (EUrouter docs « Routing › Data controls »; model_route.rs privacy)
@@ -34,12 +37,20 @@ def pins(base_url: str) -> bool:
     return "eurouter" in host.split(".")
 
 
-def routing(order: List[str], base_url: str) -> Optional[dict]:
-    """The request's `provider` object, or None (not EUrouter): the order when one is set (availability still wins),
-    and always the privacy settings."""
+def order_for(order: List[str], model: str) -> List[str]:
+    """The providers to try for `model`: its own order (MODEL_ORDERS), else the place's (`[]`, pinning off, stays
+    off), as the bridge (model_route.rs `order_for`)."""
+    own = next((names for part, names in MODEL_ORDERS.items() if part in (model or "").lower()), None)
+    return list(own) if own and order else list(order)
+
+
+def routing(order: List[str], base_url: str, model: str = "") -> Optional[dict]:
+    """The request's `provider` object for `model`, or None (not EUrouter): the order when one is set (availability
+    still wins), and always the privacy settings."""
     if not pins(base_url):
         return None
-    route = {"order": list(order), "allow_fallbacks": True} if order else {}
+    order = order_for(order, model)
+    route = {"order": order, "allow_fallbacks": True} if order else {}
     route.update(PRIVACY)
     return route
 
@@ -48,7 +59,8 @@ def with_routing(data: dict, order: List[str]) -> bool:
     """`data` (a Hermes config) routed in place; whether it changed."""
     before = yaml.safe_dump(data, sort_keys=False)
     model = data.get("model") if isinstance(data.get("model"), dict) else {}
-    route = routing(order, str(model.get("base_url") or "")) if model.get("provider") == "custom" else None
+    route = routing(order, str(model.get("base_url") or ""), str(model.get("default") or "")) \
+        if model.get("provider") == "custom" else None
     providers = data.get("providers") if isinstance(data.get("providers"), dict) else {}
     thinking = providers.get(THINKING_ENTRY)
     if isinstance(thinking, dict):

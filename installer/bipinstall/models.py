@@ -19,6 +19,18 @@ LAN_PORTS = {11434: "Ollama", 1234: "LM Studio", 8000: "vLLM", 8080: "llama.cpp"
 
 
 @dataclass
+class KnownModel:
+    """A model known to work well with BipAgents, offered in a list instead of an ID to type."""
+    id: str
+    name: str
+    about: str = ""
+
+    @property
+    def label(self) -> str:
+        return f"{self.name} ({self.about})" if self.about else self.name
+
+
+@dataclass
 class Provider:
     key: str
     name: str
@@ -26,6 +38,8 @@ class Provider:
     needs_key: bool = True
     key_hint: str = ""
     about: str = ""          # words after the name, if any
+    key_where: str = ""      # where the key is on the page `key_hint`, when it is not the page itself
+    known: List[KnownModel] = field(default_factory=list)   # the first is the default; none: the ID is typed
 
     @property
     def label(self) -> str:
@@ -33,7 +47,18 @@ class Provider:
         return f"{self.name} ({self.about})" if self.about else self.name
 
 
+# EUrouter (15/11, Alex: « On peut laisser les autres et mettre EUrouter »): the all-included offer's router, European,
+# first and recommended. Its key: Dashboard › API Keys (EUrouter's docs, quickstart and authentication, link the
+# dashboard only). Its models: the offer's (__main__.CLOUD_MODEL) and the one the offer proposes when it is withdrawn
+# (the guichet's `fallback`), the two the « real day » benches passed (internal/research/realday-bench-2026-10-30-
+# release.md, -10-31.md). Called as a custom endpoint, routed as the offer's places (routing.py).
+EUROUTER = Provider("eurouter", "EUrouter", "https://api.eurouter.ai/api/v1",
+                    key_hint="https://www.eurouter.ai/dashboard", key_where="API Keys", about="recommended, European",
+                    known=[KnownModel("glm-5.3-flash", "GLM-5.3 Flash", "the all-included offer's model"),
+                           KnownModel("deepseek/deepseek-v4.1-flash", "DeepSeek V4.1 Flash", "smarter, costs more")])
+
 CLOUD = [
+    EUROUTER,
     Provider("openrouter", "OpenRouter", "https://openrouter.ai/api/v1", key_hint="https://openrouter.ai/keys",
              about="hundreds of models"),
     Provider("openai", "OpenAI", "https://api.openai.com/v1", key_hint="https://platform.openai.com/api-keys"),
@@ -138,7 +163,7 @@ async def check(base_url: str, model: str, api_key: Optional[str] = None, *,
         {"type": "text", "text": "Quelle couleur ? Un mot."},
         {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{_RED_SQUARE}"}}]}]}
     from .routing import DEFAULT_ORDER, routing
-    route = routing(DEFAULT_ORDER, base_url)   # checked on the providers the agents will use
+    route = routing(DEFAULT_ORDER, base_url, model)   # checked on the providers the agents will use
     if route:
         text["provider"] = image["provider"] = route
     async with httpx.AsyncClient(timeout=120, transport=transport) as client:

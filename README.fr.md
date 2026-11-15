@@ -83,7 +83,7 @@ leur mémoire et tes fichiers restent sur ta machine.
 
 1. **Sur une machine qui reste allumée**, installe [Tailscale](https://tailscale.com/download), puis colle ceci dans
    son terminal et réponds à quelques questions (le nom de tes agents, et le modèle : un modèle sur ton réseau, ou une
-   clé d'API) :
+   clé d'API ; EUrouter, européen, est recommandé) :
 
    ```bash
    curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash

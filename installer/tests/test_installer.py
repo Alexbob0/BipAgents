@@ -612,8 +612,9 @@ def test_on_a_rented_server_nothing_listens_on_a_local_network(monkeypatch, tmp_
     monkeypatch.setattr(cli, "pick_block", lambda wanted=None: Ports(8640))
     monkeypatch.setattr(cli.models, "check", lambda *a, **k: _async(models.ModelCheck(ok=True, seconds=0.4, vision=False)))
     monkeypatch.setattr(cli, "pocket_running", lambda: True)
-    # The model in the cloud is the default choice (Enter), OpenRouter, a key, the model; one agent; go.
-    answers = iter(["", "1", "sk-or-test", "", "1", "Léa", "y"])
+    # The model in the cloud is the default choice (Enter), OpenRouter (2nd, after EUrouter), a key, the model; one
+    # agent; go.
+    answers = iter(["", "2", "sk-or-test", "", "1", "Léa", "y"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
     assert cli.main(["--dry-run"]) == 0
     out = capsys.readouterr().out

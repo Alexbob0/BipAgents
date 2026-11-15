@@ -38,3 +38,27 @@ def test_one_entry_for_the_router_and_the_thinking_entry_carries_it():
         assert not routing.with_routing(other, routing.DEFAULT_ORDER)
 
 
+
+
+def test_deepseek_has_its_own_order_and_glm_keeps_the_places():
+    """As the bridge (model_route.rs `order_for`): DeepSeek on GreenPT, the provider that caches it; pinning off stays
+    off; the other models keep the place's order."""
+    eu = "https://api.eurouter.ai/api/v1"
+    assert routing.routing(routing.DEFAULT_ORDER, eu, "deepseek/deepseek-v4.1-flash")["order"] == ["greenpt"]
+    assert routing.routing(routing.DEFAULT_ORDER, eu, "DeepSeek-V4-Flash-0731")["order"] == ["greenpt"]
+    assert routing.routing(routing.DEFAULT_ORDER, eu, "glm-5.3-flash") == ROUTE
+    assert routing.routing([], eu, "deepseek/deepseek-v4.1-flash") == PRIVACY
+    data = {"model": {**EU["model"], "default": "deepseek/deepseek-v4.1-flash"}}
+    assert routing.with_routing(data, routing.DEFAULT_ORDER)
+    assert data["providers"]["bipagents-route"]["extra_body"]["provider"]["order"] == ["greenpt"]
+
+
+def test_the_orders_are_the_bridge_s():
+    """The installer writes the hub's routing, the bridge every agent's at each start: the same orders."""
+    import re
+    source = (Path(__file__).resolve().parents[2] / "bridge-rs" / "src" / "model_route.rs").read_text(encoding="utf-8")
+    default = re.search(r"pub const DEFAULT_ORDER: \[&str; \d+\] = \[([^\]]*)\];", source).group(1)
+    assert re.findall(r'"([^"]+)"', default) == routing.DEFAULT_ORDER
+    own = re.search(r"pub const MODEL_ORDERS: \[\(&str, &\[&str\]\); \d+\] = \[(.*?)\];\n", source, re.S).group(1)
+    pairs = re.findall(r'\("([^"]+)", &\[([^\]]*)\]\)', own)
+    assert {part: re.findall(r'"([^"]+)"', names) for part, names in pairs} == routing.MODEL_ORDERS

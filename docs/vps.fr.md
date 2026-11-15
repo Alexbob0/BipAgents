@@ -11,14 +11,16 @@ Kerfy Studio, bientôt sur [bipagents.com](https://bipagents.com/fr/).
 
 - **Ton hébergeur a accès au disque du serveur.** Conversations, mémoire des agents et coffre y sont (le coffre est
   chiffré, mais sa clé est sur le même disque). Choisis un hébergeur de confiance, en Europe si tu préfères le RGPD.
-- **Le modèle** n'y tourne pas (pas de GPU) : il est **dans le cloud** (OpenRouter, Mistral, OpenAI, Anthropic), ou
-  sur **un PC de la maison** joint par Tailscale (l'installateur demande alors son adresse sur ton tailnet). Dans le
-  cloud, chaque message part au fournisseur du modèle pour qu'il y réponde : avec OpenRouter, choisis dans ses réglages
-  de confidentialité des fournisseurs qui ne gardent rien (zero data retention).
+- **Le modèle** n'y tourne pas (pas de GPU) : il est **dans le cloud** (EUrouter, européen et recommandé, ou
+  OpenRouter, Mistral, OpenAI, Anthropic), ou sur **un PC de la maison** joint par Tailscale (l'installateur demande
+  alors son adresse sur ton tailnet). Dans le cloud, chaque message part au fournisseur du modèle pour qu'il y
+  réponde : avec EUrouter, chaque appel demande qu'il ne serve pas à l'entraînement et ne soit pas conservé, comme dans
+  l'offre tout compris ; avec OpenRouter, choisis dans ses réglages de confidentialité des fournisseurs qui ne gardent
+  rien (zero data retention).
 - **Les notifications** passent par le [relais de notifications](../relay/README.fr.md) de Kerfy Studio, qui ne
   voit jamais leur texte : il est scellé pour ton téléphone.
 - **Le coût** : le serveur, de ≈ 8 € par mois (2 vCPU, 4 Go) à ≈ 15 € (4 vCPU, 8 Go, avec les navigateurs visibles) ; le
-  modèle, payé à l'usage chez OpenRouter.
+  modèle, payé à l'usage chez son fournisseur (EUrouter, OpenRouter…).
   Les voix des Bips tournent sur le processeur du serveur, sans frais en plus.
 
 ## 1. Choisir le serveur
