@@ -1,6 +1,7 @@
 /* BipAgents page kit (pages.rs puts it inline in every page, before the agent's own scripts): charts drawn in SVG in
    the app's colours, a small diagram renderer, sortable tables, tabs, what-ifs, number formatting, and the app's
-   colours for Chart.js when the page uses it. No network, no storage. window.Bip is the whole API. */
+   colours for Chart.js when the page uses it. No network, no storage (Bip.store, in store.js, comes only in the pages
+   that use it). window.Bip is the whole API. */
 (function () {
   "use strict";
   var doc = document, root = doc.documentElement, NS = "http://www.w3.org/2000/svg";
@@ -515,6 +516,7 @@
   }
   doc.readyState === "loading" ? doc.addEventListener("DOMContentLoaded", enhance) : enhance();
 
+
   window.Bip = { fmt: fmt, bars: bars, line: line, donut: donut, spark: spark, diagram: diagram, whatIf: whatIf, set: set,
-    css: css, _chart: chartDefaults };
+    css: css, esc: esc, _chart: chartDefaults };
 })();

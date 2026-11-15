@@ -26,6 +26,9 @@
 //!   bridge (default `DEFAULT_PER_DAY`; 0: none), refused past it in plain words. Updating one of her own pages
 //!   doesn't count; a page that isn't hers (the owner's, another relative's) can't be updated from her turn.
 //!
+//! - (d) pages that remember (page_store.rs): a group's page carries its store to everyone who sees it; the friends of
+//!   a project write in it while `[shared_pages] friends_write` (on by default).
+//!
 //! `<data>/shared-pages.json` (0600): `{made: [{agent, page, household, conversation, name, at}]}`.
 //!
 //! No Python counterpart.
@@ -51,11 +54,14 @@ const LEDGER_MAX: usize = 2000;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Settings {
     pub friend_pages_per_day: u32,
+    /// Whether the friends of a project's thread share may write in its pages that remember (page_store.rs: what
+    /// they type comes back sealed, like their votes). On by default (Alex, 15/11).
+    pub friends_write: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { friend_pages_per_day: DEFAULT_PER_DAY }
+        Settings { friend_pages_per_day: DEFAULT_PER_DAY, friends_write: true }
     }
 }
 
@@ -66,7 +72,8 @@ impl Settings {
             .and_then(Value::as_i64)
             .map(|n| n.clamp(0, MAX_PER_DAY as i64) as u32)
             .unwrap_or(DEFAULT_PER_DAY);
-        Settings { friend_pages_per_day: per_day }
+        let friends_write = table.get("friends_write").and_then(Value::as_bool).unwrap_or(true);
+        Settings { friend_pages_per_day: per_day, friends_write }
     }
 }
 
@@ -305,6 +312,9 @@ mod tests {
         assert_eq!(Settings::from_table(&json!({"friend_pages_per_day": 2})).friend_pages_per_day, 2);
         assert_eq!(Settings::from_table(&json!({"friend_pages_per_day": 0})).friend_pages_per_day, 0);
         assert_eq!(Settings::from_table(&json!({"friend_pages_per_day": 5000})).friend_pages_per_day, MAX_PER_DAY);
+        // the friends write in pages that remember unless switched off (page_store.rs)
+        assert!(Settings::from_table(&json!({})).friends_write && Settings::default().friends_write);
+        assert!(!Settings::from_table(&json!({"friends_write": false})).friends_write);
     }
 
     #[test]

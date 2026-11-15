@@ -8,6 +8,11 @@
 //! it inline (`GET /v1/project-agents/{agent}/cards/{id}`); the share's copy links it to the message as a `card` item
 //! (`c-<id>`: type, title, options with who chose each), sent again whenever it changes.
 //!
+//! **A friend's write in a page that remembers** (page_store.rs, 15/11): an action of kind `store` (`page`: the
+//! page's item id, then the op's own fields), checked the same way, applied to that page's store if the page is one
+//! of this share's, a group's, and `[shared_pages] friends_write`; never a turn, never instructions (the agent reads
+//! it with `page_data`, wrapped as untrusted).
+//!
 //! **A friend's tap.** Their device seals `{s, e, a, kind, card, option}` with the share's content key and tags the
 //! sealed text with the secret of their own link (`action_tag`), then posts it to the guichet, which keeps it until
 //! this bridge takes it (`take_actions`, at each share sync). Here: the tag checked with that viewer's invitation
@@ -472,6 +477,53 @@ pub fn may_write(_config: &Config, _share: &Value, _viewer: &str) -> bool {
 
 // -- the friends' taps, from the guichet ----------------------------------------------------------------------------
 
+fn ok_id(t: &str, most: usize) -> bool {
+    (1..=most).contains(&t.len()) && t.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+/// An action opened: its tag checked with the link's secret, its seal with the share's key, its share and epoch
+/// these, its id (`a`) well formed. Err: why it is dropped.
+pub fn open_action(
+    key: &[u8; 32],
+    share: &str,
+    epoch: i64,
+    data: &str,
+    tag: &str,
+    secret: &[u8],
+) -> Result<Map<String, Value>, &'static str> {
+    if !tag_ok(secret, share, data, tag) {
+        return Err("tag");
+    }
+    let plain = open_sealed(key, data).ok_or("sealed")?;
+    let Ok(Value::Object(fields)) = serde_json::from_slice::<Value>(&plain) else { return Err("json") };
+    if fields.get("s").and_then(Value::as_str) != Some(share) || fields.get("e").and_then(Value::as_i64) != Some(epoch) {
+        return Err("share");
+    }
+    if !fields.get("a").and_then(Value::as_str).is_some_and(|a| ok_id(a, 64)) {
+        return Err("ids");
+    }
+    Ok(fields)
+}
+
+/// A vote or a tick, from its opened fields: (action id, kind, card, option); Err: why it is dropped.
+fn vote_of(fields: &Map<String, Value>) -> Result<(String, String, String, String), &'static str> {
+    if fields.len() != ACTION_KEYS.len() || !ACTION_KEYS.iter().all(|k| fields.contains_key(*k)) {
+        return Err("keys");
+    }
+    let field = |k: &str| fields.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+    let (action, kind, card, option) = (field("a"), field("kind"), field("card"), field("option"));
+    if !ok_id(&action, 64) || !ok_id(&card, 20) || !ok_id(&option, 8) {
+        return Err("ids");
+    }
+    if kind != "vote" && kind != "tick" {
+        return Err("kind"); // phase 2 (`may_write`): nothing else yet (a page's store: `STORE_KIND`, apart)
+    }
+    Ok((action, kind, card, option))
+}
+
+/// A friend's write in a page that remembers (page_store.rs `friend_write`): its own fields, beside `s`, `e`, `a`.
+pub const STORE_KIND: &str = "store";
+
 /// An action opened and checked: (action id, card, option) for the kind its card has; Err: why it is dropped.
 pub fn read_action(
     key: &[u8; 32],
@@ -481,28 +533,7 @@ pub fn read_action(
     tag: &str,
     secret: &[u8],
 ) -> Result<(String, String, String, String), &'static str> {
-    if !tag_ok(secret, share, data, tag) {
-        return Err("tag");
-    }
-    let plain = open_sealed(key, data).ok_or("sealed")?;
-    let Ok(Value::Object(fields)) = serde_json::from_slice::<Value>(&plain) else { return Err("json") };
-    if fields.len() != ACTION_KEYS.len() || !ACTION_KEYS.iter().all(|k| fields.contains_key(*k)) {
-        return Err("keys");
-    }
-    let field = |k: &str| fields.get(k).and_then(Value::as_str).unwrap_or("").to_string();
-    if field("s") != share || fields.get("e").and_then(Value::as_i64) != Some(epoch) {
-        return Err("share");
-    }
-    let action = field("a");
-    let ok_id = |t: &str, most: usize| (1..=most).contains(&t.len()) && t.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
-    let (kind, card, option) = (field("kind"), field("card"), field("option"));
-    if !ok_id(&action, 64) || !ok_id(&card, 20) || !ok_id(&option, 8) {
-        return Err("ids");
-    }
-    if kind != "vote" && kind != "tick" {
-        return Err("kind"); // phase 2 (`may_write`): nothing else yet
-    }
-    Ok((action, kind, card, option))
+    vote_of(&open_action(key, share, epoch, data, tag, secret)?)
 }
 
 /// A viewer id as text (the guichet gives it as a string; a number reads the same).
@@ -561,17 +592,34 @@ pub async fn take_actions(
             continue;
         };
         let Some((_, secret)) = secrets.get(&s(row, "invite")) else { continue };
-        let read = read_action(key, &id, epoch, &s(action, "data"), &s(action, "tag"), secret);
-        let (action_id, kind, card_id, option) = match read {
+        let fields = match open_action(key, &id, epoch, &s(action, "data"), &s(action, "tag"), secret) {
+            Ok(fields) => fields,
+            Err(why) => {
+                tracing::debug!(share = %id, why, "a friend's action dropped");
+                continue;
+            }
+        };
+        let action_id = s(&Value::Object(fields.clone()), "a");
+        if seen_now.contains(&action_id) {
+            continue; // a replay
+        }
+        if fields.get("kind").and_then(Value::as_str) == Some(STORE_KIND) {
+            // what a friend typed in a page that remembers: one of this share's pages, a group's (page_store.rs)
+            seen_now.push(action_id);
+            let sent = share.get("sent").and_then(Value::as_object).cloned().unwrap_or_default();
+            match crate::page_store::friend_write(&config, &agent, &sent, &fields, &first_name(&s(row, "name"))) {
+                Ok(written) => changed |= written,
+                Err(why) => tracing::debug!(share = %id, why = %why.code, "a friend's write in a page refused"),
+            }
+            continue;
+        }
+        let (action_id, kind, card_id, option) = match vote_of(&fields) {
             Ok(found) => found,
             Err(why) => {
                 tracing::debug!(share = %id, why, "a friend's action dropped");
                 continue;
             }
         };
-        if seen_now.contains(&action_id) {
-            continue; // a replay
-        }
         seen_now.push(action_id);
         let card_type = card(&config, &agent, &card_id).map(|c| s(&c, "type")).unwrap_or_default();
         if (kind == "vote") != (card_type == "vote") || card_type == crate::shared_expenses::KIND {

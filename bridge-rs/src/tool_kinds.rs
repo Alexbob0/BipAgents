@@ -21,7 +21,7 @@ pub const KINDS: &[Kind] = &[
     Kind { id: "sendFiles", names: &["send_files_to_agent"], prefixes: &[], step: Some("sendFiles") },
     Kind { id: "sharedFiles", names: &[], prefixes: &["shared_files_"], step: Some("sharedFiles") },
     Kind { id: "createPage", names: &["create_page"], prefixes: &[], step: Some("createPage") },
-    Kind { id: "pages", names: &["read_page", "list_pages", "delete_page"], prefixes: &[], step: Some("pages") },
+    Kind { id: "pages", names: &["read_page", "list_pages", "delete_page", "page_data"], prefixes: &[], step: Some("pages") },
     Kind { id: "weather", names: &["weather"], prefixes: &["weather_"], step: Some("weather") },
     Kind { id: "route", names: &["route"], prefixes: &["route_"], step: Some("route") },
     Kind { id: "contactsChange", names: &["contacts_add", "contacts_update"], prefixes: &[], step: Some("contactsChange") },

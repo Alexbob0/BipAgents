@@ -294,8 +294,10 @@ pub fn split_media(text: &str) -> (String, Vec<String>) {
     (kept.join("\n").trim().to_string(), paths)
 }
 
-/// The item a `MEDIA:` path of this agent becomes: a page (not a health one, not the Carnet's), a map picture.
-fn media_item(config: &Config, agent: &str, path: &str) -> Option<(String, Value)> {
+/// The item a `MEDIA:` path of this agent becomes: a page (not a health one, not the Carnet's; a group's page with
+/// its store, page_store.rs, `writable` in a project's thread share where the friends' actions are taken), a map
+/// picture.
+fn media_item(config: &Config, agent: &str, path: &str, writable: bool) -> Option<(String, Value)> {
     if path.starts_with(crate::friends_cards::PREFIX) {
         // a card the friends tap (friends_cards.rs): only in a project agent's thread share
         return crate::friends_cards::media_item(config, agent, path);
@@ -320,7 +322,13 @@ fn media_item(config: &Config, agent: &str, path: &str) -> Option<(String, Value
         let title = meta.get("title").and_then(Value::as_str).unwrap_or(page).to_string();
         let id = format!("p-{agent}-{page}");
         let map = html.contains("bipmap:");
-        return Some((id.clone(), json!({"id": id, "kind": "page", "title": title, "html": html, "map": map})));
+        let mut item = json!({"id": id, "kind": "page", "title": title, "html": html, "map": map});
+        // what people typed in it, seen by everyone who sees it (and written back by the friends, as their votes)
+        if let Some((store, write)) = crate::page_store::for_friends(config, agent, page, writable) {
+            item["store"] = store;
+            item["store_write"] = json!(write);
+        }
+        return Some((id.clone(), item));
     }
     if let Some(rest) = path.strip_prefix(&format!("{}/{agent}/", crate::maps::PREFIX)) {
         let map = rest.strip_suffix(".png")?;
@@ -439,7 +447,7 @@ pub fn items_of(config: &Config, share: &Value, messages: &[Dict]) -> Vec<(Strin
         let mut media = Vec::new();
         if role == "assistant" {
             for p in paths {
-                if let Some((id, item)) = media_item(config, &agent, &p) {
+                if let Some((id, item)) = media_item(config, &agent, &p, is_thread(share)) {
                     media.push(json!(id));
                     if media_seen.insert(id.clone()) {
                         items.push((id, item));
@@ -637,7 +645,8 @@ pub async fn sync(state: &AppState, id: &str, notify: bool) -> Result<Option<Val
     }
     share["refused"] = json!(refused_ones);
     if is_thread(&share) {
-        // the friends' votes and ticks waiting at the guichet (friends_cards.rs): applied before the items go
+        // the friends' votes and ticks waiting at the guichet (friends_cards.rs), and what they typed in the pages
+        // that remember (page_store.rs): applied before the items go
         crate::friends_cards::take_actions(state, &share, epoch, &key, &viewers, &secrets).await;
     }
     if !wraps.is_empty() {

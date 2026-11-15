@@ -2,10 +2,11 @@
 //! any subject, one prompt. The agent writes one HTML file (its CSS, script and data inline); the bridge keeps it in its
 //! own folder and serves it to the app like any `MEDIA:` file under `/bipagents/pages`. An agent can be talked into
 //! writing anything (a web page or a mail it read), so the page is locked before it is kept: a Content-Security-Policy
-//! first in its head (no network, no forms, no frames: it runs offline; only the maps' `bipmap:` door, which the apps
-//! answer themselves with fixed map files), Chart.js from the bridge put inline instead of a
-//! CDN's, and the apps show it in a view with no way out (nothing loaded from the network, no navigation, no bridge to the
-//! app). The agent's own source is kept beside it (`<id>.source`, never served) for `read_page`.
+//! first in its head (no network, no forms, no frames: it runs offline; only two doors the apps answer themselves: the
+//! maps' `bipmap:` with fixed map files, and the page's own store's `bipstore:`, page_store.rs), Chart.js from the bridge
+//! put inline instead of a CDN's, and the apps show it in a view with no way out (nothing loaded from the network, no
+//! navigation, no bridge to the app). The agent's own source is kept beside it (`<id>.source`, never served) for
+//! `read_page`; what people type in it, in its store (`<id>.store.json`, never served as a file).
 
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
@@ -29,11 +30,13 @@ pub const MAX_PAGES: usize = 100;
 /// the apps neither answers and the page keeps the map's picture. No WebRTC (security audit of 11/11, IO-1 / AN-2): a
 /// peer connection to a STUN/TURN server is no fetch, `connect-src` doesn't cover it; `webrtc 'block'` stops it in
 /// Chromium (Android's web view), WebKit ignores it (the iPhone takes the constructors away itself).
+/// And one door for the page's own store (page_store.rs, 15/11), in `connect-src` only: `bipstore:` (the iPhone) and
+/// `https://bipstore.invalid` (Android), answered by the app with the page it shows, never by the page's choice.
 pub const POLICY: &str =
     "default-src 'none'; script-src 'unsafe-inline' bipmap: https://bipmap.invalid; style-src 'unsafe-inline'; \
-img-src data: blob:; font-src data:; media-src data: blob:; connect-src bipmap: https://bipmap.invalid; \
-form-action 'none'; base-uri 'none'; frame-src 'none'; worker-src blob:; child-src blob:; object-src 'none'; \
-webrtc 'block'";
+img-src data: blob:; font-src data:; media-src data: blob:; connect-src bipmap: https://bipmap.invalid bipstore: \
+https://bipstore.invalid; form-action 'none'; base-uri 'none'; frame-src 'none'; worker-src blob:; child-src blob:; \
+object-src 'none'; webrtc 'block'";
 /// No DNS look-up ahead of time for the names a page mentions (`<link rel=dns-prefetch>`, links): a name can carry data
 /// and no CSP directive covers it. Sent as a header with the pages served over HTTP, and as a `<meta>` in the page
 /// (the apps load it from a string, without headers).
@@ -85,13 +88,32 @@ pub fn kit_js() -> &'static str {
     crate::assets::text(&crate::assets::STATIC, "pagekit/kit.js").unwrap_or("")
 }
 
+/// The kit's store (`Bip.store`, page_store.rs): put inline after the kit only in a page that uses it, as Chart.js.
+pub fn store_js() -> &'static str {
+    crate::assets::text(&crate::assets::STATIC, "pagekit/store.js").unwrap_or("")
+}
+
+/// A page that keeps what is typed in it (`Bip.store`, `Bip["store"]`).
+static USES_STORE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"\bBip\s*(?:\.\s*store\b|\[\s*["'`]store["'`]\s*\])"#).expect("valid regex"));
+
+pub fn uses_store(source: &str) -> bool {
+    USES_STORE.is_match(source)
+}
+
 /// The kit as it goes in a page's head, in the colours of the agent's kind (`daily`, `wellness`…; else the app's).
 pub fn kit(tint: Option<&str>) -> String {
+    kit_with(tint, false)
+}
+
+/// [`kit`], with its store when `store` (a page that uses `Bip.store`).
+pub fn kit_with(tint: Option<&str>, store: bool) -> String {
     let tint = tint.filter(|t| crate::souls::CATEGORIES.contains(t)).unwrap_or("");
+    let script = if store { format!("{}\n{}", kit_js(), store_js()) } else { kit_js().to_string() };
     format!(
         "<style id=\"bip-kit\">{}</style><script id=\"bip-kit-js\">{}</script>",
         kit_css().replace("</style", "<\\/style"),
-        kit_js().replace("__BIP_TINT__", tint).replace("</script", "<\\/script")
+        script.replace("__BIP_TINT__", tint).replace("</script", "<\\/script")
     )
 }
 
@@ -149,7 +171,7 @@ pub fn lock_with(source: &str, title: &str, tint: Option<&str>) -> (String, Vec<
     let doctype = found.get(1).map(|m| m.as_str().to_string()).unwrap_or_else(|| "<!doctype html>".into());
     let rest = &body[found.get(0).map(|m| m.end()).unwrap_or(0)..];
     // A <meta> before <html> opens the head: the policy is in force before the agent's first tag.
-    (format!("{doctype}\n{}{}{named}\n{rest}", *HEAD, kit(tint)), outside)
+    (format!("{doctype}\n{}{}{named}\n{rest}", *HEAD, kit_with(tint, uses_store(source))), outside)
 }
 
 static MAP_SRC: LazyLock<Regex> =
@@ -539,6 +561,10 @@ pub fn delete(config: &Config, agent: &str, page: &str) -> bool {
         if path.is_file() && std::fs::remove_file(&path).is_ok() {
             removed = true;
         }
+    }
+    // what people typed in it goes with it (page_store.rs)
+    if removed {
+        crate::page_store::delete(config, agent, &page);
     }
     removed
 }
