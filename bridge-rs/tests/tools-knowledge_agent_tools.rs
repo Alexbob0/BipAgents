@@ -421,7 +421,9 @@ fn the_tools_version_is_the_pythons() {
     // the steps (2026-11-07), then the Android phone's calendar and the phone asked from (2026-11-07), named in
     // reminders_add's description (2026-11-07 afternoon), reminders_list's `words` and 30 at most (Carnet v2, 2026-11-09),
     // routine_schedule's `create` starting only with the person's yes (2026-11-11, audit PI-6), then without `silent`, its
-    // card showing all it will run (2026-11-11, review PI-6-2).
+    // card showing all it will run (2026-11-11, review PI-6-2), page_data and create_page's pages that remember
+    // (2026-11-15, page_store.rs), then in whole cents, what people typed as text only, writing only when the person
+    // acts (the review of 15/11).
     let expected = include_str!("golden/agent_tools_version.txt").trim();
     assert_eq!(agent_tools::tools_version(), expected);
 }

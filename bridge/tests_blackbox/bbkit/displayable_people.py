@@ -102,9 +102,23 @@ def share_item_problems(items: List[Dict[str, Any]], share: str) -> List[str]:
             for m in media:
                 if m not in by_id:
                     out.append(f"{where}: names {m!r}, not in the share: an empty card")
+        elif kind == "page" and opened.get("gone") is True:
+            # withdrawn (page_store.rs, 15/11): nothing of it left, and no message names it any more
+            if opened.get("html") or opened.get("store") is not None:
+                out.append(f"{where}: withdrawn but still carries its html or its store")
+            for m in by_id.values():
+                o = m.get("opened") or {}
+                if (o.get("kind") or m.get("kind")) == "msg" and item["id"] in (o.get("media") or []):
+                    out.append(f"{where}: withdrawn but message {m['id']} still names it (an empty card)")
         elif kind == "page":
             if not _text(opened.get("html")):
                 out.append(f"{where}: a page without its html")
+            store = opened.get("store")
+            if store is not None and not (isinstance(store, dict) and _num(store.get("rev"))
+                                          and isinstance(store.get("keys"), dict) and isinstance(store.get("acts"), list)):
+                out.append(f"{where}: a store the apps can't read ({str(store)[:80]})")
+            if store is not None and not isinstance(opened.get("store_write"), bool):
+                out.append(f"{where}: a store without `store_write`")
             if opened.get("map") and not map_places(opened.get("html", "")):
                 out.append(f"{where}: a map page without places with coordinates: no map card")
         elif kind == "photo":

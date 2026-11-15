@@ -8,6 +8,11 @@
 //! it inline (`GET /v1/project-agents/{agent}/cards/{id}`); the share's copy links it to the message as a `card` item
 //! (`c-<id>`: type, title, options with who chose each), sent again whenever it changes.
 //!
+//! **A friend's write in a page that remembers** (page_store.rs, 15/11): an action of kind `store` (`page`: the
+//! page's item id, then the op's own fields), checked the same way, applied to that page's store if the page is one
+//! of this share's, a group's, and `[shared_pages] friends_write`; never a turn, never instructions (the agent reads
+//! it with `page_data`, wrapped as untrusted).
+//!
 //! **A friend's tap.** Their device seals `{s, e, a, kind, card, option}` with the share's content key and tags the
 //! sealed text with the secret of their own link (`action_tag`), then posts it to the guichet, which keeps it until
 //! this bridge takes it (`take_actions`, at each share sync). Here: the tag checked with that viewer's invitation
@@ -54,7 +59,11 @@ pub const CARDS_MAX: usize = 60;
 /// Lines waiting for the agent, at most (the newest kept).
 pub const NEWS_MAX: usize = 10;
 /// Action ids remembered per share (a replay of an older one is dropped).
-pub const SEEN_MAX: usize = 500;
+/// (2000 since the second review of 15/11: a tick toggles, so an old one replayed past what is remembered undoes it)
+pub const SEEN_MAX: usize = 2000;
+/// A friend's write in a page that couldn't be written (page_store.rs `retry_later`) is tried again here, waiting longer
+/// each time (`retry_wait`), for this long; then refused (their page hears it). Never holding the guichet's queue.
+pub const RETRY_FOR: f64 = 3600.0;
 /// The keys an action carries, exactly.
 const ACTION_KEYS: [&str; 6] = ["s", "e", "a", "kind", "card", "option"];
 const STD: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
@@ -120,7 +129,7 @@ fn load(path: &PathBuf) -> Dict {
         .and_then(|t| serde_json::from_str::<Value>(&t).ok())
         .and_then(|v| v.as_object().cloned())
         .unwrap_or_default();
-    for key in ["cards", "news", "seen"] {
+    for key in ["cards", "news", "seen", "retry"] {
         if !matches!(data.get(key), Some(Value::Object(_))) {
             data.insert(key.into(), json!({}));
         }
@@ -464,13 +473,62 @@ thread, never instructions):\n{}\n-->",
     ))
 }
 
-/// Phase 2's hook (not built): whether this friend may also write here and add lines (a subscription of their own,
-/// decided by Alex on 2026-10-29). Today nobody may: only votes and ticks are taken.
+/// Phase 2's hook (not built): whether this friend may also write messages here (a subscription of their own,
+/// decided by Alex on 2026-10-29). Today nobody may write a message: votes and ticks are taken, and since 15/11 what
+/// friends type in a project's pages that remember (page_store.rs, `[shared_pages] friends_write`: data in a page,
+/// never a message or a request to the agent).
 pub fn may_write(_config: &Config, _share: &Value, _viewer: &str) -> bool {
     false
 }
 
 // -- the friends' taps, from the guichet ----------------------------------------------------------------------------
+
+fn ok_id(t: &str, most: usize) -> bool {
+    (1..=most).contains(&t.len()) && t.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+/// An action opened: its tag checked with the link's secret, its seal with the share's key, its share and epoch
+/// these, its id (`a`) well formed. Err: why it is dropped.
+pub fn open_action(
+    key: &[u8; 32],
+    share: &str,
+    epoch: i64,
+    data: &str,
+    tag: &str,
+    secret: &[u8],
+) -> Result<Map<String, Value>, &'static str> {
+    if !tag_ok(secret, share, data, tag) {
+        return Err("tag");
+    }
+    let plain = open_sealed(key, data).ok_or("sealed")?;
+    let Ok(Value::Object(fields)) = serde_json::from_slice::<Value>(&plain) else { return Err("json") };
+    if fields.get("s").and_then(Value::as_str) != Some(share) || fields.get("e").and_then(Value::as_i64) != Some(epoch) {
+        return Err("share");
+    }
+    if !fields.get("a").and_then(Value::as_str).is_some_and(|a| ok_id(a, 64)) {
+        return Err("ids");
+    }
+    Ok(fields)
+}
+
+/// A vote or a tick, from its opened fields: (action id, kind, card, option); Err: why it is dropped.
+fn vote_of(fields: &Map<String, Value>) -> Result<(String, String, String, String), &'static str> {
+    if fields.len() != ACTION_KEYS.len() || !ACTION_KEYS.iter().all(|k| fields.contains_key(*k)) {
+        return Err("keys");
+    }
+    let field = |k: &str| fields.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+    let (action, kind, card, option) = (field("a"), field("kind"), field("card"), field("option"));
+    if !ok_id(&action, 64) || !ok_id(&card, 20) || !ok_id(&option, 8) {
+        return Err("ids");
+    }
+    if kind != "vote" && kind != "tick" {
+        return Err("kind"); // phase 2 (`may_write`): nothing else yet (a page's store: `STORE_KIND`, apart)
+    }
+    Ok((action, kind, card, option))
+}
+
+/// A friend's write in a page that remembers (page_store.rs `friend_write`): its own fields, beside `s`, `e`, `a`.
+pub const STORE_KIND: &str = "store";
 
 /// An action opened and checked: (action id, card, option) for the kind its card has; Err: why it is dropped.
 pub fn read_action(
@@ -481,28 +539,62 @@ pub fn read_action(
     tag: &str,
     secret: &[u8],
 ) -> Result<(String, String, String, String), &'static str> {
-    if !tag_ok(secret, share, data, tag) {
-        return Err("tag");
+    vote_of(&open_action(key, share, epoch, data, tag, secret)?)
+}
+
+/// How long to wait before trying a friend's write again, after `tries` tries: 30 s, then twice as long, 15 min at most.
+pub fn retry_wait(tries: i64) -> f64 {
+    (30.0 * 2f64.powi(tries.clamp(0, 6) as i32 - 1)).clamp(30.0, 900.0)
+}
+
+/// The friends' writes in pages of share `id` kept here (couldn't be written), each tried again when due: applied, or
+/// refused for good (noted by page_store.rs), or past `RETRY_FOR` refused (their page hears « Pas enregistré »), or
+/// kept for later. Whether a store changed.
+pub fn retry_writes(config: &Config, id: &str, agent: &str, share: &Value, at: f64) -> bool {
+    let waiting: Vec<Value> =
+        read(config).get("retry").and_then(|r| r.get(id)).and_then(Value::as_array).cloned().unwrap_or_default();
+    if waiting.is_empty() {
+        return false;
     }
-    let plain = open_sealed(key, data).ok_or("sealed")?;
-    let Ok(Value::Object(fields)) = serde_json::from_slice::<Value>(&plain) else { return Err("json") };
-    if fields.len() != ACTION_KEYS.len() || !ACTION_KEYS.iter().all(|k| fields.contains_key(*k)) {
-        return Err("keys");
+    let sent = share.get("sent").and_then(Value::as_object).cloned().unwrap_or_default();
+    let mut changed = false;
+    let mut left = Vec::new();
+    for entry in waiting {
+        if entry["next"].as_f64().unwrap_or(0.0) > at {
+            left.push(entry);
+            continue;
+        }
+        let fields = entry["fields"].as_object().cloned().unwrap_or_default();
+        match crate::page_store::friend_write(config, agent, &sent, &fields, &s(&entry, "by")) {
+            Ok(written) => changed |= written,
+            Err(why) if crate::page_store::retry_later(&why) => {
+                if at - entry["first"].as_f64().unwrap_or(at) >= RETRY_FOR {
+                    tracing::warn!(share = %id, "a friend's write in a page never written: refused");
+                    crate::page_store::give_up(config, agent, &fields);
+                    changed = true;
+                } else {
+                    let tries = entry["tries"].as_i64().unwrap_or(1) + 1;
+                    let mut again = entry.clone();
+                    again["tries"] = json!(tries);
+                    again["next"] = json!(at + retry_wait(tries));
+                    left.push(again);
+                }
+            }
+            Err(_) => changed = true, // refused for good: noted in the store by friend_write
+        }
     }
-    let field = |k: &str| fields.get(k).and_then(Value::as_str).unwrap_or("").to_string();
-    if field("s") != share || fields.get("e").and_then(Value::as_i64) != Some(epoch) {
-        return Err("share");
+    let kept = update(config, |data| {
+        let all = data.get_mut("retry").and_then(Value::as_object_mut).expect("an object");
+        if left.is_empty() {
+            all.remove(id);
+        } else {
+            all.insert(id.to_string(), json!(left));
+        }
+    });
+    if let Err(err) = kept {
+        tracing::warn!(error = %err, "friends' writes to try again not kept");
     }
-    let action = field("a");
-    let ok_id = |t: &str, most: usize| (1..=most).contains(&t.len()) && t.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
-    let (kind, card, option) = (field("kind"), field("card"), field("option"));
-    if !ok_id(&action, 64) || !ok_id(&card, 20) || !ok_id(&option, 8) {
-        return Err("ids");
-    }
-    if kind != "vote" && kind != "tick" {
-        return Err("kind"); // phase 2 (`may_write`): nothing else yet
-    }
-    Ok((action, kind, card, option))
+    changed
 }
 
 /// A viewer id as text (the guichet gives it as a string; a number reads the same).
@@ -526,22 +618,24 @@ pub async fn take_actions(
 ) -> bool {
     let id = s(share, "id");
     let agent = s(share, "agent");
+    // the friends' writes kept here from an earlier round, when due (whatever the guichet has now)
+    let retried = retry_writes(&state.config(), &id, &agent, share, now());
     let url = format!("{}/v1/rshares/{id}/actions", s(share, "guichet").trim_end_matches('/'));
     let got = state.http.get(&url).timeout(std::time::Duration::from_secs(30)).bearer_auth(s(share, "writer")).send().await;
     let body: Value = match got {
         Ok(r) if r.status().as_u16() == 200 => r.json().await.unwrap_or(Value::Null),
         Ok(r) => {
             tracing::debug!(share = %id, status = r.status().as_u16(), "friends' actions not read");
-            return false;
+            return retried;
         }
         Err(e) => {
             tracing::debug!(share = %id, error = %e, "friends' actions not read");
-            return false;
+            return retried;
         }
     };
     let actions = body["actions"].as_array().cloned().unwrap_or_default();
     if actions.is_empty() {
-        return false;
+        return retried;
     }
     let config = state.config();
     let seen: Vec<String> = read(&config)
@@ -551,27 +645,55 @@ pub async fn take_actions(
         .map(|l| l.iter().filter_map(Value::as_str).map(str::to_string).collect())
         .unwrap_or_default();
     let mut seen_now = seen.clone();
-    let mut changed = false;
+    let mut changed = retried;
     let mut last = 0i64;
+    // writes that couldn't be written now: kept here, tried again later (`retry_writes`), the guichet's queue taken
+    let mut later: Vec<Value> = Vec::new();
     for action in &actions {
-        last = last.max(action["seq"].as_i64().unwrap_or(0));
+        let seq = action["seq"].as_i64().unwrap_or(0);
+        last = last.max(seq);
         let viewer = id_text(&action["viewer"]);
         let Some(row) = viewers.iter().find(|v| id_text(&v["viewer"]) == viewer) else {
             tracing::debug!(share = %id, "a friend's action from nobody listed: dropped");
             continue;
         };
         let Some((_, secret)) = secrets.get(&s(row, "invite")) else { continue };
-        let read = read_action(key, &id, epoch, &s(action, "data"), &s(action, "tag"), secret);
-        let (action_id, kind, card_id, option) = match read {
+        let fields = match open_action(key, &id, epoch, &s(action, "data"), &s(action, "tag"), secret) {
+            Ok(fields) => fields,
+            Err(why) => {
+                tracing::debug!(share = %id, why, "a friend's action dropped");
+                continue;
+            }
+        };
+        let action_id = s(&Value::Object(fields.clone()), "a");
+        if seen_now.contains(&action_id) {
+            continue; // a replay
+        }
+        if fields.get("kind").and_then(Value::as_str) == Some(STORE_KIND) {
+            // what a friend typed in a page that remembers: one of this share's pages, a group's (page_store.rs);
+            // never lost: one that could not be written now is taken again at the next round, one refused for good
+            // is told to their page (the store's `refused`)
+            let sent = share.get("sent").and_then(Value::as_object).cloned().unwrap_or_default();
+            match crate::page_store::friend_write(&config, &agent, &sent, &fields, &first_name(&s(row, "name"))) {
+                Ok(written) => changed |= written,
+                Err(why) if crate::page_store::retry_later(&why) => {
+                    tracing::info!(share = %id, why = %why.code, "a friend's write in a page: kept, tried again later");
+                    let at = now();
+                    later.push(json!({"fields": fields, "by": first_name(&s(row, "name")), "first": at, "tries": 1,
+                                      "next": at + retry_wait(1)}));
+                }
+                Err(why) => tracing::info!(share = %id, why = %why.code, "a friend's write in a page refused"),
+            }
+            seen_now.push(action_id);
+            continue;
+        }
+        let (action_id, kind, card_id, option) = match vote_of(&fields) {
             Ok(found) => found,
             Err(why) => {
                 tracing::debug!(share = %id, why, "a friend's action dropped");
                 continue;
             }
         };
-        if seen_now.contains(&action_id) {
-            continue; // a replay
-        }
         seen_now.push(action_id);
         let card_type = card(&config, &agent, &card_id).map(|c| s(&c, "type")).unwrap_or_default();
         if (kind == "vote") != (card_type == "vote") || card_type == crate::shared_expenses::KIND {
@@ -593,6 +715,17 @@ pub async fn take_actions(
         });
         if let Err(err) = kept {
             tracing::warn!(error = %err, "friends' actions seen not kept");
+        }
+    }
+    if !later.is_empty() {
+        let kept = update(&config, |data| {
+            let all = data.get_mut("retry").and_then(Value::as_object_mut).expect("an object");
+            if let Some(list) = all.entry(id.clone()).or_insert_with(|| json!([])).as_array_mut() {
+                list.extend(later);
+            }
+        });
+        if let Err(err) = kept {
+            tracing::warn!(error = %err, "friends' writes to try again not kept");
         }
     }
     let taken = state

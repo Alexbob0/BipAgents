@@ -44,6 +44,8 @@
 //!     DELETE /family/s/{agent}/conversations/{cid}           409: it is everyone's
 //!     POST   /family/s/{agent}/approval                      {run_id, choice | answer, request_id?}  her turn's cards
 //!     GET    /family/s/{agent}/pages/{page}                  a page of the family's agent
+//!     GET    /family/s/{agent}/pages/{page}/store            its store (page_store.rs), on the same terms;
+//!     POST   /family/s/{agent}/pages/{page}/store            {op…} a write: the family's agent only
 //!
 //! **The relative's side** (Marie's app, her bridge's key; `id` is `<agent>__<household>`, e.g. `cuisine__alex`):
 //!
@@ -1296,6 +1298,7 @@ pub fn household_router() -> Router<AppState> {
         .route("/family/s/{agent}/conversations/{cid}/stop", post(served_stop))
         .route("/family/s/{agent}/approval", post(served_approval))
         .route("/family/s/{agent}/pages/{page}", get(served_page))
+        .merge(crate::page_store::household_router()) // a page's store, on the same terms as the page
         .merge(crate::shared_files::household_router()) // the files she sends in her conversations
         .merge(crate::agent_feed::household_router()) // a personal agent's conversations, read-only
 }
