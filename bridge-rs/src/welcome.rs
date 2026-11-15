@@ -1241,4 +1241,28 @@ mod tests {
         }
         assert!(message("Bip", "daily", "fr", true, Some("tout")).0.contains("Tu préfères m'appeler autrement ?"));
     }
+
+    /// Second review 15/11 (R2-1): the fix strips `[words](url)` with a regex that misses what a Markdown reader still
+    /// takes for a link: brackets inside the words (`[mon [suivi]](url)`, CommonMark's balanced brackets) or an escaped
+    /// one (`[suivi\]](url)`) stay a live link on the iPhone (AttributedString(markdown:)), its words hiding where it
+    /// goes; `<https://…>` and a bare `https://…` are linked by both apps (MarkdownViews.swift `linkBareURLs`,
+    /// Markdown.kt's inline regex). The agent's first bubble, written by the bridge, quotes the role as words only.
+    #[test]
+    fn review2_the_role_said_back_has_no_live_link() {
+        let roles = [
+            ("brackets inside the words", "Suivre mes colis [en cliquant [ici]](https://exemple.invalid/connexion)"),
+            ("an escaped bracket", "Suivre mes colis [mon suivi\\]](https://exemple.invalid/connexion)"),
+            ("an autolink", "Suivre mes colis <https://exemple.invalid/connexion>"),
+            ("a bare address", "Suivre mes colis sur https://exemple.invalid/connexion"),
+        ];
+        let mut live = Vec::new();
+        for (what, role) in roles {
+            let (text, _) = message("Colis", "daily", "fr", false, Some(role));
+            assert!(text.contains("Suivre mes colis"), "{what}: {text}");
+            if text.contains("](") || text.contains("https://") || text.contains("http://") {
+                live.push(format!("{what}: {text}"));
+            }
+        }
+        assert!(live.is_empty(), "a live link in the agent's first words:\n{}", live.join("\n"));
+    }
 }
