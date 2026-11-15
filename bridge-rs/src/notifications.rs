@@ -168,6 +168,10 @@ pub struct NewRow<'a> {
     pub dedupe: &'a str,
     /// When it happened, when that is not now (`created_at`, `iso`): a Boîte message's arrival.
     pub created_at: Option<&'a str>,
+    /// Its push when known before any is sent (`skipped:on_screen`…); None: « pending » until it is sent.
+    pub push: Option<&'a str>,
+    /// Read from its first write (seen on the screen it is about).
+    pub read: bool,
 }
 
 /// Inserts the row unless its dedupe key is taken: false then (the event was journaled already).
@@ -178,7 +182,7 @@ pub async fn insert(store: &Store, row: &NewRow<'_>) -> anyhow::Result<bool> {
     let n = store
         .run_count(
             "INSERT OR IGNORE INTO notifications (id, agent, type, thread_id, message_id, ref_id, session_id, title, \
-             body_key, preview, state, created_at, push, dedupe_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'pending',?)",
+             body_key, preview, state, created_at, read_at, push, dedupe_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             vec![
                 text(row.id),
                 text(row.agent),
@@ -192,6 +196,8 @@ pub async fn insert(store: &Store, row: &NewRow<'_>) -> anyhow::Result<bool> {
                 opt(cut.as_deref()),
                 text(row.state),
                 text(&row.created_at.map_or_else(|| iso(utcnow()), str::to_string)),
+                if row.read { text(&iso(utcnow())) } else { Param::Null },
+                text(row.push.unwrap_or("pending")),
                 text(row.dedupe),
             ],
         )
@@ -205,17 +211,6 @@ pub async fn insert(store: &Store, row: &NewRow<'_>) -> anyhow::Result<bool> {
 
 pub async fn set_push(store: &Store, id: &str, push: &str) -> anyhow::Result<()> {
     store.run("UPDATE notifications SET push = ? WHERE id = ?", vec![text(push), text(id)]).await?;
-    Ok(())
-}
-
-/// One row read now.
-pub async fn mark_read(store: &Store, id: &str) -> anyhow::Result<()> {
-    store
-        .run(
-            "UPDATE notifications SET read_at = ? WHERE id = ? AND read_at IS NULL",
-            vec![text(&iso(utcnow())), text(id)],
-        )
-        .await?;
     Ok(())
 }
 
