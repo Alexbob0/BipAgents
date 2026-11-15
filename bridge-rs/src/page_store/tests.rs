@@ -280,9 +280,9 @@ fn only_a_group_s_page_carries_its_store_to_others() {
     assert_eq!(for_friends(&config, "queens", &private, true), None);
     let (store, write) = for_friends(&config, "queens", &shared, true).unwrap();
     assert_eq!((store["keys"]["k"]["value"].clone(), store["write"].clone(), write), (json!(1), json!(true), true));
-    assert_eq!(for_friends(&config, "queens", &shared, false).unwrap().1, false);
+    assert!(!for_friends(&config, "queens", &shared, false).unwrap().1);
     config.shared_pages.friends_write = false;
-    assert_eq!(for_friends(&config, "queens", &shared, true).unwrap().1, false);
+    assert!(!for_friends(&config, "queens", &shared, true).unwrap().1);
 }
 
 #[test]

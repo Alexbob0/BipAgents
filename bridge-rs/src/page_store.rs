@@ -435,8 +435,10 @@ pub fn delete(config: &Config, agent: &str, page: &str) -> bool {
 
 // -- the budget -------------------------------------------------------------------------------------------------------
 
-static BUCKETS: LazyLock<Mutex<HashMap<(String, String, bool), (f64, Instant)>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+/// (agent, page, a write) → (tokens left, when counted).
+type Buckets = HashMap<(String, String, bool), (f64, Instant)>;
+
+static BUCKETS: LazyLock<Mutex<Buckets>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// One read or write of a page's store, if its budget allows it (429 otherwise).
 pub fn spend(agent: &str, page: &str, write: bool) -> Result<(), Refused> {
