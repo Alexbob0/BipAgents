@@ -71,7 +71,8 @@ class FakeChrome:
     `hold(token)`: as the person's hold, only connections showing that token get through. `old`: a relay built
     before the page view (no version; while held, nothing gets through). `windowless`: tabs that are Chrome's own UI
     (`Browser.getWindowForTarget` answers « Browser window not found », as for Chrome 157's omnibox popup). `still`: a
-    page that doesn't change, as Chrome's screencast sees it: no frame at all, only `Page.captureScreenshot`."""
+    page that doesn't change, as Chrome's screencast sees it: no frame at all, only `Page.captureScreenshot`, of the
+    visual viewport `layout` says (`Page.getLayoutMetrics`)."""
 
     def __init__(self, tabs):
         self.tabs = tabs
@@ -82,6 +83,7 @@ class FakeChrome:
         self.open = []
         self.windowless = set()
         self.still = False
+        self.layout = {"clientWidth": 1366, "clientHeight": 600, "pageX": 0, "pageY": 0, "scale": 1, "zoom": 1}
         self.lock = threading.Lock()
         self.server = serve(self.talk, "127.0.0.1", 0, process_request=self.http, compression=None, max_size=None)
         self.port = self.server.socket.getsockname()[1]
@@ -127,6 +129,8 @@ class FakeChrome:
                     result = {"executionContextId": 42}
                 if m["method"] == "Runtime.evaluate":
                     result = {"result": {"type": "object", "value": self.focus}}
+                if m["method"] == "Page.getLayoutMetrics":
+                    result = {"cssVisualViewport": {"offsetX": 0, "offsetY": 0, **self.layout}}
                 if m["method"] == "Page.captureScreenshot":
                     result = {"data": base64.b64encode(JPEG).decode()}
                 if m["method"] == "Page.getNavigationHistory":
@@ -248,15 +252,20 @@ def recv_until(ws, predicate, limit=40):
 def test_a_still_page_gets_a_picture_when_its_screencast_sends_nothing(bridges, fakes, chrome):
     # Review F1 (15/11): Chrome's screencast sends changes only. A still page that painted before it began (the
     # take-over's reload, the hand-back's on a connection of its own) sent nothing, and the phone kept the other
-    # rendering's last picture. No frame within a second of the screencast's start: a picture of the tab instead, at
-    # the size it is shown (the desktop's; the phone's once taken over), in the screencast's quality.
+    # rendering's last picture. No frame within a second of the screencast's start: a picture of the tab instead, in
+    # the screencast's quality. Review F2: at the size it shows, never a guessed one: as a phone, the size it renders
+    # at; otherwise the page's visual viewport as it is (here a wide window scrolled down), scaled down as the
+    # screencast would be (1366 px at most).
     chrome.still = True
+    chrome.layout.update(clientWidth=2732, clientHeight=1200, pageY=300)
     bridge, folder = browser_bridge(bridges, fakes, chrome.port)
     data = bridge.post("/v1/agents/vie/desktop", headers=AUTH).json()
+    desktop = {"format": "jpeg", "quality": 55,
+               "clip": {"x": 0, "y": 300, "width": 2732, "height": 1200, "scale": 0.5}}
     with open_ws(bridge.ws_url("/" + data["page_path"] + "ws?mobile=1&w=390&h=700&dpr=2")) as ws:
         seen = recv_until(ws, lambda m: m == JPEG)
-        assert seen[-2] == {"type": "frame", "w": 1366.0, "h": 650.0}
-        assert chrome.methods("Page.captureScreenshot")[-1][2] == {"format": "jpeg", "quality": 55}
+        assert seen[-2] == {"type": "frame", "w": 2732.0, "h": 1200.0}
+        assert chrome.methods("Page.captureScreenshot")[-1][2] == desktop
         bridge.post("/v1/agents/vie/desktop/control", headers=AUTH, json={"take": True})
         token = (folder / "hold.token").read_text()
         chrome.hold(token)
@@ -267,9 +276,12 @@ def test_a_still_page_gets_a_picture_when_its_screencast_sends_nothing(bridges, 
         assert shots and shots[-1][2] == {"format": "jpeg", "quality": 60}
         bridge.post("/v1/agents/vie/desktop/control", headers=AUTH, json={"take": False})
         chrome.hold(None)                               # the hold lifted: the relay lets everyone through again
+        chrome.layout.update(clientWidth=1280, clientHeight=590, pageY=0)
         seen = recv_until(ws, lambda m: m == JPEG)
-        assert seen[-2] == {"type": "frame", "w": 1366.0, "h": 650.0}
+        assert seen[-2] == {"type": "frame", "w": 1280.0, "h": 590.0}
         assert {"type": "state", "state": "live", "mobile": False, "holding": False} in seen
+        assert chrome.methods("Page.captureScreenshot")[-1][2] == {
+            "format": "jpeg", "quality": 55, "clip": {"x": 0, "y": 0, "width": 1280, "height": 590, "scale": 1}}
         assert not chrome.methods("Page.screencastFrameAck")   # never a frame of the screencast to acknowledge
 
 

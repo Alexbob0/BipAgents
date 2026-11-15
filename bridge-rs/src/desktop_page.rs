@@ -534,13 +534,36 @@ pub fn address(text: &str) -> Option<String> {
     Some(url.to_string())
 }
 
-/// A picture of the tab as it is now, in the screencast's JPEG quality, for when the screencast sent nothing yet.
-async fn still_frame(cdp: &mut Cdp, cast: &Value) -> Result<Vec<u8>, String> {
+/// A picture of the tab as it is now, in the screencast's JPEG quality, for when the screencast sent nothing yet, and
+/// the size it shows in CSS pixels, as a frame says it. Rendered as a phone (`phone`): the size it is emulated at, the
+/// screencast's own. Otherwise the visual viewport the page has now (`Page.getLayoutMetrics`), taken alone (its
+/// scrollbars aside) and scaled down as the screencast would be (`maxWidth`, `maxHeight`): never a size guessed from an
+/// earlier frame (review F2, 15/11: 1366 × 650 announced for a 1366 × 625 tab, the taps about 4 % too low until the
+/// next frame; a bank's code typed on a still 3-D Secure page could miss its field).
+async fn still_frame(cdp: &mut Cdp, cast: &Value, phone: Option<Viewport>) -> Result<(Viewport, Vec<u8>), String> {
     let quality = cast.get("quality").cloned().unwrap_or(json!(60));
-    let shot = cdp.call("Page.captureScreenshot", json!({"format": "jpeg", "quality": quality})).await?;
+    let (view, params) = match phone {
+        Some(view) => (view, json!({"format": "jpeg", "quality": quality})),
+        None => {
+            let metrics = cdp.call("Page.getLayoutMetrics", json!({})).await?;
+            let css = metrics.get("cssVisualViewport").ok_or("no viewport")?;
+            let num = |key: &str| css.get(key).and_then(Value::as_f64).unwrap_or(0.0);
+            let view = Viewport { width: num("clientWidth"), height: num("clientHeight") };
+            if view.width < 1.0 || view.height < 1.0 {
+                return Err("an empty viewport".into());
+            }
+            let fit = |key: &str, size: f64| cast.get(key).and_then(Value::as_f64).map_or(1.0, |max| (max / size).min(1.0));
+            let scale = fit("maxWidth", view.width).min(fit("maxHeight", view.height));
+            let clip = json!({"x": num("pageX"), "y": num("pageY"), "width": view.width, "height": view.height,
+                              "scale": scale});
+            (view, json!({"format": "jpeg", "quality": quality, "clip": clip}))
+        }
+    };
+    let shot = cdp.call("Page.captureScreenshot", params).await?;
     let data = shot.get("data").and_then(Value::as_str).ok_or("no picture")?;
     use base64::Engine;
-    base64::engine::general_purpose::STANDARD.decode(data).map_err(|e| e.to_string())
+    let jpeg = base64::engine::general_purpose::STANDARD.decode(data).map_err(|e| e.to_string())?;
+    Ok((view, jpeg))
 }
 
 /// The viewport the last frame showed, in CSS pixels (taps come as fractions of the picture).
@@ -698,7 +721,7 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
     let id = SESSION_IDS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     RESTORERS.lock().unwrap_or_else(|e| e.into_inner()).entry(agent.clone()).or_default().push((id, restore_tx));
     tracing::info!(agent = %agent, mobile = phone.wanted(), "page view connected");
-    let (mut desktop_width, mut desktop_height) = (1366.0f64, 650.0f64);
+    let mut desktop_height = 650.0f64;
     let mut last_said = Value::Null;
     // The phone follows where the agent acts (its « Suivre »): the focus pushed as it moves (desktop_read.rs).
     let mut follow = false;
@@ -815,7 +838,7 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
                     view.width = meta.get("deviceWidth").and_then(Value::as_f64).unwrap_or(view.width);
                     view.height = meta.get("deviceHeight").and_then(Value::as_f64).unwrap_or(view.height);
                     if !mobile {
-                        (desktop_width, desktop_height) = (view.width, view.height);
+                        desktop_height = view.height;
                     }
                     first_by = None;
                     use base64::Engine;
@@ -838,13 +861,10 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
                 }
                 _ = tokio::time::sleep_until(first_by.unwrap_or_else(Instant::now)), if first_by.is_some() => {
                     first_by = None;
-                    match still_frame(&mut cdp, &cast).await {
-                        Ok(jpeg) => {
-                            view = if mobile {
-                                Viewport { width: width as f64, height: height as f64 }
-                            } else {
-                                Viewport { width: desktop_width, height: desktop_height }
-                            };
+                    let phone = mobile.then_some(Viewport { width: width as f64, height: height as f64 });
+                    match still_frame(&mut cdp, &cast, phone).await {
+                        Ok((shown, jpeg)) => {
+                            view = shown;
                             let head = json!({"type": "frame", "w": view.width, "h": view.height});
                             if !send_json(&mut app_tx, head).await
                                 || app_tx.send(Message::Binary(Bytes::from(jpeg))).await.is_err()
