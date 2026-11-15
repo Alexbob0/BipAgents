@@ -74,3 +74,39 @@ def test_a_real_chromium_watched_then_taken_over_as_a_phone(bridges, fakes, chro
         bridge.post("/v1/agents/vie/desktop/control", headers=AUTH, json={"take": False})
         width, agent, touch = looks(chromium)
         assert width > 1000 and "Android" not in agent and touch is False   # as the agent left it
+
+
+def frame_of(ws, wide, what, limit=400):
+    """The next frame whose width `wide(w)` holds, its JPEG right after (10 s at most between two messages); else what
+    came meanwhile (its JSON messages, the JPEGs counted) in the failure."""
+    seen = []
+    try:
+        for _ in range(limit):
+            message = ws.recv(timeout=10)
+            item = message if isinstance(message, bytes) else json.loads(message)
+            seen.append(item)
+            if isinstance(item, dict) and item.get("type") == "frame" and wide(item["w"]):
+                assert isinstance(ws.recv(timeout=10), bytes), what
+                return seen
+    except TimeoutError:
+        pass
+    shown = [m if isinstance(m, dict) else f"<jpeg {len(m)} B>" for m in seen]
+    raise AssertionError(f"{what}: nothing for 10 s after {shown[-12:]!r}")
+
+
+def test_review_each_take_over_and_hand_back_of_a_still_page_sends_its_frame(bridges, fakes, chromium):
+    # Review of fix-flaky-tests (15/11): the take-over now reloads the tab once its screencast runs, so a still page's
+    # first paint as a phone is a frame. Handing back still reloads the tab (restore, on a connection of its own) BEFORE
+    # the desktop view starts its screencast: the order the take-over had. Each round must bring its frame: 390 wide
+    # once taken over, desktop wide once handed back. On f4b946992, 3 runs of 3 (alone, aibox): every take-over sent its
+    # frame; a hand-back (round 0 or 1) sent « live, mobile: false » and its page, then nothing for 10 s: the phone kept
+    # the phone's last picture.
+    bridge, folder = browser_bridge(bridges, fakes, chromium)
+    data = bridge.post("/v1/agents/vie/desktop", headers=AUTH).json()
+    with open_ws(bridge.ws_url("/" + data["page_path"] + "ws?mobile=1&w=390&h=700&dpr=2")) as ws:
+        frame_of(ws, lambda w: w > 1000, "the first desktop frame")
+        for round_ in range(8):
+            bridge.post("/v1/agents/vie/desktop/control", headers=AUTH, json={"take": True})
+            frame_of(ws, lambda w: w == 390, f"round {round_}: no phone frame after the take-over")
+            bridge.post("/v1/agents/vie/desktop/control", headers=AUTH, json={"take": False})
+            frame_of(ws, lambda w: w > 1000, f"round {round_}: no desktop frame after the hand-back")
