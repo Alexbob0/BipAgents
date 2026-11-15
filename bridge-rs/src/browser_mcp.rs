@@ -281,7 +281,8 @@ Nothing was run.";
 /// proven by the engine, `read_only`).
 pub const SCRIPT_CHANGES_PAGE_REFUSED: &str = "Not done: this script changes the page, or your browser can't prove that \
 it only reads: execute_script only reads the page. To fill or click, use type_text, click_element or select_option. \
-Nothing was run.";
+To read, find elements with document.querySelector / querySelectorAll (getElementById and closest can't be proven \
+reads). Nothing was run.";
 
 /// A script while the browser can't prove it only reads (DevTools out of reach, no tab named): never run.
 pub const SCRIPT_UNCHECKED_REFUSED: &str = "Not done: your browser can't check this script right now, and it runs a \
