@@ -122,7 +122,7 @@
     "who2": "La IA lee lo que tu agente le envía, para responderte: a través de EUrouter, un enrutador de IA europeo, y luego el proveedor que ejecuta el modelo elegido. Antes de tu primer mensaje, la app te nombra el enrutador y el modelo.",
     "who3": "Nuestro límite, dicho claro: como con cualquier servidor alquilado, el proveedor y nosotros podríamos técnicamente entrar. Nuestro software no lo hace, y solo lo haríamos si la ley nos obliga.",
     "compare": "Comparado con ChatGPT, Gemini y otros, con fuentes →",
-    "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.md",
+    "href": "https://github.com/BipAgents/BipAgents/blob/stable/docs/privacy-compare.md",
     "title": "Tuyo. No de todos.",
     "classic": "Un asistente clásico",
     "theirs": "Sus servidores",

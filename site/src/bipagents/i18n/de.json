@@ -122,7 +122,7 @@
     "who2": "Die KI liest, was dein Agent ihr schickt, um dir zu antworten: über EUrouter, einen europäischen KI-Router, dann beim Anbieter, der das gewählte Modell betreibt. Vor deiner ersten Nachricht nennt dir die App den Router und das Modell.",
     "who3": "Unsere Grenze, offen gesagt: Wie bei jedem gemieteten Server könnten der Hoster und wir technisch hinein. Unsere Software tut es nicht, und wir täten es nur, wenn das Gesetz es verlangt.",
     "compare": "Im Vergleich mit ChatGPT, Gemini und anderen, mit Quellen →",
-    "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.md",
+    "href": "https://github.com/BipAgents/BipAgents/blob/stable/docs/privacy-compare.md",
     "title": "Deins. Nicht für alle.",
     "classic": "Ein üblicher Assistent",
     "theirs": "Ihre Server",
