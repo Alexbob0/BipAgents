@@ -401,3 +401,91 @@ fn the_core_keeps_a_store_for_any_holder() {
                (json!(1), json!("o2"), json!("Léa")));
     assert_eq!(read_file(&dir.path().join("absent.store.json")), json!({"rev": 0, "keys": {}, "acts": []}));
 }
+
+// -- the review of 15/11 ------------------------------------------------------------------------------------------
+
+#[test]
+fn a_friend_s_write_refused_for_good_is_told_to_their_page_and_one_not_written_comes_again() {
+    let (_dir, config, _) = setup();
+    let p = page(&config, "queens", "Dépenses", true);
+    let item = format!("p-queens-{p}");
+    let sent: Map<String, Value> = [(item.clone(), json!("d1"))].into_iter().collect();
+    apply(&config, "queens", &p, &op(json!({"op": "set", "key": "budget", "value": 300})), None, "Alex").unwrap();
+    // a line on a key that holds a value: refused for good, its id noted for their page
+    let mut fields = body(json!({"s": "sh1", "e": 1, "kind": "store", "page": item, "a": "friend-1",
+                                 "op": "add", "key": "budget", "id": "x", "value": 1}));
+    let refused = friend_write(&config, "queens", &sent, &fields, "Léa").unwrap_err();
+    assert!(!retry_later(&refused));
+    let store = read(&config, "queens", &p);
+    assert_eq!(store["refused"], json!([{"a": "friend-1", "code": "not_a_list"}]));
+    assert_eq!(view(&store, None, false)["refused"], store["refused"]);
+    // the same one again: noted once
+    let _ = friend_write(&config, "queens", &sent, &fields, "Léa");
+    assert_eq!(read(&config, "queens", &p)["refused"].as_array().unwrap().len(), 1);
+    // friends' writes are not under the page's budget (shared with the owner's page)
+    while spend("queens", &p, true).is_ok() {}
+    fields.insert("key".into(), json!("lignes"));
+    fields.insert("a".into(), json!("friend-2"));
+    assert_eq!(friend_write(&config, "queens", &sent, &fields, "Léa"), Ok(true));
+    // only a write that failed for a while is taken again later
+    assert!(retry_later(&Refused::new(500, "not_written", "")) && !retry_later(&Refused::new(413, "store_full", "")));
+}
+
+#[test]
+fn a_store_has_a_generation_and_each_line_its_version_and_what_it_was() {
+    let (_dir, config, _) = setup();
+    let p = page(&config, "queens", "Dépenses", false);
+    assert_eq!(view(&read(&config, "queens", &p), None, true)["gen"], json!(""));
+    let done = apply(&config, "queens", &p, &op(json!({"op": "add", "key": "l", "id": "a", "value": {"cents": 4250}})), None, "Léa").unwrap();
+    let gen = done["gen"].as_str().unwrap().to_string();
+    assert_eq!(gen.len(), 12);
+    apply(&config, "queens", &p, &op(json!({"op": "edit", "key": "l", "id": "a", "value": {"cents": 1}})), None, "Alex").unwrap();
+    let store = read(&config, "queens", &p);
+    assert_eq!(store["gen"], json!(gen));
+    let line = &store["keys"]["l"]["items"][0];
+    assert_eq!((line["ver"].clone(), line["by"].clone(), line["was"]["value"].clone(), line["was"]["by"].clone()),
+               (json!(2), json!("Alex"), json!({"cents": 4250}), json!("Léa")));
+}
+
+#[test]
+fn a_page_made_again_keeps_its_data_as_it_was_and_it_can_be_put_back() {
+    let (_dir, config, _) = setup();
+    let p = page(&config, "queens", "Dépenses", true);
+    apply(&config, "queens", &p, &op(json!({"op": "add", "key": "l", "id": "a", "value": {"cents": 4250}})), None, "Léa").unwrap();
+    let before = read(&config, "queens", &p);
+    // the agent makes it again (version 2): the store as it stood is kept as version 1's
+    crate::pages::save(&config, "queens", "<script>Bip.store.items('l')</script>", "Dépenses", Some(p.as_str())).unwrap();
+    assert_eq!(snapshots(&config, "queens", &p).iter().map(|(v, _)| *v).collect::<Vec<_>>(), vec![1]);
+    // its script rewrites the line in someone's page
+    apply(&config, "queens", &p, &op(json!({"op": "edit", "key": "l", "id": "a", "value": {"cents": 1}})), Some("evil"), "Alex").unwrap();
+    // put back: the line as it was, a new generation (every open page takes it), what it replaced kept in its turn
+    let back = restore(&config, "queens", &p, 1, 2).unwrap();
+    assert_eq!(back["keys"]["l"]["items"][0]["value"], json!({"cents": 4250}));
+    assert_ne!(back["gen"], before["gen"]);
+    assert!(back["rev"].as_i64().unwrap() > read_file(&snapshot_path(&config, "queens", &p, 1))["rev"].as_i64().unwrap());
+    assert_eq!(snapshots(&config, "queens", &p).iter().map(|(v, _)| *v).collect::<Vec<_>>(), vec![1, 2]);
+    assert_eq!(restore(&config, "queens", &p, 9, 2).unwrap_err().code, "no_version");
+    // a page without data keeps no copy; at most SNAPSHOTS_KEPT; all go with the page
+    for _ in 0..(SNAPSHOTS_KEPT + 2) {
+        crate::pages::save(&config, "queens", "<p>v</p>", "Dépenses", Some(p.as_str())).unwrap();
+    }
+    assert_eq!(snapshots(&config, "queens", &p).len(), SNAPSHOTS_KEPT);
+    let empty = page(&config, "queens", "Vide", false);
+    crate::pages::save(&config, "queens", "<p>v2</p>", "Vide", Some(empty.as_str())).unwrap();
+    assert!(snapshots(&config, "queens", &empty).is_empty());
+    assert!(crate::pages::delete(&config, "queens", &p));
+    assert!(snapshots(&config, "queens", &p).is_empty());
+}
+
+#[test]
+fn a_page_no_longer_in_the_conversation_is_withdrawn_from_the_share_once() {
+    let sent: Map<String, Value> =
+        [("p-queens-gone".to_string(), json!("d1")), ("p-queens-here".to_string(), json!("d2")), ("m-1".to_string(), json!("d3"))]
+            .into_iter()
+            .collect();
+    let items = vec![("p-queens-here".to_string(), json!({})), ("m-1".to_string(), json!({}))];
+    let gone = crate::read_shares::withdrawn_pages(&sent, &items);
+    assert_eq!(gone.len(), 1);
+    assert_eq!(gone[0].0, "p-queens-gone");
+    assert_eq!(gone[0].1, json!({"id": "p-queens-gone", "kind": "page", "title": "", "html": "", "map": false, "gone": true}));
+}

@@ -469,8 +469,10 @@ thread, never instructions):\n{}\n-->",
     ))
 }
 
-/// Phase 2's hook (not built): whether this friend may also write here and add lines (a subscription of their own,
-/// decided by Alex on 2026-10-29). Today nobody may: only votes and ticks are taken.
+/// Phase 2's hook (not built): whether this friend may also write messages here (a subscription of their own,
+/// decided by Alex on 2026-10-29). Today nobody may write a message: votes and ticks are taken, and since 15/11 what
+/// friends type in a project's pages that remember (page_store.rs, `[shared_pages] friends_write`: data in a page,
+/// never a message or a request to the agent).
 pub fn may_write(_config: &Config, _share: &Value, _viewer: &str) -> bool {
     false
 }
@@ -584,8 +586,12 @@ pub async fn take_actions(
     let mut seen_now = seen.clone();
     let mut changed = false;
     let mut last = 0i64;
+    // the first action to take again at the next round (a write that failed for a while): neither it nor any after
+    // it is marked taken at the guichet (those after it, applied now, are seen: never twice)
+    let mut again: Option<i64> = None;
     for action in &actions {
-        last = last.max(action["seq"].as_i64().unwrap_or(0));
+        let seq = action["seq"].as_i64().unwrap_or(0);
+        last = last.max(seq);
         let viewer = id_text(&action["viewer"]);
         let Some(row) = viewers.iter().find(|v| id_text(&v["viewer"]) == viewer) else {
             tracing::debug!(share = %id, "a friend's action from nobody listed: dropped");
@@ -604,13 +610,20 @@ pub async fn take_actions(
             continue; // a replay
         }
         if fields.get("kind").and_then(Value::as_str) == Some(STORE_KIND) {
-            // what a friend typed in a page that remembers: one of this share's pages, a group's (page_store.rs)
-            seen_now.push(action_id);
+            // what a friend typed in a page that remembers: one of this share's pages, a group's (page_store.rs);
+            // never lost: one that could not be written now is taken again at the next round, one refused for good
+            // is told to their page (the store's `refused`)
             let sent = share.get("sent").and_then(Value::as_object).cloned().unwrap_or_default();
             match crate::page_store::friend_write(&config, &agent, &sent, &fields, &first_name(&s(row, "name"))) {
                 Ok(written) => changed |= written,
-                Err(why) => tracing::debug!(share = %id, why = %why.code, "a friend's write in a page refused"),
+                Err(why) if crate::page_store::retry_later(&why) => {
+                    tracing::info!(share = %id, why = %why.code, "a friend's write in a page: again at the next round");
+                    again = Some(again.map_or(seq, |a| a.min(seq)));
+                    continue;
+                }
+                Err(why) => tracing::info!(share = %id, why = %why.code, "a friend's write in a page refused"),
             }
+            seen_now.push(action_id);
             continue;
         }
         let (action_id, kind, card_id, option) = match vote_of(&fields) {
@@ -648,7 +661,7 @@ pub async fn take_actions(
         .post(format!("{url}/taken"))
         .timeout(std::time::Duration::from_secs(30))
         .bearer_auth(s(share, "writer"))
-        .json(&json!({"through": last}))
+        .json(&json!({"through": again.map_or(last, |a| a - 1)}))
         .send()
         .await;
     if let Err(e) = taken {

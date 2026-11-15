@@ -223,3 +223,25 @@ def test_the_friends_of_a_project_see_and_write_its_page(bridges, fakes):
         assert len(store_get(bridge, path).json()["keys"]["depenses"]["items"]) == 2
     finally:
         guichet.stop()
+
+
+def test_a_page_made_again_keeps_a_way_back(bridge):
+    """Review of 15/11: the agent can make its page again under its id, and that version's script runs in the next
+    person's page under their name: what was typed is kept as it stood, listed, and put back from the app."""
+    give_token(bridge)
+    path = media_of(call(bridge, "create_page", {"html": STORE_PAGE, "title": "Dépenses"}))
+    page = path.rsplit("/", 1)[1][:-5]
+    store_post(bridge, path, op="add", key="lignes", id="l1", value={"what": "Resto", "cents": 4250}, a="a1")
+    call(bridge, "create_page", {"html": STORE_PAGE.replace("week-end", "mois"), "title": "Dépenses", "page": page})
+    store_post(bridge, path, op="edit", key="lignes", id="l1", value={"what": "Resto", "cents": 1}, a="a2")
+    edited = store_get(bridge, path).json()["keys"]["lignes"]["items"][0]
+    assert edited["ver"] == 2 and edited["was"]["value"] == {"what": "Resto", "cents": 4250}
+    versions = bridge.get("/v1/page-store/versions", headers=AUTH, params={"path": path}).json()["versions"]
+    assert [(v["version"], v["lines"]) for v in versions] == [(1, 1)]
+    back = bridge.post("/v1/page-store/restore", headers=AUTH, json={"path": path, "version": 1})
+    assert back.status_code == 200, back.text
+    assert store_get(bridge, path).json()["keys"]["lignes"]["items"][0]["value"]["cents"] == 4250
+    assert bridge.post("/v1/page-store/restore", headers=AUTH, json={"path": path, "version": 7}).status_code == 404
+    assert bridge.get("/v1/page-store/versions", headers=AUTH, params={"path": "/bipagents/pages/x/y.html"}).status_code == 404
+    # never served as files
+    assert bridge.get("/v1/media", headers=AUTH, params={"path": f"/bipagents/pages/wellness/{page}.store.v1.json"}).status_code == 404

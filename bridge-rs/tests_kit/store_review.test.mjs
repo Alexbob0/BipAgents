@@ -12,7 +12,7 @@ const STORE_JS = fs.readFileSync(path.join(REPO, "bridge-rs/assets/static/pageki
 const TOOLS_RS = fs.readFileSync(path.join(REPO, "bridge-rs/src/agent_tools.rs"), "utf8");
 
 /** A page with the kit's store, its door answered by `door(op) -> {status, body}`, time in our hands. */
-function page(door, { android = false } = {}) {
+function page(door, { android = false, activation = undefined } = {}) {
   let now = 1_000_000;
   let timers = [];
   let nextId = 1;
@@ -42,7 +42,7 @@ function page(door, { android = false } = {}) {
   };
   const window = { Bip: {} };
   const context = {
-    window, document, navigator: { userAgent: android ? "Android" : "iPhone", language: "fr" },
+    window, document, navigator: { userAgent: android ? "Android" : "iPhone", language: "fr", userActivation: activation },
     crypto: globalThis.crypto, Date: FakeDate, JSON, Promise, Object, Math, String, Array, Uint8Array,
     encodeURIComponent, decodeURIComponent,
     setTimeout: (fn, ms) => schedule(fn, ms, 0), clearTimeout: clear,
@@ -122,11 +122,75 @@ test("FINDING 12: a page opened while its store can't be reached says so (not an
 });
 
 test("FINDING 6: create_page's expense example reads French amounts right (whole cents)", () => {
-  const m = TOOLS_RS.match(/var c=(Math\.round\(parseFloat\(e\.value[^;]*\));/);
+  // (fixed 15/11: the example reads amounts with the kit's Bip.cents; adapted from `parseFloat(e.value…)`: the
+  // example's own expression, evaluated with the kit as the page has it)
+  const m = TOOLS_RS.match(/var c=([^;]*);/);
   assert.ok(m, "the example's parsing");
-  const cents = (typed) => vm.runInNewContext(m[1], { e: { value: typed }, Math, parseFloat });
+  const kit = { window: { Bip: {} }, document: { documentElement: { getAttribute() {}, setAttribute() {} }, readyState: "complete",
+    querySelectorAll: () => [], addEventListener() {} }, navigator: { userAgent: "" }, getComputedStyle: () => ({ getPropertyValue: () => "" }) };
+  vm.createContext(kit);
+  vm.runInContext(fs.readFileSync(path.join(REPO, "bridge-rs/assets/static/pagekit/kit.js"), "utf8"), kit);
+  const cents = (typed) => vm.runInNewContext(m[1], { e: { value: typed }, Bip: kit.window.Bip, Math, parseFloat });
   assert.equal(cents("42,50"), 4250);
   for (const [typed, want] of [["1 234,56", 123456], ["1\u202f234,56", 123456], ["1.234,56", 123456], ["1 200", 120000]]) {
     assert.equal(cents(typed), want, `« ${typed} € » kept as ${cents(typed)} cents`);
   }
+});
+
+// -- the fixes' own (15/11) ----------------------------------------------------------------------------------------
+
+test("a friend's write refused for good by the owner's bridge comes back: the line leaves, « Pas enregistré »", async () => {
+  let view = { rev: 1, gen: "g1", keys: {}, acts: [], refused: [], write: true };
+  let sentAct = null;
+  const p = page((op) => {
+    if (op.op === "get") return { status: 200, body: view };
+    sentAct = op.a;
+    return { status: 202, body: { queued: true } };
+  });
+  p.store.onChange(() => {});
+  await p.advance(100);
+  p.store.add("depenses", { what: "Trop long", cents: 100 });
+  await p.advance(1000);
+  assert.equal(p.store.items("depenses").length, 1);
+  view = { ...view, rev: 2, refused: [{ a: sentAct, code: "store_full" }] };   // the owner's bridge took it, refused
+  await p.advance(6000);
+  assert.equal(p.store.items("depenses").length, 0);
+  assert.ok(p.notes.includes("Pas enregistré"), JSON.stringify(p.notes));
+});
+
+test("a friend's line waiting longer than 30 s says « En attente », and stays", async () => {
+  const view = { rev: 1, gen: "g1", keys: {}, acts: [], refused: [], write: true };
+  const p = page((op) => (op.op === "get" ? { status: 200, body: view } : { status: 202, body: { queued: true } }));
+  p.store.onChange(() => {});
+  await p.advance(100);
+  p.store.add("depenses", { what: "Glaces", cents: 900 });
+  await p.advance(40_000);
+  assert.ok(p.notes.some((n) => n.startsWith("En attente")), JSON.stringify(p.notes));
+  assert.equal(p.store.items("depenses").length, 1);
+});
+
+test("a new store generation (the page made again, a copy put back) is taken as it is, at once", async () => {
+  let server = { rev: 7, gen: "old", keys: { k: { value: 1 } }, acts: [] };
+  const p = page((op) => (op.op === "get" ? { status: 200, body: { ...server, write: true } } : { status: 500, body: {} }));
+  p.store.onChange(() => {});
+  await p.advance(100);
+  assert.equal(p.store.get("k"), 1);
+  server = { rev: 2, gen: "new", keys: { k: { value: 2 } }, acts: [] };
+  const before = p.asked.length;
+  await p.advance(5_100);
+  assert.equal(p.store.get("k"), 2);
+  assert.equal(p.asked.slice(before).filter((a) => a.op.op === "get").length, 1, "taken at the first read, no retry");
+});
+
+test("nothing is written before the person does anything on the page (no « who opened when »)", async () => {
+  const writes = [];
+  const p = page((op) => {
+    if (op.op !== "get") writes.push(op);
+    return op.op === "get" ? { status: 200, body: { rev: 0, gen: "", keys: {}, acts: [], write: true } }
+      : { status: 200, body: { rev: 1, key: op.key, entry: { value: op.value }, acts: [op.a] } };
+  }, { activation: { hasBeenActive: false, isActive: false } });
+  await p.advance(100);
+  assert.equal(await p.store.set("opened", Date.now()), false);
+  await p.advance(1000);
+  assert.deepEqual(writes, []);
 });

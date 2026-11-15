@@ -210,8 +210,9 @@ fn the_kit_never_outranks_the_agents_own_css() {
             assert!(part.starts_with(":where("), "a kit rule with weight: {part}");
         }
     }
-    // (31 000 since 5/11: a map's one link for the whole trip)
-    assert!(pages::kit_js().contains("__BIP_TINT__") && pages::kit_js().len() < 31_000 && css.len() < 20_000);
+    // (31 000 since 5/11: a map's one link for the whole trip; 34 000 since 15/11: what people typed drawn as text
+    // only, Bip.rows, and amounts read as whole cents, Bip.cents)
+    assert!(pages::kit_js().contains("__BIP_TINT__") && pages::kit_js().len() < 34_000 && css.len() < 20_000);
 }
 
 #[test]
@@ -228,10 +229,11 @@ fn only_a_page_that_remembers_carries_the_kit_s_store() {
     // the door is in the policy, connect-src only
     assert!(kept.contains("connect-src bipmap: https://bipmap.invalid bipstore: https://bipstore.invalid;"));
     assert!(!pages::POLICY.split(';').any(|d| d.trim().starts_with("script-src") && d.contains("bipstore")));
-    for uses in ["Bip.store.add(", "Bip . store", "Bip['store']", "Bip[\"store\"]"] {
+    // any page that uses the kit (review of 15/11: `const {store} = Bip`, `Bip?.store`, an alias)
+    for uses in ["Bip.store.add(", "Bip . store", "Bip['store']", "Bip[\"store\"]", "const { store } = Bip", "Bip?.store", "Bip.bars("] {
         assert!(pages::uses_store(uses), "{uses}");
     }
-    for not in ["Bip.storeroom", "myBip.store", "Bip.stats"] {
+    for not in ["myBip.store", "Bipper", "<p>x</p>"] {
         assert!(!pages::uses_store(not), "{not}");
     }
     assert!(pages::store_js().len() < 16_000 && pages::kit_js().contains("esc: esc"));

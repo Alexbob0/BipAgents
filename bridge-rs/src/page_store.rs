@@ -223,11 +223,13 @@ fn rev_of(store: &Value) -> i64 {
 /// since `since`.
 pub fn view(store: &Value, since: Option<i64>, write: bool) -> Value {
     let rev = rev_of(store);
+    let gen = store.get("gen").cloned().unwrap_or_else(|| json!(""));
     if since == Some(rev) {
-        return json!({"rev": rev, "same": true, "write": write});
+        return json!({"rev": rev, "gen": gen, "same": true, "write": write});
     }
     json!({"rev": rev, "keys": store.get("keys").cloned().unwrap_or_else(|| json!({})),
-           "acts": store.get("acts").cloned().unwrap_or_else(|| json!([])), "write": write})
+           "acts": store.get("acts").cloned().unwrap_or_else(|| json!([])), "gen": gen,
+           "refused": store.get("refused").cloned().unwrap_or_else(|| json!([])), "write": write})
 }
 
 /// How deep a JSON value goes.
@@ -346,7 +348,7 @@ pub fn apply_to(store: &mut Value, op: &Op, by: &str, at: f64) -> Result<bool, R
             if items.len() >= MAX_ITEMS {
                 return Err(Refused::new(413, "too_many_items", format!("at most {MAX_ITEMS} lines in a list")));
             }
-            items.push(json!({"id": id, "value": value, "by": by, "at": at}));
+            items.push(json!({"id": id, "value": value, "by": by, "at": at, "ver": 1}));
             stamp(entry);
         }
         Op::Edit { key, id, .. } | Op::Drop { key, id } => {
@@ -361,10 +363,14 @@ pub fn apply_to(store: &mut Value, op: &Op, by: &str, at: f64) -> Result<bool, R
             };
             match op {
                 Op::Edit { value, .. } => {
-                    if items[at_index].get("value") == Some(value) {
+                    let old = &items[at_index];
+                    if old.get("value") == Some(value) {
                         return Ok(false);
                     }
-                    items[at_index] = json!({"id": id, "value": value, "by": by, "at": at});
+                    // the line as it was, kept with it (who wrote it and when): one step back for each line
+                    let was = json!({"value": old.get("value"), "by": old.get("by"), "at": old.get("at")});
+                    let ver = old.get("ver").and_then(Value::as_i64).unwrap_or(1) + 1;
+                    items[at_index] = json!({"id": id, "value": value, "by": by, "at": at, "ver": ver, "was": was});
                 }
                 _ => {
                     items.remove(at_index);
@@ -424,6 +430,11 @@ fn apply_locked(file: &std::path::Path, op: &Op, act: Option<&str>, by: &str) ->
         // a new write's id counts as a change: the pages that wait for it (a friend's, through the share) see it
         if changed || act.is_some() {
             store["rev"] = json!(rev_of(&store) + 1);
+            // this store's generation: a new file (the page made again, a restore, a broken file) is a new one, and
+            // the pages that knew the old one take this one as it is (its rev may be lower)
+            if store.get("gen").and_then(Value::as_str).is_none_or(str::is_empty) {
+                store["gen"] = json!(new_gen());
+            }
             let text = serde_json::to_string(&store).unwrap_or_default();
             if text.len() > MAX_BYTES {
                 return Err(Refused::new(
@@ -440,14 +451,126 @@ fn apply_locked(file: &std::path::Path, op: &Op, act: Option<&str>, by: &str) ->
     }
     let key = op.key();
     Ok(json!({"rev": rev_of(&store), "key": key, "entry": store["keys"].get(key).cloned().unwrap_or(Value::Null),
-              "acts": store.get("acts").cloned().unwrap_or_else(|| json!([]))}))
+              "acts": store.get("acts").cloned().unwrap_or_else(|| json!([])),
+              "gen": store.get("gen").cloned().unwrap_or_else(|| json!(""))}))
 }
 
-/// A deleted page: its store goes too.
+fn new_gen() -> String {
+    uuid::Uuid::new_v4().simple().to_string()[..12].to_string()
+}
+
+/// Write ids refused for good a store remembers (`refused`: the friend's page drops its copy and says so).
+pub const REFUSED_KEPT: usize = 50;
+
+/// A friend's write refused for good (past a limit, a line gone, not a list…): its id noted in the store, so their
+/// page stops showing it as waiting and says « Pas enregistré » (a write that went through the guichet has no other
+/// way back). Nothing else changes.
+pub fn note_refused(file: &std::path::Path, act: &str, code: &str) {
+    let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut store = read_file(file);
+    let list = store.as_object_mut().expect("an object").entry("refused").or_insert_with(|| json!([]));
+    if let Some(list) = list.as_array_mut() {
+        if list.iter().any(|r| r.get("a").and_then(Value::as_str) == Some(act)) {
+            return;
+        }
+        list.push(json!({"a": act, "code": code}));
+        let extra = list.len().saturating_sub(REFUSED_KEPT);
+        list.drain(..extra);
+    }
+    store["rev"] = json!(rev_of(&store) + 1);
+    if store.get("gen").and_then(Value::as_str).is_none_or(str::is_empty) {
+        store["gen"] = json!(new_gen());
+    }
+    if let Err(e) = write_file(file, &serde_json::to_string(&store).unwrap_or_default()) {
+        tracing::warn!(file = %file.display(), error = %e, "a refused write not noted");
+    }
+}
+
+/// A deleted page: its store goes too, and the copies kept of it (`snapshot`).
 pub fn delete(config: &Config, agent: &str, page: &str) -> bool {
     let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    for (_, kept) in snapshots(config, agent, page) {
+        let _ = std::fs::remove_file(kept);
+    }
     let file = path(config, agent, page);
     file.is_file() && std::fs::remove_file(file).is_ok()
+}
+
+// -- a way back (the review of 15/11) ------------------------------------------------------------------------------
+//
+// The agent never writes a store, but it can make its page again under the same id: the new version's script runs
+// in the next person's page, through their door, under their name, and could rewrite every line. So each time a page
+// is made again, its store as it stood is kept (`<page>.store.v<version>.json`, the version it belonged to, the last
+// `SNAPSHOTS_KEPT`), never served, deleted with the page; the person's app can list them and put one back.
+
+/// Copies kept per page.
+pub const SNAPSHOTS_KEPT: usize = 5;
+
+fn snapshot_path(config: &Config, agent: &str, page: &str, version: i64) -> PathBuf {
+    crate::pages::root(config).join(agent).join(format!("{page}.store.v{version}.json"))
+}
+
+/// A page's kept copies: (the page's version they belonged to, their file), the oldest first.
+pub fn snapshots(config: &Config, agent: &str, page: &str) -> Vec<(i64, PathBuf)> {
+    if !safe_part(agent) || !crate::pages::ID.is_match(page) || page.ends_with('\n') {
+        return Vec::new();
+    }
+    let folder = crate::pages::root(config).join(agent);
+    let prefix = format!("{page}.store.v");
+    let mut found: Vec<(i64, PathBuf)> = std::fs::read_dir(&folder)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            let version = name.strip_prefix(&prefix)?.strip_suffix(".json")?.parse::<i64>().ok()?;
+            Some((version, e.path()))
+        })
+        .collect();
+    found.sort();
+    found
+}
+
+/// The page `page` is being made again (its `version` replaced): its store as it stands, kept. Nothing when it has
+/// no data.
+pub fn snapshot(config: &Config, agent: &str, page: &str, version: i64) {
+    let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let live = path(config, agent, page);
+    let store = read_file(&live);
+    if store.get("keys").and_then(Value::as_object).is_none_or(|k| k.is_empty()) {
+        return;
+    }
+    let kept = snapshot_path(config, agent, page, version);
+    if let Err(e) = write_file(&kept, &serde_json::to_string(&store).unwrap_or_default()) {
+        tracing::warn!(agent = %agent, page = %page, error = %e, "a page's store not kept before its new version");
+        return;
+    }
+    let all = snapshots(config, agent, page);
+    for (_, old) in all.iter().take(all.len().saturating_sub(SNAPSHOTS_KEPT)) {
+        let _ = std::fs::remove_file(old);
+    }
+}
+
+/// A kept copy put back as the page's store (a new generation: every page open on it takes it as it is). The
+/// store it replaces is kept in its turn (as version 0's copy is not: under the page's current version).
+pub fn restore(config: &Config, agent: &str, page: &str, version: i64, current: i64) -> Result<Value, Refused> {
+    let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let kept = snapshot_path(config, agent, page, version);
+    if !kept.is_file() {
+        return Err(Refused::new(404, "no_version", "no such copy"));
+    }
+    let live = path(config, agent, page);
+    let now = read_file(&live);
+    if now.get("keys").and_then(Value::as_object).is_some_and(|k| !k.is_empty()) {
+        let _ =
+            write_file(&snapshot_path(config, agent, page, current), &serde_json::to_string(&now).unwrap_or_default());
+    }
+    let mut store = read_file(&kept);
+    store["rev"] = json!(rev_of(&now).max(rev_of(&store)) + 1);
+    store["gen"] = json!(new_gen());
+    write_file(&live, &serde_json::to_string(&store).unwrap_or_default())
+        .map_err(|_| Refused::new(500, "not_written", "not written"))?;
+    Ok(view(&store, None, true))
 }
 
 // -- the budget -------------------------------------------------------------------------------------------------------
@@ -709,8 +832,53 @@ fn after_write(state: &AppState, config: &Config, agent: &str, page: &str) {
     });
 }
 
+/// The copies kept of a page's store (made again by its agent): `{versions: [{version, rev, keys, lines}]}`, the
+/// newest first. The person's own pages only (a relative's are her owner's to keep).
+async fn get_versions(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
+    let wanted = web::query_required(&q, "path")?;
+    let (agent, page) = page_of_path(&wanted).ok_or_else(refused_404)?;
+    let config = state.config();
+    let agent = own_page(&config, &agent, &page)?;
+    let mut versions: Vec<Value> = snapshots(&config, &agent, &page)
+        .into_iter()
+        .map(|(version, file)| {
+            let store = read_file(&file);
+            let keys = store.get("keys").and_then(Value::as_object).cloned().unwrap_or_default();
+            let lines: usize =
+                keys.values().filter_map(|e| e.get("items").and_then(Value::as_array)).map(Vec::len).sum();
+            json!({"version": version, "rev": rev_of(&store), "keys": keys.len(), "lines": lines})
+        })
+        .collect();
+    versions.reverse();
+    Ok(web::ok(json!({"versions": versions})))
+}
+
+/// `{path, version}`: that copy put back as the page's store; what it replaces is kept in its turn.
+async fn post_restore(State(state): State<AppState>, body: Bytes) -> ApiResult<Response> {
+    let fields = body_object(&body)?;
+    let wanted = fields.get("path").and_then(Value::as_str).unwrap_or_default();
+    let (agent, page) = page_of_path(wanted).ok_or_else(refused_404)?;
+    let version = fields
+        .get("version")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| HttpError::with_code(422, "version: a number", "version"))?;
+    let config = state.config();
+    let agent = own_page(&config, &agent, &page)?;
+    let current = meta(&config, &agent, &page).get("version").and_then(Value::as_i64).unwrap_or(0);
+    let (c, a, p) = (config.clone(), agent.clone(), page.clone());
+    let done = tokio::task::spawn_blocking(move || restore(&c, &a, &p, version, current))
+        .await
+        .map_err(anyhow::Error::from)??;
+    tracing::info!(agent = %agent, page = %page, version = version, "a page's store put back as it was");
+    after_write(&state, &config, &agent, &page);
+    Ok(web::ok(done))
+}
+
 pub fn router() -> Router<AppState> {
-    Router::new().route("/page-store", get(get_store).post(post_store))
+    Router::new()
+        .route("/page-store", get(get_store).post(post_store))
+        .route("/page-store/versions", get(get_versions))
+        .route("/page-store/restore", axum::routing::post(post_restore))
 }
 
 // -- the owner's bridge serving a relative (the household key) -------------------------------------------------------
@@ -789,22 +957,39 @@ pub fn friend_write(
     fields: &Map<String, Value>,
     by: &str,
 ) -> Result<bool, Refused> {
-    if !config.shared_pages.friends_write {
-        return Err(Refused::new(403, "shared_read_only", "friends don't write pages here"));
-    }
     let item = fields.get("page").and_then(Value::as_str).unwrap_or("");
     let page = item.strip_prefix(&format!("p-{agent}-")).unwrap_or("");
     if !sent.contains_key(item) || !crate::pages::ID.is_match(page) || page.ends_with('\n') {
         return Err(Refused::new(404, "no_page", "not a page of this share"));
     }
-    if !group_page(config, agent, page) {
+    let shared = group_page(config, agent, page);
+    let act = fields.get("a").and_then(Value::as_str).unwrap_or("").to_string();
+    // refused for good: their page hears it (the store's `refused`); a write that failed for a while (not written)
+    // is not, it comes again at the next round (friends_cards.rs `take_actions` doesn't take it)
+    let refuse = |r: Refused| -> Refused {
+        if shared && r.status != 500 && ACT_ID.is_match(&act) && page_exists(config, agent, page) {
+            note_refused(&path(config, agent, page), &act, r.code);
+        }
+        r
+    };
+    if !config.shared_pages.friends_write {
+        return Err(refuse(Refused::new(403, "shared_read_only", "friends don't write pages here")));
+    }
+    if !shared {
         return Err(Refused::new(403, "shared_read_only", "not a group's page"));
     }
-    let (op, act) = parse_op(fields, &ACTION_FIELDS)?;
-    spend(agent, page, true)?;
+    let (op, act) = parse_op(fields, &ACTION_FIELDS).map_err(&refuse)?;
+    // not under the page's budget (`spend`, shared with the owner's page): the guichet already takes at most 20 a
+    // minute from each friend, and a round brings everything typed since the last one (review of 15/11: 40 lines
+    // waiting, 11 lost)
     let before = rev_of(&read(config, agent, page));
-    let done = apply(config, agent, page, &op, act.as_deref(), by)?;
+    let done = apply(config, agent, page, &op, act.as_deref(), by).map_err(&refuse)?;
     Ok(done.get("rev").and_then(Value::as_i64) != Some(before))
+}
+
+/// Whether a refused friend's write may come again later (not written for a while), rather than never.
+pub fn retry_later(refused: &Refused) -> bool {
+    refused.status == 500 || refused.status == 429 || refused.status == 503
 }
 
 #[cfg(test)]

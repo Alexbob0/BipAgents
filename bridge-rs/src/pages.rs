@@ -93,9 +93,9 @@ pub fn store_js() -> &'static str {
     crate::assets::text(&crate::assets::STATIC, "pagekit/store.js").unwrap_or("")
 }
 
-/// A page that keeps what is typed in it (`Bip.store`, `Bip["store"]`).
-static USES_STORE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"\bBip\s*(?:\.\s*store\b|\[\s*["'`]store["'`]\s*\])"#).expect("valid regex"));
+/// A page that may keep what is typed in it: any page that uses the kit at all (`Bip.store`, `const {store} = Bip`,
+/// `Bip?.store`, an alias of `window.Bip`: review of 15/11). Its store's kit starts nothing until it is used.
+static USES_STORE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bBip\b").expect("valid regex"));
 
 pub fn uses_store(source: &str) -> bool {
     USES_STORE.is_match(source)
@@ -426,6 +426,11 @@ pub fn save_marked(
         meta.insert("asked_by".into(), json!(name));
     }
     let record = py::dumps(&Value::Object(meta.clone())) + "\n";
+    if version > 1 {
+        // made again: what people typed in it, kept as it stood (its new script runs in their pages under their
+        // names: page_store.rs `snapshot`, a way back)
+        crate::page_store::snapshot(config, agent, &page, version - 1);
+    }
     for (name, text) in [
         (format!("{page}.source"), html.to_string()),
         (format!("{page}.html"), locked),

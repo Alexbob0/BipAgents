@@ -511,6 +511,17 @@ pub fn new_photos(inline: &[Dict], wanted: &HashSet<String>) -> (Vec<(String, Va
     (items, found)
 }
 
+/// The pages sent before that are no longer the conversation's (deleted, made private, their message gone): each
+/// sent again as an empty page marked `gone`, over the sealed copy at the guichet and on the friends' phones (which
+/// drop it), so what was typed in it doesn't stay there (review of 15/11). Sent once (its digest is then known).
+pub fn withdrawn_pages(sent: &Map<String, Value>, items: &[(String, Value)]) -> Vec<(String, Value)> {
+    let current: HashSet<&str> = items.iter().map(|(id, _)| id.as_str()).collect();
+    sent.keys()
+        .filter(|id| id.starts_with("p-") && !current.contains(id.as_str()))
+        .map(|id| (id.clone(), json!({"id": id, "kind": "page", "title": "", "html": "", "map": false, "gone": true})))
+        .collect()
+}
+
 fn digest(item: &Value) -> String {
     hex::encode(&Sha256::digest(item.to_string().as_bytes())[..12])
 }
@@ -721,6 +732,8 @@ pub async fn sync(state: &AppState, id: &str, notify: bool) -> Result<Option<Val
         let mut batches = Vec::new();
         let mut all_items = photo_items;
         all_items.extend(items_of(&config, &share, &messages));
+        let withdrawn = withdrawn_pages(&sent, &all_items);
+        all_items.extend(withdrawn);
         for (item_id, mut item) in all_items {
             let mark = digest(&item);
             if sent.get(&item_id).and_then(Value::as_str) == Some(mark.as_str()) {

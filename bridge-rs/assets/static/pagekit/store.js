@@ -15,13 +15,14 @@
   // (an export, a browser) there is no door: the page works in memory and says so at the first write.
   var store = (function () {
     var DOOR = ANDROID ? "https://bipstore.invalid/" : "bipstore://store/";
-    var POLL = 5000, GIVE_UP = 10 * 60 * 1000, VALUE_MAX = 32 * 1024;
+    var POLL = 5000, WAITING = 30 * 1000, VALUE_MAX = 32 * 1024;
     var KEY = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/;
-    var server = { rev: -1, keys: {}, acts: [] };
+    var server = { rev: -1, keys: {}, acts: [], gen: "", refused: [] };
     var pending = [];
     var listeners = [];
     var mode = "idle", canWrite = true, loaded = false, sending = false, asking = false, again = false, started = false;
     var newest = -1;   // the latest rev a write of this page was answered with
+    var stale = 0;     // reads in a row that came back older than that (once: asked again; twice: a new store)
     var cache = null, note = null, noteTimer = null, retry = null;
     var readyResolve;
     var ready = new Promise(function (resolve) { readyResolve = resolve; });
@@ -34,6 +35,11 @@
       readonly: { fr: "Lecture seule : rien n'est enregistré", en: "Read only: nothing is saved",
         de: "Nur lesen: nichts wird gespeichert", es: "Solo lectura: no se guarda nada", nl: "Alleen lezen: niets wordt bewaard" },
       refused: { fr: "Pas enregistré", en: "Not saved", de: "Nicht gespeichert", es: "No guardado", nl: "Niet bewaard" },
+      unloaded: { fr: "Hors ligne : données pas encore chargées", en: "Offline: the data isn't loaded yet",
+        de: "Offline: Daten noch nicht geladen", es: "Sin conexión: datos aún no cargados", nl: "Offline: gegevens nog niet geladen" },
+      waiting: { fr: "En attente : sera enregistré au prochain passage", en: "Waiting: saved at the next round",
+        de: "Wartet: wird beim nächsten Durchgang gespeichert", es: "En espera: se guardará en la próxima ronda",
+        nl: "Wacht: wordt bij de volgende ronde bewaard" },
     };
     var word = function (key) { var w = WORDS[key]; return w[lang().slice(0, 2).toLowerCase()] || w.en; };
     var copy = function (v) { return v === undefined ? undefined : JSON.parse(JSON.stringify(v)); };
@@ -76,7 +82,7 @@
       if (next === "offline") {
         clearTimeout(noteTimer);
         noteTimer = setTimeout(function () { if (mode === "offline" && unsent()) say("offline"); }, 2000);
-      } else if (next === "saved" && note && note.textContent === word("offline")) {
+      } else if (next === "saved" && note && (note.textContent === word("offline") || note.textContent === word("unloaded"))) {
         say(null);
       }
     }
@@ -127,14 +133,21 @@
       tell(keys, mine);
     }
 
+    // The writes the store now lists (`acts`) or refused for good (`refused`: a friend's, after the owner's bridge
+    // took it) leave the page's own copy. A friend's write on its way stays shown, « en attente », as long as it takes
+    // (the owner's bridge may be asleep: it is still at the guichet, never announced lost).
     function prune() {
-      var acts = server.acts || [];
-      var now = Date.now();
+      var acts = server.acts || [], refused = (server.refused || []).map(function (r) { return r && r.a; });
+      var now = Date.now(), lost = false, waiting = false;
       pending = pending.filter(function (w) {
         if (acts.indexOf(w.a) >= 0) return false;
-        if (w.sent && now - w.at > GIVE_UP) { say("refused"); return false; }   // a friend's, never seen back
+        if (refused.indexOf(w.a) >= 0) { lost = true; if (w.done) w.done(false); return false; }
+        if (w.sent && now - w.at > WAITING) waiting = true;
         return true;
       });
+      if (lost) say("refused");
+      else if (waiting) say("waiting");
+      else if (note && note.textContent === word("waiting")) say(null);
     }
 
     function ask(op) {
@@ -152,6 +165,7 @@
       if (loaded) return;
       loaded = true;
       readyResolve(mode);
+      if (mode === "offline") say("unloaded");   // an empty sheet that is only not loaded yet: said, never silent
       // writes made before the first answer: kept in memory only (no door), or dropped (read only)
       if (mode === "local" && pending.length) say("local");
       if (mode === "local" || !canWrite) pending.forEach(function (w) { if (w.done) w.done(false); });
@@ -176,8 +190,13 @@
         var b = r.body;
         if (r.status === 200 && typeof b.rev === "number") {
           if (b.write === false) canWrite = false;
-          if (b.rev < newest) again = true;   // asked before this page's last write was in: ask again
-          else if (!b.same && b.keys) changed(function () { server = { rev: b.rev, keys: b.keys, acts: b.acts || [] }; prune(); });
+          var reset = server.gen && b.gen && b.gen !== server.gen;   // a new store (the page made again, put back)
+          if (!reset && b.rev < newest && stale < 1) { stale++; again = true; }   // asked before this page's write was in
+          else if (!b.same && b.keys) {
+            stale = 0;
+            if (reset || b.rev < newest) newest = b.rev;   // older for good: the store started again, taken as it is
+            changed(function () { server = { rev: b.rev, keys: b.keys, acts: b.acts || [], gen: b.gen || "", refused: b.refused || [] }; prune(); });
+          } else stale = 0;
           setMode(!canWrite ? "readonly" : unsent() ? "offline" : "saved");
           first();
           pump();
@@ -210,8 +229,8 @@
         if (r.status === 200 && "entry" in b) {
           changed(function () {
             if (b.entry === null) delete server.keys[b.key]; else server.keys[b.key] = b.entry;
-            if (b.rev === server.rev + 1) server.rev = b.rev;
-            else setTimeout(poll);   // others wrote meantime: all of it again (the rev kept, so it all comes)
+            if (b.rev === server.rev + 1 && (!b.gen || !server.gen || b.gen === server.gen)) { server.rev = b.rev; if (b.gen) server.gen = b.gen; }
+            else setTimeout(poll);   // others wrote meantime, or a new store: all of it again (the rev kept, so it all comes)
             newest = Math.max(newest, b.rev);
             if (b.acts) server.acts = b.acts;
             if (pending.indexOf(w) >= 0 && server.acts.indexOf(w.a) < 0) pending.splice(pending.indexOf(w), 1);
@@ -261,6 +280,13 @@
         w.value = JSON.parse(text);
       }
       if (!canWrite) { say("readonly"); return Promise.resolve(false); }
+      // only what the person does is written (a tap, typing): never on its own when the page opens — a page can't
+      // note who opened it when (review of 15/11). The person's first touch on the page opens it for good.
+      var ua = navigator.userActivation;
+      if (ua && !ua.hasBeenActive) {
+        if (window.console) console.warn("Bip.store: not saved, written before the person did anything on the page");
+        return Promise.resolve(false);
+      }
       w.a = newId();
       w.at = Date.now();
       var done = new Promise(function (resolve) { w.done = resolve; });
