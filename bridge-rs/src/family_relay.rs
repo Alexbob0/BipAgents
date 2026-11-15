@@ -13,6 +13,9 @@
 //!   bridge's own routes in-process (only `/family/…`, checked by its key as any other household call) and posts the
 //!   answer back, streamed.
 //!
+//! - A household reached through Kerfy Studio's relay instead (two homes, family_rendezvous.rs) is called at the same
+//!   loopback listener, with the link's own token (`route`): the call is sealed and sent to its mailbox there.
+//!
 //! A request nobody takes within [`PICKUP`] (the home's bridge off, its network down) fails as a household that does
 //! not answer always has (502), so every caller keeps its own handling of an unreachable relative.
 
@@ -156,7 +159,7 @@ fn kept(name: &str) -> bool {
     ) && !name.starts_with("x-bip-relay-")
 }
 
-fn header_pairs(headers: &HeaderMap) -> Vec<(String, String)> {
+pub(crate) fn header_pairs(headers: &HeaderMap) -> Vec<(String, String)> {
     headers
         .iter()
         .filter(|(n, _)| kept(n.as_str()))
@@ -164,7 +167,7 @@ fn header_pairs(headers: &HeaderMap) -> Vec<(String, String)> {
         .collect()
 }
 
-fn put_headers(target: &mut HeaderMap, pairs: &[(String, String)]) {
+pub(crate) fn put_headers(target: &mut HeaderMap, pairs: &[(String, String)]) {
     for (name, value) in pairs {
         if !kept(&name.to_ascii_lowercase()) {
             continue;
@@ -180,10 +183,14 @@ fn token_of(entry: &Dict) -> Option<&str> {
     entry.get("relay").and_then(Value::as_str).filter(|t| t.len() >= 16)
 }
 
-/// Where this bridge calls a linked household: its address, or this bridge's loopback relay for a household that pulls.
+/// Where this bridge calls a linked household: its address, or this bridge's loopback listener for a household that
+/// pulls, or one reached through Kerfy Studio's relay (family_rendezvous.rs).
 pub fn reach_url(entry: &Dict) -> String {
     if let (Some(token), Some(port)) = (token_of(entry), PORT.get()) {
         return format!("http://127.0.0.1:{port}/{token}");
+    }
+    if let (Some(route), Some(port)) = (crate::family_rendezvous::route_of(entry), PORT.get()) {
+        return format!("http://127.0.0.1:{port}/{route}");
     }
     entry.get("url").map(crate::py::py_str).unwrap_or_default()
 }
@@ -250,6 +257,17 @@ async fn relay_in(State(state): State<AppState>, request: Request) -> Response {
     let trimmed = path_and_query.trim_start_matches('/');
     let (token, rest) = trimmed.split_once('/').unwrap_or((trimmed, ""));
     let Some(household) = household_of_token(&state, token) else {
+        // a household reached through Kerfy Studio's relay: sealed and sent to its mailbox there
+        if let Some((household, entry)) = crate::family_rendezvous::household_of_route(&state, token) {
+            let method = request.method().as_str().to_string();
+            let headers = header_pairs(request.headers());
+            let limit = crate::family_rendezvous::REQUEST_BYTES;
+            let Ok(body) = axum::body::to_bytes(request.into_body(), limit).await else {
+                return axum::response::IntoResponse::into_response(HttpError::new(413, "request body too large"));
+            };
+            let path = format!("/{rest}");
+            return crate::family_rendezvous::call(state, household, entry, method, path, headers, body).await;
+        }
         return axum::response::IntoResponse::into_response(HttpError::not_found());
     };
     let Some(wait) = pickup(&household) else {
@@ -400,6 +418,8 @@ pub fn start_pulling(state: &AppState, household: &str) {
 
 async fn poll(state: AppState, household: String) {
     let mut pause = Duration::from_secs(2);
+    // a refusal: their side may not keep our calls yet (a link made through Kerfy's relay, its answer on the way)
+    let mut refused = Duration::from_secs(5);
     loop {
         let Some(entry) = state.households.get(&household).filter(pulls) else { break };
         let url = entry.get("url").map(crate::py::py_str).unwrap_or_default();
@@ -413,6 +433,7 @@ async fn poll(state: AppState, household: String) {
         match answer {
             Ok(resp) if resp.status() == StatusCode::OK => {
                 pause = Duration::from_secs(2);
+                refused = Duration::from_secs(5);
                 if let Ok(job) = resp.json::<Value>().await {
                     tokio::spawn(run(state.clone(), household.clone(), entry, job));
                 }
@@ -420,7 +441,8 @@ async fn poll(state: AppState, household: String) {
             Ok(resp) if resp.status() == StatusCode::NO_CONTENT => pause = Duration::from_secs(2),
             Ok(resp) => {
                 tracing::info!(household = %household, status = resp.status().as_u16(), "family relay: poll refused");
-                tokio::time::sleep(Duration::from_secs(60)).await;
+                tokio::time::sleep(refused).await;
+                refused = (refused * 2).min(Duration::from_secs(60));
             }
             Err(_) => {
                 tokio::time::sleep(pause).await;
@@ -468,21 +490,7 @@ async fn run(state: AppState, household: String, entry: Dict, job: Value) {
         .and_then(Value::as_str)
         .and_then(|b| base64::engine::general_purpose::STANDARD.decode(b).ok())
         .unwrap_or_default();
-    let router = ROUTER.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    let uri = allowed(|key| state.households.caller(key), &household, &path, &pairs);
-    let response = match (router, uri, axum::http::Method::from_bytes(method.as_bytes())) {
-        (Some(router), Some(uri), Ok(method)) => {
-            let mut request = Request::new(Body::from(body));
-            *request.method_mut() = method;
-            *request.uri_mut() = uri;
-            put_headers(request.headers_mut(), &pairs);
-            match tower::ServiceExt::oneshot(router, request).await {
-                Ok(r) => r,
-                Err(never) => match never {},
-            }
-        }
-        _ => axum::response::IntoResponse::into_response(HttpError::not_found()),
-    };
+    let response = run_in_process(&state, &household, method, &path, &pairs, Bytes::from(body)).await;
     let status = response.status().as_u16();
     let headers = serde_json::to_string(&header_pairs(response.headers())).unwrap_or_else(|_| "[]".into());
     let url = entry.get("url").map(crate::py::py_str).unwrap_or_default();
@@ -499,6 +507,55 @@ async fn run(state: AppState, household: String, entry: Dict, job: Value) {
         .await;
     if let Err(e) = sent {
         tracing::info!(error = %e, "family relay: answer not sent");
+    }
+}
+
+/// A linked household's request run through this bridge's own routes, as [`allowed`] lets it: only what a linked
+/// household may call anyway, with that very household's key (here, and for the calls through Kerfy Studio's relay,
+/// family_rendezvous.rs). Anything else: 404.
+pub(crate) async fn run_in_process(
+    state: &AppState,
+    household: &str,
+    method: &str,
+    path: &str,
+    pairs: &[(String, String)],
+    body: Bytes,
+) -> Response {
+    let router = ROUTER.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let uri = allowed(|key| state.households.caller(key), household, path, pairs);
+    match (router, uri, axum::http::Method::from_bytes(method.as_bytes())) {
+        (Some(router), Some(uri), Ok(method)) => {
+            let mut request = Request::new(Body::from(body));
+            *request.method_mut() = method;
+            *request.uri_mut() = uri;
+            put_headers(request.headers_mut(), pairs);
+            match tower::ServiceExt::oneshot(router, request).await {
+                Ok(r) => r,
+                Err(never) => match never {},
+            }
+        }
+        _ => axum::response::IntoResponse::into_response(HttpError::not_found()),
+    }
+}
+
+/// An invitation's `POST /family/accept` that came through Kerfy Studio's relay (family_rendezvous.rs), run through
+/// our own routes with the mark only an in-process request can carry.
+pub(crate) async fn run_accept(
+    pairs: &[(String, String)],
+    body: Bytes,
+    through: crate::family_rendezvous::ThroughRelay,
+) -> Response {
+    let Some(router) = ROUTER.lock().unwrap_or_else(|e| e.into_inner()).clone() else {
+        return axum::response::IntoResponse::into_response(HttpError::not_found());
+    };
+    let mut request = Request::new(Body::from(body));
+    *request.method_mut() = axum::http::Method::POST;
+    *request.uri_mut() = axum::http::Uri::from_static("/family/accept");
+    put_headers(request.headers_mut(), pairs);
+    request.extensions_mut().insert(through);
+    match tower::ServiceExt::oneshot(router, request).await {
+        Ok(r) => r,
+        Err(never) => match never {},
     }
 }
 

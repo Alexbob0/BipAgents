@@ -314,6 +314,8 @@ impl AppState {
         // a household that can't be reached (a home) and one that can (a place): the calls kept for it, fetched by it
         self.spawn(crate::family_relay::serve_loopback(self.clone()));
         self.spawn(crate::family_relay::pull_forever(self.clone()));
+        // two households that can't reach each other: their calls through Kerfy Studio's relay (family_rendezvous.rs)
+        self.spawn(crate::family_rendezvous::poll_forever(self.clone()));
         self.spawn(crate::notebook::tidy::scheduler(self.clone()));
         self.spawn(crate::dates::run_forever(self.clone()));
         self.spawn(crate::read_shares::run_forever(self.clone())); // shared conversations' encrypted copies

@@ -909,6 +909,9 @@ fn family_tools_changed(state: &AppState) {
 }
 
 async fn family_accept(State(state): State<AppState>, request: Request) -> ApiResult<Response> {
+    // an invitation's exchange that came through Kerfy Studio's relay (family_rendezvous.rs): a mark only a request
+    // run in-process carries
+    let through = request.extensions().get::<crate::family_rendezvous::ThroughRelay>().cloned();
     // a household already linked that links again says so with its current key (it then keeps its place)
     let current = Some(bearer(request.headers())).filter(|t| !t.is_empty());
     let body = request_json(request).await?;
@@ -917,17 +920,67 @@ async fn family_accept(State(state): State<AppState>, request: Request) -> ApiRe
     // the certificate their address serves when it is a door (sent over ours, checked, with our one-time code)
     let fingerprint = body_str(&body, "fingerprint")?;
     let fingerprint = Some(fingerprint.as_str()).filter(|f| !f.is_empty());
+    // the link's own key (family_seal.rs): their half and ours, with the invitation's code
+    let their_half = body_str(&body, "dh")?;
+    let mut link = None;
+    if !their_half.is_empty() {
+        if let Ok(handshake) = crate::family_seal::Handshake::new() {
+            let ours = handshake.public();
+            link = handshake.link_key(&their_half, &code, true).map(|key| (key, ours));
+        }
+    }
+    if through.is_some() && link.is_none() {
+        return Err(HttpError::new(400, "a link through the relay needs the link's key"));
+    }
     match state.households.accept(&code, &name, &url, &key, fingerprint, current.as_deref()) {
         Ok(mut answer) => {
-            // their address can't be reached from here (a home): their bridge will fetch our calls (family_relay.rs)
-            if body.get("pull").and_then(Value::as_bool) == Some(true) {
-                let household = crate::households::slug(&name);
+            let household = crate::households::slug(&name);
+            let config = state.config();
+            if let Some((sealed, ours)) = &link {
+                state.households.mark(&household, "seal", json!(crate::family_seal::encode_key(sealed)))?;
+                state.households.mark(&household, "role", json!("inviter"))?;
+                let their_box = body_str(&body, "mailbox")?;
+                if crate::family_rendezvous::valid_mailbox(&their_box) {
+                    state.households.mark(&household, "mailbox", json!(their_box))?;
+                }
+                answer.insert("dh".into(), json!(ours));
+                if let Some(own) = crate::family_rendezvous::own_mailbox(&config) {
+                    answer.insert("mailbox".into(), json!(own));
+                }
+            }
+            if through.is_some() {
+                // they reached us through Kerfy Studio's relay: who reaches whom from now on
+                let ours_private = own_url(&config).is_some_and(|u| crate::households::private_address(&u));
+                if ours_private && !crate::households::private_address(&url) {
+                    // a place scanned our invitation (we are at home): we fetch its calls for us from it, as when we
+                    // scan its invitation (family_relay.rs), and the relay is not needed any more
+                    state.households.mark(&household, "pull", json!(true))?;
+                    let (later, id) = (state.clone(), household.clone());
+                    state.spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await; // once it keeps them
+                        crate::family_relay::start_pulling(&later, &id);
+                    });
+                    answer.insert("reach_you".into(), json!("pull"));
+                } else {
+                    // they call us through the relay (we keep a long poll on our mailbox); we call them so too when
+                    // their address can't be reached either
+                    state.households.mark(&household, "relay_in", json!(true))?;
+                    if crate::households::private_address(&url) {
+                        state.households.mark(&household, "via", json!("relay"))?;
+                        state.households.mark(&household, "route", json!(crate::family_relay::new_token()))?;
+                        answer.insert("reach_you".into(), json!("relay"));
+                    } else {
+                        answer.insert("reach_you".into(), json!("direct"));
+                    }
+                }
+            } else if body.get("pull").and_then(Value::as_bool) == Some(true) {
+                // their address can't be reached from here (a home): their bridge will fetch our calls (family_relay.rs)
                 if state.households.mark(&household, "relay", json!(crate::family_relay::new_token()))? {
                     answer.insert("relay".into(), json!(true));
                 }
             }
             family_tools_changed(&state);
-            if let Some(own) = crate::door_tls::door_fingerprint(&state.config()) {
+            if let Some(own) = crate::door_tls::door_fingerprint(&config) {
                 answer.insert("fingerprint".into(), json!(own));
             }
             Ok(web::ok(Value::Object(answer)))
@@ -1155,6 +1208,20 @@ async fn invite(State(state): State<AppState>, request: Request) -> ApiResult<Re
     if let Some(fingerprint) = fingerprint {
         invitation["fingerprint"] = json!(fingerprint);
     }
+    // our mailbox at Kerfy Studio's relay (family_rendezvous.rs): a household that can't reach our address (another
+    // home, a place scanning ours) links through it all the same
+    if crate::family_rendezvous::base(&config).is_some() {
+        match crate::family_rendezvous::mailbox(&state).await {
+            Ok((mailbox, _)) => {
+                let until = crate::py::time_time() + seconds.unwrap_or(crate::households::INVITE_SECONDS);
+                match crate::family_rendezvous::remember_invite(&config, &code, until) {
+                    Ok(()) => invitation["relay"] = json!(mailbox),
+                    Err(e) => tracing::warn!(error = %e, "family invitation: its relay key not kept"),
+                }
+            }
+            Err(e) => tracing::info!(error = %e, "family invitation without the relay (it can't be reached)"),
+        }
+    }
     Ok(web::ok(invitation))
 }
 
@@ -1169,7 +1236,9 @@ fn family_address(config: &Config, public: String) -> (String, Option<String>) {
     (public, crate::door_tls::door_fingerprint(config))
 }
 
-/// The other household's invitation, scanned in the app: this bridge introduces itself to theirs.
+/// The other household's invitation, scanned in the app: this bridge introduces itself to theirs, at their address,
+/// or through Kerfy Studio's relay when nothing answers there (family_rendezvous.rs: two homes, a place scanning a
+/// home's invitation).
 async fn join(State(state): State<AppState>, request: Request) -> ApiResult<Response> {
     let body = request_json(request).await?;
     let url = body_str(&body, "url")?.trim_end_matches('/').to_string();
@@ -1191,19 +1260,24 @@ async fn join(State(state): State<AppState>, request: Request) -> ApiResult<Resp
         // a door's address without its certificate: an older app, or an invitation from an older bridge
         return Err(HttpError::new(409, "this invitation is too old: ask for a new one (and update the app)"));
     }
+    // the inviter's mailbox at Kerfy Studio's relay, when its invitation carries one
+    let relay_box =
+        Some(body_str(&body, "relay")?.trim().to_string()).filter(|m| crate::family_rendezvous::valid_mailbox(m));
+    let handshake = crate::family_seal::Handshake::new().ok();
     let key = crate::py::token_urlsafe(32);
     let (mine, own) = family_address(&config, mine);
     let mut payload = json!({"code": code, "name": state.households.name(), "url": mine, "key": key});
     if let Some(own) = own {
         payload["fingerprint"] = json!(own);
     }
+    // our half of the link's own key (family_seal.rs)
+    if let Some(handshake) = &handshake {
+        payload["dh"] = json!(handshake.public());
+    }
     // our address can't be reached from the internet (a home): theirs keeps its calls for us (family_relay.rs)
     let pull = crate::households::private_address(&mine);
-    if pull {
-        payload["pull"] = json!(true);
-    }
-    // theirs can't be reached from here: a home's invitation scanned on a place of the offer (the apps say who
-    // should scan whose invitation instead)
+    // theirs can't be reached from here: a home's invitation scanned on a place of the offer, from an older bridge
+    // (no relay in it: the apps say who should scan whose invitation)
     let out_of_reach = || {
         HttpError::json(
             502,
@@ -1211,13 +1285,14 @@ async fn join(State(state): State<AppState>, request: Request) -> ApiResult<Resp
                    "message": "their side does not answer right now: try again later"}),
         )
     };
-    if config.cloud && crate::households::private_address(&url) {
-        return Err(out_of_reach()); // a place of the offer never reaches a home network or a tailnet
-    }
-    let mut call = crate::door_tls::client_for(&state.http, fingerprint.as_deref())
-        .post(format!("{url}/family/accept"))
-        .timeout(std::time::Duration::from_secs(15))
-        .json(&payload);
+    let relay_down = || {
+        HttpError::json(
+            502,
+            json!({"code": "relay_unreachable",
+                   "message": "Kerfy Studio's relay can't be reached right now: try again in a moment"}),
+        )
+    };
+    let by_relay = relay_box.is_some() && handshake.is_some() && crate::family_rendezvous::base(&config).is_some();
     // already linked to the household at this address: our current key lets theirs know we are linking again
     let current = state
         .households
@@ -1226,31 +1301,69 @@ async fn join(State(state): State<AppState>, request: Request) -> ApiResult<Resp
         .find(|h| h.get("url").and_then(Value::as_str) == Some(url.as_str()))
         .and_then(|h| state.households.get(&crate::py::py_str(&h["id"])))
         .and_then(|e| e.get("key_out").and_then(Value::as_str).map(str::to_string));
-    if let Some(current) = current {
-        call = call.bearer_auth(current);
+    // their address first, as always (a place never reaches a home network or a tailnet)
+    let mut answered: Option<(u16, Bytes)> = None;
+    if !(config.cloud && crate::households::private_address(&url)) {
+        let mut direct = payload.clone();
+        if pull {
+            direct["pull"] = json!(true);
+        }
+        if let Some(own_box) = crate::family_rendezvous::own_mailbox(&config) {
+            direct["mailbox"] = json!(own_box);
+        }
+        // a home's address that may well not answer from here: not long, when the relay is there instead
+        let wait = if by_relay && crate::households::private_address(&url) { 5 } else { 15 };
+        let mut call = crate::door_tls::client_for(&state.http, fingerprint.as_deref())
+            .post(format!("{url}/family/accept"))
+            .timeout(std::time::Duration::from_secs(wait))
+            .json(&direct);
+        if let Some(current) = &current {
+            call = call.bearer_auth(current);
+        }
+        match call.send().await {
+            Ok(resp) => {
+                let status = resp.status().as_u16();
+                answered = Some((status, resp.bytes().await.map_err(|_| out_of_reach())?));
+            }
+            Err(_) if by_relay => tracing::info!("family link: their address does not answer, through the relay"),
+            Err(_) => return Err(out_of_reach()),
+        }
+    } else if !by_relay {
+        return Err(out_of_reach());
     }
-    let resp = call.send().await.map_err(|_| out_of_reach())?;
-    if resp.status().as_u16() == 409 {
+    let through = answered.is_none();
+    let (status, bytes) = match answered {
+        Some(direct) => direct,
+        None => {
+            // through Kerfy Studio's relay: our own mailbox first (they may call us back through it)
+            let (own_box, _) = crate::family_rendezvous::mailbox(&state).await.map_err(|_| relay_down())?;
+            payload["mailbox"] = json!(own_box);
+            let inviter = relay_box.as_deref().unwrap_or_default();
+            crate::family_rendezvous::accept(&state, inviter, &code, &payload, current.as_deref()).await.map_err(
+                |failure| match failure {
+                    crate::family_rendezvous::CallFailure::RelayDown => relay_down(),
+                    // their bridge is off, or no longer has this invitation (an older one, or used)
+                    _ => HttpError::json(
+                        502,
+                        json!({"code": "their_side_unreachable", "private": false,
+                               "message": "their side does not answer right now: try again later"}),
+                    ),
+                },
+            )?
+        }
+    };
+    if status == 409 {
         return Err(HttpError::new(409, "their bridge is already linked to a household with this name"));
     }
-    if resp.status().as_u16() != 200 {
+    if status != 200 {
         return Err(HttpError::new(403, "the invitation was refused (expired?)"));
     }
-    let bytes = resp.bytes().await.map_err(|_| out_of_reach())?;
     let answer: Value =
         serde_json::from_slice(&bytes).map_err(|e| HttpError::from(anyhow::anyhow!("JSONDecodeError: {e}")))?;
     let name = body_str(&answer, "name")?;
     let key_in = body_str(&answer, "key")?;
     let household = match state.households.joined(&name, &url, &key, &key_in, fingerprint.as_deref()) {
-        Ok(h) => {
-            // they keep their calls for us: we fetch them (an older bridge doesn't answer `relay`)
-            if pull && answer.get("relay").and_then(Value::as_bool) == Some(true) {
-                state.households.mark(&h, "pull", json!(true))?;
-                crate::family_relay::start_pulling(&state, &h);
-            }
-            family_tools_changed(&state);
-            h
-        }
+        Ok(h) => h,
         Err(exc) => {
             return match exc.downcast_ref::<HouseholdError>() {
                 Some(e) => Err(HttpError::new(409, e.0.clone())),
@@ -1258,6 +1371,43 @@ async fn join(State(state): State<AppState>, request: Request) -> ApiResult<Resp
             }
         }
     };
+    // the link's own key, both halves crossed (an older bridge sends none)
+    if let (Some(handshake), Some(theirs)) = (handshake, answer.get("dh").and_then(Value::as_str)) {
+        if let Some(sealed) = handshake.link_key(theirs, &code, false) {
+            state.households.mark(&household, "seal", json!(crate::family_seal::encode_key(&sealed)))?;
+            state.households.mark(&household, "role", json!("joiner"))?;
+            let their_box = answer
+                .get("mailbox")
+                .and_then(Value::as_str)
+                .filter(|m| crate::family_rendezvous::valid_mailbox(m))
+                .map(str::to_string)
+                .or(relay_box);
+            if let Some(their_box) = their_box {
+                state.households.mark(&household, "mailbox", json!(their_box))?;
+            }
+        }
+    }
+    if through {
+        match answer.get("reach_you").and_then(Value::as_str) {
+            // they are at home, we are a place: they fetch our calls for them from us (family_relay.rs)
+            Some("pull") => {
+                state.households.mark(&household, "relay", json!(crate::family_relay::new_token()))?;
+            }
+            // we call them through the relay; they call us so too (`relay`), or at our address (`direct`)
+            reach => {
+                state.households.mark(&household, "via", json!("relay"))?;
+                state.households.mark(&household, "route", json!(crate::family_relay::new_token()))?;
+                if reach == Some("relay") {
+                    state.households.mark(&household, "relay_in", json!(true))?;
+                }
+            }
+        }
+    } else if pull && answer.get("relay").and_then(Value::as_bool) == Some(true) {
+        // they keep their calls for us: we fetch them (an older bridge doesn't answer `relay`)
+        state.households.mark(&household, "pull", json!(true))?;
+        crate::family_relay::start_pulling(&state, &household);
+    }
+    family_tools_changed(&state);
     Ok(web::ok(json!({"id": household, "name": answer.get("name").cloned().unwrap_or(Value::Null)})))
 }
 
