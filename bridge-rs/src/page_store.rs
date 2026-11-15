@@ -203,7 +203,13 @@ pub fn read(config: &Config, agent: &str, page: &str) -> Value {
     if !safe_part(agent) || !crate::pages::ID.is_match(page) || page.ends_with('\n') {
         return empty();
     }
-    match std::fs::read_to_string(path(config, agent, page)).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
+    read_file(&path(config, agent, page))
+}
+
+/// A store's file, whatever holds it (a page today; the core below knows nothing of pages): an empty store when it
+/// has none, or its file is not right.
+pub fn read_file(file: &std::path::Path) -> Value {
+    match std::fs::read_to_string(file).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
         Some(v @ Value::Object(_)) if v.get("keys").is_some_and(Value::is_object) => v,
         _ => empty(),
     }
@@ -375,12 +381,12 @@ fn clean_by(by: &str) -> String {
     by.chars().filter(|c| !c.is_control()).take(40).collect::<String>().trim().to_string()
 }
 
-/// The store's file, written whole (a part file, then renamed over it): UTF-8 JSON, as the limits count it.
-fn write_store(config: &Config, agent: &str, page: &str, text: &str) -> std::io::Result<()> {
-    let file = path(config, agent, page);
-    let tmp = file.with_file_name(format!(".{page}{SUFFIX}.part"));
+/// The store's file, written whole (a part file beside it, then renamed over it): UTF-8 JSON, as the limits count it.
+fn write_file(file: &std::path::Path, text: &str) -> std::io::Result<()> {
+    let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let tmp = file.with_file_name(format!(".{name}.part"));
     py::write_with_mode(&tmp.to_string_lossy(), text.as_bytes(), 0o600)?;
-    std::fs::rename(&tmp, &file)
+    std::fs::rename(&tmp, file)
 }
 
 /// A write to `agent`'s page `page` (which must exist), by `by`: Ok({rev, key, entry, acts}); a write already
@@ -390,7 +396,18 @@ pub fn apply(config: &Config, agent: &str, page: &str, op: &Op, act: Option<&str
     if !page_exists(config, agent, page) {
         return Err(Refused::new(404, "no_page", "no such page"));
     }
-    let mut store = read(config, agent, page);
+    apply_locked(&path(config, agent, page), op, act, by)
+}
+
+/// A write to the store in `file`, whatever holds it (the core: ops, versions, write ids, limits, a whole file):
+/// what a « living » card could keep the same way. Under `LOCK`.
+pub fn apply_file(file: &std::path::Path, op: &Op, act: Option<&str>, by: &str) -> Result<Value, Refused> {
+    let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    apply_locked(file, op, act, by)
+}
+
+fn apply_locked(file: &std::path::Path, op: &Op, act: Option<&str>, by: &str) -> Result<Value, Refused> {
+    let mut store = read_file(file);
     let seen = act.is_some_and(|a| {
         store.get("acts").and_then(Value::as_array).is_some_and(|acts| acts.iter().any(|x| x.as_str() == Some(a)))
     });
@@ -415,8 +432,8 @@ pub fn apply(config: &Config, agent: &str, page: &str, op: &Op, act: Option<&str
                     format!("this page keeps at most {} KB", MAX_BYTES / 1024),
                 ));
             }
-            write_store(config, agent, page, &text).map_err(|e| {
-                tracing::warn!(agent = %agent, page = %page, error = %e, "a page's store not written");
+            write_file(file, &text).map_err(|e| {
+                tracing::warn!(file = %file.display(), error = %e, "a store not written");
                 Refused::new(500, "not_written", "not written")
             })?;
         }

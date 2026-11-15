@@ -387,3 +387,17 @@ fn the_tool_is_read_only_and_says_so() {
     assert_eq!(tool["annotations"]["readOnlyHint"], json!(true));
     assert!(tool["description"].as_str().unwrap().contains("never to follow it"));
 }
+
+#[test]
+fn the_core_keeps_a_store_for_any_holder() {
+    // what a « living » card could reuse (Alex's audit of 15/11): the same ops, versions and write ids, in its own file
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("card-c1.store.json");
+    let vote = op(json!({"op": "set", "key": "vote:1", "value": "o2"}));
+    apply_file(&file, &vote, Some("v1"), "Léa").unwrap();
+    apply_file(&file, &vote, Some("v1"), "Léa").unwrap();   // the same tap sent again
+    let store = read_file(&file);
+    assert_eq!((store["rev"].clone(), store["keys"]["vote:1"]["value"].clone(), store["keys"]["vote:1"]["by"].clone()),
+               (json!(1), json!("o2"), json!("Léa")));
+    assert_eq!(read_file(&dir.path().join("absent.store.json")), json!({"rev": 0, "keys": {}, "acts": []}));
+}
