@@ -657,12 +657,22 @@ pub fn with_block(config: &Config, agent: &str, soul: &str) -> String {
     format!("{}\n\n{RULE_START}\n{rule}\n{RULE_END}\n", body.trim_end())
 }
 
-/// The personalities rendered again after a level changed (the block in or out).
-fn render_souls(config: &Config, agents: &[String]) {
+/// The personalities rendered again after a level changed or a « Toujours » was given or taken back (the block in or
+/// out): the person's change, so an agent's ongoing conversations take the new rule from their next turn
+/// (agents_admin::refresh_prompts, second review 15/11), not only its new ones.
+fn render_souls(config: &std::sync::Arc<Config>, agents: &[String]) {
     for name in agents {
         if let Some(agent) = config.agent(Some(name)) {
-            if let Err(err) = crate::agents_admin::render_soul(config, agent) {
-                tracing::warn!(target: "bipbridge::approval_level", agent = %name, error = %format!("{err:#}"), "personality not rendered");
+            match crate::agents_admin::render_soul(config, agent) {
+                Ok(true) => crate::agents_admin::refresh_prompts_soon(
+                    config.clone(),
+                    agent.clone(),
+                    crate::agents_admin::default_run(),
+                ),
+                Ok(false) => {}
+                Err(err) => {
+                    tracing::warn!(target: "bipbridge::approval_level", agent = %name, error = %format!("{err:#}"), "personality not rendered")
+                }
             }
         }
     }
@@ -1150,7 +1160,7 @@ async fn delete_always(
 
 /// After a « Toujours » given or taken back: the agent's personality says so (`always_rule`).
 pub async fn granted_now(config: &Config, agent: &str) {
-    let (c, a) = (config.clone(), agent.to_string());
+    let (c, a) = (std::sync::Arc::new(config.clone()), agent.to_string());
     let _ = tokio::task::spawn_blocking(move || render_souls(&c, &[a])).await;
 }
 

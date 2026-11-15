@@ -2314,12 +2314,22 @@ pub async fn refresh_prompts(config: &Config, agent: &AgentConfig, run: &Run) {
     }
     let env = env_of(&[("HERMES_HOME", &home_root(config, agent))]);
     let args = strings(&[&config.hermes.bin, "-p", &agent.name, "sessions", "refresh-prompts", "--json"]);
-    match run(args, env).await {
-        Ok(_) => tracing::info!(target: "bipbridge::agents", agent = %agent.name, "conversations take its new personality"),
-        Err(exc) => tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %tail(&exc.to_string(), 200),
-            "its conversations keep their personality until a new one"),
+    // once more a few seconds later when it fails: the same text saved again changes nothing, so asks nothing again
+    for attempt in 0..2 {
+        match run(args.clone(), env.clone()).await {
+            Ok(_) => {
+                tracing::info!(target: "bipbridge::agents", agent = %agent.name, "conversations take its new personality");
+                return;
+            }
+            Err(_) if attempt == 0 => tokio::time::sleep(REFRESH_RETRY).await,
+            Err(exc) => tracing::warn!(target: "bipbridge::agents", agent = %agent.name,
+                error = %tail(&exc.to_string(), 200), "its conversations keep their personality until a new one"),
+        }
     }
 }
+
+/// [`refresh_prompts`]' second try after a failure.
+const REFRESH_RETRY: Duration = Duration::from_secs(5);
 
 /// [`refresh_prompts`] once the answer is sent (review 15/11): never under [`LOCK`], nor making the app wait for
 /// Hermes' command line.

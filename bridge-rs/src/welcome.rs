@@ -125,15 +125,26 @@ static MARKDOWN_LINK: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"!?\[([^\]\n]*)\]\([^)\n]*\)").expect("valid regex"));
 /// A note of the bridge's (`<!--bip:… -->`, a vault chip…): gone.
 static NOTE: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"(?s)<!--.*?-->").expect("valid regex"));
+/// An address either app could link (second review 15/11): with a scheme (`https://…`, any `x://`), from `www.`, or a
+/// bare domain name with or without its path, any case (the iPhone's link detector takes « Exemple.fr/connexion » too).
+static ADDRESS: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r"(?i)(?:\b[a-z][a-z0-9+.\-]*://|\bwww\.)[^\s\[\]<>()]*|\b[a-z0-9][a-z0-9\-]*(?:\.[a-z0-9\-]+)*\.[a-z]{2,24}\b(?:[/?#:][^\s\[\]<>()]*)?",
+    )
+    .expect("valid regex")
+});
 
 /// The person's words for what an agent is for, as its first words quote them: on one line, without a closing dot,
-/// words only (review 15/11): the apps draw the first bubble like a reply (Markdown, the bridge's notes), and a role Bip
-/// wrote may hold what it read, so no live link or image and no note.
+/// inert (reviews of 15/11): the apps draw the first bubble like a reply (Markdown, bare addresses, the bridge's notes),
+/// and a role Bip wrote may hold what it read. So a simple link keeps its words, a note goes, any address goes, and
+/// what could still make a link of what is left (brackets, angle brackets, a backslash's escape) goes too.
 fn role_said(role: &str) -> String {
     let words = MARKDOWN_LINK.replace_all(role, "$1");
     let words = NOTE.replace_all(&words, " ");
-    let one_line = crate::tools_knowledge::in_note_line(&words);
-    one_line.trim_end_matches(['.', ' ']).to_string()
+    let words = ADDRESS.replace_all(&words, "");
+    let words: String = words.chars().filter(|c| !matches!(c, '[' | ']' | '<' | '>' | '\\')).collect();
+    let one_line = crate::tools_knowledge::in_note_line(&words.replace("()", " "));
+    one_line.trim_end_matches(['.', ' ', ':']).to_string()
 }
 
 fn frame(lang: &str) -> Frame {
