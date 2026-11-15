@@ -16,7 +16,7 @@ name: Server images
 
 on:
   push:
-    branches: [main, pre-test, stable]   # pre-test: each publication (stable: already built, skipped)
+    branches: [main, pre-test]   # pre-test: each publication (stable only ever takes a pre-tested commit)
     paths: ["browser/**", "sandbox/**", ".github/workflows/server-images.yml"]
   schedule:
     - cron: "0 21 * * *"

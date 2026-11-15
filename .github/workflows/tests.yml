@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: [main, pre-test, stable]
+    branches: [main, pre-test]   # stable only ever takes a pre-tested commit
   pull_request:
   workflow_dispatch:   # the private repository's app jobs: by hand only (its Actions minutes are counted)
 
