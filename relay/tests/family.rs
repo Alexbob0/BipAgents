@@ -305,3 +305,30 @@ async fn the_family_relay_can_be_turned_off() {
     let health: Value = relay.http.get(format!("{}/health", relay.url)).send().await.unwrap().json().await.unwrap();
     assert_eq!(health["family"]["enabled"], false);
 }
+
+#[tokio::test]
+async fn the_bytes_waiting_at_the_relay_are_capped() {
+    let family = FamilyConfig { queued_bytes: 1024, ..quick() };
+    let relay = Arc::new(harness(family).await);
+    let (alex, lea) = (relay.mailbox().await, relay.mailbox().await);
+    // Léa's bridge polled a moment ago but does not take the calls now: they would wait in memory
+    assert_eq!(relay.next(&lea).await.0, 204);
+    let waiting = tokio::spawn(relay.call(&alex, &lea.id, vec![1u8; 800]).send());
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let refused = relay.call(&alex, &lea.id, vec![2u8; 800]).send().await.unwrap();
+    assert_eq!(refused.status(), 503);
+    assert_eq!(refused.json::<Value>().await.unwrap()["code"], "busy");
+    assert_eq!(waiting.await.unwrap().unwrap().status(), 503, "not taken: away");
+    // gone from the queue, its bytes too: room again
+    let poller = {
+        let relay = relay.clone();
+        let lea = Mailbox { id: lea.id.clone(), token: lea.token.clone() };
+        tokio::spawn(async move { relay.next(&lea).await })
+    };
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let call = tokio::spawn(relay.call(&alex, &lea.id, vec![3u8; 800]).send());
+    let (status, id, ..) = poller.await.unwrap();
+    assert_eq!(status, 200);
+    assert_eq!(relay.answer(&lea, &id, b"ok".to_vec()).await, 204);
+    assert_eq!(call.await.unwrap().unwrap().bytes().await.unwrap().as_ref(), b"ok");
+}

@@ -1215,7 +1215,10 @@ async fn invite(State(state): State<AppState>, request: Request) -> ApiResult<Re
             Ok((mailbox, _)) => {
                 let until = crate::py::time_time() + seconds.unwrap_or(crate::households::INVITE_SECONDS);
                 match crate::family_rendezvous::remember_invite(&config, &code, until) {
-                    Ok(()) => invitation["relay"] = json!(mailbox),
+                    Ok(()) => {
+                        invitation["relay"] = json!(mailbox);
+                        crate::family_rendezvous::wake(); // our poll now, for its answer
+                    }
                     Err(e) => tracing::warn!(error = %e, "family invitation: its relay key not kept"),
                 }
             }
@@ -1399,6 +1402,7 @@ async fn join(State(state): State<AppState>, request: Request) -> ApiResult<Resp
                 state.households.mark(&household, "route", json!(crate::family_relay::new_token()))?;
                 if reach == Some("relay") {
                     state.households.mark(&household, "relay_in", json!(true))?;
+                    crate::family_rendezvous::wake(); // they call us through it from now on
                 }
             }
         }

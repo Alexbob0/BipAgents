@@ -70,6 +70,8 @@ pub struct FamilyConfig {
     pub mailboxes_per_ip_hour: u32,
     /// Calls waiting for one mailbox.
     pub queue: usize,
+    /// Bytes of all the calls waiting to be taken, every mailbox together (a call is taken within seconds).
+    pub queued_bytes: usize,
     /// Long polls open at once on one mailbox (a bridge restarted leaves one behind for a moment).
     pub polls_per_mailbox: usize,
     /// How long a call waits for its mailbox's bridge to take it.
@@ -92,6 +94,7 @@ impl Default for FamilyConfig {
             kib_per_hour: 2048 * 1024,
             mailboxes_per_ip_hour: 20,
             queue: 64,
+            queued_bytes: 256 << 20,
             polls_per_mailbox: 4,
             pickup: Duration::from_secs(15),
             answer_start: Duration::from_secs(660),
@@ -115,6 +118,7 @@ struct Claims {
 /// A call waiting for its mailbox's poll.
 struct Call {
     id: String,
+    size: usize,
     from: String,
     kind: &'static str,
     body: Bytes,
@@ -139,6 +143,8 @@ pub struct Rendezvous {
     waiting: Mutex<HashMap<String, (String, oneshot::Sender<Body>)>>,
     /// Each mailbox's polls: how many are open, and when one last began or ended.
     seen: Mutex<HashMap<String, (usize, Instant)>>,
+    /// Bytes of the calls waiting in the queues.
+    queued: std::sync::atomic::AtomicUsize,
     calls_out: Quota,
     calls_in: Quota,
     kib: Quota,
@@ -177,6 +183,7 @@ impl Rendezvous {
             bells: Mutex::default(),
             waiting: Mutex::default(),
             seen: Mutex::default(),
+            queued: std::sync::atomic::AtomicUsize::new(0),
             counts: Counts::default(),
             last_report: Mutex::new(Instant::now()),
         }
@@ -222,7 +229,9 @@ impl Rendezvous {
             for id in &gone {
                 seen.remove(id);
                 bells.remove(id);
-                queues.remove(id);
+                if let Some(left) = queues.remove(id) {
+                    self.queued.fetch_sub(left.iter().map(|c| c.size).sum(), Ordering::Relaxed);
+                }
             }
             bells.retain(|id, _| seen.contains_key(id) || queues.contains_key(id));
             queues.retain(|_, q| !q.is_empty());
@@ -279,7 +288,11 @@ struct Kept<'a> {
 impl Drop for Kept<'_> {
     fn drop(&mut self) {
         if let Some(queue) = lock(&self.rendezvous.queues).get_mut(&self.mailbox) {
-            queue.retain(|c| c.id != self.id);
+            if let Some(at) = queue.iter().position(|c| c.id == self.id) {
+                if let Some(call) = queue.remove(at) {
+                    self.rendezvous.queued.fetch_sub(call.size, Ordering::Relaxed);
+                }
+            }
         }
         lock(&self.rendezvous.waiting).remove(&self.id);
     }
@@ -394,6 +407,7 @@ async fn next(State(relay): State<Arc<Relay>>, headers: HeaderMap) -> Response {
     loop {
         let found = lock(&family.queues).get_mut(&mailbox).and_then(VecDeque::pop_front);
         if let Some(call) = found {
+            family.queued.fetch_sub(call.size, Ordering::Relaxed);
             if call.picked.send(()).is_err() {
                 continue; // its caller gave up meanwhile
             }
@@ -460,6 +474,10 @@ async fn call(
     let Ok(body) = axum::body::to_bytes(request.into_body(), family.config.request_bytes).await else {
         return refused(StatusCode::PAYLOAD_TOO_LARGE, "too_large", "request too large");
     };
+    if family.queued.load(Ordering::Relaxed) + body.len() > family.config.queued_bytes {
+        tracing::warn!("family relay: too many bytes waiting, call refused");
+        return refused(StatusCode::SERVICE_UNAVAILABLE, "busy", "the relay is busy: try again in a moment");
+    }
     if !family.kib.allow_n(from.as_bytes(), kib(body.len())) {
         tracing::info!(from = %fingerprint(&from), "family relay: bytes over the quota");
         return refused(StatusCode::TOO_MANY_REQUESTS, "quota", "too many bytes this hour");
@@ -470,7 +488,9 @@ async fn call(
     let _kept = Kept { rendezvous: family, mailbox: target.clone(), id: id.clone() };
     let (picked_tx, picked_rx) = oneshot::channel();
     let (answer_tx, answer_rx) = oneshot::channel();
-    let call = Call { id: id.clone(), from, kind, body, picked: picked_tx, answer: answer_tx };
+    let size = body.len();
+    let call = Call { id: id.clone(), size, from, kind, body, picked: picked_tx, answer: answer_tx };
+    family.queued.fetch_add(size, Ordering::Relaxed);
     lock(&family.queues).entry(target.clone()).or_default().push_back(call);
     family.bell(&target).notify_one();
     if !matches!(tokio::time::timeout(wait, picked_rx).await, Ok(Ok(()))) {

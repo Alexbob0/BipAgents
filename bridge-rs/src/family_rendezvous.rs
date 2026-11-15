@@ -422,15 +422,33 @@ pub async fn accept(
     if let Some(current) = current {
         headers.push(("authorization".into(), format!("Bearer {current}")));
     }
-    let head = json!({"m": "POST", "p": "/family/accept", "h": headers, "t": crate::py::time_time()});
     let key = family_seal::invite_key(code);
-    let (status, _, body) =
-        send(state, mailbox, "invite", &key, Way::Invite, head, payload.to_string().as_bytes()).await?;
+    // the inviter's bridge may be (re)connecting its poll a moment after showing the invitation: a few tries
+    let mut tries = 0;
+    let (status, body) = loop {
+        let head = json!({"m": "POST", "p": "/family/accept", "h": headers, "t": crate::py::time_time()});
+        match send(state, mailbox, "invite", &key, Way::Invite, head, payload.to_string().as_bytes()).await {
+            Err(CallFailure::Away) if tries < 4 => {
+                tries += 1;
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
+            Err(failure) => return Err(failure),
+            Ok((status, _, body)) => break (status, body),
+        }
+    };
     let bytes = axum::body::to_bytes(body, 1 << 20).await.map_err(|_| CallFailure::Broken)?;
     Ok((status, bytes))
 }
 
 // -- their calls to us ------------------------------------------------------------------------------------------
+
+/// Rings when this bridge may have to poll now (an invitation made, a link through the relay): no wait for the next
+/// look.
+static WAKE: tokio::sync::Notify = tokio::sync::Notify::const_new();
+
+pub fn wake() {
+    WAKE.notify_one();
+}
 
 /// What this bridge saw (family_seal.rs `Seen`), made once.
 fn seen(config: &Config) -> &'static Seen {
@@ -443,7 +461,7 @@ pub async fn poll_forever(state: AppState) {
     let mut pause = Duration::from_secs(1);
     loop {
         if !needs_poll(&state) {
-            tokio::time::sleep(Duration::from_secs(3)).await;
+            let _ = tokio::time::timeout(Duration::from_secs(3), WAKE.notified()).await;
             continue;
         }
         let config = state.config();
