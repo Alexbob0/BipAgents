@@ -11,9 +11,11 @@ import shlex
 
 from bbkit.bridge import bridge_command
 from bbkit.common import AUTH, boite_items, boite_message
+from bbkit.fakes import split_brief_now
 from bbkit.mcp import call, give_token, rpc, text_of
 from bbkit.servers import wait_until
 from conftest import managed_install, profile, wait_registered
+from test_now_line import assert_now_in
 
 ANSWER = json.dumps({"id": "vault_1", "removed": True}) + "\n"
 TOKEN = "f" * 64
@@ -75,6 +77,15 @@ def keys_of(bridge):
     return {"coach": entry["headers"]["Authorization"].removeprefix("Bearer ")}
 
 
+def undated(brief):
+    """The brief without its last line, the time it was read (live_brief.rs: « the time last: it changes every
+    minute »), which is checked to be the test's own clock within two minutes. Two reads a minute apart differ there by
+    design (the public CI's « Tests », 15/11: 14:04, then 14:05)."""
+    now, text = split_brief_now(brief)
+    assert_now_in(now, "UTC")
+    return text
+
+
 def snapshot(bridge, keys):
     """What the apps and the agents can read back (nothing that changes it)."""
     def get(path, **kw):
@@ -106,7 +117,7 @@ def snapshot(bridge, keys):
                       [(op["op"], op["args"]) for op in get("/v1/reminders/queue", headers=AUTH)["queue"]]),
         "links": get("/v1/agent-links", headers=AUTH),
         "jobs": get("/v1/jobs", headers=AUTH),
-        "brief": get("/v1/live/brief", params={"agent": "wellness", "session": "s1"}, headers=AUTH)["text"],
+        "brief": undated(get("/v1/live/brief", params={"agent": "wellness", "session": "s1"}, headers=AUTH)["text"]),
         "recap": (bridge.state_dir / "call-recaps" / "wellness" / "s1.txt").read_text(),
         "pages": pages,
         "page": bridge.get("/v1/media", params={"path": pages[0]["path"]}, headers=AUTH).text,
