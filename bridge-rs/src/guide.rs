@@ -1829,6 +1829,28 @@ mod tests {
         result["content"][0]["text"].as_str().unwrap_or_default().to_string()
     }
 
+    /// Bug 15/11: the card keeps the person's whole wish (it becomes the agent's description, personality and first
+    /// words), and the tool says the wish goes in `role`, the handover being only other facts about them.
+    #[test]
+    fn a_card_keeps_the_persons_whole_wish() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = managed_place(dir.path(), &[("agent", "Agent")]);
+        let wish = "Me préparer à mon semi-marathon de mars : 3 sorties par semaine (mardi, jeudi, dimanche matin), un \
+                    plan qui monte doucement jusqu'à 18 km, un rappel la veille de chaque séance, et un mot gentil quand \
+                    j'en rate une";
+        assert!(wish.chars().count() > 200);
+        let mut args = sport_card();
+        args.insert("role".into(), json!(wish));
+        assert!(!refused(&call(&config, &config.agents["agent"], PROPOSE_AGENT, &args).unwrap()));
+        let state = load(&config);
+        let card = state.proposals.iter().find(|p| str_of(p, "type") == "agent").expect("a card");
+        assert_eq!(str_of(card, "role"), wish);
+        let schema = &propose_agent_tool()["inputSchema"]["properties"];
+        let role = schema["role"]["description"].as_str().unwrap();
+        assert!(role.contains("every specific they gave") && !role.contains("one line"), "{role}");
+        assert!(schema["handover"]["description"].as_str().unwrap().contains("not what it is for"), "{schema}");
+    }
+
     #[test]
     fn agents_made_from_a_card_are_kept_as_requested_newest_first() {
         let dir = tempfile::tempdir().unwrap();

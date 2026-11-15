@@ -2,7 +2,9 @@
 internal/notes/agent-create-bip.md): « Demander à Bip » makes the guide when there is none and starts its questions
 in its main thread; « crée un agent » typed to another agent puts « Continuer avec Bip » under its reply; the card
 « Créer X » carries the form's fields and its tap makes the agent as the form does; Kerfy's catalogue lists 8 agents
-and adopting one makes it with its routines paused."""
+and adopting one makes it with its routines paused; what the person asked for is the agent's description,
+personality and first words (bug 15/11)."""
+import json
 import uuid
 
 from bbkit.common import AUTH
@@ -10,6 +12,7 @@ from bbkit.common import sse
 from bbkit.fakes import CLOSE
 from bbkit.mcp import call, give_token, text_of
 from bbkit.servers import wait_until
+from test_cloud_setup import claim_body, cloud_bridge
 from test_guide import place
 
 GUIDE_TOKEN = "guide-token-0123456789abcdefghijkl"
@@ -166,3 +169,115 @@ def test_a_name_or_role_that_starts_with_a_dash_makes_the_agent(bridges, fakes):
     creates = [c for c in bridge.commands.of("hermes") if c[:2] == ["profile", "create"]]
     assert creates and all(not c[2].startswith("-") and not c[2].endswith("-") for c in creates), creates
     assert all(c[-1].startswith("--description=") for c in creates), creates
+
+
+# -- the person's wish makes the agent, not its kind's default (bug 15/11) ------------------------------------------
+# Alex's wife asked Bip for a « Training coach » with something specific; the agent she opened greeted her with the
+# wellness kind's default words. What she asked for must be what the agent is: its description, its personality and
+# its first words, on a place with spare agents too (agent_pool.rs: the card takes a spare, files only).
+
+WISH = ("Me préparer à mon semi-marathon de mars : 3 sorties par semaine (mardi, jeudi, dimanche matin), un plan qui "
+        "monte doucement jusqu'à 18 km, un rappel la veille de chaque séance, et un mot gentil quand j'en rate une")
+KIND_DESCRIPTION = "Sommeil, sport, alimentation, bien-être"           # agent_templates.yaml, wellness
+KIND_WELCOME = "Je t'accompagne pour ta santé et ton bien-être."       # welcome.rs, wellness
+KIND_CHIPS = {"Je voudrais me remettre au sport, doucement.", "Aide-moi à mieux dormir.",
+              "Rappelle-moi de boire de l'eau dans la journée."}
+
+
+def coach_from_a_card(bridge, wish=WISH, **extra):
+    """Bip's card « Créer Training coach » with the person's wish, tapped; the new agent's id."""
+    args = {"kind": "wellness", "name": "Training coach", "role": wish, "tone": "doux et encourageant", "for": "me",
+            "handover": "Elle court déjà 8 km sans s'arrêter.", **extra}
+    made = call(bridge, "propose_agent", args, token=GUIDE_TOKEN)
+    assert not made["isError"], text_of(made)
+    card = next(p for p in bridge.get("/v1/guide", headers=AUTH).json()["proposals"] if p.get("name") == args["name"])
+    assert card["role"] == wish   # the whole wish on the card, as she reads it before her tap
+    accepted = bridge.post(f"/v1/guide/proposals/{card['id']}/accept", headers=AUTH, json={"lang": "fr"})
+    assert accepted.status_code == 201, accepted.text
+    return accepted.json()["agent"]["id"]
+
+
+def description_of(home, agent):
+    import yaml
+    return (yaml.safe_load((home / "profiles" / agent / "profile.yaml").read_text()) or {}).get("description") or ""
+
+
+def assert_made_as_asked(bridge, home, agent, wish=WISH):
+    # its description (the guide's list of agents, Hermes' profile): her words, not the kind's
+    description = description_of(home, agent)
+    assert description and wish.startswith(description) and KIND_DESCRIPTION not in description, description
+    # its personality (what the model reads, and « Qui il est » in the apps): her whole wish and tone
+    soul = (home / "profiles" / agent / "SOUL.md").read_text()
+    assert wish in soul and "doux et encourageant" in soul, soul
+    # its first words when she opens it (welcome.rs, shown by both apps as its first bubble): her wish, not the kind's
+    welcome = bridge.get("/v1/guide", headers=AUTH).json()["welcome"][agent]
+    assert "semi-marathon de mars" in welcome["text"] and KIND_WELCOME not in welcome["text"], welcome["text"]
+    assert not KIND_CHIPS & set(welcome["suggestions"]), welcome["suggestions"]
+
+
+def test_the_persons_wish_makes_the_agent_not_its_kinds_default(bridges, fakes):
+    bridge, home = place(bridges, fakes, agents=("coach",))
+    bip = bridge.post("/v1/guide/create-agent", headers=AUTH, json={"lang": "fr"}).json()["agent"]["id"]
+    give_token(bridge, bip, GUIDE_TOKEN)
+    agent = coach_from_a_card(bridge)
+    assert agent == "training-coach"
+    assert_made_as_asked(bridge, home, agent)
+
+
+def test_the_persons_wish_makes_the_agent_from_a_spare_too(bridges, fakes):
+    """A place of the offer keeps spare agents made ahead (agent_pool.rs): the card's agent takes one, files only."""
+    bridge, cloud = cloud_bridge(bridges, fakes, start=False)
+    bridge.config["place"] = {"spare_agents": 2}
+    cloud.done()
+    bridge.start()
+    pool = bridge.root / "spare-agents.json"
+    spares = lambda: [s["id"] for s in json.loads(pool.read_text())] if pool.exists() else []   # noqa: E731
+    assert wait_until(lambda: len(spares()) == 2, timeout=30)
+    claimed = bridge.post("/v1/setup/claim", json=claim_body(cloud.challenge()))
+    assert claimed.status_code == 200, claimed.text
+    bip = claimed.json()["agents"][0]["id"]   # « Quotidien », a spare already, the place's guide
+    assert bridge.get("/v1/guide", headers=AUTH).json()["guide"] == bip
+    assert wait_until(lambda: len(spares()) == 2, timeout=30)   # the pool made up again, in the background
+    ready = spares()
+    give_token(bridge, bip, GUIDE_TOKEN)
+    bridge.commands.clear()
+    agent = coach_from_a_card(bridge)
+    assert agent in ready and agent not in spares()   # taken from the pool, files only
+    assert not any(c[:3] == ["profile", "create", agent] for c in bridge.commands.of("hermes"))
+    assert_made_as_asked(bridge, bridge.root / ".hermes", agent)
+
+
+def test_the_forms_role_is_the_agents_first_words_too(bridges, fakes):
+    """The form (« Le créer moi-même ») with a role: the same first words as the card's, a kind's or « Autre »."""
+    bridge, home = place(bridges, fakes, agents=("coach",))
+    made = bridge.post("/v1/agents", headers=AUTH, json={"name": "Foulée", "kind": "wellness", "lang": "fr",
+                                                         "role": WISH, "tone": "doux et encourageant"})
+    assert made.status_code == 201, made.text
+    welcome = bridge.get("/v1/guide", headers=AUTH).json()["welcome"][made.json()["id"]]
+    assert "semi-marathon de mars" in welcome["text"] and KIND_WELCOME not in welcome["text"], welcome["text"]
+    own = bridge.post("/v1/agents", headers=AUTH, json={"name": "Potager", "lang": "fr",
+                                                        "custom": {"role": "Suivre mes semis de tomates et me dire quand arroser",
+                                                                   "category": "home"}})
+    assert own.status_code == 201, own.text
+    welcome = bridge.get("/v1/guide", headers=AUTH).json()["welcome"][own.json()["id"]]
+    assert "semis de tomates" in welcome["text"] and "Je suis là pour t'aider." not in welcome["text"], welcome["text"]
+    # without a role: its kind's own welcome, as before
+    plain = bridge.post("/v1/agents", headers=AUTH, json={"name": "Forme", "kind": "wellness", "lang": "fr"})
+    assert KIND_WELCOME in bridge.get("/v1/guide", headers=AUTH).json()["welcome"][plain.json()["id"]]["text"]
+    assert KIND_DESCRIPTION in description_of(home, plain.json()["id"])
+
+
+def test_a_family_card_keeps_the_wish_as_the_agents_description(bridges, fakes):
+    bridge, home = place(bridges, fakes, agents=("coach",))
+    bip = bridge.post("/v1/guide/create-agent", headers=AUTH, json={"lang": "fr"}).json()["agent"]["id"]
+    give_token(bridge, bip, GUIDE_TOKEN)
+    wish = "Les menus de la semaine et la liste de courses, avec un repas sans viande le lundi"
+    call(bridge, "propose_agent", {"kind": "home", "name": "Cantine", "role": wish, "for": "family"}, token=GUIDE_TOKEN)
+    card = next(p for p in bridge.get("/v1/guide", headers=AUTH).json()["proposals"] if p.get("name") == "Cantine")
+    accepted = bridge.post(f"/v1/guide/proposals/{card['id']}/accept", headers=AUTH, json={"lang": "fr"})
+    assert accepted.status_code == 201, accepted.text
+    agent = accepted.json()["agent"]["id"]
+    assert accepted.json()["family"] is True
+    assert wish in (home / "profiles" / agent / "SOUL.md").read_text()
+    description = description_of(home, agent)
+    assert wish.startswith(description) and len(description) > 20, description

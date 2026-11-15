@@ -440,6 +440,16 @@ mod tests {
         assert!(switch_note("Bip").contains("Continuer avec Bip"));
     }
 
+    /// Bug 15/11: what the person asked for (« for my half-marathon in March, 3 runs a week ») is the agent's role, its
+    /// description, personality and first words; Bip is told to put all of it there, never only in the handover.
+    #[test]
+    fn the_rules_put_the_persons_wish_in_the_role() {
+        for note in [interview_note(&[]), interview_note(&["Léa".into()])] {
+            assert!(note.contains("role: what it is for in their own words, with every specific they gave"), "{note}");
+            assert!(note.contains("not a label"), "{note}");
+        }
+    }
+
     fn place(dir: &std::path::Path, agents: &[(&str, &str)]) -> Config {
         let mut config = crate::config::parse_config(
             &json!({"bridge_key": "k".repeat(32), "data_dir": dir.to_string_lossy()}),
