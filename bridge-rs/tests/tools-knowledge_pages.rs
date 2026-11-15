@@ -33,7 +33,7 @@ fn a_page_is_locked_before_it_is_kept() {
     let at = |t: &str| kept.find(t).unwrap();
     assert!(at("Content-Security-Policy") < at("<html") && at("<html") < at("<canvas"));
     // the network only through the maps' door, which the apps answer themselves (map_tiles.rs)
-    assert!(kept.contains("connect-src bipmap: https://bipmap.invalid;") && kept.contains("form-action 'none'"));
+    assert!(kept.contains("connect-src bipmap: https://bipmap.invalid bipstore: https://bipstore.invalid;") && kept.contains("form-action 'none'"));
     assert!(!kept[..600].contains("unsafe-eval") && kept.contains("worker-src blob:;"));
     // Chart.js from the bridge, inline, instead of the CDN's; what else it asks from the network is reported.
     assert!(!kept.contains("cdn.jsdelivr.net") && kept.contains("Chart.js v4") && !kept[..200].contains("<\\/script"));
@@ -212,4 +212,27 @@ fn the_kit_never_outranks_the_agents_own_css() {
     }
     // (31 000 since 5/11: a map's one link for the whole trip)
     assert!(pages::kit_js().contains("__BIP_TINT__") && pages::kit_js().len() < 31_000 && css.len() < 20_000);
+}
+
+#[test]
+fn only_a_page_that_remembers_carries_the_kit_s_store() {
+    // page_store.rs (15/11): Bip.store comes inline after the kit, only in a page that uses it (as Chart.js)
+    let (plain, _) = pages::lock_with("<p>x</p>", "x", None);
+    assert!(!plain.contains("window.Bip.store = store") && !plain.contains("bipstore://store/"));
+    let (kept, _) = pages::lock_with("<ul id=\"l\"></ul><script>Bip.store.onChange(draw)</script>", "x", None);
+    assert!(kept.contains("window.Bip.store = store") && kept.contains("bipstore://store/") && kept.contains("https://bipstore.invalid/"));
+    let at = |t: &str| kept.find(t).unwrap_or_else(|| panic!("{t} missing"));
+    assert!(at("window.Bip = {") < at("window.Bip.store = store"));
+    assert!(at("window.Bip.store = store") < at("Bip.store.onChange(draw)"));
+    assert_eq!(kept.matches("</script>").count(), 2, "the kit's and the agent's");
+    // the door is in the policy, connect-src only
+    assert!(kept.contains("connect-src bipmap: https://bipmap.invalid bipstore: https://bipstore.invalid;"));
+    assert!(!pages::POLICY.split(';').any(|d| d.trim().starts_with("script-src") && d.contains("bipstore")));
+    for uses in ["Bip.store.add(", "Bip . store", "Bip['store']", "Bip[\"store\"]"] {
+        assert!(pages::uses_store(uses), "{uses}");
+    }
+    for not in ["Bip.storeroom", "myBip.store", "Bip.stats"] {
+        assert!(!pages::uses_store(not), "{not}");
+    }
+    assert!(pages::store_js().len() < 16_000 && pages::kit_js().contains("esc: esc"));
 }
