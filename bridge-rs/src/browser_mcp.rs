@@ -232,19 +232,10 @@ runs (pieces put together, decoded, taken from a variable, or through Reflect). 
 pub const SCRIPT_TEXT_CODE_REFUSED: &str = "Not done: this script runs code from text (eval, Function, a timer or an \
 on… attribute given a string, import()). Write the code itself in the script. Nothing was run.";
 
-/// A script that doesn't parse holding code that may run later (`UNREAD_LATER`).
-pub const SCRIPT_UNREADABLE_REFUSED: &str = "Not done: your browser can't read this script as JavaScript (check its \
-syntax), and it holds code that may run later (a timer, a callback, a tagged template). Write it so it parses, \
-runs at once and returns what you need; act with type_text, select_option and click_element. Nothing was run.";
-
-/// In a script that doesn't parse: anything that may run code later or from text (timers, listeners, observers,
-/// promises, schedulers, locks, handlers, a tagged template, Function, eval).
-static UNREAD_LATER: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?i)settimeout|setinterval|setimmediate|requestanimationframe|requestidlecallback|videoframe|addeventlistener|addlistener|observer|queuemicrotask|worker|postmessage|messagechannel|\.(?:then|catch|finally)\s*\(|\basync\b|\bawait\b|\bpromise\b|posttask|scheduler|\blocks\b|\.on[a-z]{3,}\s*=|\beval\b|(?-i:\bFunction\b)|constructor|[\w$)\]]\s*`",
-    )
-    .expect("valid regex")
-});
+/// A script that doesn't parse (fourth review of 15/11: refused, never judged by the text rules).
+pub const SCRIPT_UNREADABLE_REFUSED: &str = "Not done: your browser can't read this script as JavaScript: check its \
+syntax (a bracket, a quote, a stray character). Write it so it parses, runs at once and returns what you need; act \
+with type_text, select_option and click_element. Nothing was run.";
 
 /// A script too long or too deeply nested to be read safely (script_shape.rs `MAX_SCRIPT_BYTES`, `MAX_NESTING`; fourth
 /// review of 15/11: the parser's recursion must never exhaust a stack, which aborts the bridge).
@@ -296,52 +287,11 @@ static MAKES_WAY: LazyLock<Regex> = LazyLock::new(|| {
     .expect("valid regex")
 });
 
-/// Timers, listeners, observers, workers and messages: a script whose effect comes later, after the look that follows
-/// it, on any page (second review of 14/11: set before the card form is drawn, an observer filled it and sent it).
-static DEFERS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?i)settimeout|setinterval|requestanimationframe|requestidlecallback|addeventlistener|\.on[a-z]{3,}\s*=(?:[^=]|$)|\bon(?:load|click|change|input|submit|focus|blur|key[a-z]+|mouse[a-z]+|pointer[a-z]+|animation[a-z]+|transition[a-z]+)\s*=(?:[^=]|$)|observer|queuemicrotask|new\s+(?:shared)?worker|serviceworker|messagechannel|broadcastchannel|postmessage",
-    )
-    .expect("valid regex")
-});
-
-/// Code that waits (a promise's continuation, async, await): refused when the script writes or clicks (`ACTS`).
-static CONTINUES: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\.(?:then|catch|finally)\s*\(|\basync\b|\bawait\b|\bpromise\b").expect("valid regex"));
-
-/// A script that writes into the page or acts on it: a property set (`x.value = …`, `x['y'] = …`), a click, an event
-/// sent, a form sent, an element or attribute added, changed or removed.
-static ACTS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?i)(?:\.[\w$]+|\])\s*(?:[-+*/%&|^]|\*\*|<<|>>>?|\|\||&&|\?\?)?=(?:[^=>]|$)|\.\s*(?:click|dispatchevent|submit|requestsubmit|focus|blur|setattribute\w*|removeattribute|toggleattribute|append(?:child)?|prepend|insert\w*|replace(?:child|children|with)|remove(?:child)?|execcommand|setrangetext|showpicker|trigger|val|prop|attr|reset|select)\s*\(|document\s*\.\s*write",
-    )
-    .expect("valid regex")
-});
-
 /// What changes how the page's own code works: a prototype's member set, a property defined, a prototype swapped, a
 /// built-in's or the document's / window's own function replaced (a look in the page's world would read through it).
 static TAMPERS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?i:prototype\s*(?:\.\s*[\w$]+|\[[^\]]*\])\s*=(?:[^=]|$)|defineproperty|defineproperties|setprototypeof|__proto__|__definegetter__|__definesetter__|object\s*\.\s*assign\s*\(\s*[\w$.\s]*\bprototype\b)|\b(?:JSON|Math|String|Array|Object|Reflect|RegExp|Function|Element|Node|EventTarget|HTML\w*Element|Document|Window|Event|MutationObserver|Promise)\s*\.\s*[\w$]+\s*=(?:[^=]|$)|\b(?:document|window|self|globalThis)\s*\.\s*(?:querySelector\w*|getElement\w*|createElement\w*|addEventListener|removeEventListener|dispatchEvent|evaluate|getComputedStyle|getSelection|fetch|XMLHttpRequest|MutationObserver|setTimeout|setInterval|JSON|String|Object|Array|Element|Node|Reflect|Proxy|Event|HTML\w*Element)\s*=(?:[^=]|$)",
-    )
-    .expect("valid regex")
-});
-
-/// What renames a page's fields or their labels (an id, a name, a data- attribute, a label's text, an attribute added
-/// or removed, an element taken out): refused where the page has card fields (second review of 14/11: `data-kind =
-/// 'iban'` on the card's number field made it « another number's » field, and the number went in).
-static RENAMES: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?i)\.\s*(?:id|name|htmlfor|classname|textcontent|innertext|outertext|nodevalue|data|placeholder|title|autocomplete|type)\s*=(?:[^=]|$)|\b(?:dataset|attributes)\b[^;]*?[^=!<>]=(?:[^=]|$)|setattribute|removeattribute|toggleattribute|setnameditem|removenameditem|object\s*\.\s*assign|\.\s*remove(?:child)?\s*\(|replacewith|replacechild",
-    )
-    .expect("valid regex")
-});
-
-/// Timers, listeners, observers and promises: a script whose effect comes later, after the look that follows it (review
-/// of 14/11: setTimeout writing a card's number 800 ms after the call). All refused where the page has card fields.
-static LATER: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?i)settimeout|setinterval|requestanimationframe|requestidlecallback|addeventlistener|\bon[a-z]+\s*=[^=]|observer|queuemicrotask|\.then\s*\(|\basync\b|\bawait\b|\bworker\b|promise",
     )
     .expect("valid regex")
 });
@@ -353,17 +303,6 @@ pub fn script_goes_to_provider(script: &str) -> bool {
     MAKES_WAY.is_match(script)
         || NAVIGATES.is_match(script) && crate::card_fill::provider_hosts().iter().any(|h| lower.contains(h))
 }
-
-/// A script that writes its words so they don't show (second review of 14/11: `createElement(String.fromCharCode(97))`,
-/// `a['hr' + 'ef'] = …`, `Reflect.set(form, 'act' + 'ion', …)`), for a script that doesn't parse (one that does is
-/// read from its syntax: script_shape.rs `hidden_names`). A provider's page reached after any script is never filled
-/// anyway (card_pay.rs).
-static HIDES_WORDS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r#"(?i)fromcharcode|fromcodepoint|\batob\s*\(|\breflect\s*\.|\beval\s*\(|\bfunction\s*\(\s*["'`]|new\s+function\b|\[\s*["'`][^"'`\]]*["'`]\s*\+|\[\s*`[^`\]]*\$\{|\bstring\s*\.\s*raw\b"#,
-    )
-    .expect("valid regex")
-});
 
 /// What the page held before a call about cards (`guard_before`'s `cards`, `frames`, `cardtext`): card fields or a
 /// payment provider's frame, and whether a card field holds text. None (the page couldn't say): both, to be safe.
@@ -419,26 +358,9 @@ pub fn script_refusal(script: &str, args: &str, before: Option<&Value>) -> Optio
             return Some(SCRIPT_RENAMES_REFUSED);
         }
     } else {
-        // what doesn't parse doesn't run in the page either; but where the parser and the browser could disagree, code
-        // that may run later is never left to the text rules' lists (fourth review of 15/11: fail closed)
-        if UNREAD_LATER.is_match(script) {
-            return Some(SCRIPT_UNREADABLE_REFUSED);
-        }
-        if HIDES_WORDS.is_match(script) {
-            return Some(SCRIPT_HIDDEN_NAMES_REFUSED);
-        }
-        if TAMPERS.is_match(script) {
-            return Some(SCRIPT_TAMPERS_REFUSED);
-        }
-        if cards && LATER.is_match(script) {
-            return Some(SCRIPT_LATER_ON_CARDS_REFUSED);
-        }
-        if cards && RENAMES.is_match(script) {
-            return Some(SCRIPT_RENAMES_REFUSED);
-        }
-        if DEFERS.is_match(script) || CONTINUES.is_match(script) && ACTS.is_match(script) {
-            return Some(SCRIPT_LATER_REFUSED);
-        }
+        // what doesn't parse doesn't run in the page either (a syntax error in V8 too, over the fourth review's tries):
+        // never left to the text rules, whose lists miss what runs later (postTask, locks…)
+        return Some(SCRIPT_UNREADABLE_REFUSED);
     }
     if CARD_TARGET.is_match(&crate::card_details::folded(&text))
         && (WRITES.is_match(&text) || cards && VALUE_ACCESS.is_match(&text))
@@ -462,8 +384,7 @@ pub fn blind_refusal(script: &str, before: Option<&Value>) -> Option<&'static st
         return None;
     }
     let shape = crate::script_shape::shape(script);
-    let acts = if shape.parsed { shape.acts } else { shape.too_big || ACTS.is_match(script) };
-    acts.then_some(SCRIPT_BLIND_REFUSED)
+    (!shape.parsed || shape.acts).then_some(SCRIPT_BLIND_REFUSED)
 }
 
 /// An address the agent opens (`navigate`, `new_tab`) holding a card's number, as written or decoded (review of
@@ -3719,6 +3640,11 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         let long = "document.title;\n".repeat(3000);
         assert_eq!(script_card_refusal(&long, Some(&empty)), Some(SCRIPT_TOO_BIG_REFUSED));
         assert!(SCRIPT_TOO_BIG_REFUSED.contains("smaller steps"));
+        // a script that doesn't parse runs nowhere: refused, never judged by the text rules (fourth review)
+        for script in ["x = `\\unicode`; scheduler.postTask(() => b.click(), {delay: 100})", "return (1", "a b c"] {
+            assert_eq!(script_card_refusal(script, Some(&empty)), Some(SCRIPT_UNREADABLE_REFUSED), "{script}");
+        }
+        assert!(SCRIPT_UNREADABLE_REFUSED.contains("check its syntax"));
         // decoding data, an array of strings joined, words in strings: no code of their own (third review)
         for script in ["return JSON.parse(atob(document.getElementById('d').textContent)).price",
                        "return ['Prix : ' + p.innerText, 'Stock : ' + s.innerText].join('\\n')",

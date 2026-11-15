@@ -23,6 +23,11 @@ fn rx1_real_agents_scripts_are_not_refused_where_no_card_is() {
     let mut refused = Vec::new();
     let mut on_cards = Vec::new();
     for s in &scripts {
+        // fourth review of 15/11: a script that doesn't parse is refused (it runs nowhere either); 44 of these were cut
+        // at 300 characters when collected, one has a parenthesis too many: left out here
+        if !bipbridge::script_shape::shape(s).parsed {
+            continue;
+        }
         if let Some(why) = script_card_refusal(s, Some(&ordinary())) {
             refused.push(format!("{} => {}", s.chars().take(160).collect::<String>().replace('\n', " "), &why[..60]));
         }

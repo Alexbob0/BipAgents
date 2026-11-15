@@ -3,7 +3,7 @@
 //! only those that write fields and send the form or press a button, or name a card's field, each refusal saying
 //! what to do instead.
 
-use bipbridge::browser_mcp::{script_card_refusal, SCRIPT_CARD_REFUSED, SCRIPT_FILLS_ON_CARDS_REFUSED};
+use bipbridge::browser_mcp::{script_card_refusal, SCRIPT_CARD_REFUSED, SCRIPT_FILLS_ON_CARDS_REFUSED, SCRIPT_UNREADABLE_REFUSED};
 use bipbridge::script_shape::shape;
 use serde_json::json;
 
@@ -23,10 +23,16 @@ fn the_bench_scripts_parse_and_on_a_checkout_only_filling_and_sending_is_refused
         }
         match script_card_refusal(script, Some(&checkout)) {
             None => {}
+            // a script cut when collected, or the agent's own syntax error: refused as unreadable (fourth review)
+            Some(text) if text == SCRIPT_UNREADABLE_REFUSED && !shape(script).parsed => {}
             Some(text) if text == SCRIPT_FILLS_ON_CARDS_REFUSED || text == SCRIPT_CARD_REFUSED => filled += 1,
             Some(text) => other.push(format!("{} => {}", script.chars().take(120).collect::<String>(), &text[..70])),
         }
     }
+    let ordinary = json!({"pw": {}, "known": [], "boxes": [], "cards": {}, "cardtext": false, "frames": 0});
+    let elsewhere: Vec<&String> =
+        scripts.iter().filter(|s| shape(s).parsed && script_card_refusal(s, Some(&ordinary)).is_some()).collect();
+    assert!(elsewhere.is_empty(), "refused where no card is: {elsewhere:?}");
     println!("{} scripts; on a checkout {filled} refused for filling and sending (or a card field)", scripts.len());
     // one of the agents' own scripts has a parenthesis too many: it ran nowhere either
     assert!(unparsed.len() <= 1, "not parsed:\n{}", unparsed.join("\n"));
