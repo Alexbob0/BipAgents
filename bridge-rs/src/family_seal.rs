@@ -11,8 +11,10 @@
 //!   nonce is the frame's number, the last frame is marked): a frame changed, dropped, moved, or the end cut, and the
 //!   whole is refused.
 //! - **Sent again.** A request says when it was made (`t`); one further than [`WINDOW`] from now, or whose salt was
-//!   seen already ([`Seen`]: in memory and in `family-relay-seen` next to the database, so a restart forgets nothing)
-//!   is refused.
+//!   seen already ([`Seen`]: in memory and in `family-relay-seen` next to the database, written and synced before the
+//!   call runs, so a restart forgets nothing; a call that can't be written down is refused) is refused.
+//! - **Each answer its own keys.** An answer starts with a fresh salt of the answering bridge, mixed into its key: a
+//!   request answered twice (whatever went wrong) never gives two answers under one keystream.
 //! - **The invitation's own exchange** (before the link has a key) is sealed the same way with a key derived from the
 //!   invitation's code alone (`inv`), which only the two people's apps ever had (a QR code shown, or the account's
 //!   box sealed for the other person's devices).
@@ -146,6 +148,15 @@ pub struct Framer {
     key: LessSafeKey,
     n: u64,
     ended: bool,
+    /// What goes before the first frame (an answer's own salt).
+    prefix: Option<[u8; SALT_LEN]>,
+}
+
+fn random_salt() -> [u8; SALT_LEN] {
+    use ring::rand::SecureRandom;
+    let mut salt = [0u8; SALT_LEN];
+    ring::rand::SystemRandom::new().fill(&mut salt).expect("randomness");
+    salt
 }
 
 impl Framer {
@@ -153,7 +164,12 @@ impl Framer {
         let info = format!("bip-family-v1 {} {}", if answer { "ans" } else { "req" }, way.label());
         let key = hkdf(salt, base, info.as_bytes());
         let key = LessSafeKey::new(UnboundKey::new(&CHACHA20_POLY1305, &key).expect("a 32-byte key"));
-        Self { key, n: 0, ended: false }
+        Self { key, n: 0, ended: false, prefix: None }
+    }
+
+    /// An answer's: its key from the request's salt and the answer's own (`mine`, sent first).
+    fn answer(base: &[u8; 32], salt: &[u8; SALT_LEN], mine: &[u8; SALT_LEN], way: Way) -> Self {
+        Framer::new(base, &[salt.as_slice(), mine.as_slice()].concat(), way, true)
     }
 
     fn nonce(&self) -> Nonce {
@@ -169,7 +185,10 @@ impl Framer {
         plain.extend_from_slice(data);
         self.key.seal_in_place_append_tag(self.nonce(), Aad::empty(), &mut plain).expect("sealing does not fail");
         self.n += 1;
-        let mut out = Vec::with_capacity(4 + plain.len());
+        let mut out = Vec::with_capacity(SALT_LEN + 4 + plain.len());
+        if let Some(prefix) = self.prefix.take() {
+            out.extend_from_slice(&prefix);
+        }
         out.extend_from_slice(&(plain.len() as u32).to_be_bytes());
         out.extend_from_slice(&plain);
         out
@@ -261,20 +280,27 @@ pub fn open_request(base: &[u8; 32], way: Way, wire: &[u8]) -> Result<([u8; SALT
     Ok((salt, head, body))
 }
 
-/// The answer's frames, sealed as they go (the head first: status and headers).
+/// The answer's frames, sealed as they go (the head first: status and headers), under a key of its own: a fresh salt
+/// of the answering bridge, sent before the first frame.
 pub fn answer_sealer(base: &[u8; 32], salt: &[u8; SALT_LEN], way: Way) -> Framer {
-    Framer::new(base, salt, way, true)
+    let mine = random_salt();
+    let mut framer = Framer::answer(base, salt, &mine, way);
+    framer.prefix = Some(mine);
+    framer
 }
 
-/// The answer's frames, opened as its bytes come.
+/// The answer's frames, opened as its bytes come (its own salt first).
 pub struct AnswerOpener {
-    framer: Framer,
+    base: [u8; 32],
+    salt: [u8; SALT_LEN],
+    way: Way,
+    framer: Option<Framer>,
     buffer: Vec<u8>,
 }
 
 impl AnswerOpener {
     pub fn new(base: &[u8; 32], salt: &[u8; SALT_LEN], way: Way) -> Self {
-        Self { framer: Framer::new(base, salt, way, true), buffer: Vec::new() }
+        Self { base: *base, salt: *salt, way, framer: None, buffer: Vec::new() }
     }
 
     pub fn push(&mut self, bytes: &[u8]) {
@@ -283,12 +309,22 @@ impl AnswerOpener {
 
     /// The next frame (data, last), None while it isn't all there.
     pub fn next_frame(&mut self) -> Result<Option<(Vec<u8>, bool)>, Broken> {
-        self.framer.open_next(&mut self.buffer)
+        if self.framer.is_none() {
+            if self.buffer.len() < SALT_LEN {
+                return Ok(None);
+            }
+            let mine: [u8; SALT_LEN] = self.buffer.drain(..SALT_LEN).collect::<Vec<u8>>().try_into().map_err(|_| Broken)?;
+            self.framer = Some(Framer::answer(&self.base, &self.salt, &mine, self.way));
+        }
+        match self.framer.as_mut() {
+            Some(framer) => framer.open_next(&mut self.buffer),
+            None => Ok(None),
+        }
     }
 
     /// Whether the last frame came.
     pub fn ended(&self) -> bool {
-        self.framer.ended
+        self.framer.as_ref().is_some_and(|f| f.ended)
     }
 }
 
@@ -305,6 +341,9 @@ pub enum Stale {
     Time,
     /// Seen already: sent again.
     Replay,
+    /// It could not be written down as seen (a full disk, a file that can't be written): refused rather than taken
+    /// at the risk of being taken again after a restart.
+    Unkept,
 }
 
 impl Seen {
@@ -336,22 +375,36 @@ impl Seen {
             return Err(Stale::Replay);
         }
         let until = now + KEEP_SEEN;
-        items.insert(*salt, until);
-        if items.len() > 4096 {
-            items.retain(|_, kept| *kept > now);
-            let text: String = items.iter().map(|(s, u)| format!("{} {u}\n", hex::encode(s))).collect();
-            let _ = crate::py::write_with_mode(&self.path.to_string_lossy(), text.as_bytes(), 0o600);
+        // written down, and on the disk, before the call runs
+        let written = if items.len() >= 4096 {
+            let mut kept: HashMap<[u8; SALT_LEN], f64> = items.iter().filter(|(_, u)| **u > now).map(|(s, u)| (*s, *u)).collect();
+            kept.insert(*salt, until);
+            let text: String = kept.iter().map(|(s, u)| format!("{} {u}\n", hex::encode(s))).collect();
+            let tmp = self.path.with_extension("tmp");
+            let done = std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(&tmp)
+                .and_then(|mut f| f.write_all(text.as_bytes()).and_then(|_| f.sync_data()))
+                .and_then(|_| std::fs::rename(&tmp, &self.path));
+            if done.is_ok() {
+                *items = kept;
+            }
+            done
         } else {
             let line = format!("{} {until}\n", hex::encode(salt));
-            let appended = std::fs::OpenOptions::new()
+            std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(&self.path)
-                .and_then(|mut f| f.write_all(line.as_bytes()));
-            if let Err(e) = appended {
-                tracing::warn!(error = %e, "family relay: a call seen not written down");
-            }
+                .and_then(|mut f| f.write_all(line.as_bytes()).and_then(|_| f.sync_data()))
+        };
+        if let Err(e) = written {
+            tracing::warn!(error = %e, "family relay: a call not written down as seen: refused");
+            return Err(Stale::Unkept);
         }
+        items.insert(*salt, until);
         Ok(())
     }
 }

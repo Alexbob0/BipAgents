@@ -86,9 +86,13 @@ def link_agents(bridge):
     return {a["id"] for a in bridge.get("/v1/agent-links", headers=AUTH).json()["agents"]}
 
 
+INVITATIONS = []
+
+
 def link(scanner, inviter):
     invitation = inviter.post("/v1/family/invite", headers=AUTH).json()
-    assert len(invitation.get("relay", "")) == 22, invitation   # the inviter's mailbox at the relay
+    assert len(invitation.get("relay", "")) == 22, invitation   # the invitation's own mailbox at the relay
+    INVITATIONS.append(invitation)
     joined = scanner.post("/v1/family/join", headers=AUTH,
                           json={"url": invitation["url"], "code": invitation["code"], "relay": invitation["relay"]})
     assert joined.status_code == 200, joined.text
@@ -135,6 +139,10 @@ def test_two_homes_link_through_the_relay_whichever_scans(bridges, fakes, relay,
         assert entry["via"] == "relay" and entry["relay_in"] is True, entry
         assert "pull" not in entry and "relay" not in entry, entry      # not the home↔place pull
         assert len(entry["seal"]) >= 43 and len(entry["route"]) >= 16, entry
+        assert entry["pass"].startswith("fp1."), entry                 # the pass the other gave, to call its mailbox
+    # the QR code carried the invitation's own mailbox, never the household's
+    inviter = lea if scanner == "alex" else alex
+    assert INVITATIONS[-1]["relay"] != own_mailbox(inviter)["id"]
     # one key for the link, the same on both sides, and each knows the other's mailbox
     assert mine["seal"] == theirs["seal"]
     assert mine["mailbox"] == own_mailbox(lea)["id"] and theirs["mailbox"] == own_mailbox(alex)["id"]
@@ -281,10 +289,12 @@ def test_a_relay_that_changes_or_sends_again_what_passes_is_refused(bridges, fak
         replayed = send_again(relay.url, path, headers, body)
         assert replayed.status_code == 200 and len(replayed.content) == 0, replayed.content
         # back to its sender (with Léa's token, as the relay could): Alex's bridge refuses its own call
-        reflected = send_again(relay.url, f"/v1/family/call/{alex_box['id']}", headers, body, token=lea_box["token"])
+        reflected = send_again(relay.url, f"/v1/family/call/{alex_box['id']}", headers, body, token=lea_box["token"],
+                               pass_=households(lea)["alex"]["pass"])
         assert reflected.status_code == 200 and len(reflected.content) == 0
         # to another household Alex is linked with: Paul's bridge can't open it
-        elsewhere = send_again(relay.url, f"/v1/family/call/{paul_box['id']}", headers, body)
+        elsewhere = send_again(relay.url, f"/v1/family/call/{paul_box['id']}", headers, body,
+                               pass_=households(alex)["paul"]["pass"])
         assert elsewhere.status_code == 200 and len(elsewhere.content) == 0
         assert len([r for r in RECEIVED if r[0] in ("/p/cuisine/v1/runs", "/p/vie/v1/runs", "/p/coach/v1/runs")]) == 1
         reasons = lambda b: {e.get("reason") for e in b.logged("family relay: call refused")}  # noqa: E731
@@ -309,7 +319,8 @@ def test_a_relay_that_changes_or_sends_again_what_passes_is_refused(bridges, fak
 
 
 def test_nobody_reads_a_mailbox_without_its_token(relay):
-    """The relay's side of it (relay/tests/family.rs has the rest): a mailbox is read with its own token only."""
+    """The relay's side of it (relay/tests/family.rs has the rest): a mailbox is read with its own token only, and
+    called only with a pass it gave."""
     made = httpx.post(f"{relay.url}/v1/family/mailbox", json={}).json()
     other = httpx.post(f"{relay.url}/v1/family/mailbox", json={}).json()
     assert httpx.get(f"{relay.url}/v1/family/next", headers={"Authorization": "Bearer fm1.nope"}).status_code == 401

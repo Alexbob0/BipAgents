@@ -161,10 +161,13 @@ class RelayProxy:
 
 
 def send_again(relay_url: str, path: str, headers: Dict[str, str], body: bytes,
-               token: Optional[str] = None) -> httpx.Response:
-    """A call kept by the proxy, sent to the relay again (with another mailbox's token when given), as a relay that
-    keeps what passes could."""
-    sent = {k: v for k, v in headers.items() if k.lower() in ("x-bip-kind", "content-type", "authorization")}
+               token: Optional[str] = None, pass_: Optional[str] = None) -> httpx.Response:
+    """A call kept by the proxy, sent to the relay again (with another mailbox's token, and a pass for the mailbox
+    called, when given), as a relay that keeps what passes, and the passes it gives, could."""
+    sent = {k: v for k, v in headers.items()
+            if k.lower() in ("x-bip-kind", "content-type", "authorization", "x-bip-pass")}
     if token is not None:
         sent["authorization"] = f"Bearer {token}"
+    if pass_ is not None:
+        sent["x-bip-pass"] = pass_
     return httpx.post(relay_url + path, headers=sent, content=body, timeout=40)

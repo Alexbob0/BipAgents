@@ -2,6 +2,9 @@
 //! fails open, and what a request answered twice then gives away. Each test fails on dd94437a8 and should pass once
 //! the finding is fixed.
 
+// the test checks a constant the scenario depends on (clippy's lint, not an assertion changed)
+#![allow(clippy::assertions_on_constants)]
+
 use bipbridge::family_seal::{answer_sealer, Seen, Stale, Way, KEEP_SEEN, SALT_LEN};
 
 /// `Seen::take` accepts a request whose salt it could not write down (it only logs « a call seen not written

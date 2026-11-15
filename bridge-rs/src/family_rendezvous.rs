@@ -3,12 +3,19 @@
 //! scans a home's invitation. Both bridges connect out; nothing to open at home. What passes is sealed between the
 //! two bridges (family_seal.rs): the relay sees which mailbox calls which, when, how many bytes, never what.
 //!
-//! - **A mailbox.** This bridge takes one at the relay when it needs it (an invitation, a link made through it): a
-//!   random id the relay gives, and its token, kept in `family-relay.json` next to households.json (0600). The id
-//!   travels in the invitation (`relay`) and in the link's exchange; the token never leaves this bridge and the relay.
-//! - **The link** (peers.rs `join`): the scanning bridge first tries the inviter's address as always; if nothing
-//!   answers there (or a place scans a home), it introduces itself through the relay, sealed with the invitation's
-//!   code ([`accept`]). The two then hold a key of the link (`seal` in each entry) and say who reaches whom:
+//! - **A mailbox.** This bridge takes one at the relay when a link needs it: a random id the relay gives, and its
+//!   token, kept in `family-relay.json` next to households.json (0600). The token never leaves this bridge and the
+//!   relay; the id goes only to the households linked through the relay.
+//! - **Passes.** Only the households it linked with may call that mailbox: at the link, each bridge asks the relay for
+//!   a pass to its own mailbox ([`new_pass`]) and gives it to the other, sealed in their exchange; the other presents
+//!   it with each call (`pass` in its entry), renewed before it ends. A stranger who learnt the id can't call it, use
+//!   up its quotas, or tell whether the home's computer is on.
+//! - **An invitation** has a mailbox of its own, ending with it ([`invite_mailbox`]): the QR code carries its id
+//!   (`relay`), never the household's. The scanning bridge introduces itself there, sealed with the invitation's code
+//!   ([`accept`]) — or first at the inviter's address, sealed the same way (peers.rs `join`): only a bridge holding the
+//!   invitation can open that and answer it, so nothing that happens to answer at that address on the scanner's
+//!   network learns the code or takes the inviter's place.
+//! - **The link** then holds a key of its own (`seal` in each entry) and says who reaches whom:
 //!   - a home and a place: the home fetches the place's calls from it (family_relay.rs, as when the home scans), the
 //!     relay is not used again;
 //!   - otherwise, whoever can't reach the other calls it through the relay (`via: "relay"`, a loopback `route`), and
@@ -16,15 +23,17 @@
 //! - **A call** to such a household goes, as every family call, to the address [`crate::family_relay::reach_url`]
 //!   gives: this bridge's loopback listener, which seals it and sends it to their mailbox ([`call`]); the answer comes
 //!   back streamed, opened frame by frame. The callers (peers.rs, family_news.rs, agent_shares.rs…) are unchanged.
-//! - **Their calls to us**: [`poll_forever`] keeps one long poll while some household calls us this way (or an
-//!   invitation waits); each call is opened with the key of the household its mailbox is, refused when it doesn't
-//!   open, is stale or seen already, then run through this bridge's own routes as any household call (only
-//!   `/family/…`, with that household's own key: family_relay.rs `allowed`), its answer sealed back.
+//! - **Their calls to us**: [`poll_forever`] keeps one long poll per mailbox needed (ours while a household calls us
+//!   this way, each invitation's while it waits); each call is read up to [`REQUEST_BYTES`], opened with the key of the
+//!   household its mailbox is (or the invitation's), refused when it doesn't open, is stale, seen already or can't be
+//!   written down as seen, then run through this bridge's own routes as any household call (only `/family/…`, with that
+//!   household's own key: family_relay.rs `allowed`), its answer sealed back. [`HANDLING`] calls at a time at most.
 //!
 //! The relay down: those links fail as a household that doesn't answer (502, at once); everything else (direct links,
 //! homes fetching from places, links made before) never depends on it.
 
-use std::sync::OnceLock;
+use std::collections::HashSet;
+use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::Duration;
 
 use axum::body::{Body, Bytes};
@@ -40,15 +49,19 @@ use crate::family_seal::{self, AnswerOpener, Broken, Seen, Stale, Way, SALT_LEN}
 use crate::web::HttpError;
 use crate::Dict;
 
-/// A mailbox token is renewed when it has less than this left (the relay's last 400 days).
+/// A mailbox token or a pass is renewed when it has less than this left (the relay's last 400 days).
 const RENEW_BEFORE: f64 = 200.0 * 86400.0;
 /// The most a sealed request may weigh (the relay's own limit).
 pub const REQUEST_BYTES: usize = 16 << 20;
+/// An invitation's exchange, sealed (the relay's limit for it).
+pub const INVITE_BYTES: usize = 64 * 1024;
 /// How long a call waits for the other bridge to take it, then for its answer (the relay's `pickup` and
 /// `answer_start`, plus a margin).
 const CALL_TIMEOUT: Duration = Duration::from_secs(15 + 660 + 60);
 /// One long poll (the relay's is 25 s).
 const POLL_TIMEOUT: Duration = Duration::from_secs(45);
+/// Calls handled at once, every mailbox together: the next poll waits for one to end.
+pub const HANDLING: usize = 16;
 
 /// `[family]` of bridge.toml.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -73,17 +86,22 @@ pub fn base(config: &Config) -> Option<String> {
     }
 }
 
-/// Given to a request run in-process for an invitation answered through the relay (peers.rs `family_accept`): an
-/// extension no outside request can carry.
+/// Given to an invitation's `POST /family/accept` that came sealed with its code (peers.rs `family_accept`), through
+/// the relay or straight to this bridge: an extension no outside request can carry.
 #[derive(Clone, Debug)]
-pub struct ThroughRelay {
-    /// The mailbox it came from.
-    pub mailbox: String,
+pub struct Introduced {
+    /// Through the relay (the caller's mailbox, as the relay says), or straight to our address (None).
+    pub relay: Option<String>,
 }
 
 /// 22 base64url characters (the relay's mailbox ids).
 pub fn valid_mailbox(id: &str) -> bool {
     id.len() == 22 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+/// A call's id as the relay gives it (base64url, short): anything else is not put in an address.
+fn valid_call(id: &str) -> bool {
+    (8..=64).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 // -- this bridge's mailbox and its invitations (family-relay.json) -------------------------------------------------
@@ -112,7 +130,7 @@ fn save(config: &Config, data: &Dict) -> anyhow::Result<()> {
 }
 
 /// One change at a time to family-relay.json.
-static FILE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+static FILE: Mutex<()> = Mutex::new(());
 /// One registration at a time.
 static REGISTERING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
@@ -128,10 +146,28 @@ pub fn own_mailbox(config: &Config) -> Option<String> {
     load(config).get("mailbox")?.get("id")?.as_str().filter(|id| valid_mailbox(id)).map(str::to_string)
 }
 
+/// `POST /v1/family/mailbox` with this body: (id, token, expires).
+async fn register(state: &AppState, body: Value) -> anyhow::Result<(String, String, f64)> {
+    let base = base(&state.config()).ok_or_else(|| anyhow::anyhow!("no family relay set up"))?;
+    let resp = state.http.post(format!("{base}/v1/family/mailbox")).timeout(Duration::from_secs(10)).json(&body).send();
+    let resp = resp.await.map_err(|e| anyhow::anyhow!("Kerfy Studio's relay can't be reached: {e}"))?;
+    if !resp.status().is_success() {
+        anyhow::bail!("the relay gave no mailbox ({})", resp.status().as_u16());
+    }
+    let fresh: Value = resp.json().await?;
+    let id = fresh.get("mailbox").and_then(Value::as_str).unwrap_or_default().to_string();
+    let token = fresh.get("token").and_then(Value::as_str).unwrap_or_default().to_string();
+    if !valid_mailbox(&id) || token.is_empty() {
+        anyhow::bail!("the relay gave no usable mailbox");
+    }
+    let expires = fresh.get("expires").and_then(Value::as_f64).unwrap_or(0.0);
+    Ok((id, token, expires))
+}
+
 /// This bridge's mailbox (id, token): the one kept, renewed when it ends within [`RENEW_BEFORE`], else a new one.
 pub async fn mailbox(state: &AppState) -> anyhow::Result<(String, String)> {
     let config = state.config();
-    let base = base(&config).ok_or_else(|| anyhow::anyhow!("no family relay set up"))?;
+    base(&config).ok_or_else(|| anyhow::anyhow!("no family relay set up"))?;
     let _one = REGISTERING.lock().await;
     let kept = load(&config).get("mailbox").and_then(Value::as_object).cloned().unwrap_or_default();
     let field = |k: &str| kept.get(k).and_then(Value::as_str).map(str::to_string);
@@ -142,66 +178,118 @@ pub async fn mailbox(state: &AppState) -> anyhow::Result<(String, String)> {
             return Ok((id, token));
         }
     }
-    let old = field("token");
-    let answer = state
-        .http
-        .post(format!("{base}/v1/family/mailbox"))
-        .timeout(Duration::from_secs(10))
-        .json(&json!({"token": old}))
-        .send()
-        .await;
-    let fresh = match answer {
-        Ok(resp) if resp.status().is_success() => resp.json::<Value>().await.ok(),
-        Ok(resp) => {
-            tracing::warn!(status = resp.status().as_u16(), "family relay: no mailbox given");
-            None
-        }
+    let fresh = match register(state, json!({"token": field("token")})).await {
+        Ok(fresh) => fresh,
         Err(e) => {
-            tracing::info!(error = %e, "family relay: not reached for a mailbox");
-            None
+            tracing::info!(error = %e, "family relay: no mailbox (renewed or new)");
+            // the relay out of reach while renewing: the token kept still works until its end
+            return match (field("id"), field("token")) {
+                (Some(id), Some(token)) if expires > now => Ok((id, token)),
+                _ => Err(e),
+            };
         }
     };
-    let Some(fresh) = fresh else {
-        // the relay out of reach while renewing: the token kept still works until its end
-        return match (field("id"), field("token")) {
-            (Some(id), Some(token)) if expires > now => Ok((id, token)),
-            _ => Err(anyhow::anyhow!("Kerfy Studio's relay can't be reached")),
-        };
-    };
-    let id = fresh.get("mailbox").and_then(Value::as_str).unwrap_or_default().to_string();
-    let token = fresh.get("token").and_then(Value::as_str).unwrap_or_default().to_string();
-    if !valid_mailbox(&id) || token.is_empty() || field("id").is_some_and(|kept| kept != id) {
-        anyhow::bail!("the relay gave no usable mailbox");
+    let (id, token, expires) = fresh;
+    if field("id").is_some_and(|kept| kept != id) {
+        anyhow::bail!("the relay renewed another mailbox");
     }
-    let expires = fresh.get("expires").and_then(Value::as_f64).unwrap_or(now + 400.0 * 86400.0);
+    let expires = if expires > 0.0 { expires } else { now + 400.0 * 86400.0 };
     edit(&config, |data| {
         data.insert("mailbox".into(), json!({"id": id, "token": token, "expires": expires}));
     })?;
     Ok((id, token))
 }
 
-/// An invitation made with our mailbox in it: its exchange through the relay will be sealed with its code's key.
-pub fn remember_invite(config: &Config, code: &str, until: f64) -> anyhow::Result<()> {
+/// An invitation's own mailbox at the relay, until `until` (its id goes in the QR code).
+pub async fn invite_mailbox(state: &AppState, until: f64) -> anyhow::Result<(String, String)> {
+    let (id, token, _) = register(state, json!({"invite_until": until.ceil() as u64})).await?;
+    Ok((id, token))
+}
+
+/// A pass to call this bridge's mailbox, for a household it links with (the relay seals it): (pass, its end).
+pub async fn new_pass(state: &AppState) -> anyhow::Result<(String, f64)> {
+    let base = base(&state.config()).ok_or_else(|| anyhow::anyhow!("no family relay set up"))?;
+    let (_, token) = mailbox(state).await?;
+    let resp = state.http.post(format!("{base}/v1/family/pass")).timeout(Duration::from_secs(10)).bearer_auth(token);
+    let resp = resp.json(&json!({})).send().await?;
+    if !resp.status().is_success() {
+        anyhow::bail!("the relay gave no pass ({})", resp.status().as_u16());
+    }
+    let pass: Value = resp.json().await?;
+    let expires = pass.get("expires").and_then(Value::as_f64).unwrap_or(0.0);
+    let pass = pass.get("pass").and_then(Value::as_str).map(str::to_string).ok_or_else(|| anyhow::anyhow!("no pass"))?;
+    Ok((pass, expires))
+}
+
+/// The end a pass says (it travels sealed by the relay: the bridge keeps it next to the pass).
+fn pass_expiry(entry: &Dict) -> f64 {
+    entry.get("pass_expires").and_then(Value::as_f64).unwrap_or(0.0)
+}
+
+/// Our pass for this household, renewed when it ends within [`RENEW_BEFORE`] (the same pass id, at the relay).
+async fn pass_for(state: &AppState, household: &str, entry: &Dict) -> Option<String> {
+    let pass = entry.get("pass").and_then(Value::as_str)?.to_string();
+    let now = crate::py::time_time();
+    if pass_expiry(entry) - now > RENEW_BEFORE {
+        return Some(pass);
+    }
+    let base = base(&state.config())?;
+    let (_, token) = mailbox(state).await.ok()?;
+    let renewed = state
+        .http
+        .post(format!("{base}/v1/family/pass"))
+        .timeout(Duration::from_secs(10))
+        .bearer_auth(token)
+        .json(&json!({"renew": pass}))
+        .send()
+        .await;
+    let fresh = match renewed {
+        Ok(resp) if resp.status().is_success() => resp.json::<Value>().await.ok(),
+        _ => None,
+    };
+    match fresh.and_then(|f| Some((f.get("pass")?.as_str()?.to_string(), f.get("expires")?.as_f64()?))) {
+        Some((fresh, expires)) => {
+            let _ = state.households.mark(household, "pass", json!(fresh));
+            let _ = state.households.mark(household, "pass_expires", json!(expires));
+            Some(fresh)
+        }
+        None => Some(pass), // the relay out of reach: the pass kept, as long as it lasts
+    }
+}
+
+/// An invitation made with its own mailbox: its exchange will be sealed with its code's key.
+pub fn remember_invite(config: &Config, code: &str, until: f64, mailbox: (&str, &str)) -> anyhow::Result<()> {
     let digest = hex::encode(sha2::Sha256::digest(code.as_bytes()));
     let key = family_seal::encode_key(&family_seal::invite_key(code));
     let now = crate::py::time_time();
     edit(config, |data| {
         let mut invites = data.get("invites").and_then(Value::as_object).cloned().unwrap_or_default();
         invites.retain(|_, v| v.get("until").and_then(Value::as_f64).is_some_and(|t| t > now));
-        invites.insert(digest, json!({"key": key, "until": until}));
+        invites.insert(digest, json!({"key": key, "until": until, "mailbox": mailbox.0, "token": mailbox.1}));
         data.insert("invites".into(), Value::Object(invites));
     })
 }
 
-/// The invitations still waiting (their digest, their exchange's key).
-fn invite_keys(config: &Config) -> Vec<(String, [u8; 32])> {
+/// An invitation still waiting.
+struct Invite {
+    digest: String,
+    key: [u8; 32],
+    mailbox: Option<(String, String)>,
+}
+
+fn invites(config: &Config) -> Vec<Invite> {
     let now = crate::py::time_time();
     let data = load(config);
     let Some(invites) = data.get("invites").and_then(Value::as_object) else { return Vec::new() };
     invites
         .iter()
         .filter(|(_, v)| v.get("until").and_then(Value::as_f64).is_some_and(|t| t > now))
-        .filter_map(|(d, v)| Some((d.clone(), family_seal::decode_key(v.get("key")?.as_str()?)?)))
+        .filter_map(|(d, v)| {
+            let key = family_seal::decode_key(v.get("key")?.as_str()?)?;
+            let field = |k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
+            let mailbox = field("mailbox").filter(|m| valid_mailbox(m)).zip(field("token"));
+            Some(Invite { digest: d.clone(), key, mailbox })
+        })
         .collect()
 }
 
@@ -253,18 +341,30 @@ pub fn household_of_route(state: &AppState, token: &str) -> Option<(String, Dict
     })
 }
 
-/// Whether this bridge must keep a long poll on its mailbox: a household calls us through the relay, or an
-/// invitation with our mailbox waits.
-fn needs_poll(state: &AppState) -> bool {
+/// The mailboxes this bridge must keep a long poll on (id, token, an invitation's): ours while a household calls us
+/// through the relay, each invitation's while it waits.
+fn mailboxes_to_poll(state: &AppState) -> Vec<(String, String, bool)> {
     let config = state.config();
-    if base(&config).is_none() || own_mailbox(&config).is_none() {
-        return false;
+    if base(&config).is_none() {
+        return Vec::new();
     }
+    let mut out: Vec<(String, String, bool)> = invites(&config)
+        .into_iter()
+        .filter_map(|i| i.mailbox.map(|(id, token)| (id, token, true)))
+        .collect();
     let data = state.households.load();
     let called = data.get("households").and_then(Value::as_object).is_some_and(|h| {
         h.values().any(|v| v.get("relay_in").and_then(Value::as_bool) == Some(true) && v.get("seal").is_some())
     });
-    called || !invite_keys(&config).is_empty()
+    let kept = load(&config).get("mailbox").and_then(Value::as_object).cloned().unwrap_or_default();
+    if let (true, Some(id), Some(token)) = (
+        called,
+        kept.get("id").and_then(Value::as_str).filter(|id| valid_mailbox(id)),
+        kept.get("token").and_then(Value::as_str),
+    ) {
+        out.push((id.to_string(), token.to_string(), false));
+    }
+    out
 }
 
 // -- calling a household through the relay ------------------------------------------------------------------------
@@ -292,46 +392,22 @@ pub enum CallFailure {
     Broken,
 }
 
-/// One sealed call to `mailbox`, its answer's head opened: (status, headers, the rest of the answer as it comes).
-async fn send(
-    state: &AppState,
-    mailbox: &str,
-    kind: &str,
+/// How a sealed call goes out.
+enum Kind<'a> {
+    /// To a linked household, with the pass it gave us.
+    Call(&'a str),
+    /// An introduction, to an invitation's mailbox.
+    Invite,
+}
+
+/// An answer's head and the rest of it as it comes, from a response whose body is a sealed answer.
+async fn opened_answer(
+    resp: reqwest::Response,
     key: &[u8; 32],
+    salt: &[u8; SALT_LEN],
     way: Way,
-    head: Value,
-    body: &[u8],
 ) -> Result<(u16, Vec<(String, String)>, Body), CallFailure> {
-    let config = state.config();
-    let base = base(&config).ok_or(CallFailure::RelayDown)?;
-    let (_, token) = mailbox_token(state).await?;
-    let (wire, salt) = family_seal::seal_request(key, way, &head, body);
-    let resp = state
-        .http
-        .post(format!("{base}/v1/family/call/{mailbox}"))
-        .timeout(CALL_TIMEOUT)
-        .bearer_auth(token)
-        .header("x-bip-kind", kind)
-        .header("content-type", "application/octet-stream")
-        .body(wire)
-        .send()
-        .await
-        .map_err(|_| CallFailure::RelayDown)?;
-    match resp.status().as_u16() {
-        200 => {}
-        // their bridge not connected or not taking it, the relay busy or over a quota: a household not answering
-        503 | 504 | 429 => return Err(CallFailure::Away),
-        502 => return Err(CallFailure::RelayDown),
-        401 | 403 => {
-            tracing::warn!("family relay: our mailbox is refused by the relay (blocked, or sealed with keys it dropped)");
-            return Err(CallFailure::RelayDown);
-        }
-        status => {
-            tracing::info!(status, "family relay: call refused by the relay");
-            return Err(CallFailure::Broken);
-        }
-    }
-    let mut opener = AnswerOpener::new(key, &salt, way);
+    let mut opener = AnswerOpener::new(key, salt, way);
     let mut stream = Box::pin(resp.bytes_stream());
     let (head, last) = loop {
         match opener.next_frame() {
@@ -372,12 +448,54 @@ async fn send(
     Ok((status, headers, Body::from_stream(rest)))
 }
 
+/// One sealed call to `mailbox`, its answer's head opened: (status, headers, the rest of the answer as it comes).
+async fn send(
+    state: &AppState,
+    mailbox: &str,
+    kind: Kind<'_>,
+    key: &[u8; 32],
+    way: Way,
+    head: Value,
+    body: &[u8],
+) -> Result<(u16, Vec<(String, String)>, Body), CallFailure> {
+    let config = state.config();
+    let base = base(&config).ok_or(CallFailure::RelayDown)?;
+    let (_, token) = mailbox_token(state).await?;
+    let (wire, salt) = family_seal::seal_request(key, way, &head, body);
+    let mut call = state
+        .http
+        .post(format!("{base}/v1/family/call/{mailbox}"))
+        .timeout(CALL_TIMEOUT)
+        .bearer_auth(token)
+        .header("content-type", "application/octet-stream");
+    call = match kind {
+        Kind::Call(pass) => call.header("x-bip-kind", "call").header("x-bip-pass", pass),
+        Kind::Invite => call.header("x-bip-kind", "invite"),
+    };
+    let resp = call.body(wire).send().await.map_err(|_| CallFailure::RelayDown)?;
+    match resp.status().as_u16() {
+        200 => {}
+        // their bridge not connected or not taking it, the relay busy or over a quota: a household not answering
+        503 | 504 | 429 | 408 => return Err(CallFailure::Away),
+        502 => return Err(CallFailure::RelayDown),
+        401 | 403 => {
+            tracing::warn!("family relay: our mailbox is refused by the relay (blocked, or sealed with keys it dropped)");
+            return Err(CallFailure::RelayDown);
+        }
+        status => {
+            tracing::info!(status, "family relay: call refused by the relay");
+            return Err(CallFailure::Broken);
+        }
+    }
+    opened_answer(resp, key, &salt, way).await
+}
+
 async fn mailbox_token(state: &AppState) -> Result<(String, String), CallFailure> {
     mailbox(state).await.map_err(|_| CallFailure::RelayDown)
 }
 
 /// A call of ours to a household reached through the relay (the loopback listener, family_relay.rs `relay_in`):
-/// sealed with the link's key, sent to their mailbox, their answer opened as it comes.
+/// sealed with the link's key, sent to their mailbox with their pass, their answer opened as it comes.
 pub async fn call(
     state: AppState,
     household: String,
@@ -392,9 +510,13 @@ pub async fn call(
         return not_answering();
     };
     let Some(mailbox) = link.mailbox.as_deref() else { return not_answering() };
+    let Some(pass) = pass_for(&state, &household, &entry).await else {
+        tracing::info!(household = %household, "family relay: no pass for this household's mailbox (link it again)");
+        return not_answering();
+    };
     let way = Way::out(&link.role).unwrap_or(Way::Invite);
     let head = json!({"m": method, "p": path, "h": headers, "t": crate::py::time_time()});
-    match send(&state, mailbox, "call", &link.key, way, head, &body).await {
+    match send(&state, mailbox, Kind::Call(&pass), &link.key, way, head, &body).await {
         Ok((status, headers, body)) => {
             let mut response = Response::new(body);
             *response.status_mut() =
@@ -414,7 +536,25 @@ pub async fn call(
     }
 }
 
-/// The scanning bridge's `POST /family/accept` through the relay, to the inviter's mailbox, sealed with the
+/// An invitation's `POST /family/accept`, sealed with its code: what goes, and the salt its answer opens with.
+pub fn sealed_accept(code: &str, payload: &Value, current: Option<&str>) -> (Vec<u8>, [u8; SALT_LEN]) {
+    let mut headers = vec![("content-type".to_string(), "application/json".to_string())];
+    if let Some(current) = current {
+        headers.push(("authorization".into(), format!("Bearer {current}")));
+    }
+    let head = json!({"m": "POST", "p": "/family/accept", "h": headers, "t": crate::py::time_time()});
+    family_seal::seal_request(&family_seal::invite_key(code), Way::Invite, &head, payload.to_string().as_bytes())
+}
+
+/// The answer to [`sealed_accept`], if it opens with the invitation's code: (status, body).
+pub async fn opened_accept(resp: reqwest::Response, code: &str, salt: &[u8; SALT_LEN]) -> Option<(u16, Bytes)> {
+    let key = family_seal::invite_key(code);
+    let (status, _, body) = opened_answer(resp, &key, salt, Way::Invite).await.ok()?;
+    let bytes = axum::body::to_bytes(body, 1 << 20).await.ok()?;
+    Some((status, bytes))
+}
+
+/// The scanning bridge's `POST /family/accept` through the relay, to the invitation's mailbox, sealed with the
 /// invitation's code: (status, body). `current`: our key for them when we link again.
 pub async fn accept(
     state: &AppState,
@@ -423,16 +563,16 @@ pub async fn accept(
     payload: &Value,
     current: Option<&str>,
 ) -> Result<(u16, Bytes), CallFailure> {
-    let mut headers = vec![("content-type".to_string(), "application/json".to_string())];
-    if let Some(current) = current {
-        headers.push(("authorization".into(), format!("Bearer {current}")));
-    }
     let key = family_seal::invite_key(code);
     // the inviter's bridge may be (re)connecting its poll a moment after showing the invitation: a few tries
     let mut tries = 0;
     let (status, body) = loop {
+        let mut headers = vec![("content-type".to_string(), "application/json".to_string())];
+        if let Some(current) = current {
+            headers.push(("authorization".into(), format!("Bearer {current}")));
+        }
         let head = json!({"m": "POST", "p": "/family/accept", "h": headers, "t": crate::py::time_time()});
-        match send(state, mailbox, "invite", &key, Way::Invite, head, payload.to_string().as_bytes()).await {
+        match send(state, mailbox, Kind::Invite, &key, Way::Invite, head, payload.to_string().as_bytes()).await {
             Err(CallFailure::Away) if tries < 4 => {
                 tries += 1;
                 tokio::time::sleep(Duration::from_secs(2)).await;
@@ -447,49 +587,80 @@ pub async fn accept(
 
 // -- their calls to us ------------------------------------------------------------------------------------------
 
-/// Rings when this bridge may have to poll now (an invitation made, a link through the relay): no wait for the next
-/// look.
-static WAKE: tokio::sync::Notify = tokio::sync::Notify::const_new();
-
-pub fn wake() {
-    WAKE.notify_one();
-}
-
 /// What this bridge saw (family_seal.rs `Seen`), made once.
 fn seen(config: &Config) -> &'static Seen {
     static SEEN: OnceLock<Seen> = OnceLock::new();
     SEEN.get_or_init(|| Seen::new(&config.data_dir()))
 }
 
-/// Keeps one long poll on this bridge's mailbox while a household calls us through the relay or an invitation waits.
+/// Rings when this bridge may have to poll now (an invitation made, a link through the relay): no wait for the next
+/// look.
+static WAKE: tokio::sync::Notify = tokio::sync::Notify::const_new();
+
+pub fn wake() {
+    WAKE.notify_waiters();
+    WAKE.notify_one();
+}
+
+/// The mailboxes a long poll runs for.
+static POLLING: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
+/// Calls handled at once.
+static HANDLERS: LazyLock<std::sync::Arc<tokio::sync::Semaphore>> =
+    LazyLock::new(|| std::sync::Arc::new(tokio::sync::Semaphore::new(HANDLING)));
+
+/// Keeps one long poll per mailbox this bridge needs (ours while a household calls us through the relay, each
+/// invitation's while it waits).
 pub async fn poll_forever(state: AppState) {
+    loop {
+        for (id, token, invitation) in mailboxes_to_poll(&state) {
+            let fresh = POLLING.lock().unwrap_or_else(|e| e.into_inner()).insert(id.clone());
+            if fresh {
+                tokio::spawn(poll_one(state.clone(), id, token, invitation));
+            }
+        }
+        let _ = tokio::time::timeout(Duration::from_secs(3), WAKE.notified()).await;
+    }
+}
+
+/// One mailbox's long poll, as long as it is needed.
+async fn poll_one(state: AppState, id: String, token: String, invitation: bool) {
     let mut pause = Duration::from_secs(1);
     loop {
-        if !needs_poll(&state) {
-            let _ = tokio::time::timeout(Duration::from_secs(3), WAKE.notified()).await;
-            continue;
+        if !mailboxes_to_poll(&state).iter().any(|(m, _, _)| *m == id) {
+            break;
         }
-        let config = state.config();
-        let (Some(base), Ok((_, token))) = (base(&config), mailbox(&state).await) else {
-            tokio::time::sleep(pause).await;
-            pause = (pause * 2).min(Duration::from_secs(15));
-            continue;
-        };
-        let answer =
-            state.http.get(format!("{base}/v1/family/next")).timeout(POLL_TIMEOUT).bearer_auth(&token).send().await;
+        let Some(base) = base(&state.config()) else { break };
+        let answer = state
+            .http
+            .get(format!("{base}/v1/family/next"))
+            .timeout(POLL_TIMEOUT)
+            .bearer_auth(&token)
+            .send()
+            .await;
         match answer {
             Ok(resp) if resp.status() == StatusCode::OK => {
                 pause = Duration::from_secs(1);
                 let header =
                     |n: &str| resp.headers().get(n).and_then(|v| v.to_str().ok()).unwrap_or_default().to_string();
-                let (id, from, kind) = (header("x-bip-call"), header("x-bip-from"), header("x-bip-kind"));
-                if let Ok(wire) = resp.bytes().await {
-                    tokio::spawn(handle(state.clone(), base, token, id, from, kind, wire));
+                let (call, from, kind) = (header("x-bip-call"), header("x-bip-from"), header("x-bip-kind"));
+                let limit = if invitation { INVITE_BYTES } else { REQUEST_BYTES };
+                let wire = read_at_most(resp, limit).await;
+                // HANDLING calls at once: past it, this mailbox's next poll waits for one to end
+                let Ok(permit) = HANDLERS.clone().acquire_owned().await else { break };
+                match (wire, valid_call(&call)) {
+                    (Some(wire), true) => {
+                        let (state, base, token, mailbox) = (state.clone(), base.clone(), token.clone(), id.clone());
+                        tokio::spawn(async move {
+                            handle(state, base, token, mailbox, invitation, call, from, kind, wire).await;
+                            drop(permit);
+                        });
+                    }
+                    _ => tracing::warn!("family relay: a call too large or misnamed, dropped"),
                 }
             }
             Ok(resp) if resp.status() == StatusCode::NO_CONTENT => pause = Duration::from_secs(1),
             Ok(resp) => {
-                tracing::warn!(status = resp.status().as_u16(), "family relay: poll refused");
+                tracing::warn!(status = resp.status().as_u16(), invitation, "family relay: poll refused");
                 tokio::time::sleep(Duration::from_secs(30)).await;
             }
             Err(_) => {
@@ -498,10 +669,28 @@ pub async fn poll_forever(state: AppState) {
             }
         }
     }
+    POLLING.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+}
+
+/// A body read up to `limit` bytes (None past it, or cut).
+async fn read_at_most(resp: reqwest::Response, limit: usize) -> Option<Bytes> {
+    if resp.content_length().is_some_and(|n| n as usize > limit) {
+        return None;
+    }
+    let mut stream = Box::pin(resp.bytes_stream());
+    let mut out = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.ok()?;
+        if out.len() + chunk.len() > limit {
+            return None;
+        }
+        out.extend_from_slice(&chunk);
+    }
+    Some(Bytes::from(out))
 }
 
 /// A call that opened: whose, and how its answer is sealed.
-struct Opened {
+pub struct Opened {
     /// The household calling (None: an invitation's exchange).
     household: Option<String>,
     invite: Option<String>,
@@ -527,17 +716,78 @@ fn open_call(state: &AppState, from: &str, wire: &[u8]) -> Option<Opened> {
     })
 }
 
-/// An invitation's exchange: opened with the key of one of ours still waiting.
-fn open_invite(config: &Config, wire: &[u8]) -> Option<Opened> {
-    invite_keys(config).into_iter().find_map(|(digest, key)| {
-        let (salt, head, body) = family_seal::open_request(&key, Way::Invite, wire).ok()?;
-        Some(Opened { household: None, invite: Some(digest), key, way: Way::Invite, salt, head, body })
-    })
+/// An invitation's exchange: opened with the key of the invitation whose mailbox it came to (or, straight to our
+/// address, any of ours still waiting).
+pub fn open_invite(config: &Config, mailbox: Option<&str>, wire: &[u8]) -> Option<Opened> {
+    invites(config)
+        .into_iter()
+        .filter(|i| mailbox.is_none() || i.mailbox.as_ref().map(|(m, _)| m.as_str()) == mailbox)
+        .find_map(|i| {
+            let (salt, head, body) = family_seal::open_request(&i.key, Way::Invite, wire).ok()?;
+            Some(Opened { household: None, invite: Some(i.digest), key: i.key, way: Way::Invite, salt, head, body })
+        })
 }
 
-async fn handle(state: AppState, base: String, token: String, id: String, from: String, kind: String, wire: Bytes) {
+/// Why an opened call is not taken (logged as such).
+fn stale(config: &Config, opened: &Opened) -> Option<&'static str> {
+    let t = opened.head.get("t").and_then(Value::as_f64).unwrap_or(f64::NAN);
+    match seen(config).take(&opened.salt, t, crate::py::time_time()) {
+        Ok(()) => None,
+        Err(Stale::Replay) => Some("replay"),
+        Err(Stale::Time) => Some("stale"),
+        Err(Stale::Unkept) => Some("unkept"),
+    }
+}
+
+/// An answer sealed for an opened call, as a stream (the answer's own salt first, then its head, then its body).
+fn sealed_answer(
+    key: &[u8; 32],
+    way: Way,
+    salt: &[u8; SALT_LEN],
+    response: Response,
+) -> impl futures::Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static {
+    let status = response.status().as_u16();
+    let headers = crate::family_relay::header_pairs(response.headers());
+    let mut framer = family_seal::answer_sealer(key, salt, way);
+    let first = framer.seal(json!({"s": status, "h": headers}).to_string().as_bytes(), false);
+    futures::stream::unfold(
+        (Some(framer), response.into_body().into_data_stream(), Some(first)),
+        |(framer, mut data, first)| async move {
+            if let Some(first) = first {
+                return Some((Ok::<Bytes, std::io::Error>(Bytes::from(first)), (framer, data, None)));
+            }
+            let mut framer = framer?;
+            match data.next().await {
+                Some(Ok(chunk)) => {
+                    let sealed = framer.seal_all(&chunk, false);
+                    Some((Ok(Bytes::from(sealed)), (Some(framer), data, None)))
+                }
+                // the end: the last frame marked (a broken body ends without it: cut, as the caller sees)
+                None => Some((Ok(Bytes::from(framer.seal(&[], true))), (None, data, None))),
+                Some(Err(e)) => Some((Err(std::io::Error::other(e)), (None, data, None))),
+            }
+        },
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn handle(
+    state: AppState,
+    base: String,
+    token: String,
+    mailbox: String,
+    invitation: bool,
+    id: String,
+    from: String,
+    kind: String,
+    wire: Bytes,
+) {
     let config = state.config();
-    let opened = if kind == "invite" { open_invite(&config, &wire) } else { open_call(&state, &from, &wire) };
+    let opened = match (invitation, kind.as_str()) {
+        (true, "invite") => open_invite(&config, Some(&mailbox), &wire),
+        (false, "call") => open_call(&state, &from, &wire),
+        _ => None,
+    };
     let refused = |reason: &str| {
         tracing::warn!(reason, kind = %kind, "family relay: call refused");
     };
@@ -546,49 +796,18 @@ async fn handle(state: AppState, base: String, token: String, id: String, from: 
             refused("unsealed");
             None
         }
-        Some(opened) => {
-            let t = opened.head.get("t").and_then(Value::as_f64).unwrap_or(f64::NAN);
-            match seen(&config).take(&opened.salt, t, crate::py::time_time()) {
-                Err(Stale::Replay) => {
-                    refused("replay");
-                    None
-                }
-                Err(Stale::Time) => {
-                    refused("stale");
-                    None
-                }
-                Ok(()) => Some(run(&state, opened, &from).await),
+        Some(opened) => match stale(&config, &opened) {
+            Some(reason) => {
+                refused(reason);
+                None
             }
-        }
+            None => Some(run(&state, opened, Some(&from)).await),
+        },
     };
     // a refusal is an empty answer: the caller fails at once instead of waiting for the relay's end
     let body = match response {
         None => reqwest::Body::from(Vec::new()),
-        Some((key, way, salt, response)) => {
-            let status = response.status().as_u16();
-            let headers = crate::family_relay::header_pairs(response.headers());
-            let mut framer = family_seal::answer_sealer(&key, &salt, way);
-            let first = framer.seal(json!({"s": status, "h": headers}).to_string().as_bytes(), false);
-            let frames = futures::stream::unfold(
-                (Some(framer), response.into_body().into_data_stream(), Some(first)),
-                |(framer, mut data, first)| async move {
-                    if let Some(first) = first {
-                        return Some((Ok::<Bytes, std::io::Error>(Bytes::from(first)), (framer, data, None)));
-                    }
-                    let mut framer = framer?;
-                    match data.next().await {
-                        Some(Ok(chunk)) => {
-                            let sealed = framer.seal_all(&chunk, false);
-                            Some((Ok(Bytes::from(sealed)), (Some(framer), data, None)))
-                        }
-                        // the end: the last frame marked (a broken body ends without it: cut, as the caller sees)
-                        None => Some((Ok(Bytes::from(framer.seal(&[], true))), (None, data, None))),
-                        Some(Err(e)) => Some((Err(std::io::Error::other(e)), (None, data, None))),
-                    }
-                },
-            );
-            reqwest::Body::wrap_stream(frames)
-        }
+        Some((key, way, salt, response)) => reqwest::Body::wrap_stream(sealed_answer(&key, way, &salt, response)),
     };
     let sent = state
         .http
@@ -604,8 +823,9 @@ async fn handle(state: AppState, base: String, token: String, id: String, from: 
     }
 }
 
-/// An opened call run through this bridge's own routes: (key, way, salt, its response).
-async fn run(state: &AppState, opened: Opened, from: &str) -> ([u8; 32], Way, [u8; SALT_LEN], Response) {
+/// An opened call run through this bridge's own routes: (key, way, salt, its response). `relay`: the mailbox an
+/// invitation's exchange came from through the relay (None: straight to our address).
+async fn run(state: &AppState, opened: Opened, relay: Option<&str>) -> ([u8; 32], Way, [u8; SALT_LEN], Response) {
     let method = opened.head.get("m").and_then(Value::as_str).unwrap_or("GET").to_string();
     let path = opened.head.get("p").and_then(Value::as_str).unwrap_or("/").to_string();
     let pairs: Vec<(String, String)> =
@@ -616,16 +836,34 @@ async fn run(state: &AppState, opened: Opened, from: &str) -> ([u8; 32], Way, [u
                 .await
         }
         (None, Some(digest)) if method == "POST" && path == "/family/accept" => {
-            let through = ThroughRelay { mailbox: from.to_string() };
-            let response = crate::family_relay::run_accept(&pairs, Bytes::from(opened.body), through).await;
+            let introduced = Introduced { relay: relay.map(str::to_string) };
+            let response = crate::family_relay::run_accept(&pairs, Bytes::from(opened.body), introduced).await;
             if response.status().is_success() {
-                forget_invite(&state.config(), digest); // used: its key goes with it
+                forget_invite(&state.config(), digest); // used: its key and its mailbox go with it
             }
             response
         }
         _ => HttpError::not_found().into_response(),
     };
     (opened.key, opened.way, opened.salt, response)
+}
+
+/// `POST /family/accept/sealed` (open, as `/family/accept`): an invitation's exchange sealed with its code, straight
+/// to our address (peers.rs `join`, before the relay). Answered sealed the same way; anything that doesn't open with
+/// one of our invitations waiting gets a plain 404, so the scanning bridge goes through the relay.
+pub async fn accept_sealed(state: &AppState, wire: Bytes) -> Response {
+    let config = state.config();
+    let Some(opened) = open_invite(&config, None, &wire) else {
+        return HttpError::not_found().into_response();
+    };
+    if let Some(reason) = stale(&config, &opened) {
+        tracing::warn!(reason, "family link: a sealed introduction refused");
+        return HttpError::not_found().into_response();
+    }
+    let (key, way, salt, response) = run(state, opened, None).await;
+    let mut answer = Response::new(Body::from_stream(sealed_answer(&key, way, &salt, response)));
+    answer.headers_mut().insert("content-type", axum::http::HeaderValue::from_static("application/octet-stream"));
+    answer
 }
 
 #[cfg(test)]
@@ -665,5 +903,23 @@ mod tests {
         entry.insert("via".into(), json!("relay"));
         assert_eq!(route_of(&entry), Some("r".repeat(32).as_str()));
         assert!(valid_mailbox("AAAAAAAAAAAAAAAAAAAAAA") && !valid_mailbox("AAA") && !valid_mailbox(&"/".repeat(22)));
+        assert!(valid_call("abcdefgh12345678") && !valid_call("../x") && !valid_call("a/b/c/d/e/f") && !valid_call(""));
+    }
+
+    #[test]
+    fn an_invitations_exchange_opens_with_its_own_invitation_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k".repeat(40));
+        config.outbox.db_path = dir.path().join("bridge.db").to_string_lossy().into_owned();
+        let until = crate::py::time_time() + 600.0;
+        remember_invite(&config, "code-1", until, ("AAAAAAAAAAAAAAAAAAAAAA", "fm1.t1")).unwrap();
+        remember_invite(&config, "code-2", until, ("BBBBBBBBBBBBBBBBBBBBBB", "fm1.t2")).unwrap();
+        let (wire, _) = sealed_accept("code-1", &json!({"name": "Alex"}), None);
+        assert!(open_invite(&config, None, &wire).is_some(), "straight to our address: any invitation of ours");
+        assert!(open_invite(&config, Some("AAAAAAAAAAAAAAAAAAAAAA"), &wire).is_some());
+        assert!(open_invite(&config, Some("BBBBBBBBBBBBBBBBBBBBBB"), &wire).is_none(), "another invitation's mailbox");
+        let (other, _) = sealed_accept("code-3", &json!({}), None);
+        assert!(open_invite(&config, None, &other).is_none(), "an invitation we never made");
+        assert!(!String::from_utf8_lossy(&wire).contains("code-1"), "the code never travels");
     }
 }
