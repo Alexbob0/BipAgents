@@ -184,6 +184,6 @@ def finish(site: Path, domain: str, cfg: Dict) -> None:
         (site / "404.html").write_text(not_found(domain), encoding="utf-8")
     well_known = site / ".well-known"
     well_known.mkdir(exist_ok=True)
-    policy = cfg.get("repo", "https://github.com/Alexbob0/BipAgents").rstrip("/") + "/blob/main/SECURITY.md"
+    policy = cfg.get("repo", "https://github.com/BipAgents/BipAgents").rstrip("/") + "/blob/stable/SECURITY.md"
     (well_known / "security.txt").write_text(security_txt(domain, cfg["contact"], policy), encoding="utf-8")
     (site / ".htaccess").write_text(htaccess(site, domain), encoding="utf-8")

@@ -122,7 +122,7 @@
     "who2": "The AI reads what your agent sends it, to answer you: through EUrouter, a European AI router, then the provider running the model you chose. Before your first message, the app names the router and the model.",
     "who3": "Our limit, said plainly: as with any rented server, the host and we could technically get in. Our software doesn’t, and we only would if the law required it.",
     "compare": "Compared with ChatGPT, Gemini and others, with sources →",
-    "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.md",
+    "href": "https://github.com/BipAgents/BipAgents/blob/stable/docs/privacy-compare.md",
     "title": "Yours. Not everyone’s.",
     "classic": "A usual assistant",
     "theirs": "Their servers",
