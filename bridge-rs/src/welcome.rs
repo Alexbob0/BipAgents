@@ -1276,4 +1276,34 @@ mod tests {
         }
         assert!(live.is_empty(), "a live link in the agent's first words:\n{}", live.join("\n"));
     }
+
+    /// Confirmation review 15/11 (R3-1): the role is made inert by deleting every « word.word » (`ADDRESS`), so the
+    /// person's own words get holes in the agent's first words: « Relancer @ chaque lundi », « chez le », « apprendre
+    /// et , », while the iPhone's link detector (NSDataDetector, checked on macOS) links none of « M.Dupont »,
+    /// « Dr.Martin », « Node.js », « p.ex. ». And a domain with an accented letter, which it does link
+    /// (« exämple.com/connexion » → http://xn--exmple-cua.com/connexion), is left whole: `[a-z]` stops at « ä ».
+    /// An address can stay readable and inert (its dots as « ․ » U+2024: not linked, checked the same way).
+    #[test]
+    fn review3_the_role_said_back_keeps_the_persons_words_and_no_address() {
+        let kept = [
+            ("Préparer mes rendez-vous avec M.Dupont, mon notaire", "Dupont"),
+            ("Relancer lea.martin@gmail.com chaque lundi pour le loyer", "martin"),
+            ("Me rappeler mes séances chez le Dr.Martin", "Martin"),
+            ("M'aider à apprendre Node.js et Vue.js, 30 min par jour", "Node"),
+            ("Suivre mes commandes Amazon.fr et Vinted", "Amazon"),
+            ("Organiser mes repas de la semaine, p.ex. sans gluten", "ex"),
+        ];
+        let mut lost = Vec::new();
+        for (role, word) in kept {
+            let (text, _) = message("Max", "daily", "fr", false, Some(role));
+            if !text.contains(word) {
+                lost.push(format!("« {word} » gone: {text}"));
+            }
+        }
+        let (text, _) = message("Colis", "daily", "fr", false, Some("Suivre mes colis sur exämple.com/connexion"));
+        if text.contains("exämple.com") {
+            lost.push(format!("an address the iPhone links left whole: {text}"));
+        }
+        assert!(lost.is_empty(), "the role said back:\n{}", lost.join("\n"));
+    }
 }
