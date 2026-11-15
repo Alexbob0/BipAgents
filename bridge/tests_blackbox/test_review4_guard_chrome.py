@@ -121,7 +121,10 @@ def test_a_script_reading_the_forms_values_never_hands_back_a_password(browser):
     said = browser.tool("execute_script",
                         script="JSON.stringify([...document.getElementById('login').children].map((e) => e.value || ''))")
     assert password not in said and "Vx9" not in said, said
-    assert said.startswith("Not shown: that answer held what a password field holds"), said
-    # the other fields can still be read
+    # not shown, or (hotfix v2) never run: V8 won't call every field's getter a pure read
+    assert said.startswith(("Not shown: that answer held what a password field holds",
+                            "Not done: this script changes the page")), said
+    # the other fields: read when V8 proves it, never the password either way
     email = browser.tool("execute_script", script="document.getElementById('email').value")
-    assert "camille@example.org" in email, email
+    assert "camille@example.org" in email or email.startswith("Not done: this script changes the page"), email
+    assert password not in email, email
