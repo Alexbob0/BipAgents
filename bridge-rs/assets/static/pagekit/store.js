@@ -152,7 +152,10 @@
       if (loaded) return;
       loaded = true;
       readyResolve(mode);
+      // writes made before the first answer: kept in memory only (no door), or dropped (read only)
       if (mode === "local" && pending.length) say("local");
+      if (mode === "local" || !canWrite) pending.forEach(function (w) { if (w.done) w.done(false); });
+      if (!canWrite && pending.length) { pending = []; cache = null; say("readonly"); }
       var keys = Object.keys(current());
       listeners.forEach(function (cb) { try { cb({ keys: keys, mine: false, first: true }); } catch (e) { setTimeout(function () { throw e; }); } });
     }

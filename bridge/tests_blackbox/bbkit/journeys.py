@@ -25,6 +25,14 @@ from .servers import free_port, wait_until
 
 AGENT = "vie"
 FILES_ROOT = "/home/hermes/.hermes/fichiers"
+# A page that remembers (page_store.rs, J56): a field, « Ajouter », the list kept by the bridge.
+MEMORY_PAGE = ('<h1>Courses</h1><p class="sub">Ce que tu tapes ici est gardé</p>'
+               '<div class="card"><input id="w" aria-label="Article" placeholder="Article"> '
+               '<button id="go">Ajouter</button></div><ul id="l" class="check"></ul>'
+               '<script>function draw(){document.getElementById("l").innerHTML=Bip.store.items("courses")'
+               '.map(function(r){return "<li>"+Bip.esc(r.value)+"</li>"}).join("")}'
+               'Bip.store.onChange(draw);document.getElementById("go").onclick=function(){'
+               'var w=document.getElementById("w");if(w.value){Bip.store.add("courses",w.value);w.value=""}}</script>')
 
 
 @dataclass
@@ -138,6 +146,9 @@ def journey_bridge(bridges, fakes, word_gap: float = 0.06, name: str = "journeys
     def page_with(run: str, html: str) -> str:
         return journey.mcp("/v1/agent-tools/mcp", "create_page", {"html": html, "title": f"Trajet {run}"})
 
+    def memory_page(run: str) -> str:
+        return journey.mcp("/v1/agent-tools/mcp", "create_page", {"html": MEMORY_PAGE, "title": f"Courses {run}"})
+
     def map_(run: str) -> str:
         try:
             return journey.mcp("/v1/agent-tools/mcp", "map_image",
@@ -166,7 +177,7 @@ def journey_bridge(bridges, fakes, word_gap: float = 0.06, name: str = "journeys
     inline = os.environ.get("JOURNEYS_PHOTOS") == "inline"
     journey.model = ScriptedModel(fakes.hermes, files, FILES_ROOT, word_gap=word_gap,
                                   calls={"page": page, "map": map_, "secret": secret, "sites": sites,
-                                         "connector": connector, "page_with": page_with},
+                                         "connector": connector, "page_with": page_with, "memory_page": memory_page},
                                   profile=None if inline else profile(hub, AGENT),
                                   profile_seen_as=f"{agent['hermes_home']}/profiles/{AGENT}").install()
     return journey
