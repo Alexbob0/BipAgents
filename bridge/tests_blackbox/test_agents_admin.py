@@ -246,6 +246,9 @@ def test_settings_and_delete(bridges, fakes):
     assert written.startswith("Tu es Budget, sobre.\n") and "write in French." in written   # its language block kept
     assert ["-p", "budget", "tools", "enable", "terminal", "--platform", "api_server"] in hermes_args(bridge)
     assert ["-p", "budget", "tools", "disable", "web", "--platform", "api_server"] in hermes_args(bridge)
+    # its personality changed: its ongoing conversations are told, once the answer is sent (agents_admin.rs
+    # refresh_prompts_soon), before the commands below are counted
+    assert wait_until(lambda: ["-p", "budget", "sessions", "refresh-prompts", "--json"] in hermes_args(bridge))
     bad = bridge.patch("/v1/agents/budget/settings", headers=AUTH, json={"toolsets": {"web; rm -rf": True}})
     assert bad.status_code == 400 and bad.json() == {"detail": "invalid toolset name"}
     skills = bridge.patch("/v1/agents/budget/settings", headers=AUTH, json={"skills": {"nope": True}})
@@ -519,3 +522,39 @@ def test_the_agents_model_is_switched_in_its_config(bridges, fakes):
     assert kept.json()["model"] == {"name": "minimax-m3", "vision": False}   # vision unsaid: kept
     assert bridge.put("/v1/agents/coach/model", headers=AUTH, json={"name": "bad name!"}).status_code == 422
     assert bridge.logged("agent model changed")[0]["model"] == "deepseek-v4-flash-0731"
+
+
+def test_a_personality_saved_in_the_app_reaches_its_ongoing_conversation(bridges, fakes):
+    """15/11 (Alex: « elle n'a pas été prise en compte »): Hermes v0.23.1 replays a continuing conversation's stored
+    system prompt every turn (prefix cache), so a SOUL.md change never reached the agent's one thread, whatever the
+    apps say (« … s'en sert dès le prochain message »). A change the person makes (its personality, its answer style)
+    asks Hermes to rebuild each of its conversations' prompt once, on its next turn (`sessions refresh-prompts`); a
+    save that changes nothing asks nothing. The personality is 8000 characters at most: past it, refused and said."""
+    bridge, home = managed(bridges, fakes)
+    assert bridge.post("/v1/agents", headers=AUTH, json={"name": "Budget", "kind": "finance"}).status_code == 201
+    soul_path = home / "profiles" / "budget" / "SOUL.md"
+    refresh = ["-p", "budget", "sessions", "refresh-prompts", "--json"]
+    longest = "Tu es Budget, sobre et précis. " + "x" * (8000 - 31)
+    assert len(longest) == 8000
+    bridge.commands.clear()
+    saved = bridge.patch("/v1/agents/budget/settings", headers=AUTH, json={"soul": longest})
+    assert saved.status_code == 200, saved.text
+    assert soul_path.read_text().startswith(longest + "\n")
+    # asked once the answer is sent (review 15/11: never under the agents' lock, nor making the app wait)
+    assert wait_until(lambda: refresh in hermes_args(bridge)), hermes_args(bridge)
+    # the same text again, or a tool switched: nothing to rebuild
+    bridge.commands.clear()
+    assert bridge.patch("/v1/agents/budget/settings", headers=AUTH, json={"soul": longest}).status_code == 200
+    assert bridge.patch("/v1/agents/budget/settings", headers=AUTH, json={"toolsets": {"web": False}}).status_code == 200
+    time.sleep(1.0)
+    assert refresh not in hermes_args(bridge)
+    # one character past the limit: refused with the limit, nothing written, nothing asked
+    refused = bridge.patch("/v1/agents/budget/settings", headers=AUTH, json={"soul": longest + "y"})
+    assert refused.status_code == 422
+    error = refused.json()["detail"][0]
+    assert (error["type"], error["loc"], error["ctx"]) == ("string_too_long", ["body", "soul"], {"max_length": 8000})
+    assert soul_path.read_text().startswith(longest + "\n") and refresh not in hermes_args(bridge)
+    # its answer style is the person's change too: its paragraph reaches the conversations as well
+    styled = bridge.patch("/v1/agents/budget/settings", headers=AUTH, json={"answer_style": "detailed"})
+    assert styled.status_code == 200, styled.text
+    assert wait_until(lambda: refresh in hermes_args(bridge)), hermes_args(bridge)

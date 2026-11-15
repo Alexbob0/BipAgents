@@ -2,9 +2,9 @@
 `systemctl`, `systemd-run`, `launchctl`, `ffmpeg`. Each one appends what it was run with to a JSON-lines file
 (`argv`, `HERMES_HOME`, its stdin) and answers like the real one would for what the bridge asks:
 
-- `hermes profile create <name>` makes the profile's folder (the hub's config.yaml copied in), `profile delete`
-  removes it and leaves Hermes' tombstone, `config set <key> <value>` writes the profile's config.yaml (dotted keys)
-  or its .env (upper-case keys); anything else succeeds silently.
+- `hermes profile create <name>` makes the profile's folder (the hub's config.yaml copied in, its `--description`
+  in profile.yaml), `profile delete` removes it and leaves Hermes' tombstone, `config set <key> <value>` writes the
+  profile's config.yaml (dotted keys) or its .env (upper-case keys); anything else succeeds silently.
 - `ffmpeg … -i <in> … <out>` copies its input to its output.
 - the others succeed silently.
 
@@ -139,6 +139,11 @@ def hermes():
         hub = home / "config.yaml"
         if hub.exists() and not (folder / "config.yaml").exists():
             shutil.copyfile(hub, folder / "config.yaml")
+        # its description in profile.yaml, as Hermes writes it (a JSON string is a YAML one)
+        described = [a.split("=", 1)[1] for a in rest if a.startswith("--description=")]
+        described += [rest[i + 1] for i, a in enumerate(rest) if a == "--description" and i + 1 < len(rest)]
+        if described and not (folder / "profile.yaml").exists():
+            (folder / "profile.yaml").write_text("description: " + json.dumps(described[0], ensure_ascii=False) + "\n")
         return
     if args[:2] == ["profile", "delete"] and len(args) > 2:
         shutil.rmtree(home / "profiles" / args[2], ignore_errors=True)

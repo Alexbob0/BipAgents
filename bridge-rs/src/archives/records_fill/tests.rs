@@ -338,6 +338,38 @@ async fn the_cap_stops_before_it_is_passed() {
     assert_eq!(crate::jobs::task_view(&job)["kind"], json!(JOB_KIND));
 }
 
+/// 15/11 (test_archive_records' cap test, flaky under load): a worker told the job's end (« paused » at its cap, or
+/// « done ») while it still held the job and the archive's lock. A resume right then got a worker that returned at
+/// once (the job left « running », nobody on it), a new pass « this archive is being read already ». Each time the
+/// end is told, both are free here.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_job_s_end_is_told_once_the_job_and_its_archive_are_free() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = fake_model(Arc::new(Mutex::new(Vec::new()))).await;
+    let (config, agent, archive) = setup(dir.path(), &base, "again");
+    let model = model_for(&config, &agent, "a-strong-one", Some((10.0, 50.0))).unwrap();
+    let job = new_job(&config, &archive, &model, 0.05, "proposed", "person").unwrap();
+    let id = tk::str_or_empty(job.get("id"));
+    // when its end is told: whether a worker of the job still runs, whether its archive can be read
+    let told = Arc::new(Mutex::new(Vec::new()));
+    let (seen, path, job_id) = (told.clone(), store_path(&config, &archive), id.clone());
+    let tell: crate::jobs::TellJob = Arc::new(move |_, _, _, _, _| {
+        let free = RunLock::take(&path).is_some();
+        let running = WORKERS.lock().unwrap().contains(&job_id);
+        seen.lock().unwrap().push((running, free));
+        Box::pin(async {})
+    });
+    set_running(&config, job).unwrap();
+    work(config.clone(), id.clone(), Some(tell.clone())).await; // paused at its cap: told
+    assert_eq!(crate::jobs::load(&config, &id).unwrap()["state"], json!("paused"));
+    let mut job = crate::jobs::load(&config, &id).unwrap();
+    job.insert("budget_eur".into(), json!(5.0));
+    set_running(&config, job).unwrap();
+    work(config.clone(), id.clone(), Some(tell)).await; // done: told
+    assert_eq!(crate::jobs::load(&config, &id).unwrap()["state"], json!("done"));
+    assert_eq!(*told.lock().unwrap(), [(false, true), (false, true)], "(a worker still on the job, the archive free)");
+}
+
 #[test]
 fn documents_given_up_on_can_be_read_again() {
     let dir = tempfile::tempdir().unwrap();

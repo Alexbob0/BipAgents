@@ -9,13 +9,14 @@
 //!   started on its screen (browsers::open_browser).
 //! - `/desktop/<ticket>/page/` and its WebSocket: on a phone, the active tab's page only (no taskbar, no window),
 //!   as JPEG frames from Chrome's own screencast (CDP `Page.startScreencast`, through the container's DevTools relay),
-//!   a few per second and only when the page changes. While the person holds the browser (« Prendre la main »,
-//!   whose hold lets the bridge's connections through with its token), that tab renders as on a phone (device
-//!   metrics, a mobile user agent, touch) and their taps, scrolls and keys go to it; handing it back clears the
-//!   overrides and reloads the page before the agent's tools resume. Watching, the phone may ask to follow the
-//!   agent (`{"type": "follow", "on": true}`): where it acts comes as `{"type": "focus", …}` when it moves, read
-//!   without touching the page (desktop_read.rs, which also makes the « Lecture » view). A state « update »: the
-//!   person holds the browser and its relay, too old, lets the bridge through no more.
+//!   a few per second and only when the page changes (a picture of the tab when nothing came in its first second).
+//!   While the person holds the browser (« Prendre la main », whose hold lets the bridge's connections through with
+//!   its token), that tab renders as on a phone (device metrics, a mobile user agent, touch) and their taps, scrolls
+//!   and keys go to it; handing it back clears the overrides and reloads the page before the agent's tools resume.
+//!   Watching, the phone may ask to follow the agent (`{"type": "follow", "on": true}`): where it acts comes as
+//!   `{"type": "focus", …}` when it moves, read without touching the page (desktop_read.rs, which also makes the
+//!   « Lecture » view). A state « update »: the person holds the browser and its relay, too old, lets the bridge
+//!   through no more.
 //! - On the offer's places (handover.rs), while the person holds the browser: when the focused field is a card's
 //!   number, expiry or security code (assets/card_focus.js, a payment provider's frame included), the view gets
 //!   `{"type": "card_field", "on": true}` and shows « Ne tape pas ta carte ici : paie sur ton téléphone » instead of
@@ -63,6 +64,8 @@ pub const WORKING_SECONDS: u64 = 60;
 pub const FRAME_INTERVAL: Duration = Duration::from_millis(200);
 /// The card in the conversation (`?card=1`): about one small frame a second, light on the phone's battery and data.
 pub const CARD_FRAME_INTERVAL: Duration = Duration::from_millis(1000);
+/// No frame this long after the screencast started: a picture of the tab is taken instead (`still_frame`).
+pub const FIRST_FRAME_WAIT: Duration = Duration::from_secs(1);
 /// The viewer page (`assets/desktop_page.html`).
 pub static PAGE: LazyLock<String> = LazyLock::new(|| include_str!("../assets/desktop_page.html").to_string());
 
@@ -454,7 +457,8 @@ pub fn mobile_user_agent(product: &str) -> (String, String) {
     )
 }
 
-/// The tab renders as on the person's phone (until `restore`): its size, a mobile user agent, touch; then reloaded.
+/// The tab renders as on the person's phone (until `restore`): its size, a mobile user agent, touch. The caller
+/// reloads it once its screencast runs (`session`), so that the page's first paint as a phone is a frame.
 pub async fn make_mobile(cdp: &mut Cdp, phone: &Phone, desktop_height: f64) -> Result<(), String> {
     let (width, height, ratio) = phone.metrics(desktop_height);
     let version = cdp.call("Browser.getVersion", json!({})).await.unwrap_or(Value::Null);
@@ -476,7 +480,6 @@ pub async fn make_mobile(cdp: &mut Cdp, phone: &Phone, desktop_height: f64) -> R
         cdp.call("Emulation.setUserAgentOverride", json!({"userAgent": agent})).await?;
     }
     cdp.call("Emulation.setTouchEmulationEnabled", json!({"enabled": true, "maxTouchPoints": 5})).await?;
-    cdp.call("Page.reload", json!({})).await?;
     Ok(())
 }
 
@@ -529,6 +532,38 @@ pub fn address(text: &str) -> Option<String> {
     let mut url = url::Url::parse("https://duckduckgo.com/").ok()?;
     url.query_pairs_mut().append_pair("q", text);
     Some(url.to_string())
+}
+
+/// A picture of the tab as it is now, in the screencast's JPEG quality, for when the screencast sent nothing yet, and
+/// the size it shows in CSS pixels, as a frame says it. Rendered as a phone (`phone`): the size it is emulated at, the
+/// screencast's own. Otherwise the visual viewport the page has now (`Page.getLayoutMetrics`), taken alone (its
+/// scrollbars aside) and scaled down as the screencast would be (`maxWidth`, `maxHeight`): never a size guessed from an
+/// earlier frame (review F2, 15/11: 1366 × 650 announced for a 1366 × 625 tab, the taps about 4 % too low until the
+/// next frame; a bank's code typed on a still 3-D Secure page could miss its field).
+async fn still_frame(cdp: &mut Cdp, cast: &Value, phone: Option<Viewport>) -> Result<(Viewport, Vec<u8>), String> {
+    let quality = cast.get("quality").cloned().unwrap_or(json!(60));
+    let (view, params) = match phone {
+        Some(view) => (view, json!({"format": "jpeg", "quality": quality})),
+        None => {
+            let metrics = cdp.call("Page.getLayoutMetrics", json!({})).await?;
+            let css = metrics.get("cssVisualViewport").ok_or("no viewport")?;
+            let num = |key: &str| css.get(key).and_then(Value::as_f64).unwrap_or(0.0);
+            let view = Viewport { width: num("clientWidth"), height: num("clientHeight") };
+            if view.width < 1.0 || view.height < 1.0 {
+                return Err("an empty viewport".into());
+            }
+            let fit = |key: &str, size: f64| cast.get(key).and_then(Value::as_f64).map_or(1.0, |max| (max / size).min(1.0));
+            let scale = fit("maxWidth", view.width).min(fit("maxHeight", view.height));
+            let clip = json!({"x": num("pageX"), "y": num("pageY"), "width": view.width, "height": view.height,
+                              "scale": scale});
+            (view, json!({"format": "jpeg", "quality": quality, "clip": clip}))
+        }
+    };
+    let shot = cdp.call("Page.captureScreenshot", params).await?;
+    let data = shot.get("data").and_then(Value::as_str).ok_or("no picture")?;
+    use base64::Engine;
+    let jpeg = base64::engine::general_purpose::STANDARD.decode(data).map_err(|e| e.to_string())?;
+    Ok((view, jpeg))
 }
 
 /// The viewport the last frame showed, in CSS pixels (taps come as fractions of the picture).
@@ -753,8 +788,16 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
         } else {
             (json!({"format": "jpeg", "quality": 55, "maxWidth": 1366, "maxHeight": 1366}), FRAME_INTERVAL)
         };
-        if cdp.send("Page.startScreencast", cast).await.is_err() {
+        if cdp.send("Page.startScreencast", cast.clone()).await.is_err() {
             continue;
+        }
+        // Rendered as a phone: reloaded now that the screencast runs, so the page's first paint at the phone's size
+        // is a frame. Reloaded before it, a still page could paint before the screencast began and send nothing more:
+        // the phone kept the desktop's last frame (15/11, test_desktop_page_chrome under load: 6 of 12).
+        if mobile {
+            if let Err(error) = cdp.call("Page.reload", json!({})).await {
+                tracing::info!(agent = %agent, error = %error, "page view: not reloaded as a phone");
+            }
         }
         let said = json!({"type": "state", "state": "live", "mobile": mobile, "holding": holding});
         if !send_json(&mut app_tx, said.clone()).await {
@@ -768,6 +811,10 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
             break;
         }
         let mut view = Viewport { width: 1366.0, height: desktop_height };
+        // Chrome's screencast sends changes only: a still page that painted before it began (the take-over's reload,
+        // or the hand-back's, made on a connection of its own) sends nothing, and the phone kept the other rendering's
+        // last picture (review F1, 15/11). No frame within FIRST_FRAME_WAIT: a picture of the tab instead.
+        let mut first_by = Some(Instant::now() + FIRST_FRAME_WAIT);
         let mut pending: Option<Value> = None;
         let mut next_ack = Instant::now();
         let mut tick = tokio::time::interval(Duration::from_secs(1));
@@ -793,6 +840,7 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
                     if !mobile {
                         desktop_height = view.height;
                     }
+                    first_by = None;
                     use base64::Engine;
                     let data = params.get("data").and_then(Value::as_str).unwrap_or("");
                     let Ok(jpeg) = base64::engine::general_purpose::STANDARD.decode(data) else { continue };
@@ -809,6 +857,24 @@ async fn session(state: AppState, agent: String, phone: Phone, socket: WebSocket
                     if touched.is_none_or(|t| t.elapsed() > Duration::from_secs(60)) {
                         touched = Some(Instant::now());
                         crate::browsers::busy(&state.config(), &agent); // watched: not stopped as unused
+                    }
+                }
+                _ = tokio::time::sleep_until(first_by.unwrap_or_else(Instant::now)), if first_by.is_some() => {
+                    first_by = None;
+                    let phone = mobile.then_some(Viewport { width: width as f64, height: height as f64 });
+                    match still_frame(&mut cdp, &cast, phone).await {
+                        Ok((shown, jpeg)) => {
+                            view = shown;
+                            let head = json!({"type": "frame", "w": view.width, "h": view.height});
+                            if !send_json(&mut app_tx, head).await
+                                || app_tx.send(Message::Binary(Bytes::from(jpeg))).await.is_err()
+                            {
+                                restore_or_close(cdp, mobile, port, &tab.id, token.as_deref()).await;
+                                break 'outer;
+                            }
+                            changed = true;
+                        }
+                        Err(error) => tracing::info!(agent = %agent, error = %error, "page view: no first picture"),
                     }
                 }
                 _ = tokio::time::sleep_until(next_ack), if pending.is_some() => {

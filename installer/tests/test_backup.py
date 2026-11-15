@@ -29,6 +29,11 @@ def a_place(tmp_path):
     (config / "bridge.toml").write_text(f'bridge_key = "k"\ndata_dir = "{home / "data"}"\n\n[hermes]\nhome = '
                                         f'"{hermes_home}"\n')
     (home / "data").mkdir()
+    # an agent's page and what was typed in it (bridge page_store.rs): kept like the page
+    pages = home / "data" / "agent-pages" / "vie"
+    pages.mkdir(parents=True)
+    (pages / "courses.html").write_text("<h1>Courses</h1>")
+    (pages / "courses.store.json").write_text('{"rev": 1, "keys": {"courses": {"items": []}}, "acts": []}')
     (config / "setup.json").write_text('{"pair": "secret"}')
     return home, db
 
@@ -53,6 +58,7 @@ def test_a_paired_place_is_backed_up_encrypted_without_caches(tmp_path, monkeypa
     env = backup.environment(backup.settings(home), home)
     listed = subprocess.run(["restic", "ls", "latest"], env=env, capture_output=True, text=True).stdout
     assert str(home / ".hermes" / "memories" / "MEMORY.md") in listed
+    assert str(home / "data" / "agent-pages" / "vie" / "courses.store.json") in listed   # a page's store too
     assert str(home / "cache") not in listed and "big.bin" not in listed               # caches stay
     copy = str(home / backup.STAGE / "sqlite" / str(home / ".hermes" / "state.db").lstrip("/"))
     assert copy in listed and f"\n{home / '.hermes' / 'state.db'}\n" not in listed     # the copy, not the live file

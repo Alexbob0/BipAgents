@@ -481,19 +481,20 @@ def test_a_hand_back_while_its_conversation_is_on_screen_is_not_pushed(bridges, 
     assert not call(bridge, "start_task", {"title": "Veste en laine", "instructions": ASKED})["isError"]
     hermes.run_outputs = {"r1": REPORT, "r2": MESSAGE}
     thread = bridge.get("/v1/threads/resolve", headers=AUTH, params={"agent": "wellness", "session_id": "api_c"}).json()
-    stop = threading.Event()
+    opened, stop = threading.Event(), threading.Event()
 
     def watch():
         with httpx.Client(base_url=bridge.url, headers=AUTH, timeout=60) as client:
             with client.stream("GET", "/v1/threads/events",
                                params={"agent": "wellness", "thread": thread["thread"]["id"]}) as resp:
                 for _ in resp.iter_lines():
+                    opened.set()   # its first line: the bridge counted the conversation on screen before answering
                     if stop.is_set():
                         return
 
     viewer = threading.Thread(target=watch, daemon=True)
     viewer.start()
-    time.sleep(0.5)
+    assert opened.wait(30), "the conversation's event stream never opened"
     gate.set()
 
     def handed():

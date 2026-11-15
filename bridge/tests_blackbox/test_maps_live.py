@@ -119,10 +119,10 @@ def test_map_image_gives_a_card_for_the_live_map_with_its_picture(bridge, fakes)
     assert '<img src="map:m-' not in kept
     assert 'data-directions="walking"' in kept and 'data-lat="45.780200"' in kept
     policy = re.search(r'Content-Security-Policy" content="([^"]+)"', kept).group(1)
-    assert "connect-src bipmap: https://bipmap.invalid;" in policy and "script-src 'unsafe-inline' bipmap: https://bipmap.invalid;" in policy
+    assert "connect-src bipmap: https://bipmap.invalid bipstore: https://bipstore.invalid;" in policy and "script-src 'unsafe-inline' bipmap: https://bipmap.invalid;" in policy
     assert "worker-src blob:" in policy and "unsafe-eval" not in policy and "default-src 'none'" in policy
     # the kit loads the library only through that door, and links places only to the app (bipmaps:)
     assert 'MAP_BASE = ANDROID ? "https://bipmap.invalid/" : "bipmap://map/"' in kept and '"bipmaps:place?lat="' in kept
     served = bridge.get("/v1/media", params={"path": "/bipagents/pages/wellness/balade.html"}, headers=AUTH)
     assert served.status_code == 200 and served.headers["content-security-policy"].startswith("sandbox allow-scripts; ")
-    assert "connect-src bipmap: https://bipmap.invalid;" in served.headers["content-security-policy"]
+    assert "connect-src bipmap: https://bipmap.invalid bipstore: https://bipstore.invalid;" in served.headers["content-security-policy"]

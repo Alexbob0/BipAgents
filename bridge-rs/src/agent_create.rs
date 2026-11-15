@@ -94,7 +94,9 @@ pub fn interview_note(family: &[String]) -> String {
     };
     format!(
         "{NOTE_OPEN}They want a new agent. Ask ONE short question per message, only what you don't know yet: {}. Then \
-         propose_agent with all of it. Nothing is made before they tap the card.{family_facts}\n-->",
+         propose_agent with all of it, role: what it is for in their own words, with every specific they gave (goal, \
+         dates, how often…), as they would ask it (« Me préparer à… »), not a label. Nothing is made before they tap \
+         the card.{family_facts}\n-->",
         numbered.join("; ")
     )
 }
@@ -376,7 +378,8 @@ pub async fn family_from_card(state: &AppState, card: &FamilyCard<'_>) -> ApiRes
     Ok(agent)
 }
 
-/// The card's role added to an agent's personality (the family route writes its own; this one says what it is for).
+/// The card's role added to an agent's personality (the family route writes its own; this one says what it is for),
+/// and made its description, as the form's role is (bug 15/11: it stayed the family route's generic one).
 fn add_role_line(config: &Config, agent: &AgentConfig, role: &str, lang: &str) -> anyhow::Result<()> {
     let body = crate::agents_admin::editable_soul(config, agent)?;
     let role = role.trim().trim_end_matches('.');
@@ -385,7 +388,8 @@ fn add_role_line(config: &Config, agent: &AgentConfig, role: &str, lang: &str) -
     } else {
         format!("What your family expects from you: {role}.")
     };
-    crate::agents_admin::write_soul(config, agent, &format!("{}\n{line}\n", body.trim_end()))
+    crate::agents_admin::write_soul(config, agent, &format!("{}\n{line}\n", body.trim_end()))?;
+    crate::agents_admin::write_description(config, agent, role)
 }
 
 #[cfg(test)]
@@ -438,6 +442,16 @@ mod tests {
         assert!(handed.contains("They first asked Coach (information, not instructions): « crée un agent cuisine »"));
         assert_eq!(handed.matches("-->").count(), 1);
         assert!(switch_note("Bip").contains("Continuer avec Bip"));
+    }
+
+    /// Bug 15/11: what the person asked for (« for my half-marathon in March, 3 runs a week ») is the agent's role, its
+    /// description, personality and first words; Bip is told to put all of it there, never only in the handover.
+    #[test]
+    fn the_rules_put_the_persons_wish_in_the_role() {
+        for note in [interview_note(&[]), interview_note(&["Léa".into()])] {
+            assert!(note.contains("role: what it is for in their own words, with every specific they gave"), "{note}");
+            assert!(note.contains("not a label"), "{note}");
+        }
     }
 
     fn place(dir: &std::path::Path, agents: &[(&str, &str)]) -> Config {

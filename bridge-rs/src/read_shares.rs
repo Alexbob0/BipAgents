@@ -294,8 +294,10 @@ pub fn split_media(text: &str) -> (String, Vec<String>) {
     (kept.join("\n").trim().to_string(), paths)
 }
 
-/// The item a `MEDIA:` path of this agent becomes: a page (not a health one, not the Carnet's), a map picture.
-fn media_item(config: &Config, agent: &str, path: &str) -> Option<(String, Value)> {
+/// The item a `MEDIA:` path of this agent becomes: a page (not a health one, not the Carnet's; a group's page with
+/// its store, page_store.rs, `writable` in a project's thread share where the friends' actions are taken), a map
+/// picture.
+fn media_item(config: &Config, agent: &str, path: &str, writable: bool) -> Option<(String, Value)> {
     if path.starts_with(crate::friends_cards::PREFIX) {
         // a card the friends tap (friends_cards.rs): only in a project agent's thread share
         return crate::friends_cards::media_item(config, agent, path);
@@ -319,8 +321,16 @@ fn media_item(config: &Config, agent: &str, path: &str) -> Option<(String, Value
         }
         let title = meta.get("title").and_then(Value::as_str).unwrap_or(page).to_string();
         let id = format!("p-{agent}-{page}");
-        let map = html.contains("bipmap:");
-        return Some((id.clone(), json!({"id": id, "kind": "page", "title": title, "html": html, "map": map})));
+        // a map page: one with a map card's data (`.map-data`, maps.rs), what the apps draw a map from. Not
+        // `bipmap:`: every kept page carries the kit, which names it (J57, 15/11: every shared page was a « map »)
+        let map = html.contains("class=\"map-data\"");
+        let mut item = json!({"id": id, "kind": "page", "title": title, "html": html, "map": map});
+        // what people typed in it, seen by everyone who sees it (and written back by the friends, as their votes)
+        if let Some((store, write)) = crate::page_store::for_friends(config, agent, page, writable) {
+            item["store"] = store;
+            item["store_write"] = json!(write);
+        }
+        return Some((id.clone(), item));
     }
     if let Some(rest) = path.strip_prefix(&format!("{}/{agent}/", crate::maps::PREFIX)) {
         let map = rest.strip_suffix(".png")?;
@@ -439,7 +449,7 @@ pub fn items_of(config: &Config, share: &Value, messages: &[Dict]) -> Vec<(Strin
         let mut media = Vec::new();
         if role == "assistant" {
             for p in paths {
-                if let Some((id, item)) = media_item(config, &agent, &p) {
+                if let Some((id, item)) = media_item(config, &agent, &p, is_thread(share)) {
                     media.push(json!(id));
                     if media_seen.insert(id.clone()) {
                         items.push((id, item));
@@ -501,6 +511,35 @@ pub fn new_photos(inline: &[Dict], wanted: &HashSet<String>) -> (Vec<(String, Va
         found.insert(key, json!(ids));
     }
     (items, found)
+}
+
+/// The pages sent before that this sync's items lack (second review of 15/11). Hermes may no longer list the reply
+/// that holds one (compacted, past its 500 rows) while the page lives on: each page still kept here, and still
+/// shareable, is built again from disk, so what friends type keeps coming back to them; only one that is no longer
+/// (deleted, made private or linked to the Carnet) is sent once more as an empty page marked `gone`, over the sealed
+/// copy at the guichet and on the friends' phones (which drop it): what was typed in it doesn't stay there. Each is
+/// sent only when it changed (its digest).
+pub fn pages_beyond(
+    config: &Config,
+    agent: &str,
+    sent: &Map<String, Value>,
+    items: &[(String, Value)],
+    writable: bool,
+) -> Vec<(String, Value)> {
+    let current: HashSet<&str> = items.iter().map(|(id, _)| id.as_str()).collect();
+    let prefix = format!("p-{agent}-");
+    sent.keys()
+        .filter(|id| id.starts_with("p-") && !current.contains(id.as_str()))
+        .map(|id| {
+            let alive = id
+                .strip_prefix(&prefix)
+                .and_then(|page| media_item(config, agent, &format!("{}/{agent}/{page}.html", crate::pages::PREFIX), writable))
+                .filter(|(found, _)| found == id);
+            alive.unwrap_or_else(|| {
+                (id.clone(), json!({"id": id, "kind": "page", "title": "", "html": "", "map": false, "gone": true}))
+            })
+        })
+        .collect()
 }
 
 fn digest(item: &Value) -> String {
@@ -637,7 +676,8 @@ pub async fn sync(state: &AppState, id: &str, notify: bool) -> Result<Option<Val
     }
     share["refused"] = json!(refused_ones);
     if is_thread(&share) {
-        // the friends' votes and ticks waiting at the guichet (friends_cards.rs): applied before the items go
+        // the friends' votes and ticks waiting at the guichet (friends_cards.rs), and what they typed in the pages
+        // that remember (page_store.rs): applied before the items go
         crate::friends_cards::take_actions(state, &share, epoch, &key, &viewers, &secrets).await;
     }
     if !wraps.is_empty() {
@@ -712,6 +752,8 @@ pub async fn sync(state: &AppState, id: &str, notify: bool) -> Result<Option<Val
         let mut batches = Vec::new();
         let mut all_items = photo_items;
         all_items.extend(items_of(&config, &share, &messages));
+        let beyond = pages_beyond(&config, &s(&share, "agent"), &sent, &all_items, is_thread(&share));
+        all_items.extend(beyond);
         for (item_id, mut item) in all_items {
             let mark = digest(&item);
             if sent.get(&item_id).and_then(Value::as_str) == Some(mark.as_str()) {
@@ -931,6 +973,9 @@ async fn create(State(state): State<AppState>, body: Bytes) -> ApiResult<Respons
 async fn invite(State(state): State<AppState>, UrlPath(id): UrlPath<String>, body: Bytes) -> ApiResult<Response> {
     let body = body_of(&body)?;
     let config = state.config();
+    // not while a sync goes on: it read the share before, and would write it back without this invitation (seen on
+    // 15/11 with page_store.rs, whose writes in a shared page sync the share at once)
+    let _one = SYNCING.lock().await;
     let mut share = known(&config, &id)?;
     let name = text_field(&body, "name", 40)?;
     let (status, made) = guichet(
@@ -962,20 +1007,24 @@ async fn cancel_invite(
     UrlPath((id, hash)): UrlPath<(String, String)>,
 ) -> ApiResult<Response> {
     let config = state.config();
-    let mut share = known(&config, &id)?;
     if !(hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit())) {
         return Err(HttpError::new(422, "an invitation"));
     }
-    let (status, body) = guichet(&state, &share, reqwest::Method::DELETE, &format!("/invites/{hash}"), None)
-        .await
-        .map_err(|e| HttpError::new(502, e))?;
-    if status != 200 {
-        return Err(refused(status, &body));
+    {
+        // not while a sync goes on (`invite`)
+        let _one = SYNCING.lock().await;
+        let mut share = known(&config, &id)?;
+        let (status, body) = guichet(&state, &share, reqwest::Method::DELETE, &format!("/invites/{hash}"), None)
+            .await
+            .map_err(|e| HttpError::new(502, e))?;
+        if status != 200 {
+            return Err(refused(status, &body));
+        }
+        if let Some(all) = share["invites"].as_object_mut() {
+            all.remove(&hash);
+        }
+        put_share(&config, &id, Some(share)).map_err(|e| HttpError::new(500, e.to_string()))?;
     }
-    if let Some(all) = share["invites"].as_object_mut() {
-        all.remove(&hash);
-    }
-    put_share(&config, &id, Some(share)).map_err(|e| HttpError::new(500, e.to_string()))?;
     after(&state, &id).await
 }
 
@@ -1173,6 +1222,31 @@ mod tests {
         let listed = items_of(&config, &share, std::slice::from_ref(&message));
         assert_eq!(listed[1].1["media"], json!([items[0].0]));
         assert_eq!(listed[1].1["text"], "Regarde");
+    }
+
+    #[test]
+    fn only_a_page_with_a_map_card_is_shared_as_a_map_page() {
+        // Every kept page carries the kit, and the kit names `bipmap:` (its live maps): that is not a map page. The
+        // apps take a `map` page for one with places (Android: the map icon and tiles; the checks: a map card).
+        let dir = std::env::temp_dir().join(format!("rshare-map-{}", std::process::id()));
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.join("outbox.db").to_string_lossy().into_owned();
+        let folder = crate::pages::root(&config).join("bip");
+        std::fs::create_dir_all(&folder).unwrap();
+        let source = "<h1>Courses</h1><ul id=\"l\"></ul><script>Bip.store.ready</script>";
+        let (plain, _) = crate::pages::lock(source, "Courses");
+        assert!(plain.contains("bipmap:"), "the kit is in the kept page");
+        std::fs::write(folder.join("courses.html"), &plain).unwrap();
+        let card = crate::maps::figure_of(&json!({"id": "m-0123456789", "type": "map", "points": [
+            {"name": "Belém", "lat": 38.6916, "lon": -9.2160, "x": 10, "y": 20}]}));
+        let (with_map, _) = crate::pages::lock(&format!("<h1>Lisbonne</h1>{card}"), "Lisbonne");
+        std::fs::write(folder.join("lisbonne.html"), &with_map).unwrap();
+        let path = |page: &str| format!("{}/bip/{page}.html", crate::pages::PREFIX);
+        let (_, courses) = media_item(&config, "bip", &path("courses"), false).unwrap();
+        assert_eq!(courses["map"], json!(false), "a page without a map card");
+        let (_, lisbonne) = media_item(&config, "bip", &path("lisbonne"), false).unwrap();
+        assert_eq!(lisbonne["map"], json!(true), "a page with a map card");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -14,8 +14,8 @@ from bbkit import displayable, displayable_people as shown
 from bbkit.common import AUTH
 from bbkit.journeys import journey_bridge
 from bbkit.model import PeopleModel
-from bbkit.people import (Friend, Guichet, household_token, households, mcp_as, project_share, reply_in, send,
-                          share_view, thread_page)
+from bbkit.people import (Friend, Guichet, household_token, households, mcp_as, project_sheet, project_share, reply_in,
+                          send, share_view, thread_page)
 from bbkit.servers import wait_until
 
 
@@ -98,6 +98,43 @@ def test_j33_the_friend_sees_the_map_of_the_shared_project(journey, guichet):
     assert len(places) == 2 and all(p.get("name") for p in places), places   # (the fake geocoder: every place in Lyon)
     reply = next(m for m in plain.values() if m.get("kind") == "msg" and m.get("role") == "assistant")
     assert reply["media"] == [page["id"]], reply
+
+
+def test_j57_a_friend_s_line_in_the_shared_page_reaches_the_owner_and_a_withdrawn_page_leaves_the_friend(journey, guichet):
+    """The project's page that remembers (page_store.rs): on the friend's phone it carries its data and says friends
+    may write; what Léa types comes back sealed (the votes' channel) and lands in Alex's sheet under her name; Alex
+    deletes the page: it is withdrawn (`gone`) from her copy, with what was typed in it."""
+    shared = project_share(journey, guichet)
+    path = project_sheet(journey.bridge, shared)
+    page = path.rsplit("/", 1)[1][:-5]
+    item = f"p-{shared.agent}-{page}"
+    lea = Friend(guichet)
+    lea.open_link(shared.link(journey.bridge, "Léa"))
+    lea.see()
+    key = lea.content_key(timeout=60)
+    shown.check_share_items(lea.items(key), shared.share)
+    sheet = opened(lea.items(key))[item]
+    assert sheet["kind"] == "page" and sheet["store_write"] is True and "keys" in sheet["store"], sheet.keys()
+    act = lea.write_in_page(key, item, {"op": "add", "key": "courses", "id": "lea1", "value": "Pain"})
+
+    def lines():
+        got = journey.bridge.get("/v1/page-store", headers=AUTH, params={"path": path}).json()
+        return [(i["value"], i["by"]) for i in got["keys"].get("courses", {}).get("items", [])]
+    assert wait_until(lambda: journey.bridge.post(f"/v1/read-shares/{shared.share}/sync", headers=AUTH).status_code == 200
+                      and lines() == [("Pain", "Léa")], timeout=60), lines()
+    # back in her sealed copy, listed as done (her page stops showing it « en attente »)
+    back = opened(lea.items(key))[item]["store"]
+    assert act in back["acts"] and back["keys"]["courses"]["items"][0]["value"] == "Pain"
+    # Alex deletes the page: gone from her copy, with its data
+    gone = journey.bridge.delete(f"/v1/pages/{page}", params={"agent": shared.agent}, headers=AUTH)
+    assert gone.status_code == 200, gone.text
+    assert journey.bridge.post(f"/v1/read-shares/{shared.share}/sync", headers=AUTH).status_code == 200
+    shown.check_share_items(lea.items(key), shared.share)
+    left = opened(lea.items(key))[item]
+    assert left.get("gone") is True and "store" not in left and left["html"] == "", left
+    reply = next(m for m in opened(lea.items(key)).values()
+                 if m.get("kind") == "msg" and "Voici ta liste" in (m.get("text") or ""))
+    assert item not in reply["media"], reply
 
 
 # -- households ------------------------------------------------------------------------------------------------------

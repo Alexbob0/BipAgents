@@ -1080,8 +1080,14 @@ def test_cancel_left_half_way_still_leaves_the_page_and_lifts_once(bridges, fake
         assert chrome.navigated == ["about:blank"] and chrome.resets == ["about:blank"]
         assert chrome.values[("F-psp", 0)] == ""
         assert sum(map(lifted, (c[-1] for c in bridge.commands.of("podman")))) == 1
-        outcomes = [e["outcome"] for e in bridge.get("/v1/vault/payments", headers=AUTH).json()["journal"]]
-        assert outcomes.count("cancelled") == 1
+
+        def outcomes():
+            return [e["outcome"] for e in bridge.get("/v1/vault/payments", headers=AUTH).json()["journal"]]
+
+        # journaled once the hold is lifted (release_entry's last step), when the fake podman that lifted it has
+        # ended: seen here a moment after the lift's command, never at once (15/11)
+        assert wait_until(lambda: "cancelled" in outcomes(), timeout=10), outcomes()
+        assert outcomes().count("cancelled") == 1
     finally:
         chrome.stop()
 

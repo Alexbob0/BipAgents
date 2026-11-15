@@ -154,6 +154,27 @@ def test_j08_a_reply_with_a_page_opens(journey):
     assert b"sum" in displayable._media(journey.bridge, pages[0]["path"], AGENT)[1]   # « Résumé »
 
 
+def test_j56_a_page_that_remembers_keeps_what_is_typed(journey):
+    # page_store.rs (Alex, 15/11): the page carries Bip.store and its one door; what the app's door saves through the
+    # bridge is there when the page is opened again, once even when sent twice
+    started(journey.send(cid(56), "Une liste de courses qui se souvient #memoire"))
+    page = reply_done(journey, "Voici ta liste")
+    displayable.check(journey.bridge, page, AGENT)
+    [reply] = [i for i in agent_items(page) if "Voici ta liste" in i["text"]]
+    [att] = [a for a in reply["attachments"] if a["kind"] == "page"]
+    html = displayable._media(journey.bridge, att["path"], AGENT)[1].decode()
+    assert "window.Bip.store = store" in html and "connect-src bipmap: https://bipmap.invalid bipstore: https://bipstore.invalid;" in html
+    door = "/v1/page-store"
+    assert journey.bridge.get(door, headers=AUTH, params={"path": att["path"]}).json()["keys"] == {}
+    for _ in range(2):   # the app sends it again after a cut: kept once
+        saved = journey.bridge.post(door, headers=AUTH, json={"path": att["path"], "op": "add", "key": "courses",
+                                                              "id": "j56a", "value": "Pain", "a": "j56-act"})
+        assert saved.status_code == 200, saved.text
+    kept = journey.bridge.get(door, headers=AUTH, params={"path": att["path"]}).json()
+    assert [i["value"] for i in kept["keys"]["courses"]["items"]] == ["Pain"] and kept["write"] is True
+    assert journey.bridge.get(door, headers=AUTH, params={"path": att["path"], "since": kept["rev"]}).json()["same"] is True
+
+
 def test_j09_a_reply_with_a_map_shows(journey):
     started(journey.send(cid(9), "Montre-moi le trajet #carte"))
     page = reply_done(journey, "Voici la carte")

@@ -195,6 +195,8 @@ pub mod message_search;
 pub mod notebook;
 pub mod notes_import;
 pub mod pages;
+/// Pages that remember: each agent page's own store, its one door, the agent's reading (15/11).
+pub mod page_store;
 pub mod phone_asks;
 /// The phone exit, phase 0 (prototype, off by default): sites listed in `[phone_exit]` leave through the person's phone.
 pub mod phone_exit;

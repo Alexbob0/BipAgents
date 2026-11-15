@@ -48,7 +48,7 @@ import subprocess
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
-from . import browser_refresh
+from . import browser_refresh, public_repo
 
 REPO = Path(__file__).resolve().parents[2]
 SETTING = Path(os.environ.get("BIPAGENTS_SHARED_IMAGES_SETTING", "/etc/bipagents/shared-images.json"))
@@ -57,7 +57,7 @@ VIEWS = Path("/var/lib/bipagents/views")           # one idmapped read-only view
 SUBIDS = (Path("/etc/subuid"), Path("/etc/subgid"))
 FUSE_OVERLAYFS = "/usr/bin/fuse-overlayfs"
 RUNROOT = Path("/run/bipagents-images")
-REGISTRY = "ghcr.io/alexbob0"
+REGISTRY = public_repo.REGISTRY   # ghcr.io/<owner>, the public repository's
 BROWSER = "localhost/bipagents-browser:latest"     # what `bipagents-browser` means to podman (browser_refresh.IMAGE)
 SANDBOX = "docker.io/nousresearch/hermes-sandbox:desktop"   # Hermes' default sandbox (bridge-rs/src/sandbox.rs)
 SANDBOX_SOURCES = (f"{REGISTRY}/hermes-sandbox:desktop", SANDBOX)   # the mirror first, Docker Hub when it fails

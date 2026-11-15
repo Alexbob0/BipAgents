@@ -1,6 +1,7 @@
 /* BipAgents page kit (pages.rs puts it inline in every page, before the agent's own scripts): charts drawn in SVG in
    the app's colours, a small diagram renderer, sortable tables, tabs, what-ifs, number formatting, and the app's
-   colours for Chart.js when the page uses it. No network, no storage. window.Bip is the whole API. */
+   colours for Chart.js when the page uses it. No network, no storage (Bip.store, in store.js, comes only in the pages
+   that use it). window.Bip is the whole API. */
 (function () {
   "use strict";
   var doc = document, root = doc.documentElement, NS = "http://www.w3.org/2000/svg";
@@ -10,7 +11,9 @@
   var css = function (name) { return getComputedStyle(root).getPropertyValue(name).trim(); };
   var $ = function (target) { return typeof target === "string" ? doc.querySelector(target) : target; };
   var esc = function (text) {
-    return String(text).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; });
+    return String(text).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
   };
   var COLORS = ["var(--c1)", "var(--c2)", "var(--c3)", "var(--c4)", "var(--c5)", "var(--c6)"];
   var color = function (spec, i) { return (spec.colors && spec.colors[i]) || COLORS[i % COLORS.length]; };
@@ -292,6 +295,51 @@
 
   function set(target, text) { var el = $(target); if (el) el.textContent = text; }
 
+  // What people typed, drawn as TEXT only (a friend's « <img onerror=…> » stays words, never a script in everyone's
+  // page): rows(target, list, cells) — cells(item, i) gives the row's cells (text or numbers); a <table>/<tbody> gets
+  // one <tr> per item (a number's cell right-aligned), anything else one <li> (in a list) or <div>.
+  function rows(target, list, cells) {
+    var host = $(target);
+    if (!host) return;
+    var tag = (host.tagName || "").toLowerCase(), table = tag === "table" || tag === "tbody";
+    var into = tag === "table" ? (host.tBodies[0] || host.appendChild(doc.createElement("tbody"))) : host;
+    while (into.firstChild) into.removeChild(into.firstChild);
+    (list || []).forEach(function (item, i) {
+      var parts = cells ? cells(item, i) : [item];
+      if (!Array.isArray(parts)) parts = [parts];
+      var text = function (p) { return p == null ? "" : typeof p === "number" ? fmt(p) : String(p); };
+      if (table) {
+        var tr = doc.createElement("tr");
+        parts.forEach(function (p) {
+          var td = doc.createElement("td");
+          if (typeof p === "number") td.className = "n";
+          td.textContent = text(p);
+          tr.appendChild(td);
+        });
+        into.appendChild(tr);
+      } else {
+        var row = doc.createElement(tag === "ul" || tag === "ol" ? "li" : "div");
+        row.textContent = parts.map(text).join(" · ");
+        into.appendChild(row);
+      }
+    });
+  }
+
+  // An amount as typed (« 42,50 », « 1 234,56 », « 1.234,56 », « 1,234.56 », « 1 200 », « 12 € ») → whole cents
+  // (an integer), or null. The last « , » or « . » followed by 1 or 2 digits is the decimal mark; any other is a
+  // thousands one (money has no 3 decimals).
+  function cents(typed) {
+    var t = String(typed == null ? "" : typed).replace(/[\s\u00a0\u202f'’€$£]/g, "").replace(/^\+/, "");
+    var minus = /^[-−]/.test(t);
+    t = t.replace(/^[-−]/, "");
+    if (!/^[0-9.,]+$/.test(t)) return null;
+    var m = t.match(/^(.*?)[.,](\d{1,2})$/);
+    var whole = (m ? m[1] : t).replace(/[.,]/g, ""), frac = m ? (m[2] + "0").slice(0, 2) : "00";
+    if (!/^\d*$/.test(whole) || (whole === "" && !m)) return null;
+    var n = parseInt(whole || "0", 10) * 100 + parseInt(frac, 10);
+    return isFinite(n) ? (minus ? -n : n) : null;
+  }
+
   // The app's colours and font for Chart.js (called right after it, when the page uses it).
   function chartDefaults() {
     var C = window.Chart;
@@ -515,6 +563,7 @@
   }
   doc.readyState === "loading" ? doc.addEventListener("DOMContentLoaded", enhance) : enhance();
 
+
   window.Bip = { fmt: fmt, bars: bars, line: line, donut: donut, spark: spark, diagram: diagram, whatIf: whatIf, set: set,
-    css: css, _chart: chartDefaults };
+    css: css, esc: esc, rows: rows, cents: cents, _chart: chartDefaults };
 })();

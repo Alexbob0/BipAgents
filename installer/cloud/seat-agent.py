@@ -108,6 +108,8 @@ def accepted(order, server, done, now):
         elif body.get("action") == "update":
             commit = body["commit"]
             ok = ok and isinstance(commit, str) and len(commit) == 40 and all(c in "0123456789abcdef" for c in commit)
+            ok = ok and body.get("repo") in (None,) + KNOWN_REPOS   # where the commit lives: a known one, or unsaid
+            ok = ok and body.get("pretest") in (None, True, False)   # a pre-test place's (below: update)
         elif body.get("action") == "reopen":
             pair = body["pair"]
             ok = ok and isinstance(pair, str) and 40 <= len(pair) <= 64 and all(c in PAIR_CHARS for c in pair)
@@ -196,7 +198,14 @@ def reset(number, setup):
 
 SHARED_SETTING = "/etc/bipagents/shared-hermes.json"
 SHARED_REPO = os.path.join(LIB, "repo")   # root's own BipAgents, never a place's (an agent could change those)
+# A pre-test's checkout of root's, apart: a pre-test place's shared Hermes is made from it, and root's own checkout
+# (the images' nightly pull, the seat tools) stays on production's version until the production waves (review R11)
+PRETEST_REPO = os.path.join(LIB, "repo-pretest")
 PUBLIC_REPO = "https://github.com/Alexbob0/BipAgents.git"
+# The public repositories an update order may name (installer/bipinstall/public_repo.py: KNOWN): the guichet moves the
+# places to the BipAgents organisation's through an update, and back; never anywhere else, whatever an order says.
+KNOWN_REPOS = ("https://github.com/Alexbob0/BipAgents.git",  # known-public-repos
+               "https://github.com/BipAgents/BipAgents.git")  # known-public-repos
 
 
 def shared_on():
@@ -215,19 +224,48 @@ def shared_on():
         return False
 
 
-def prepare_shared(commit):
+def prepare_pretest(commit, repo=None):
+    """A pre-test place's version made ready without touching what the server's other places share: its shared
+    Hermes (one per version, beside production's) built from a checkout of its own (PRETEST_REPO); root's checkout,
+    the seat tools and the images' store stay as production has them. The place itself gets its browser from its own
+    pull when the server's store doesn't have its image (shared_images.browser)."""
+    if not os.path.isdir(os.path.join(PRETEST_REPO, ".git")):
+        source = SHARED_REPO if os.path.isdir(os.path.join(SHARED_REPO, ".git")) else (repo or PUBLIC_REPO)
+        subprocess.run(["git", "clone", "--quiet", "--filter=blob:none", source, PRETEST_REPO], check=True,
+                       timeout=600)
+    subprocess.run(["git", "-C", PRETEST_REPO, "remote", "set-url", "origin", repo if repo in KNOWN_REPOS
+                    else PUBLIC_REPO], check=True, timeout=60)
+    subprocess.run(["git", "-C", PRETEST_REPO, "fetch", "--quiet", "--prune", "origin"], check=True, timeout=600)
+    subprocess.run(["git", "-C", PRETEST_REPO, "-c", "advice.detachedHead=false", "checkout", "--quiet", "--force",
+                    commit], check=True, timeout=120)
+    if shared_on():
+        env = dict(os.environ, PYTHONPATH=os.path.join(PRETEST_REPO, "installer"))
+        with open("/var/log/bipagents-shared-hermes.log", "a") as out:
+            done = subprocess.run(["python3", "-m", "bipinstall.shared_hermes", "build"], env=env, stdout=out,
+                                  stderr=out, timeout=3600, cwd=PRETEST_REPO)
+        log("pre-test's shared Hermes for %s: %s" % (commit[:12], "ready" if done.returncode == 0 else "not built"))
+
+
+def prepare_shared(commit, repo=None):
     """The shared Hermes that BipAgents `commit` pins, built by root before a place moves to it (its own update
     then points at it). Built from root's own checkout at that commit. A failure leaves the place on its current
     Hermes: its update says the version isn't ready and it keeps the one it has. Usually fetched ready-made (its
     release), not built. The agents' images of that version are pulled into the server's store too
     (installer/bipinstall/shared_images.py), with root's nightly pull set up the first time. `commit` "main": the
-    latest (a place installed without a pinned version, add-seat.sh)."""
+    latest (a place installed without a pinned version, add-seat.sh): `stable` where the repository has it, else
+    `main`. `repo` (one of KNOWN_REPOS): the public repository the commit lives in, root's checkout moved there."""
     if not os.path.isdir(os.path.join(SHARED_REPO, ".git")):
-        subprocess.run(["git", "clone", "--quiet", "--filter=blob:none", PUBLIC_REPO, SHARED_REPO], check=True,
+        subprocess.run(["git", "clone", "--quiet", "--filter=blob:none", repo or PUBLIC_REPO, SHARED_REPO], check=True,
                        timeout=600)
-    subprocess.run(["git", "-C", SHARED_REPO, "fetch", "--quiet", "origin"], check=True, timeout=600)
+    elif repo in KNOWN_REPOS:
+        subprocess.run(["git", "-C", SHARED_REPO, "remote", "set-url", "origin", repo], check=True, timeout=60)
+    subprocess.run(["git", "-C", SHARED_REPO, "fetch", "--quiet", "--prune", "origin"], check=True, timeout=600)
+    if commit == "main":
+        stable = subprocess.run(["git", "-C", SHARED_REPO, "rev-parse", "--verify", "--quiet", "origin/stable"],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+        commit = "origin/stable" if stable.returncode == 0 else "origin/main"
     subprocess.run(["git", "-C", SHARED_REPO, "-c", "advice.detachedHead=false", "checkout", "--quiet", "--force",
-                    "origin/main" if commit == "main" else commit], check=True, timeout=120)
+                    commit], check=True, timeout=120)
     env = dict(os.environ, PYTHONPATH=os.path.join(SHARED_REPO, "installer"))
     if shared_on():
         with open("/var/log/bipagents-shared-hermes.log", "a") as out:
@@ -287,28 +325,36 @@ def shared_gc():
         log("shared Hermes gc failed (exit %d)" % done.returncode)
 
 
-def update(number, commit):
-    """Place n brought to BipAgents `commit` by its own updater, as its account (what changed restarts)."""
+def update(number, commit, repo=None, pretest=False):
+    """Place n brought to BipAgents `commit` by its own updater, as its account (what changed restarts); from the
+    public repository `repo` when the order names one (its install's origin moves there: install.sh). A pre-test
+    place's order (`pretest`): that place alone, what the server shares left to production (prepare_pretest)."""
     user = account(number)
     try:
         uid = pwd.getpwnam(user).pw_uid
     except KeyError:
         return
     try:
-        prepare_shared(commit)
+        if pretest:
+            prepare_pretest(commit, repo)
+        else:
+            prepare_shared(commit, repo)
     except (OSError, subprocess.SubprocessError) as exc:
         log("shared Hermes for %s not built: %s" % (commit[:12], exc))
-    refresh_tools()
+    if not pretest:
+        refresh_tools()
     # a place installed before its own disk existed moves into one now (its services restart for the update anyway)
     try:
         own_disk(user, read_json(SETTINGS))
     except OSError as exc:
         log("place %d: own disk not made: %s" % (number, exc))
-    log("place %d (%s): BipAgents %s" % (number, user, commit[:12]))
+    log("place %d (%s): BipAgents %s%s" % (number, user, commit[:12], " from " + repo if repo else ""))
+    where = ["BIPAGENTS_TO_REPO=" + repo] if repo in KNOWN_REPOS else []
     with open("/var/log/bipagents-update%d.log" % number, "a") as out:
         subprocess.run(["sudo", "-iu", user, "env", "XDG_RUNTIME_DIR=/run/user/%d" % uid,
-                        "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus" % uid, "BIPAGENTS_TO=" + commit,
-                        "bash", "BipAgents/install.sh", "update", "--auto"], stdout=out, stderr=out, timeout=3600)
+                        "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus" % uid, "BIPAGENTS_TO=" + commit]
+                       + where + ["bash", "BipAgents/install.sh", "update", "--auto"], stdout=out, stderr=out,
+                       timeout=3600)
     shared_gc()
 
 
@@ -1614,7 +1660,7 @@ def moving(number, moves=MOVES, now=None):
     return None
 
 
-def update_order(number, commit, moves=MOVES, home=None, updater=None):
+def update_order(number, commit, moves=MOVES, home=None, updater=None, repo=None, pretest=False):
     """An update order while place n moves: held (False: not done, the guichet serves it again at the next beat, and
     it applies if the move fails or is called off); for the stopped copy a completed move left, dropped (True: an
     update would start it again beside the place that moved). Else done. True when the order is done with."""
@@ -1631,7 +1677,12 @@ def update_order(number, commit, moves=MOVES, home=None, updater=None):
         log("update of place %d dropped: the place moved away (its copy stays stopped)" % number)
         return True
     try:
-        (updater or update)(number, commit)
+        if pretest:
+            (updater or update)(number, commit, repo, pretest=True)
+        elif repo:
+            (updater or update)(number, commit, repo)
+        else:
+            (updater or update)(number, commit)
     except (OSError, subprocess.SubprocessError) as exc:
         log("update of place %s stopped: %s" % (number, exc))
     return True
@@ -2070,8 +2121,9 @@ def main(argv=()):
     if "--prepare" in argv:   # add-seat.sh, before a place's install: Hermes and the images of its version, shared
         at = list(argv).index("--prepare")
         commit = argv[at + 1] if len(argv) > at + 1 else "main"
+        repo = argv[at + 2] if len(argv) > at + 2 and argv[at + 2] in KNOWN_REPOS else None   # add-seat.sh's setup
         try:
-            prepare_shared(commit)
+            prepare_shared(commit, repo)
         except (OSError, subprocess.SubprocessError) as exc:
             log("shared Hermes and images for %s not ready: %s" % (commit[:12], exc))
         try:
@@ -2126,7 +2178,10 @@ def main(argv=()):
                 if body is None:
                     continue
                 if body["action"] == "update":
-                    if not update_order(int(body["seat"]), body["commit"]):
+                    where = {"repo": body["repo"]} if body.get("repo") else {}
+                    if body.get("pretest") is True:
+                        where["pretest"] = True
+                    if not update_order(int(body["seat"]), body["commit"], **where):
                         continue   # held while the place moves: neither noted nor told done
                 elif body["action"] in MOVE_ACTIONS:
                     try:

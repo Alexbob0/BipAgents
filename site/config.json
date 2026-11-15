@@ -19,7 +19,7 @@
     "privacy": "privacy@bipagents.com",
     "security": "security@bipagents.com"
   },
-  "repo": "https://github.com/Alexbob0/BipAgents",
+  "repo": "https://github.com/BipAgents/BipAgents",
   "stores": {
     "bipagents": {
       "appStore": "",

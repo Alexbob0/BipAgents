@@ -57,7 +57,8 @@ def test_install_sh_clones_light_and_runs_the_installers_own_environment():
     listed = re.findall(r"'(/\*|!/[^']+)'", text.split("sparse-checkout set --no-cone", 1)[1].split("checkout --quiet")[0])
     assert listed == checkout.patterns(voice_states=False)          # the same list as the installer's
     assert "uv run" not in text and '"$VENV/bin/python" -m bipinstall' in text
-    assert "resync()" in text and "fetch --depth 1 --quiet origin main" in text   # a rewritten history
+    # a rewritten history: the branch followed taken as it is (test_channels.py runs it)
+    assert "resync()" in text and 'fetch --depth 1 --quiet origin "${branch#refs/heads/}"' in text
 
 
 @pytest.fixture

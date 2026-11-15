@@ -74,7 +74,8 @@ for free, on a Mac, a Linux PC, a [small rented server](docs/vps.md) (from â‰ˆ â
 WSL2). No GPU, no beta code, no limit. Your agents, their memory and your files stay on your machine.
 
 1. **On a machine that stays on**, install [Tailscale](https://tailscale.com/download), then paste this in its
-   terminal and answer a few questions (your agents' names, and the model: one on your network, or an API key):
+   terminal and answer a few questions (your agents' names, and the model: one on your network, or an API key;
+   EUrouter, European, is recommended):
 
    ```bash
    curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash

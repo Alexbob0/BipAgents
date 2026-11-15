@@ -305,7 +305,7 @@ pub fn proposing_tool(tool: &str) -> bool {
 
 /// Read-only lookups: searching or reading what is there (Hermes' past conversations, the Carnet, the web, files,
 /// mails, the calendar, contacts, the agent's pages, skills, its memory read), held to `same_lookup`.
-const LOOKUP_TOOLS: [&str; 14] = [
+const LOOKUP_TOOLS: [&str; 15] = [
     "session_search",
     "web_search",
     "web_extract",
@@ -315,6 +315,7 @@ const LOOKUP_TOOLS: [&str; 14] = [
     "notebook_read",
     "read_page",
     "list_pages",
+    "page_data",
     "skill_view",
     "skills_list",
     "tool_search",
@@ -687,7 +688,7 @@ fn lookup_phrase(tool: &str, lang: &str) -> Option<&'static str> {
         pick("la même consultation des rappels", "the same look at the reminders", "denselben Blick in die Erinnerungen", "la misma consulta de los recordatorios")
     } else if tool == "memory" || tool.starts_with("knowledge_") {
         pick("la même lecture de ma mémoire", "the same look into my memory", "denselben Blick in mein Gedächtnis", "la misma consulta de mi memoria")
-    } else if tool == "read_page" || tool == "list_pages" {
+    } else if tool == "read_page" || tool == "list_pages" || tool == "page_data" {
         pick("la même lecture de mes pages", "the same look at my pages", "denselben Blick in meine Seiten", "la misma consulta de mis páginas")
     } else {
         None

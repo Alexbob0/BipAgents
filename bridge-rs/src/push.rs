@@ -356,6 +356,21 @@ impl PushService {
         let id = pointer.n.clone();
         let context = self.context(&event.agent);
         let title = event.shown_title(&context);
+        let quiet = event.kind.follows_switch(event.from) && !crate::agent_notify::notifies(&config, &event.agent);
+        // the conversation is on an app's screen (its event stream open): seen there, read, not pushed
+        let on_screen = matches!((&threads, &thread), (Some(t), Some(c)) if t.is_on_screen(c));
+        // an outcome known before any push is the row's from its first write: read there, nothing to push. Written
+        // « pending » then settled, the row showed unread and « pending » to a Boîte read in between (a hand-back
+        // landing while its conversation was open, 15/11)
+        let settled = if on_screen {
+            Some("skipped:on_screen")
+        } else if event.quiet {
+            Some("skipped:muted")
+        } else if quiet {
+            Some("skipped:switch")
+        } else {
+            None
+        };
         let row = crate::notifications::NewRow {
             id: &id,
             agent: &event.agent,
@@ -369,6 +384,8 @@ impl PushService {
             state: "open",
             dedupe: &key,
             created_at: event.at.as_deref(),
+            push: settled,
+            read: on_screen,
         };
         match crate::notifications::insert(&self.store, &row).await {
             Ok(true) => {}
@@ -381,29 +398,20 @@ impl PushService {
         pointer.badge = crate::notifications::unread_total(&self.store).await.unwrap_or(0);
         let built = event.push(&pointer);
         let payload = built.payload;
-        let quiet = event.kind.follows_switch(event.from) && !crate::agent_notify::notifies(&config, &event.agent);
-        // the conversation is on an app's screen (its event stream open): seen there, read, not pushed
-        let on_screen = matches!((&threads, &thread), (Some(t), Some(c)) if t.is_on_screen(c));
-        let (sent, push) = if on_screen {
-            if let Err(exc) = crate::notifications::mark_read(&self.store, &id).await {
-                tracing::warn!(exc = %format!("{exc:#}"), "notification not marked read");
-            }
-            (0, "skipped:on_screen".to_string())
-        } else if event.quiet {
-            (0, "skipped:muted".to_string())
-        } else if quiet {
-            (0, "skipped:switch".to_string())
+        let sent = if settled.is_some() {
+            0
         } else {
             // collapsed only where one notification replaces another (a run's, an approval's, a card's)
             let sealed = event.sealed(&context);
             let sent = self
                 .fanout(&event.agent, payload.clone(), Some(&sealed), built.push_type, built.priority, built.collapse_id)
                 .await;
-            (sent, if sent > 0 { format!("sent:{sent}") } else { "skipped:no_device".into() })
+            let push = if sent > 0 { format!("sent:{sent}") } else { "skipped:no_device".into() };
+            if let Err(exc) = crate::notifications::set_push(&self.store, &id, &push).await {
+                tracing::error!(exc = %format!("{exc:#}"), "notification not journaled");
+            }
+            sent
         };
-        if let Err(exc) = crate::notifications::set_push(&self.store, &id, &push).await {
-            tracing::error!(exc = %format!("{exc:#}"), "notification not journaled");
-        }
         if let Some(threads) = &threads {
             threads.publish(&event.agent, "notification",
                 json!({"n": id, "agent": event.agent, "t": kind, "c": thread, "m": message, "state": "open"}));
@@ -721,6 +729,54 @@ mod tests {
         assert_eq!(preview("  a \n b  ", 160), "a b");
         assert_eq!(preview(&"x".repeat(200), 10), format!("{}…", "x".repeat(9)));
         assert_eq!(preview("abcd efgh", 6), "abcd…");
+    }
+
+    /// 15/11 (test_long_work's hand-back on screen, flaky under load): the row was written unread and « pending »,
+    /// then marked read and settled; a Boîte read in between showed it so. Every write of the row is recorded here.
+    #[tokio::test]
+    async fn a_notification_on_screen_is_written_read_and_settled_at_once() {
+        let mut config = crate::config::Config::with_key("k");
+        config.agents.insert(
+            "vie".into(),
+            crate::config::AgentConfig {
+                name: "vie".into(),
+                hermes_url: "http://127.0.0.1:9".into(),
+                hermes_key: "x".into(),
+                ..Default::default()
+            },
+        );
+        let shared = SharedConfig::new(config);
+        let store = Store::open(":memory:").unwrap();
+        let hermes = crate::hermes::HermesClient::new(reqwest::Client::new());
+        let threads = Arc::new(crate::threads::Threads::new(shared.clone(), store.clone(), hermes));
+        let push = PushService::new(shared, store.clone(), None, None, None);
+        let _ = push.threads.set(Arc::downgrade(&threads));
+        // the agent's main thread as the store keeps it (nothing asked of Hermes)
+        for sql in [
+            "INSERT INTO threads (id, agent, kind, created_at, updated_at) VALUES ('t_main', 'vie', 'main', 'x', 'x')",
+            "INSERT INTO thread_segments (agent, session_id, thread_id, position, linked, added_at) \
+             VALUES ('vie', 'api_c', 't_main', 0, 'root', 'x')",
+            "CREATE TABLE written (n TEXT, push TEXT, read_at TEXT)",
+            "CREATE TRIGGER each_write AFTER INSERT ON notifications BEGIN \
+             INSERT INTO written VALUES (NEW.id, NEW.push, NEW.read_at); END",
+            "CREATE TRIGGER each_change AFTER UPDATE ON notifications BEGIN \
+             INSERT INTO written VALUES (NEW.id, NEW.push, NEW.read_at); END",
+        ] {
+            store.run(sql, vec![]).await.unwrap();
+        }
+        let shown = threads.show("t_main");
+        assert_eq!(push.notify_message("vie", "o_1", "C'est prêt.", None, BoiteFrom::Other, true).await, 0);
+        let writes = store.run("SELECT * FROM written", vec![]).await.unwrap();
+        assert_eq!(writes.len(), 1, "written once, as it ends: {writes:?}");
+        assert_eq!(writes[0]["push"], json!("skipped:on_screen"));
+        assert!(writes[0]["read_at"].is_string(), "{writes:?}");
+        drop(shown);
+        // off the screen: written « pending », then its outcome (no phone here)
+        push.notify_message("vie", "o_2", "Autre chose.", None, BoiteFrom::Other, true).await;
+        let writes = store.run("SELECT * FROM written", vec![]).await.unwrap();
+        let pushes: Vec<&Value> = writes[1..].iter().map(|w| &w["push"]).collect();
+        assert_eq!(pushes, [&json!("pending"), &json!("skipped:no_device")]);
+        assert!(writes[1..].iter().all(|w| w["read_at"].is_null()));
     }
 
     #[test]

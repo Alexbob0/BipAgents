@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence
 
+import yaml
 
 from . import routing
 
@@ -201,6 +202,24 @@ def write_env(runner: Runner, profile: str, key: str, value: str) -> None:
     write_env_file(runner, profile_dir(profile) / ".env", key, value)
 
 
+def drop_env(runner: Runner, profile: str, key: str) -> None:
+    """`KEY=…` out of the profile's .env, when it is there (the other lines kept, 0600 as `write_env`)."""
+    path = profile_dir(profile) / ".env"
+    lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
+    kept = [line for line in lines if line.split("=", 1)[0].strip().removeprefix("export ").strip() != key]
+    if kept == lines:
+        return
+    runner.log.append(f"drop {path}: {key}")
+    if runner.dry:
+        return
+    tmp = path.with_name(".env.bip-tmp")
+    tmp.unlink(missing_ok=True)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write("".join(line + "\n" for line in kept))
+    os.replace(tmp, path)
+
+
 def write_env_file(runner: Runner, path: Path, key: str, value: str) -> None:
     """`write_env` into a given `.env` (another Hermes home: migrations.py)."""
     runner.log.append(f"write {path}: {key}")   # never the value
@@ -228,15 +247,42 @@ def is_local(base_url: str) -> bool:
     return base_url.startswith("http://")
 
 
+CUSTOM_KEY_ENV = "CUSTOM_MODEL_API_KEY"
+
+
+def _model_setting(profile: str, key: str) -> Optional[str]:
+    """`model.<key>` in the profile's config.yaml as it is now (read only), None when unset or unreadable."""
+    try:
+        data = yaml.safe_load((profile_dir(profile) / "config.yaml").read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return None
+    model = data.get("model") if isinstance(data, dict) else None
+    value = model.get(key) if isinstance(model, dict) else None
+    return str(value) if value else None
+
+
 def set_model(runner: Runner, profile: str, model: Model) -> None:
+    # The key's pointer an earlier run left (an install stopped after the hub, taken up again on the same files):
+    # Hermes keeps `model.key_env` when the provider changes and reads the key from it first, as the bridge's own
+    # calls do (mail_scan.rs `model_of`). Left on EUrouter's CUSTOM_MODEL_API_KEY, EUrouter's key would go to OpenAI
+    # or OpenRouter (review of installer-eurouter, 15/11, N1). The bridge drops it when it switches a model
+    # (model_choice.rs).
+    stale = _model_setting(profile, "key_env")
     _config(runner, profile, "model.provider", model.provider)
     _config(runner, profile, "model.default", model.name)
     if model.base_url:
         _config(runner, profile, "model.base_url", model.base_url)
     if model.provider in ("custom",) and model.api_key:
-        _config(runner, profile, "model.key_env", model.key_env or "CUSTOM_MODEL_API_KEY")
+        _config(runner, profile, "model.key_env", model.key_env or CUSTOM_KEY_ENV)
+    elif stale and model.api_key and model.key_env:
+        _config(runner, profile, "model.key_env", model.key_env)   # the chosen provider's variable, never the old one
+    elif stale:   # no key now: no pointer
+        runner.run([hermes_bin()] + ([] if profile == HUB_PROFILE else ["-p", profile])
+                   + ["config", "unset", "model.key_env"], check=False)
     if model.api_key and model.key_env:
         write_env(runner, profile, model.key_env, model.api_key)   # in the profile's .env, not on a command line
+    if not (model.api_key and model.key_env == CUSTOM_KEY_ENV):
+        drop_env(runner, profile, CUSTOM_KEY_ENV)   # an earlier run's custom key, used by nothing now
     _config(runner, profile, "model.supports_vision", "true" if model.vision else "false")
     if model.base_url and is_local(model.base_url):
         _config(runner, profile, "compression.threshold_tokens", str(LOCAL_COMPRESSION_TOKENS))

@@ -14,6 +14,7 @@ Installed as `FakeHermes.override`, it takes only the runs it starts (every othe
 | (none) | « Bien reçu » and what came: N photos, N documents |
 | `#fichier` | writes a PDF in its files and names it (`MEDIA:` line) |
 | `#page` | makes a page with the bridge's `create_page` tool, names it |
+| `#memoire` | makes a page that remembers (`Bip.store`: a field, « Ajouter », the list) with `create_page`, names it |
 | `#carte` | a map with the bridge's `map_image` tool (else a picture in the maps' folder), names it |
 | `#trajet` | a map with `map_image`, its card pasted into a `create_page` page, names the page only (as agents do) |
 | `#outil` | a tool call (`tool.started` / `tool.completed`, stored as Hermes' tool rows) before its words |
@@ -28,7 +29,7 @@ Installed as `FakeHermes.override`, it takes only the runs it starts (every othe
 | `#reel` | streams as GLM through Hermes: ~1.5 s before the first words, then 1–3 words every 60–200 ms (the same each run), ~50 words, stored with `reasoning` |
 
 `calls`: the agent's own tool calls to the bridge (MCP), given by the harness (`secret`, `sites`, `page`, `map`,
-`page_with`: a page of the given HTML), each a function of the run's words returning the text of its result. They run
+`page_with`: a page of the given HTML, `memory_page`: a page that remembers), each a function of the run's words returning the text of its result. They run
 in the run's thread, while the turn waits."""
 from __future__ import annotations
 
@@ -363,6 +364,13 @@ class ScriptedModel:
             line = self.media_line(made)
             if line:
                 lines.append("J’ai préparé une page.")
+                media.append(line)
+        if "#memoire" in words and "memory_page" in self.calls:
+            made = self.tool(run, "mcp_bipagents_create_page", {"title": f"Courses {run.id}"},
+                             lambda: self.calls["memory_page"](run.id), calls, results)
+            line = self.media_line(made)
+            if line:
+                lines.append("Voici ta liste, elle garde ce que tu y tapes.")
                 media.append(line)
         if "#carte" in words:
             made = self.tool(run, "mcp_bipagents_map_image", {"markers": [{"place": "Tour Eiffel"}], "area": "Paris"},

@@ -69,16 +69,23 @@ def pick_model(machine: Machine) -> tuple[hermes.Model, bool]:
     say("\nWhere does the model (the agents' \"brain\") run?")
     first = "On another machine on my tailnet (PC with a GPU, Spark, Mac at home…)" if machine.cloud \
         else "On another machine on my network (PC with a GPU, Spark, Mac…)"
-    where = choose("Choice", [first, "In the cloud, through an API (OpenRouter, OpenAI, Anthropic, Mistral)",
+    clouds = ", ".join(p.name.split(" (")[0] for p in models.CLOUD)   # EUrouter first (models.EUROUTER)
+    where = choose("Choice", [first, f"In the cloud, through an API ({clouds})",
                                            "On this machine (Ollama or LM Studio already installed)"],
                    default=2 if machine.cloud else 1)
     if where == 2:
         provider = models.CLOUD[choose("Provider", [p.label for p in models.CLOUD]) - 1]
-        say(f"Create your key here: {provider.key_hint}")
+        say(f"Create your key here: {provider.key_hint}" + (f" ({provider.key_where})" if provider.key_where else ""))
         key = ask("API key")
-        name = ask("Model (exact ID)", {"openrouter": "anthropic/claude-sonnet-5.5", "openai": "gpt-5.1",
-                                                   "anthropic": "claude-sonnet-5-5", "mistral": "mistral-large-latest"}
-                   .get(provider.key, ""))
+        if provider.known:   # the models known to work well with BipAgents, and « Other » to type another one
+            picked = choose("Model", [m.label for m in provider.known] + ["Other (type its ID)"])
+            name = provider.known[picked - 1].id if picked <= len(provider.known) else ""
+            while not name:
+                name = ask("Model (exact ID)")
+        else:
+            name = ask("Model (exact ID)", {"openrouter": "anthropic/claude-sonnet-5.5", "openai": "gpt-5.1",
+                                            "anthropic": "claude-sonnet-5-5", "mistral": "mistral-large-latest"}
+                       .get(provider.key, ""))
         hermes_provider = {"openrouter": "openrouter", "openai": "openai-api", "anthropic": "anthropic"}.get(provider.key, "custom")
         model = hermes.Model(hermes_provider, name, base_url=provider.base_url, api_key=key)
         return verify(model), False
