@@ -110,3 +110,26 @@ def test_review_each_take_over_and_hand_back_of_a_still_page_sends_its_frame(bri
             frame_of(ws, lambda w: w == 390, f"round {round_}: no phone frame after the take-over")
             bridge.post("/v1/agents/vie/desktop/control", headers=AUTH, json={"take": False})
             frame_of(ws, lambda w: w > 1000, f"round {round_}: no desktop frame after the hand-back")
+
+
+def test_review_f1_a_picture_says_the_size_of_the_page_it_shows(bridges, fakes, chromium):
+    # Review of fix-desktop-first-frame (15/11): the picture taken when the screencast sends nothing is announced at
+    # the last desktop frame's size, else at 1366 × 650, a guess. A page view opened while the person holds the browser
+    # has seen no desktop frame: handed back, its picture of the tab is announced 1366 × 650 whatever the tab's size,
+    # and the viewer lays it out and maps the taps by that. Each desktop frame after a hand-back must say the size the
+    # screencast itself says (here 1366 × 625). On 93785ab27 (aibox, alone): 4 runs of 4 fail at round 0, the picture
+    # announced 1366 × 650.
+    bridge, folder = browser_bridge(bridges, fakes, chromium)
+    data = bridge.post("/v1/agents/vie/desktop", headers=AUTH).json()
+    url = bridge.ws_url("/" + data["page_path"] + "ws?mobile=1&w=390&h=700&dpr=2")
+    with open_ws(url) as ws:                            # watching: the screencast's own size for the desktop
+        seen = frame_of(ws, lambda w: w > 1000, "the first desktop frame")
+    real = next(m for m in reversed(seen) if isinstance(m, dict) and m.get("type") == "frame")
+    for round_ in range(4):
+        bridge.post("/v1/agents/vie/desktop/control", headers=AUTH, json={"take": True})
+        with open_ws(url) as ws:                        # opened while held: rendered as a phone from its start
+            frame_of(ws, lambda w: w == 390, f"round {round_}: no phone frame")
+            bridge.post("/v1/agents/vie/desktop/control", headers=AUTH, json={"take": False})
+            seen = frame_of(ws, lambda w: w > 1000, f"round {round_}: no desktop frame after the hand-back")
+        shown = next(m for m in reversed(seen) if isinstance(m, dict) and m.get("type") == "frame")
+        assert (shown["w"], shown["h"]) == (real["w"], real["h"]), (round_, shown, real)
