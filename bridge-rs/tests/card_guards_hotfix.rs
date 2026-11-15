@@ -131,8 +131,8 @@ fn the_sites_storage_written_is_refused() {
         "var name = 'x'",
         "history.pushState({}, '', '/x')",
         "history.replaceState({r: 1}, '')",
-        "indexedDB.open('x')",
-        "caches.open('x')",
+        "indexedDB.deleteDatabase('x')",
+        "caches.delete('x')",
         "cookieStore.set('a', 'b')",
     ]
     .iter()
@@ -161,6 +161,8 @@ fn other_ways_into_the_page_or_out_of_it_are_refused() {
         "const p = new DOMParser(); p.parseFromString('<p>', 'text/html')",
         "location.reload()",
         "const {sessionStorage: s} = window; s.setItem('k', 'v')",
+        "indexedDB.open('x')",
+        "caches.open('x')",
     ]
     .iter()
     .map(|s| s.replace('U', U))
@@ -199,7 +201,7 @@ fn reads_of_the_address_and_of_the_page_go_on() {
         "const {top, left} = document.body.getBoundingClientRect(); return {top, left}",
         "(function () { return document.title; }).call(this)",
         "return Object.assign({}, {a: 1})",
-        "const out = {}; out.href = document.querySelector('a').href; out.src = 'x'; return out",
+        "const out = {}; out.src = document.querySelector('img').src; out.data = 'x'; return out",
         "return document.evaluate('//button', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue?.innerText",
         "return document.URL",
         "return window.name",

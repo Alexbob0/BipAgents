@@ -996,8 +996,8 @@ impl<'a> Visit<'a> for Reader<'_> {
             self.shape.makes_way = true;
         }
         if !self.bound(name) {
-            // `open(…)`, `navigation.navigate(…)`: the window's
-            if WAY_NAMES.contains(&name) {
+            // `open(…)`, `navigation.navigate(…)`: the window's (`location`: above, its parts read)
+            if WAY_NAMES.contains(&name) && name != "location" {
                 self.shape.makes_way = true;
             }
             // the window taken as a value (`const w = window`, `f(self)`)

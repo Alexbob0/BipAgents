@@ -1121,8 +1121,9 @@ async fn without_its_own_world_the_guard_refuses_a_script_that_acts_on_a_card_pa
     proxy.handle(tool(1, "execute_script", click.clone())).await;
     assert_eq!(text_of(&last(&out)), browser_mcp::SCRIPT_BLIND_REFUSED);
     assert!(!calls(tmp).iter().any(|c| c["arguments"]["script"].as_str().is_some_and(|s| s.contains("#go"))));
+    // a read there: refused too since the hotfix of 15/11 (no script on a page showing card fields)
     proxy.handle(tool(2, "execute_script", json!({"instance_id": "i", "script": "return document.title"}))).await;
-    assert_eq!(text_of(&last(&out)), "did execute_script");
+    assert_eq!(text_of(&last(&out)), browser_mcp::SCRIPT_ON_CARDS_REFUSED);
     std::fs::remove_file(tmp.join("cardpage")).unwrap();
     proxy.handle(tool(3, "execute_script", click)).await;
     assert_eq!(text_of(&last(&out)), "did execute_script");

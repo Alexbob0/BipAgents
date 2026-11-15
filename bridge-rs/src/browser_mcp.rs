@@ -3647,10 +3647,11 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         assert_eq!(script_card_refusal(framework, Some(&empty)), None);
         // what it writes or calls named at run time (rw5), code run from text: each its own text (third review)
         for script in ["const a = document.createElement(String.fromCharCode(97)); a['hr' + 'ef'] = u; a.click()",
-                       "Reflect.set(f, 'act' + 'ion', u); f.submit()", "a[`hr${e}`] = u", "window['loc' + 'ation'] = u",
-                       "el['cli' + 'ck']()"] {
+                       "Reflect.set(f, 'act' + 'ion', u); f.submit()", "a[`hr${e}`] = u", "el['cli' + 'ck']()"] {
             assert_eq!(script_card_refusal(script, Some(&empty)), Some(SCRIPT_HIDDEN_NAMES_REFUSED), "{script}");
         }
+        // the window's location by a name made at run time: refused as a way out (hotfix of 15/11)
+        assert_eq!(script_card_refusal("window['loc' + 'ation'] = u", Some(&empty)), Some(PROVIDER_SCRIPT_REFUSED));
         for script in ["eval(code)", "new Function(code)()", "setTimeout('document.forms[0].submit()', 10)",
                        "el.setAttribute('onclick', 'pay()')"] {
             assert_eq!(script_card_refusal(script, Some(&empty)), Some(SCRIPT_TEXT_CODE_REFUSED), "{script}");
