@@ -692,7 +692,10 @@ def test_a_new_place_gets_the_shared_hermes_and_images_of_its_version_first(tmp_
     text = (ROOT / "installer" / "cloud" / "add-seat.sh").read_text(encoding="utf-8")
     prepare = text.index('seat-agent.py" --prepare "${version:-main}" $repo')
     assert 'pin="${pin}BIPAGENTS_TO_REPO=$repo "' in text   # the version's repository, a known one (case above it)
-    assert text.index("--ceiling") < prepare < text.index("install.sh |")
+    # install.sh of the pinned version itself, never the branch's tip (review R10)
+    assert 'installer="https://raw.githubusercontent.com/${slug%.git}/$version/install.sh"' in text
+    assert 'bash -c "curl -fsSL $installer | ${pin}bash -s -- --cloud $setup"' in text
+    assert text.index("--ceiling") < prepare < text.index("curl -fsSL $installer |")
 
 
 def test_an_update_order_naming_a_repository_moves_the_place_there(tmp_path, monkeypatch):
@@ -720,6 +723,52 @@ def test_an_update_order_naming_a_repository_moves_the_place_there(tmp_path, mon
     prepared.clear(), ran.clear()
     assert agent.update_order(2, commit, moves=str(tmp_path / "moves"), home=str(tmp_path))
     assert prepared == [(commit, None)] and not any(a.startswith("BIPAGENTS_TO_REPO") for a in ran[-1])
+
+
+def test_a_pretest_order_updates_that_place_alone_and_leaves_what_the_server_shares(tmp_path, monkeypatch):
+    """Review R11 (15/11): a pre-test place's order (`"pretest": true`, before Alex's OK) must not move what the
+    server's production places share: root's checkout (the images' nightly pull runs from it), the seat tools, the
+    images' store (`localhost/bipagents-browser:latest`). Its shared Hermes is made from a checkout of its own."""
+    import io
+    import types
+    agent = _seat_agent()
+    ran, calls = [], []
+
+    class Done:
+        returncode = 0
+
+    monkeypatch.setattr(agent.pwd, "getpwnam", lambda user: types.SimpleNamespace(pw_uid=1002, pw_dir=str(tmp_path)))
+    monkeypatch.setattr(agent, "SHARED_REPO", str(tmp_path / "repo"))
+    monkeypatch.setattr(agent, "PRETEST_REPO", str(tmp_path / "repo-pretest"))
+    monkeypatch.setattr(agent, "shared_on", lambda: True)
+    monkeypatch.setattr(agent, "refresh_tools", lambda *a, **k: calls.append("refresh_tools"))
+    monkeypatch.setattr(agent, "prepare_shared", lambda *a, **k: calls.append("prepare_shared"))
+    for name in ("shared_gc", "log"):
+        monkeypatch.setattr(agent, name, lambda *a, **k: None)
+    monkeypatch.setattr(agent, "own_disk", lambda user, settings: None)
+    monkeypatch.setattr(agent, "read_json", lambda path: {})
+    monkeypatch.setattr(agent, "open", lambda *a, **k: io.StringIO(), raising=False)
+    monkeypatch.setattr(agent.subprocess, "run", lambda args, **kw: ran.append(list(args)) or Done())
+    (tmp_path / "repo" / ".git").mkdir(parents=True)
+    commit = "d" * 40
+    assert agent.update_order(2, commit, moves=str(tmp_path / "moves"), home=str(tmp_path), pretest=True)
+    assert calls == [], f"what the server shares was touched: {calls}"
+    touched = [a for a in ran if str(tmp_path / "repo") in a and str(tmp_path / "repo-pretest") not in " ".join(a)]
+    assert touched == [], f"root's checkout moved: {touched}"
+    assert not any("shared_images" in " ".join(a) for a in ran), "the images' store pulled"
+    assert any(a[-1] == commit and str(tmp_path / "repo-pretest") in a for a in ran), "its own checkout at its commit"
+    assert any(a[:4] == ["python3", "-m", "bipinstall.shared_hermes", "build"] for a in ran)
+    assert ran[-1][:2] == ["sudo", "-iu"] and "BIPAGENTS_TO=" + commit in ran[-1]
+    # the order's word, checked: a boolean or nothing
+    now = __import__("time").time()
+    body = {"order": 3, "server": "vps-1", "seat": 2, "action": "update", "expires": int(now + 3600),
+            "commit": commit, "pretest": True}
+    assert agent.accepted({"id": 3, "body": json.dumps(body)}, "vps-1", set(), now) == body
+    assert agent.accepted({"id": 3, "body": json.dumps({**body, "pretest": "yes"})}, "vps-1", set(), now) is None
+    # a production order: the whole server's preparation, as before
+    calls.clear()
+    assert agent.update_order(2, commit, moves=str(tmp_path / "moves"), home=str(tmp_path))
+    assert calls == ["prepare_shared", "refresh_tools"]
 
 
 def test_only_root_may_ask_the_provider_s_metadata_service():

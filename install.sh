@@ -31,6 +31,16 @@ case "$channel" in
   ""|stable|pre-test|main) ;;
   *) echo "BipAgents: --channel stable, pre-test or main" >&2; exit 2 ;;
 esac
+# `update --check` only says what is new: nothing here moves the checkout (no pull, no other channel or repository;
+# review R8), the installer fetches and compares
+check_only=""
+if [ "${1:-}" = update ]; then
+  for arg in "$@"; do [ "$arg" = --check ] && check_only=1; done
+fi
+if [ -n "$check_only" ] && [ -n "$channel" ]; then
+  echo "BipAgents: --check says what is new on the branch followed now; --channel takes effect at the update" >&2
+  channel=""
+fi
 known() { case " $KNOWN_REPOS " in *" ${1%.git}.git "*) return 0 ;; esac; return 1; }
 # BIPAGENTS_TO_REPO=<address>: the public repository BIPAGENTS_TO's commit lives in (the guichet's update orders name
 # it: the switch to the organisation's repository, and its way back); one of KNOWN_REPOS only.
@@ -110,13 +120,21 @@ resync() {
   git -C "$DIR" fetch --depth 1 --quiet origin "${branch#refs/heads/}" && git -C "$DIR" checkout --quiet -B main FETCH_HEAD
 }
 
-if [ -d "$DIR/.git" ]; then
+# What this checkout last took from its origin (an install's own commits are never rolled back: below).
+remember() { git -C "$DIR" config bipagents.pulled "$(git -C "$DIR" rev-parse HEAD)"; }
+
+if [ -n "$check_only" ]; then
+  [ -d "$DIR/.git" ] || { echo "BipAgents isn't installed in $DIR" >&2; exit 1; }
+  # the installer's --check fetches and compares, nothing moves
+elif [ -d "$DIR/.git" ]; then
   # The version before, for `install.sh update` (what changed); a pull that cannot go on is explained by it.
   export BIPAGENTS_BEFORE="$(git -C "$DIR" rev-parse HEAD)"
   if [ -n "${BIPAGENTS_TO:-}" ]; then
     if ! to_version; then
       [ "${1:-}" = "update" ] || exit 1
       export BIPAGENTS_PULL_FAILED=1
+    else
+      remember
     fi
   else
     moved=""
@@ -129,11 +147,26 @@ if [ -d "$DIR/.git" ]; then
       [ "$before_follow" = "$(origin) refs/heads/$followed" ] || moved=1
     fi
     if [ -n "$moved" ] && resync; then
-      :
+      remember
     elif ! pulled="$(git -C "$DIR" pull --ff-only --quiet 2>&1)" && ! resync; then
       [ -n "$pulled" ] && echo "$pulled" >&2
       [ "${1:-}" = "update" ] || exit 1
       export BIPAGENTS_PULL_FAILED=1
+    else
+      # The branch followed moved back (a promoted version gone wrong: publish-public.sh --stable-back): `pull`
+      # leaves this checkout ahead of it. When HEAD is what it last took from its origin (no commit of its own) and
+      # nothing was changed by hand, it goes back with it (review R7).
+      if install_clone && [ "$BIPAGENTS_BEFORE" = "$(git -C "$DIR" rev-parse HEAD)" ] \
+         && [ "$(git -C "$DIR" config bipagents.pulled || true)" = "$BIPAGENTS_BEFORE" ] \
+         && git -C "$DIR" diff --quiet HEAD -- 2>/dev/null; then
+        upstream="$(git -C "$DIR" rev-parse --verify -q "refs/remotes/origin/${followed:-main}" || true)"
+        if [ -n "$upstream" ] && [ "$upstream" != "$BIPAGENTS_BEFORE" ] \
+           && git -C "$DIR" merge-base --is-ancestor "$upstream" HEAD 2>/dev/null; then
+          echo "BipAgents: ${followed:-main} went back to ${upstream:0:12}: this install goes back with it." >&2
+          git -C "$DIR" checkout --quiet -B main "$upstream"
+        fi
+      fi
+      remember
     fi
   fi
 else
@@ -151,6 +184,7 @@ else
   follow "$followed"
   [ -n "$channel" ] && git -C "$DIR" config bipagents.channel "$channel"
   if [ -n "${BIPAGENTS_TO:-}" ]; then to_version; fi
+  remember
 fi
 
 cd "$DIR"

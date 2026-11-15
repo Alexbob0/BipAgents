@@ -109,6 +109,7 @@ def accepted(order, server, done, now):
             commit = body["commit"]
             ok = ok and isinstance(commit, str) and len(commit) == 40 and all(c in "0123456789abcdef" for c in commit)
             ok = ok and body.get("repo") in (None,) + KNOWN_REPOS   # where the commit lives: a known one, or unsaid
+            ok = ok and body.get("pretest") in (None, True, False)   # a pre-test place's (below: update)
         elif body.get("action") == "reopen":
             pair = body["pair"]
             ok = ok and isinstance(pair, str) and 40 <= len(pair) <= 64 and all(c in PAIR_CHARS for c in pair)
@@ -197,6 +198,9 @@ def reset(number, setup):
 
 SHARED_SETTING = "/etc/bipagents/shared-hermes.json"
 SHARED_REPO = os.path.join(LIB, "repo")   # root's own BipAgents, never a place's (an agent could change those)
+# A pre-test's checkout of root's, apart: a pre-test place's shared Hermes is made from it, and root's own checkout
+# (the images' nightly pull, the seat tools) stays on production's version until the production waves (review R11)
+PRETEST_REPO = os.path.join(LIB, "repo-pretest")
 PUBLIC_REPO = "https://github.com/Alexbob0/BipAgents.git"
 # The public repositories an update order may name (installer/bipinstall/public_repo.py: KNOWN): the guichet moves the
 # places to the BipAgents organisation's through an update, and back; never anywhere else, whatever an order says.
@@ -218,6 +222,28 @@ def shared_on():
         return True
     except ValueError:
         return False
+
+
+def prepare_pretest(commit, repo=None):
+    """A pre-test place's version made ready without touching what the server's other places share: its shared
+    Hermes (one per version, beside production's) built from a checkout of its own (PRETEST_REPO); root's checkout,
+    the seat tools and the images' store stay as production has them. The place itself gets its browser from its own
+    pull when the server's store doesn't have its image (shared_images.browser)."""
+    if not os.path.isdir(os.path.join(PRETEST_REPO, ".git")):
+        source = SHARED_REPO if os.path.isdir(os.path.join(SHARED_REPO, ".git")) else (repo or PUBLIC_REPO)
+        subprocess.run(["git", "clone", "--quiet", "--filter=blob:none", source, PRETEST_REPO], check=True,
+                       timeout=600)
+    subprocess.run(["git", "-C", PRETEST_REPO, "remote", "set-url", "origin", repo if repo in KNOWN_REPOS
+                    else PUBLIC_REPO], check=True, timeout=60)
+    subprocess.run(["git", "-C", PRETEST_REPO, "fetch", "--quiet", "--prune", "origin"], check=True, timeout=600)
+    subprocess.run(["git", "-C", PRETEST_REPO, "-c", "advice.detachedHead=false", "checkout", "--quiet", "--force",
+                    commit], check=True, timeout=120)
+    if shared_on():
+        env = dict(os.environ, PYTHONPATH=os.path.join(PRETEST_REPO, "installer"))
+        with open("/var/log/bipagents-shared-hermes.log", "a") as out:
+            done = subprocess.run(["python3", "-m", "bipinstall.shared_hermes", "build"], env=env, stdout=out,
+                                  stderr=out, timeout=3600, cwd=PRETEST_REPO)
+        log("pre-test's shared Hermes for %s: %s" % (commit[:12], "ready" if done.returncode == 0 else "not built"))
 
 
 def prepare_shared(commit, repo=None):
@@ -299,19 +325,24 @@ def shared_gc():
         log("shared Hermes gc failed (exit %d)" % done.returncode)
 
 
-def update(number, commit, repo=None):
+def update(number, commit, repo=None, pretest=False):
     """Place n brought to BipAgents `commit` by its own updater, as its account (what changed restarts); from the
-    public repository `repo` when the order names one (its install's origin moves there: install.sh)."""
+    public repository `repo` when the order names one (its install's origin moves there: install.sh). A pre-test
+    place's order (`pretest`): that place alone, what the server shares left to production (prepare_pretest)."""
     user = account(number)
     try:
         uid = pwd.getpwnam(user).pw_uid
     except KeyError:
         return
     try:
-        prepare_shared(commit, repo)
+        if pretest:
+            prepare_pretest(commit, repo)
+        else:
+            prepare_shared(commit, repo)
     except (OSError, subprocess.SubprocessError) as exc:
         log("shared Hermes for %s not built: %s" % (commit[:12], exc))
-    refresh_tools()
+    if not pretest:
+        refresh_tools()
     # a place installed before its own disk existed moves into one now (its services restart for the update anyway)
     try:
         own_disk(user, read_json(SETTINGS))
@@ -1629,7 +1660,7 @@ def moving(number, moves=MOVES, now=None):
     return None
 
 
-def update_order(number, commit, moves=MOVES, home=None, updater=None, repo=None):
+def update_order(number, commit, moves=MOVES, home=None, updater=None, repo=None, pretest=False):
     """An update order while place n moves: held (False: not done, the guichet serves it again at the next beat, and
     it applies if the move fails or is called off); for the stopped copy a completed move left, dropped (True: an
     update would start it again beside the place that moved). Else done. True when the order is done with."""
@@ -1646,7 +1677,9 @@ def update_order(number, commit, moves=MOVES, home=None, updater=None, repo=None
         log("update of place %d dropped: the place moved away (its copy stays stopped)" % number)
         return True
     try:
-        if repo:
+        if pretest:
+            (updater or update)(number, commit, repo, pretest=True)
+        elif repo:
             (updater or update)(number, commit, repo)
         else:
             (updater or update)(number, commit)
@@ -2146,6 +2179,8 @@ def main(argv=()):
                     continue
                 if body["action"] == "update":
                     where = {"repo": body["repo"]} if body.get("repo") else {}
+                    if body.get("pretest") is True:
+                        where["pretest"] = True
                     if not update_order(int(body["seat"]), body["commit"], **where):
                         continue   # held while the place moves: neither noted nor told done
                 elif body["action"] in MOVE_ACTIONS:
