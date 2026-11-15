@@ -1,15 +1,16 @@
 """Review of installer-eurouter (15/11): EUrouter, now the default (Enter, Enter), is Hermes' `custom` provider, so the
 first run writes `model.key_env: CUSTOM_MODEL_API_KEY` and the EUrouter key in `.env`. A run that stops after the
-hub is set up (hermes.UNFINISHED) is taken up again on the same files; if the person then picks OpenRouter, OpenAI
-or Anthropic, `set_model` leaves that pointer in place:
+hub is set up (hermes.UNFINISHED) is taken up again on the same files; if the person then picks OpenRouter or
+OpenAI, `set_model` leaves that pointer in place:
 
 - Hermes (pinned 3b42157858) keeps `model.key_env` when `config set model.provider` changes the provider
-  (hermes_cli/route_identity.py `drop_stale_model_route` pops `base_url` and `api_mode` only) and reads the key from
-  it first for the provider the model names (hermes_cli/auth.py `_model_level_key_env`, no prefix check but
-  OpenRouter's « sk-or- »): the EUrouter key goes to OpenAI or Anthropic, every turn answers 401 although the
-  installer's test passed with the right key;
+  (hermes_cli/route_identity.py `drop_stale_model_route` pops `base_url` and `api_mode` only) and, for an API-key
+  provider such as `openai-api`, reads the key from it first (hermes_cli/auth.py `_resolve_api_key_provider_secret`,
+  `_model_level_key_env`; only OpenRouter's « sk-or- » prefix is checked): the EUrouter key goes to OpenAI, every turn
+  answers 401 although the installer's test passed with the right key (read in Hermes' code, not run);
 - the bridge's own calls (Carnet, mail scan, rooms, records: bridge-rs/src/mail_scan.rs `model_of`) read
   `model.key_env` for OpenRouter too: the EUrouter key goes to openrouter.ai.
+(Anthropic has a resolver of its own in Hermes and the bridge's own calls skip it: not a case here.)
 
 The bridge already drops the pointer when it switches an agent to a provider of its own (model_choice.rs, `m.remove(
 "key_env")`); the installer doesn't. Fake keys only, nothing run (`hermes config set` applied to the file here)."""
@@ -72,7 +73,6 @@ def _env(path: Path) -> dict:
 @pytest.mark.parametrize("provider, name, base_url", [
     ("openrouter", "anthropic/claude-sonnet-5.5", "https://openrouter.ai/api/v1"),
     ("openai-api", "gpt-5.1", "https://api.openai.com/v1"),
-    ("anthropic", "claude-sonnet-5-5", "https://api.anthropic.com/v1"),
 ])
 def test_a_second_run_on_another_provider_never_sends_it_the_eurouter_key(monkeypatch, tmp_path, provider, name,
                                                                           base_url):
