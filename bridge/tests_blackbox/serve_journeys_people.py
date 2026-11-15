@@ -20,6 +20,7 @@ then serves until `JOURNEYS_OUT + ".done"` appears (or `JOURNEYS_MINUTES`, defau
 link (`POST /v1/read-shares/<share>/invites`, the bridge's key): a link opens once."""
 import json
 import os
+import re
 import time
 from pathlib import Path
 
@@ -34,6 +35,13 @@ JOURNEY_J52_PAGES = [
     ("BipAgents", "subject", "status", ["Bêta publique le 19 novembre"]),
     ("Famille", "area", "matters", ["Judo de Zoé : mercredi 14 h", "BipAgents : panorama concurrentiel livré le 25/10"]),
 ]
+
+
+def journey_tag(run) -> str:
+    """The journey's tag right after `#tache` in the person's message (iPhone « J46-12345 », Android « [J46-k3x9a] »),
+    else the turn's own id: never the same twice."""
+    found = re.search(r"#tache\s+\[?(J\d+-[0-9A-Za-z]+)", run.words)
+    return found.group(1) if found else run.id
 
 
 def family_agent(bridges, fakes, journey):
@@ -109,8 +117,11 @@ def test_serve_people(bridges, fakes):
     journey.model.calls["routine"] = lambda run: mcp_as(bridge, journey.token, "/v1/agent-tools/mcp", "routine_schedule", {
         "action": "create", "name": "Le point du soir", "schedule": "every day at 19:00",
         "prompt": "Fais le point de la journée."})
+    # each journey's task its own (the journey's tag in its prompt): one bridge serves every journey on both apps, and a
+    # task like one already there (J39's, paused by « Annuler ») is not proposed again (jobs.rs `same_task`)
     journey.model.calls["task"] = lambda run: mcp_as(bridge, journey.token, "/v1/agent-tools/mcp", "propose_task", {
-        "title": "Dossier location", "prompt": "Prépare le dossier de location #lent", "budget": "small"})
+        "title": "Dossier location", "prompt": f"Prépare le dossier de location {journey_tag(run)} #lent",
+        "budget": "small"})
     # J47, the Carnet: Léa's page, the question of the day at any hour (quiet hours of one minute), Vie's calls
     assert bridge.patch("/v1/notebook/settings", headers=AUTH,
                         json={"quiet": {"from": "03:00", "to": "03:01"}}).status_code == 200
