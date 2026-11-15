@@ -1642,6 +1642,7 @@ async fn accept(
                 crate::answer_style::set(&state.config, &from, &str_of(&proposal, "answer_style"), None)?
             };
             take_proposal(&state.config(), &id)?;
+            crate::agents_admin::refresh_prompts(&state.config(), &changed, &crate::agents_admin::default_run()).await;
             Ok(web::ok(json!({"type": "style", "agent": {"id": changed.name, "name": changed.display_name},
                               "answer_style": crate::answer_style::view(&changed)})))
         }
@@ -1677,6 +1678,8 @@ async fn accept(
             })?;
             take_proposal(&config, &id)?;
             apply(&config, &agent).await;
+            // the conversation it was proposed in takes it from the next message (agents_admin::refresh_prompts)
+            crate::agents_admin::refresh_prompts(&config, &agent, &crate::agents_admin::default_run()).await;
             Ok(web::ok(json!({"type": "profile", "agent": {"id": agent.name, "name": agent.display_name}})))
         }
     }

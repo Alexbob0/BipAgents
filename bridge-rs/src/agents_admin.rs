@@ -2154,6 +2154,8 @@ pub async fn write_settings(
     run: &Run,
 ) -> anyhow::Result<()> {
     let config = shared.get();
+    // what its conversations read now: a change of it is told to them at the end (`refresh_prompts`)
+    let soul_before = read_soul(&config, agent).unwrap_or_default();
     let mut toolsets = lax_map(&body.toolsets);
     // the « Routines » tile drives the bridge's routines, never Hermes' cron (tool_diet.rs keeps it off)
     let routines_on = toolsets.shift_remove(crate::tool_diet::CRON_TOOLSET);
@@ -2264,6 +2266,11 @@ pub async fn write_settings(
         let current = shared.get().agent(Some(&agent.name)).cloned().unwrap_or_else(|| agent.clone());
         crate::guide::rename(shared, &current, name)?;
     }
+    let config = shared.get();
+    let current = config.agent(Some(&agent.name)).cloned().unwrap_or_else(|| agent.clone());
+    if read_soul(&config, &current).unwrap_or_default() != soul_before {
+        refresh_prompts(&config, &current, run).await;
+    }
     Ok(())
 }
 
@@ -2274,6 +2281,26 @@ pub fn open_agent(config: &Config, agent: &AgentConfig) -> bool {
     !crate::family_agent::is_family(config, &agent.name)
         && !crate::project_agent::is_project(config, &agent.name)
         && !agent.host_home.as_deref().is_some_and(|h| !h.is_empty())
+}
+
+/// Its conversations told to take its new SOUL.md from their next turn. Hermes (v0.23.1) replays a continuing
+/// conversation's stored system prompt every turn (the prefix cache), so a change of its personality never reached
+/// the agent's one thread before (15/11, Alex: « elle n'a pas été prise en compte », the apps saying « … s'en sert dès
+/// le prochain message »). `hermes sessions refresh-prompts` records a refresh in its profile's state.db: each of its
+/// conversations rebuilds its prompt once, on its next turn (one prompt-cache miss each, the history kept). Only for a
+/// change the person made (its personality, answer style, name, a card they tapped), not for the bridge's own blocks.
+/// A profile of the person's own Hermes, or of an agent set up by hand, is left alone; a failure is logged.
+pub async fn refresh_prompts(config: &Config, agent: &AgentConfig, run: &Run) {
+    if managed(config, &agent.name).is_err() || crate::profile_files::hands_off(&profile_folder(config, agent)) {
+        return;
+    }
+    let env = env_of(&[("HERMES_HOME", &home_root(config, agent))]);
+    let args = strings(&[&config.hermes.bin, "-p", &agent.name, "sessions", "refresh-prompts", "--json"]);
+    match run(args, env).await {
+        Ok(_) => tracing::info!(target: "bipbridge::agents", agent = %agent.name, "conversations take its new personality"),
+        Err(exc) => tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %tail(&exc.to_string(), 200),
+            "its conversations keep their personality until a new one"),
+    }
 }
 
 /// The personality the person edited (or imported), kept in the record and rendered with the bridge's blocks.
