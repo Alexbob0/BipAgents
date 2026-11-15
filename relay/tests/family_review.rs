@@ -85,7 +85,9 @@ impl Harness {
 
     /// `callee` gives `caller` a pass to call it, as the bridges do when they link.
     async fn link(&self, callee: &Mailbox, caller: &Mailbox) {
-        let made = self.http.post(format!("{}/v1/family/pass", self.url)).bearer_auth(&callee.token).send().await;
+        // the pass is for the caller's mailbox (« pour qui », added with the fix of N2; assertions unchanged)
+        let made = self.http.post(format!("{}/v1/family/pass", self.url)).bearer_auth(&callee.token);
+        let made = made.json(&json!({"for": caller.id})).send().await;
         let pass = made.unwrap().json::<Value>().await.unwrap()["pass"].as_str().unwrap().to_string();
         self.passes.lock().unwrap().insert((caller.id.clone(), callee.id.clone()), pass);
     }

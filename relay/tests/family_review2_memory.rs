@@ -79,9 +79,18 @@ async fn mailbox(http: &reqwest::Client, url: &str) -> (String, String) {
     (body["mailbox"].as_str().unwrap().to_string(), body["token"].as_str().unwrap().to_string())
 }
 
-async fn pass(http: &reqwest::Client, url: &str, token: &str) -> String {
-    let body: Value =
-        http.post(format!("{url}/v1/family/pass")).bearer_auth(token).send().await.unwrap().json().await.unwrap();
+/// A pass from the mailbox of `token`, for the mailbox `holder` (« pour qui », added with the fix of N2).
+async fn pass(http: &reqwest::Client, url: &str, token: &str, holder: &str) -> String {
+    let body: Value = http
+        .post(format!("{url}/v1/family/pass"))
+        .bearer_auth(token)
+        .json(&json!({"for": holder}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
     body["pass"].as_str().unwrap().to_string()
 }
 
@@ -111,8 +120,8 @@ async fn calls_with_a_pass_from_many_addresses_hold_no_more_than_the_room() {
     let mut calls = Vec::new();
     let mut polls = Vec::new();
     for _ in 0..CALLS {
-        let ((_, caller), (target, target_token)) = (mailbox(&http, &url).await, mailbox(&http, &url).await);
-        let pass = pass(&http, &url, &target_token).await;
+        let ((caller_id, caller), (target, target_token)) = (mailbox(&http, &url).await, mailbox(&http, &url).await);
+        let pass = pass(&http, &url, &target_token, &caller_id).await;
         let (http2, url2) = (http.clone(), url.clone());
         polls.push(tokio::spawn(async move {
             http2.get(format!("{url2}/v1/family/next")).bearer_auth(target_token).send().await
