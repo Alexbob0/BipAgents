@@ -72,6 +72,9 @@ pub const PROPOSE_PROFILE: &str = "propose_profile";
 pub const RENAME_SELF: &str = "rename_yourself";
 /// The hidden line a reply carries after a rename, for the apps: `<!--bip:renamed <id> <name>-->`.
 pub const RENAMED_OPEN: &str = "<!--bip:renamed ";
+/// A « Créer X » card's role at most: the person's whole wish (bug 15/11: « Training coach » for a half-marathon in
+/// March, 3 runs a week), which becomes the agent's description, personality and first words.
+pub const CARD_ROLE_MAX: usize = 300;
 /// A name an agent took or proposed for itself stays « its own » for `propose_agent` this long.
 pub const OWN_NAME_SECONDS: f64 = 1800.0;
 /// The hand-over to a project agent (project_agent.rs, 2026-10-28): any of the person's own agents may propose it.
@@ -341,19 +344,26 @@ fn create_project_tool() -> Value {
 }
 
 fn propose_agent_tool() -> Value {
+    // said back to the person as their own words (welcome.rs): asked as they would ask it, never « son activité »
+    let role = format!(
+        "what it is for, as they would ask it, in their own words and language (« Me préparer à mon semi-marathon… », \
+    « Suivre mes colis… »), with every specific they gave (goal, dates, how often, level…), not a label: one or two \
+    sentences, {CARD_ROLE_MAX} characters at most. It becomes its description, personality and first words."
+    );
     json!({
         "name": PROPOSE_AGENT,
         "description": "Propose a new agent: your person sees a card and creates it with one tap (nothing is created otherwise).",
         "inputSchema": {"type": "object", "properties": {
             "kind": {"type": "string", "enum": crate::souls::CATEGORIES},
             "name": {"type": "string"},
-            "role": {"type": "string", "description": "one line, in their language"},
+            "role": {"type": "string", "description": role},
             "tone": {"type": "string"},
             "for": {"type": "string", "enum": ["me", "family"]},
             "members": {"type": "array", "items": {"type": "string"}, "description": "family: first names; none = all"},
             "tools": {"type": "array", "items": {"type": "string"}, "description": "what it must reach: web, weather, \
     browser, calendar, reminders, contacts, mail, health, file, notebook, or a service (strava…)"},
-            "handover": {"type": "string", "description": "what they told you that it should know"}},
+            "handover": {"type": "string", "description": "other facts about them it should know, not what it is for \
+    (that is role)"}},
             "required": ["kind", "name", "role"]},
     })
 }
@@ -865,9 +875,20 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
         PROPOSE_AGENT => {
             let kind = arg(arguments, "kind", 20);
             let new_name = arg(arguments, "name", 40);
-            let role = arg(arguments, "role", 200);
+            let role = arg(arguments, "role", CARD_ROLE_MAX);
             if !crate::souls::CATEGORIES.contains(&kind.as_str()) || new_name.is_empty() || role.is_empty() {
-                return Ok(tool_text("give a kind from the list, a name and a one-line role", true));
+                return Ok(tool_text("give a kind from the list, a name and its role", true));
+            }
+            // never cut: a role cut mid-word is a broken sentence on the card, in its personality and its first words
+            let written = tk::chars(&tk::squeeze(&tk::str_or_empty(arguments.get("role"))));
+            if written > CARD_ROLE_MAX {
+                return Ok(tool_text(
+                    &format!(
+                        "the role is {written} characters, {CARD_ROLE_MAX} at most: propose_agent again with a shorter \
+                         one that keeps every specific they gave"
+                    ),
+                    true,
+                ));
             }
             if is_own_name(config, agent, &new_name) {
                 return Ok(tool_text(
@@ -1521,7 +1542,7 @@ async fn accept(
                 kind: Some(kind.clone()),
                 lang: Some(lang.clone()),
                 group: body.group.clone(),
-                role: Some(role),
+                role: Some(role.clone()),
                 tone: Some(tone).filter(|t| !t.is_empty()),
                 ..Default::default()
             };
@@ -1548,7 +1569,8 @@ async fn accept(
             let agent = config.agents.get(&agent.name).cloned().unwrap_or(agent);
             crate::beta_measures::card_accepted(&config, None, now());
             hand_over(&config, &agent, &from.display_name, &str_of(&proposal, "handover"), &lang)?;
-            crate::welcome::wait_for(&config, &agent, &kind, &lang);
+            // its first words say what she asked for, not its kind's generic line (bug 15/11)
+            crate::welcome::wait_for_role(&config, &agent, &kind, &lang, Some(&role));
             refresh(&config);
             Ok(web::json_response(
                 201,
@@ -1635,6 +1657,7 @@ async fn accept(
                 crate::answer_style::set(&state.config, &from, &str_of(&proposal, "answer_style"), None)?
             };
             take_proposal(&state.config(), &id)?;
+            crate::agents_admin::refresh_prompts_soon(state.config(), changed.clone(), crate::agents_admin::default_run());
             Ok(web::ok(json!({"type": "style", "agent": {"id": changed.name, "name": changed.display_name},
                               "answer_style": crate::answer_style::view(&changed)})))
         }
@@ -1670,6 +1693,8 @@ async fn accept(
             })?;
             take_proposal(&config, &id)?;
             apply(&config, &agent).await;
+            // the conversation it was proposed in takes it from the next message (agents_admin::refresh_prompts)
+            crate::agents_admin::refresh_prompts_soon(config.clone(), agent.clone(), crate::agents_admin::default_run());
             Ok(web::ok(json!({"type": "profile", "agent": {"id": agent.name, "name": agent.display_name}})))
         }
     }
@@ -1827,6 +1852,68 @@ mod tests {
 
     fn text_of(result: &Dict) -> String {
         result["content"][0]["text"].as_str().unwrap_or_default().to_string()
+    }
+
+    /// Bug 15/11: the card keeps the person's whole wish (it becomes the agent's description, personality and first
+    /// words), and the tool says the wish goes in `role`, the handover being only other facts about them.
+    #[test]
+    fn a_card_keeps_the_persons_whole_wish() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = managed_place(dir.path(), &[("agent", "Agent")]);
+        let wish = "Me préparer à mon semi-marathon de mars : 3 sorties par semaine (mardi, jeudi, dimanche matin), un \
+                    plan qui monte doucement jusqu'à 18 km, un rappel la veille de chaque séance, et un mot gentil quand \
+                    j'en rate une";
+        assert!(wish.chars().count() > 200);
+        let mut args = sport_card();
+        args.insert("role".into(), json!(wish));
+        assert!(!refused(&call(&config, &config.agents["agent"], PROPOSE_AGENT, &args).unwrap()));
+        let state = load(&config);
+        let card = state.proposals.iter().find(|p| str_of(p, "type") == "agent").expect("a card");
+        assert_eq!(str_of(card, "role"), wish);
+        let schema = &propose_agent_tool()["inputSchema"]["properties"];
+        let role = schema["role"]["description"].as_str().unwrap();
+        assert!(role.contains("every specific they gave") && !role.contains("one line"), "{role}");
+        // said back to them as their own words (« Ce que tu attends de moi : « … » »): asked as they would ask it
+        // (review 15/11: 3 of 10 bench roles were in the third person, « son activité »)
+        assert!(role.contains("as they would ask it") && role.contains("Me préparer"), "{role}");
+        assert!(schema["handover"]["description"].as_str().unwrap().contains("not what it is for"), "{schema}");
+    }
+
+    /// Review 15/11 (fix-created-agent-description, finding 1): a role longer than CARD_ROLE_MAX was cut silently,
+    /// mid-word (« … et un mot g »), and the model was never told: the card, the personality and the agent's first
+    /// words then quote a broken sentence. The tool says the limit, and a longer role is either refused with it (the
+    /// model shortens it) or cut at a word with the cut said in the tool's answer.
+    #[test]
+    fn review_a_role_past_the_cards_limit_is_said_to_the_model() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = managed_place(dir.path(), &[("agent", "Agent")]);
+        let schema = &propose_agent_tool()["inputSchema"]["properties"];
+        let described = schema["role"]["description"].as_str().unwrap();
+        assert!(described.contains(&CARD_ROLE_MAX.to_string()), "the tool doesn't say the limit: {described}");
+        let wish = "Me préparer à mon semi-marathon du 22 mars à Paris : 3 sorties par semaine (mardi et jeudi soir, \
+                    dimanche matin), un plan qui monte doucement de 8 à 18 km, un rappel la veille de chaque séance, \
+                    des conseils pour mon genou droit (tendinite l'an dernier), des étirements après chaque sortie et \
+                    un mot gentil quand j'en rate une";
+        assert!(wish.chars().count() > CARD_ROLE_MAX);
+        let mut args = sport_card();
+        args.insert("role".into(), json!(wish));
+        let result = call(&config, &config.agents["agent"], PROPOSE_AGENT, &args).unwrap();
+        let told = text_of(&result).contains(&CARD_ROLE_MAX.to_string());
+        let state = load(&config);
+        match state.proposals.iter().find(|p| str_of(p, "type") == "agent") {
+            None => assert!(refused(&result) && told, "refused without the limit: {}", text_of(&result)),
+            Some(card) => {
+                let role = str_of(card, "role");
+                if role != wish {
+                    assert!(told, "the role was cut and the model wasn't told: « {role} » / {}", text_of(&result));
+                    let kept = role.trim_end_matches('…').trim_end();
+                    assert!(
+                        wish.starts_with(kept) && wish[kept.len()..].starts_with([' ', ',']),
+                        "cut mid-word: « {role} »"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

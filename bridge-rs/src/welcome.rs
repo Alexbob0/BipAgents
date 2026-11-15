@@ -4,7 +4,9 @@
 //! When an agent is made for the person (the claim of a place, the guide's card, by hand), its first conversation
 //! opens with a short welcome in the agent's language: who it is, three things it can do (from its kind), an
 //! invitation to answer, and two or three suggestions the apps show as chips. Written here from templates, never by
-//! the model: no cost, no wait, the same words on every app.
+//! the model: no cost, no wait, the same words on every app. An agent made with what the person asked it for (the
+//! guide's card or the form's role) says their words back instead of its kind's line (15/11, Alex's wife: her
+//! « Training coach » for a half-marathon greeted her with the wellness kind's sleep and medicines).
 //!
 //! Where it lives: NOT in Hermes. Hermes' API has no way to add an assistant message to a session without a turn, its
 //! sessions are its own SQLite (writing there would break at its next update), and a history that starts with the
@@ -56,6 +58,10 @@ pub struct Waiting {
     /// Its own first message (an agent adopted from Kerfy's catalogue, templates_catalogue.rs), instead of its kind's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+    /// What the person asked it for (the card's or the form's role): said back as its first words, instead of its
+    /// kind's generic line (bug 15/11).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
 }
 
 /// The languages the welcomes are written in (the apps' languages); any other gets English.
@@ -77,6 +83,76 @@ struct Frame {
     hello: &'static str,
     can: &'static str,
     rename: &'static str,
+}
+
+/// The first words of an agent made with what the person asked it for: their words said back (`{role}`), where to
+/// start, and one chip (its kind's line, examples and chips are generic: 15/11, a « Training coach » for a
+/// half-marathon greeted its person with the wellness kind's sleep and medicines).
+struct Asked {
+    said: &'static str,
+    ask: &'static str,
+    chip: &'static str,
+}
+
+fn asked(lang: &str) -> Asked {
+    match lang {
+        "fr" => Asked {
+            said: "Ce que tu attends de moi : « {role} ».",
+            ask: "Par quoi veux-tu qu'on commence ?",
+            chip: "Qu'est-ce que tu sais faire ?",
+        },
+        "de" => Asked {
+            said: "Was du von mir erwartest: „{role}“.",
+            ask: "Womit sollen wir anfangen?",
+            chip: "Was kannst du alles?",
+        },
+        "es" => Asked {
+            said: "Lo que esperas de mí: «{role}».",
+            ask: "¿Por dónde empezamos?",
+            chip: "¿Qué sabes hacer?",
+        },
+        "nl" => Asked {
+            said: "Wat je van me verwacht: “{role}”.",
+            ask: "Waar zullen we beginnen?",
+            chip: "Wat kun je allemaal?",
+        },
+        _ => Asked { said: "What you want from me: “{role}”.", ask: "Where shall we start?", chip: "What can you do?" },
+    }
+}
+
+/// A Markdown link or image (`[words](url)`, `![words](url)`): its words only.
+static MARKDOWN_LINK: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"!?\[([^\]\n]*)\]\([^)\n]*\)").expect("valid regex"));
+/// A note of the bridge's (`<!--bip:… -->`, a vault chip…): gone.
+static NOTE: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"(?s)<!--.*?-->").expect("valid regex"));
+/// What either app could link (second review 15/11): an address with a scheme (`https://…`, any `x://`), or a
+/// « word.word » with or without a path, in any letters and case (the iPhone's link detector takes
+/// « Exemple.fr/connexion », and « exämple.com/connexion » too: confirmation review).
+static ADDRESS: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r"(?i)\b[a-z][a-z0-9+.\-]*://[^\s\[\]<>()]*|\b[\p{L}\p{N}][\p{L}\p{N}\-]*(?:\.[\p{L}\p{N}\-]+)*\.\p{L}{2,24}\b(?:[/?#:][^\s\[\]<>()]*)?",
+    )
+    .expect("valid regex")
+});
+/// The dot an address keeps in the first words: « ․ » (U+2024), read the same, linked by neither app.
+const INERT_DOT: &str = "\u{2024}";
+
+/// The person's words for what an agent is for, as its first words quote them: on one line, without a closing dot,
+/// inert (reviews of 15/11): the apps draw the first bubble like a reply (Markdown, bare addresses, the bridge's notes),
+/// and a role Bip wrote may hold what it read. So a simple link keeps its words, a note goes, an address stays
+/// readable without its scheme and with its dots as « ․ » (« M.Dupont », « Node.js » keep their words: confirmation
+/// review), and what could still make a link of what is left (brackets, angle brackets, a backslash's escape) goes.
+fn role_said(role: &str) -> String {
+    let words = MARKDOWN_LINK.replace_all(role, "$1");
+    let words = NOTE.replace_all(&words, " ");
+    let words = ADDRESS.replace_all(&words, |found: &regex::Captures| {
+        let address = &found[0];
+        let without_scheme = address.find("://").map_or(address, |at| &address[at + 3..]);
+        without_scheme.replace('.', INERT_DOT)
+    });
+    let words: String = words.chars().filter(|c| !matches!(c, '[' | ']' | '<' | '>' | '\\')).collect();
+    let one_line = crate::tools_knowledge::in_note_line(&words.replace("()", " "));
+    one_line.trim_end_matches(['.', ' ', ':']).to_string()
 }
 
 fn frame(lang: &str) -> Frame {
@@ -785,12 +861,20 @@ pub fn kind_of(kind: &str, guide: bool) -> &'static str {
     KINDS.iter().find(|k| **k == kind && **k != "guide").copied().unwrap_or("custom")
 }
 
-/// The first message of an agent named `name`: its text and the suggestions the apps show as chips.
-pub fn message(name: &str, kind: &str, lang: &str, guide: bool) -> (String, Vec<String>) {
+/// The first message of an agent named `name`: its text and the suggestions the apps show as chips. `role`: what the
+/// person asked it for (not for the guide), said back instead of its kind's line, examples and chips.
+pub fn message(name: &str, kind: &str, lang: &str, guide: bool, role: Option<&str>) -> (String, Vec<String>) {
     let lang = language(lang);
+    let frame = frame(lang);
+    let role = role.map(role_said).filter(|r| !r.is_empty() && !guide);
+    if let Some(role) = role {
+        let words = asked(lang);
+        let hello = frame.hello.replace("{name}", name.trim());
+        let text = format!("{hello} {}\n\n{}", words.said.replace("{role}", &role), words.ask);
+        return (text, vec![words.chip.to_string()]);
+    }
     let kind = kind_of(kind, guide);
     let words = text(kind, lang);
-    let frame = frame(lang);
     let mut out = format!("{} {}\n\n{}\n", frame.hello.replace("{name}", name.trim()), words.about, frame.can);
     for thing in words.can {
         out.push_str(&format!("• {thing}\n"));
@@ -815,7 +899,7 @@ pub fn view(config: &Config, state: &crate::guide::GuideState) -> Value {
         let guide = state.guide.as_deref() == Some(id.as_str());
         let (text, suggestions) = match &waiting.text {
             Some(own) => (own.clone(), Vec::new()),
-            None => message(&agent.display_name, &waiting.kind, &waiting.lang, guide),
+            None => message(&agent.display_name, &waiting.kind, &waiting.lang, guide, waiting.role.as_deref()),
         };
         out.insert(id.clone(), json!({"text": text, "suggestions": suggestions, "session": waiting.session}));
     }
@@ -825,7 +909,14 @@ pub fn view(config: &Config, state: &crate::guide::GuideState) -> Value {
 /// `agent` was just made for the person: its first conversation opens with its welcome (once: a welcome already
 /// given stays as it is).
 pub fn wait_for(config: &Config, agent: &AgentConfig, kind: &str, lang: &str) {
-    let waiting = Waiting { kind: kind.to_string(), lang: language(lang).to_string(), ..Default::default() };
+    wait_for_role(config, agent, kind, lang, None);
+}
+
+/// [`wait_for`] for an agent made with what the person asked it for (`role`, the card's or the form's): its first words
+/// say it back.
+pub fn wait_for_role(config: &Config, agent: &AgentConfig, kind: &str, lang: &str, role: Option<&str>) {
+    let role = role.map(role_said).filter(|r| !r.is_empty());
+    let waiting = Waiting { kind: kind.to_string(), lang: language(lang).to_string(), role, ..Default::default() };
     let result = crate::guide::change(config, |s| {
         s.welcome.entry(agent.name.clone()).or_insert(waiting);
     });
@@ -1095,7 +1186,7 @@ mod tests {
                 assert!(!words.about.trim().is_empty() && !words.ask.trim().is_empty(), "{kind} {lang}");
                 assert!(words.can.iter().all(|c| !c.trim().is_empty()), "{kind} {lang}");
                 assert!(words.chips.iter().all(|c| !c.trim().is_empty() && c.chars().count() <= 80), "{kind} {lang}");
-                let (text, chips) = message("Bip", kind, lang, kind == "guide");
+                let (text, chips) = message("Bip", kind, lang, kind == "guide", None);
                 assert!(text.starts_with(&frame.hello.replace("{name}", "Bip")), "{kind} {lang}: {text}");
                 assert_eq!(text.matches("• ").count(), 3, "{kind} {lang}");
                 assert_eq!(chips.len(), 3);
@@ -1120,11 +1211,107 @@ mod tests {
         assert_eq!(kind_of("finance", true), "guide");
         assert_eq!(kind_of("guide", false), "custom"); // only the guide itself says it proposes agents
         assert_eq!(kind_of("family", false), "custom");
-        let (text, chips) = message("Sous", "finance", "fr", false);
+        let (text, chips) = message("Sous", "finance", "fr", false, None);
         assert!(text.starts_with("Bonjour, je suis Sous ! Je t'aide à garder un œil sur ton argent."), "{text}");
         assert!(text.ends_with("Par quoi veux-tu qu'on commence ?"), "{text}");
         assert_eq!(chips[0], "Aide-moi à faire le point sur mes abonnements.");
-        let (text, _) = message("Bip", "daily", "fr-FR", true);
+        let (text, _) = message("Bip", "daily", "fr-FR", true, None);
         assert!(text.contains("Tu préfères m'appeler autrement ?"), "{text}");
+    }
+
+    /// Review 15/11 (fix-created-agent-description, finding 2): the role is said back in the agent's first bubble,
+    /// which both apps draw like a reply: Markdown (a live link, a remote image) and the bridge's notes (`<!--bip:…-->`
+    /// hidden, `<!--bip:vault …-->` drawn as a vault chip). A role Bip wrote from a conversation that may hold what it
+    /// read (a page, a mail, another agent's hand-over) is quoted as the person's words only.
+    #[test]
+    fn review_the_role_said_back_is_words_only() {
+        let role = "Suivre mes colis [en cliquant ici](https://exemple.invalid/connexion) \
+                    <!--bip:vault item_abc123 Ma banque--> ![](https://exemple.invalid/p.png)";
+        for lang in LANGUAGES {
+            let (text, _) = message("Colis", "daily", lang, false, Some(role));
+            assert!(text.contains("Suivre mes colis"), "{lang}: {text}");
+            assert!(!text.contains("<!--") && !text.contains("-->"), "{lang}: a note in the first words: {text}");
+            assert!(!text.contains("](https://"), "{lang}: a live Markdown link or image in the first words: {text}");
+        }
+    }
+
+    /// Bug 15/11: an agent made with what the person asked it for says it back, not its kind's generic words.
+    #[test]
+    fn an_agent_made_with_a_role_says_it_back() {
+        let wish = "Me préparer à mon semi-marathon de mars :\n3 sorties par semaine, en douceur.";
+        let (text, chips) = message("Training coach", "wellness", "fr-FR", false, Some(wish));
+        assert_eq!(
+            text,
+            "Bonjour, je suis Training coach ! Ce que tu attends de moi : « Me préparer à mon semi-marathon de mars : 3 \
+             sorties par semaine, en douceur ».\n\nPar quoi veux-tu qu'on commence ?"
+        );
+        assert_eq!(chips, ["Qu'est-ce que tu sais faire ?"]);
+        let generic = super::text("wellness", "fr");
+        assert!(!text.contains(generic.about) && generic.can.iter().all(|c| !text.contains(c)), "{text}");
+        for lang in LANGUAGES {
+            let (text, chips) = message("Max", "finance", lang, false, Some("track my rent"));
+            let hello = frame(lang).hello.replace("{name}", "Max");
+            assert!(text.starts_with(&hello) && text.contains("track my rent"), "{lang}");
+            assert!(!text.contains(super::text("finance", lang).about) && chips.len() == 1, "{lang}: {text}");
+        }
+        // no role, an empty one, or the guide: the kind's own words, as before
+        for role in [None, Some(""), Some("  . ")] {
+            assert_eq!(message("Forme", "wellness", "fr", false, role), message("Forme", "wellness", "fr", false, None));
+        }
+        assert!(message("Bip", "daily", "fr", true, Some("tout")).0.contains("Tu préfères m'appeler autrement ?"));
+    }
+
+    /// Second review 15/11 (R2-1): the fix strips `[words](url)` with a regex that misses what a Markdown reader still
+    /// takes for a link: brackets inside the words (`[mon [suivi]](url)`, CommonMark's balanced brackets) or an escaped
+    /// one (`[suivi\]](url)`) stay a live link on the iPhone (AttributedString(markdown:)), its words hiding where it
+    /// goes; `<https://…>` and a bare `https://…` are linked by both apps (MarkdownViews.swift `linkBareURLs`,
+    /// Markdown.kt's inline regex). The agent's first bubble, written by the bridge, quotes the role as words only.
+    #[test]
+    fn review2_the_role_said_back_has_no_live_link() {
+        let roles = [
+            ("brackets inside the words", "Suivre mes colis [en cliquant [ici]](https://exemple.invalid/connexion)"),
+            ("an escaped bracket", "Suivre mes colis [mon suivi\\]](https://exemple.invalid/connexion)"),
+            ("an autolink", "Suivre mes colis <https://exemple.invalid/connexion>"),
+            ("a bare address", "Suivre mes colis sur https://exemple.invalid/connexion"),
+        ];
+        let mut live = Vec::new();
+        for (what, role) in roles {
+            let (text, _) = message("Colis", "daily", "fr", false, Some(role));
+            assert!(text.contains("Suivre mes colis"), "{what}: {text}");
+            if text.contains("](") || text.contains("https://") || text.contains("http://") {
+                live.push(format!("{what}: {text}"));
+            }
+        }
+        assert!(live.is_empty(), "a live link in the agent's first words:\n{}", live.join("\n"));
+    }
+
+    /// Confirmation review 15/11 (R3-1): the role is made inert by deleting every « word.word » (`ADDRESS`), so the
+    /// person's own words get holes in the agent's first words: « Relancer @ chaque lundi », « chez le », « apprendre
+    /// et , », while the iPhone's link detector (NSDataDetector, checked on macOS) links none of « M.Dupont »,
+    /// « Dr.Martin », « Node.js », « p.ex. ». And a domain with an accented letter, which it does link
+    /// (« exämple.com/connexion » → http://xn--exmple-cua.com/connexion), is left whole: `[a-z]` stops at « ä ».
+    /// An address can stay readable and inert (its dots as « ․ » U+2024: not linked, checked the same way).
+    #[test]
+    fn review3_the_role_said_back_keeps_the_persons_words_and_no_address() {
+        let kept = [
+            ("Préparer mes rendez-vous avec M.Dupont, mon notaire", "Dupont"),
+            ("Relancer lea.martin@gmail.com chaque lundi pour le loyer", "martin"),
+            ("Me rappeler mes séances chez le Dr.Martin", "Martin"),
+            ("M'aider à apprendre Node.js et Vue.js, 30 min par jour", "Node"),
+            ("Suivre mes commandes Amazon.fr et Vinted", "Amazon"),
+            ("Organiser mes repas de la semaine, p.ex. sans gluten", "ex"),
+        ];
+        let mut lost = Vec::new();
+        for (role, word) in kept {
+            let (text, _) = message("Max", "daily", "fr", false, Some(role));
+            if !text.contains(word) {
+                lost.push(format!("« {word} » gone: {text}"));
+            }
+        }
+        let (text, _) = message("Colis", "daily", "fr", false, Some("Suivre mes colis sur exämple.com/connexion"));
+        if text.contains("exämple.com") {
+            lost.push(format!("an address the iPhone links left whole: {text}"));
+        }
+        assert!(lost.is_empty(), "the role said back:\n{}", lost.join("\n"));
     }
 }
