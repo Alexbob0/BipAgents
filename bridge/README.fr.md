@@ -224,6 +224,14 @@ l'adresse) ; les apps l'affichent dans une vue sans issue. `list_pages`, `read_p
 côté et jamais servie) et `delete_page` complètent ; les apps les listent par `GET /v1/pages?agent=` et en suppriment
 une par `DELETE /v1/pages/{id}?agent=`.
 
+Une page peut garder ce qu'on y tape (`Bip.store` dans le kit des pages) : un carnet à côté d'elle (`<id>.store.json`,
+256 Ko au plus, supprimé avec la page), joint seulement par une porte que les apps ouvrent elles-mêmes (`bipstore:` sur
+l'iPhone, `https://bipstore.invalid` sur Android, seul ajout au `connect-src` de la politique), avec l'adresse de la page
+elle-même : `GET /v1/page-store?path=&since=` et `POST /v1/page-store {path, op: set|del|add|edit|drop, key, value?, id?,
+a?}`. Tous ceux qui voient une page de groupe voient son carnet (la famille par ses ponts, les amis d'un projet par le
+partage scellé) ; l'agent le lit avec `page_data`, comme un texte tapé par des personnes, jamais des instructions.
+Conception : internal/notes/page-store.md.
+
 ### `POST /v1/files` (multipart/form-data : `agent`, `file`)
 200 : `{"path": "/home/hermes/.hermes/profiles/wellness/uploads/2026-10/0a1b2c3d4e5f-Releve_oct.pdf",
 "filename": "Releve_oct.pdf", "size": 220512, "content_type": "application/pdf"}`

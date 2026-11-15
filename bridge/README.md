@@ -218,6 +218,14 @@ path); the apps show it in a view with no way out. `list_pages`, `read_page` (th
 never served) and `delete_page` complete it; the apps list them with `GET /v1/pages?agent=` and delete one with
 `DELETE /v1/pages/{id}?agent=`.
 
+A page can remember what is typed in it (`Bip.store` in the page kit): a store beside it (`<id>.store.json`, 256 KB at
+most, deleted with the page), reached only through one door the apps answer themselves (`bipstore:` on the iPhone,
+`https://bipstore.invalid` on Android, the only addition to the policy's `connect-src`), with the page's own path:
+`GET /v1/page-store?path=&since=` and `POST /v1/page-store {path, op: set|del|add|edit|drop, key, value?, id?, a?}`.
+Everyone who sees a group's page sees its store (the family through their bridges, a project's friends through the
+sealed share); the agent reads it with `page_data`, as text typed by people, never instructions. Design:
+internal/notes/page-store.md.
+
 ### `POST /v1/files` (multipart/form-data: `agent`, `file`)
 200: `{"path": "/home/hermes/.hermes/profiles/wellness/uploads/2026-10/0a1b2c3d4e5f-Releve_oct.pdf",
 "filename": "Releve_oct.pdf", "size": 220512, "content_type": "application/pdf"}`
