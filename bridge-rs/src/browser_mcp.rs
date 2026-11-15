@@ -184,9 +184,10 @@ prêt »). Never ask your person for a card's details. Nothing was run.";
 /// A script sending the tab to a payment service's page (`script_goes_to_provider`): only the shop's own pages send it
 /// there (card_fill.rs `reached_from`).
 pub const PROVIDER_SCRIPT_REFUSED: &str = "Not done: a script never sends your browser to another page (a payment \
-service's included), nor adds links, forms or frames to a page, nor rewrites where they go: open an address with \
-navigate, follow the page's own links and buttons with click_element, so a payment page is always the shop's own. \
-Nothing was run.";
+service's included), nor adds links, forms or frames to a page, nor rewrites where they go; it never uses the page's \
+location but to read its address (location.href), never holds a javascript: address, never opens a window nor \
+writes the document: open an address with navigate, follow the page's own links and buttons with click_element, so \
+a payment page is always the shop's own. Nothing was run.";
 
 /// What the agent reads when the check after its call erased a card's details.
 pub const CARD_UNDONE: &str = "Not done: that put a payment card's details into the page, and you never type them \
@@ -200,10 +201,11 @@ pay_with_card, and when it can't, hand_over_payment.";
 
 /// Added to `execute_script` in the tool list (`tame_tool_list`).
 pub const NOT_WAYS: &str = "Never to send the browser to another page or to add links, forms, frames or HTML to a page \
-(refused: open an address with navigate, follow the page's own links with click_element); never to read or write a \
-payment card's fields. A script runs at once and ends: it never writes or clicks from a timer, a listener, an \
-observer or another callback, nor after an await (where a page has card fields, no such code at all); it names what \
-it writes plainly, and never changes how the page's own code works.";
+(refused: open an address with navigate, follow the page's own links with click_element); never to use the page's \
+location but to read its address (location.href), nor to write the site's storage or cookies; never on a page that \
+shows payment card fields (no script runs there). A script runs at once and ends: it never writes or clicks from a \
+timer, a listener, an observer or another callback, nor after an await; it names what it writes plainly, and never \
+changes how the page's own code works.";
 
 /// A script that writes or clicks later (second review of 14/11: an observer set on the step before the card form
 /// filled it when drawn and pressed « Payer »; third: the same through `scheduler.postTask`, `navigator.locks`).
@@ -259,6 +261,20 @@ click_element, type_text or select_option. Nothing was run.";
 pub const SCRIPT_BLIND_REFUSED: &str = "Not done: on this page your browser can't check a script that writes or \
 clicks right now (a payment card's fields may be there). Use click_element, type_text or select_option, which are \
 checked; a script that only reads goes on. Nothing was run.";
+
+/// A script writing what outlives the page (script_shape.rs `stores`, hotfix of 15/11: a cart fragment kept in
+/// sessionStorage brought a reader back into the shop's page at its next load).
+pub const SCRIPT_STORAGE_REFUSED: &str = "Not done: a script never writes the site's storage (localStorage, \
+sessionStorage, IndexedDB, the caches, cookies, the window's name, the history's state): what a page keeps there may \
+run again at its next load. Read what you need and return it directly; keep notes on your side. Nothing was run.";
+
+/// Any script where the page shows a payment card's field or a payment service's frame (hotfix of 15/11, the seventh
+/// review on production: a script on the card form itself typed a number and pressed « Payer »). No proof that a
+/// script only reads is at hand here: none runs there.
+pub const SCRIPT_ON_CARDS_REFUSED: &str = "Not done: this page shows payment card fields, and no script runs on such a \
+page. Read it with get_page_content or take_screenshot; fill the other fields with type_text or select_option and \
+click with click_element; the card is paid only through pay_with_card, or by your person (hand_over_payment). \
+Nothing was run.";
 
 /// What names a card's field in a script (on `card_details::folded` text): its autocomplete token, the usual names and
 /// ids, in four languages.
@@ -342,6 +358,13 @@ pub fn script_refusal(script: &str, args: &str, before: Option<&Value>) -> Optio
         if shape.code_from_text {
             return Some(SCRIPT_TEXT_CODE_REFUSED);
         }
+        // the page's location, a javascript: address, a window opened, the document written (hotfix of 15/11)
+        if shape.makes_way {
+            return Some(PROVIDER_SCRIPT_REFUSED);
+        }
+        if shape.stores {
+            return Some(SCRIPT_STORAGE_REFUSED);
+        }
         if shape.hidden_names {
             return Some(SCRIPT_HIDDEN_NAMES_REFUSED);
         }
@@ -370,7 +393,11 @@ pub fn script_refusal(script: &str, args: &str, before: Option<&Value>) -> Optio
     if holds_text && (FORM_DATA.is_match(&text) || ALL_FIELDS.is_match(&text) && VALUE_ACCESS.is_match(&text)) {
         return Some(SCRIPT_CARD_REFUSED);
     }
-    (cards && WRITES.is_match(&text) && SENDS.is_match(&text)).then_some(SCRIPT_FILLS_ON_CARDS_REFUSED)
+    if cards && WRITES.is_match(&text) && SENDS.is_match(&text) {
+        return Some(SCRIPT_FILLS_ON_CARDS_REFUSED);
+    }
+    // where the page shows a card's field or a provider's frame (or can't say): no script at all (hotfix of 15/11)
+    cards.then_some(SCRIPT_ON_CARDS_REFUSED)
 }
 
 /// Without the guard's own world (DevTools out of reach, `look`): a script that writes or clicks (script_shape.rs
@@ -3515,7 +3542,7 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         // all of a form's values read while a card field holds text
         let all = "return [...document.querySelectorAll('input')].map(e => e.value)";
         assert_eq!(script_card_refusal(all, Some(&typed)), Some(SCRIPT_CARD_REFUSED));
-        assert_eq!(script_card_refusal(all, Some(&with_cards)), None);
+        assert_eq!(script_card_refusal(all, Some(&with_cards)), Some(SCRIPT_ON_CARDS_REFUSED));
         assert_eq!(script_card_refusal(all, None), Some(SCRIPT_CARD_REFUSED), "the page couldn't say");
         // values written and sent on a page with card fields
         let fill = "for (const e of document.querySelectorAll('input')) e.value = 'x'; document.forms[0].submit()";
@@ -3529,7 +3556,7 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         ] {
             assert_eq!(script_card_refusal(script, Some(&empty)), Some(PROVIDER_SCRIPT_REFUSED), "{script}");
         }
-        // ordinary scripts go on
+        // ordinary scripts go on where no card field is shown; where one is, none runs (hotfix of 15/11)
         for script in [
             AROUND_A_WORD,
             "document.getElementById('lastname').value = 'Testeur'",
@@ -3538,7 +3565,8 @@ themselves). Do not use the browser until they hand it back: tell them you are w
             "document.querySelector('#siret').value = '73282932000074'",
             "return document.title",
         ] {
-            assert_eq!(script_card_refusal(script, Some(&with_cards)), None, "{script}");
+            assert_eq!(script_card_refusal(script, Some(&empty)), None, "{script}");
+            assert_eq!(script_card_refusal(script, Some(&with_cards)), Some(SCRIPT_ON_CARDS_REFUSED), "{script}");
         }
         // what a call types or chooses
         assert_eq!(typed_text("type_text", &dict(json!({"text": "4242"}))), "4242");
@@ -3654,7 +3682,8 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         }
         // on a checkout, reading into the script's own object is no rename (third review)
         let own = "const o = {}; o.name = document.querySelector('h1').innerText; return o";
-        assert_eq!(script_card_refusal(own, Some(&with_cards)), None);
+        assert_eq!(script_card_refusal(own, Some(&empty)), None);
+        assert_eq!(script_card_refusal(own, Some(&with_cards)), Some(SCRIPT_ON_CARDS_REFUSED));
         assert_eq!(script_card_refusal("document.getElementById('numero').dataset.kind = 'iban'", Some(&with_cards)),
                    Some(SCRIPT_RENAMES_REFUSED));
         // every refusal says what to do instead

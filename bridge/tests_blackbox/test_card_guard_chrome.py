@@ -48,6 +48,7 @@ HIDDEN = "[card number hidden]"
 SCRIPT_LATER_REFUSED = "Not done: this script writes or clicks later"
 SCRIPT_TAMPERS_REFUSED = "Not done: a script never changes how the page's own code"
 SCRIPT_LATER_ON_CARDS_REFUSED = "Not done: on a page with payment card fields, a script runs at once"
+SCRIPT_ON_CARDS_REFUSED = "Not done: this page shows payment card fields, and no script runs"
 
 
 def serve(folder):
@@ -236,25 +237,27 @@ def test_a_script_never_writes_reads_or_sends_a_cards_details(browser):
         "document.getElementById('crypto').value = '737'",
     ]:
         said = browser.tool("execute_script", script=script)
-        assert said.startswith(SCRIPT_CARD_REFUSED) or said.startswith(CARD_UNDONE), (script, said)
+        assert said.startswith((SCRIPT_CARD_REFUSED, CARD_UNDONE, SCRIPT_ON_CARDS_REFUSED)), (script, said)
     for field in ("notes", "numero", "crypto"):
         assert value(browser, field) == "", field
-    # passed the look before (the number built in the page, the field by its rank): erased after
+    # the number built in the page, the field by its rank: on a page showing card fields no script runs (hotfix of
+    # 15/11; before it, erased after)
     said = browser.tool("execute_script", script="(() => { const d = ['4242', '4242', '4242', '4242'].join(''); "
                                                  "document.querySelectorAll('#order input')[0].value = d; return true; })()")
-    assert said.startswith(CARD_UNDONE) and value(browser, "notes") == "", said
+    assert said.startswith(SCRIPT_ON_CARDS_REFUSED) and value(browser, "notes") == "", said
     said = browser.tool("execute_script", script="document.getElementById('numero').value = ['4242', '42'].join('')")
-    assert said.startswith(CARD_UNDONE) and value(browser, "numero") == "", said
+    assert said.startswith(SCRIPT_ON_CARDS_REFUSED) and value(browser, "numero") == "", said
     said = browser.tool("execute_script", script="document.getElementById('mois').selectedIndex = 5")
-    assert said.startswith(CARD_UNDONE) and value(browser, "mois") == "", said
+    assert said.startswith(SCRIPT_ON_CARDS_REFUSED) and value(browser, "mois") == "", said
     # never sent to a payment service's page by a script (only by the shop's own buttons)
     said = browser.tool("execute_script",
                         script="location.href = 'https://payment.cawl-solutions.fr/hostedcheckout/x'")
     assert said.startswith(PROVIDER_SCRIPT_REFUSED), said
     assert browser.page("location.pathname") == "/checkout.html"
-    # a card's number on the page never comes back in what the agent reads
+    # a card's number on the page never comes back in what the agent reads (no script reads a page showing card
+    # fields at all)
     said = browser.tool("execute_script", script="document.getElementById('info').innerText")
-    assert HIDDEN in said and "4242 4242" not in said, said
+    assert said.startswith(SCRIPT_ON_CARDS_REFUSED) and "4242 4242" not in said, said
     # a timer set before the card's form came: refused on every page (second review of 14/11: an observer set there
     # filled the form once drawn and pressed « Payer » before any look of the guard)
     browser.tool("navigate", url=browser.url.replace("checkout.html", "later.html"))
@@ -275,7 +278,12 @@ def test_a_script_never_writes_reads_or_sends_a_cards_details(browser):
     browser.fresh()
     said = browser.tool("execute_script", script="setTimeout(() => {}, 10); document.addEventListener('input', () => {})")
     assert said.startswith(SCRIPT_LATER_ON_CARDS_REFUSED), said
-    # ordinary scripts go on
+    # not even an ordinary one there (hotfix of 15/11)...
     said = browser.tool("execute_script", script="(() => { document.getElementById('address').value = '2 rue du Test'; "
                                                  "return document.title; })()")
-    assert "Paiement" in said and value(browser, "address") == "2 rue du Test", said
+    assert said.startswith(SCRIPT_ON_CARDS_REFUSED) and value(browser, "address") != "2 rue du Test", said
+    # ... while on a page without them, ordinary scripts go on
+    browser.tool("navigate", url=browser.url.replace("checkout.html", "later.html"))
+    said = browser.tool("execute_script", script="(() => { document.getElementById('later').dataset.seen = '1'; "
+                                                 "return document.title + ' ' + location.pathname; })()")
+    assert "Paiement /later.html" in said and browser.page("document.getElementById('later').dataset.seen") == "1", said
