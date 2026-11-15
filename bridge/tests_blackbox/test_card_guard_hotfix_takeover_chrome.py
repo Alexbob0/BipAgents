@@ -113,7 +113,8 @@ def test_not_taken_when_the_page_a_script_ran_on_cant_be_reloaded(bridges, fakes
     bridge, folder = browser_bridge(bridges, fakes, free_port())   # nothing answers on its DevTools
     scripted(folder, shop)
     answer = take(bridge, True)
-    assert answer.status_code == 409 and answer.json()["code"] == "page_not_fresh", answer.text
+    assert answer.status_code == 409 and answer.json()["detail"]["code"] == "page_not_fresh", answer.text
+    assert "reloaded" in answer.json()["detail"]["text"], answer.text
     state = bridge.get("/v1/agents/vie/desktop/state", headers=AUTH).json()
     assert state["you_hold"] is False
     assert not (folder / "hold.token").exists()
