@@ -1,0 +1,100 @@
+{
+ "version": 1,
+ "comment": "The demo's family Carnet (Marie's family agent « Maison », invented), shared by the iPhone app's demo and the Android app's tests; its shape is the bridge's notebook view (bridge-rs family_agent.rs view_of). Dated from today: due_in is the day N days after today (born: that day's year instead, a birthday), hours_ago the time it was written or changed. by: a member's first name or the agent's name.",
+ "fr": {
+  "lists": [
+   {"id": "courses", "title": "Courses", "kind": "list", "items": [
+    {"id": "c1", "text": "Lait", "by": "Marie", "hours_ago": 5},
+    {"id": "c2", "text": "Pâtes complètes", "by": "Léa", "hours_ago": 20},
+    {"id": "c3", "text": "Citrons", "by": "Maison", "hours_ago": 26},
+    {"id": "c4", "text": "Papier toilette", "by": "Marie", "hours_ago": 30},
+    {"id": "c5", "text": "Café", "by": "Léa", "done": true, "hours_ago": 2}]},
+   {"id": "taches", "title": "Tâches", "kind": "tasks", "items": [
+    {"id": "t1", "text": "Rendez-vous chaudière", "due_in": 3, "by": "Léa", "hours_ago": 30},
+    {"id": "t2", "text": "Réserver le traiteur pour Noël", "due_in": 6, "by": "Marie", "hours_ago": 48},
+    {"id": "t3", "text": "Inscrire Tom au judo", "by": "Marie", "hours_ago": 12},
+    {"id": "t4", "text": "Rendre les livres à la médiathèque", "due_in": -1, "by": "Léa", "done": true, "hours_ago": 4}]},
+   {"id": "dates", "title": "Dates", "kind": "dates", "items": [
+    {"id": "d1", "text": "Anniversaire de Mamie", "due_in": 6, "born": 1948, "by": "Marie", "hours_ago": 200},
+    {"id": "d2", "text": "Repas de Noël chez Marie", "due_in": 39, "by": "Maison", "hours_ago": 72},
+    {"id": "d3", "text": "Anniversaire de Tom", "due_in": 107, "born": 2017, "by": "Léa", "hours_ago": 400}]}
+  ],
+  "pages": [
+   {"id": "p1", "title": "Vacances de février", "text": "Gîte à Annecy, du 14 au 21 février.\nReste à réserver : le train aller.", "by": "Maison", "hours_ago": 3},
+   {"id": "p2", "title": "Codes et numéros utiles", "text": "Wifi : voir la box.\nPlombier : M. Garnier, 06 00 00 00 00.\nÉcole de Tom : 01 00 00 00 00.", "by": "Marie", "hours_ago": 26},
+   {"id": "p3", "title": "Menus de la semaine", "text": "Lundi : pâtes au citron.\nMardi : soupe et tartines.", "by": "Léa", "hours_ago": 50}
+  ]
+ },
+ "en": {
+  "lists": [
+   {"id": "courses", "title": "Shopping", "kind": "list", "items": [
+    {"id": "c1", "text": "Milk", "by": "Marie", "hours_ago": 5},
+    {"id": "c2", "text": "Wholewheat pasta", "by": "Léa", "hours_ago": 20},
+    {"id": "c3", "text": "Lemons", "by": "Maison", "hours_ago": 26},
+    {"id": "c4", "text": "Toilet paper", "by": "Marie", "hours_ago": 30},
+    {"id": "c5", "text": "Coffee", "by": "Léa", "done": true, "hours_ago": 2}]},
+   {"id": "taches", "title": "Tasks", "kind": "tasks", "items": [
+    {"id": "t1", "text": "Boiler appointment", "due_in": 3, "by": "Léa", "hours_ago": 30},
+    {"id": "t2", "text": "Book the Christmas caterer", "due_in": 6, "by": "Marie", "hours_ago": 48},
+    {"id": "t3", "text": "Sign Tom up for judo", "by": "Marie", "hours_ago": 12},
+    {"id": "t4", "text": "Return the library books", "due_in": -1, "by": "Léa", "done": true, "hours_ago": 4}]},
+   {"id": "dates", "title": "Dates", "kind": "dates", "items": [
+    {"id": "d1", "text": "Grandma's birthday", "due_in": 6, "born": 1948, "by": "Marie", "hours_ago": 200},
+    {"id": "d2", "text": "Christmas dinner at Marie's", "due_in": 39, "by": "Maison", "hours_ago": 72},
+    {"id": "d3", "text": "Tom's birthday", "due_in": 107, "born": 2017, "by": "Léa", "hours_ago": 400}]}
+  ],
+  "pages": [
+   {"id": "p1", "title": "February holidays", "text": "Cottage in Annecy, 14 to 21 February.\nStill to book: the train there.", "by": "Maison", "hours_ago": 3},
+   {"id": "p2", "title": "Useful codes and numbers", "text": "Wifi: see the router.\nPlumber: Mr Garnier, 06 00 00 00 00.\nTom's school: 01 00 00 00 00.", "by": "Marie", "hours_ago": 26},
+   {"id": "p3", "title": "This week's meals", "text": "Monday: lemon pasta.\nTuesday: soup and toast.", "by": "Léa", "hours_ago": 50}
+  ]
+ },
+ "de": {
+  "lists": [
+   {"id": "courses", "title": "Einkäufe", "kind": "list", "items": [
+    {"id": "c1", "text": "Milch", "by": "Marie", "hours_ago": 5},
+    {"id": "c2", "text": "Vollkornnudeln", "by": "Léa", "hours_ago": 20},
+    {"id": "c3", "text": "Zitronen", "by": "Maison", "hours_ago": 26},
+    {"id": "c4", "text": "Toilettenpapier", "by": "Marie", "hours_ago": 30},
+    {"id": "c5", "text": "Kaffee", "by": "Léa", "done": true, "hours_ago": 2}]},
+   {"id": "taches", "title": "Aufgaben", "kind": "tasks", "items": [
+    {"id": "t1", "text": "Termin Heizungswartung", "due_in": 3, "by": "Léa", "hours_ago": 30},
+    {"id": "t2", "text": "Caterer für Weihnachten buchen", "due_in": 6, "by": "Marie", "hours_ago": 48},
+    {"id": "t3", "text": "Tom beim Judo anmelden", "by": "Marie", "hours_ago": 12},
+    {"id": "t4", "text": "Bücher in die Bibliothek zurückbringen", "due_in": -1, "by": "Léa", "done": true, "hours_ago": 4}]},
+   {"id": "dates", "title": "Termine", "kind": "dates", "items": [
+    {"id": "d1", "text": "Omas Geburtstag", "due_in": 6, "born": 1948, "by": "Marie", "hours_ago": 200},
+    {"id": "d2", "text": "Weihnachtsessen bei Marie", "due_in": 39, "by": "Maison", "hours_ago": 72},
+    {"id": "d3", "text": "Toms Geburtstag", "due_in": 107, "born": 2017, "by": "Léa", "hours_ago": 400}]}
+  ],
+  "pages": [
+   {"id": "p1", "title": "Winterferien", "text": "Ferienhaus in Annecy, 14. bis 21. Februar.\nNoch zu buchen: der Zug hin.", "by": "Maison", "hours_ago": 3},
+   {"id": "p2", "title": "Nützliche Codes und Nummern", "text": "WLAN: siehe Router.\nKlempner: Herr Garnier, 06 00 00 00 00.\nToms Schule: 01 00 00 00 00.", "by": "Marie", "hours_ago": 26},
+   {"id": "p3", "title": "Essen der Woche", "text": "Montag: Zitronennudeln.\nDienstag: Suppe und Brote.", "by": "Léa", "hours_ago": 50}
+  ]
+ },
+ "es": {
+  "lists": [
+   {"id": "courses", "title": "Compras", "kind": "list", "items": [
+    {"id": "c1", "text": "Leche", "by": "Marie", "hours_ago": 5},
+    {"id": "c2", "text": "Pasta integral", "by": "Léa", "hours_ago": 20},
+    {"id": "c3", "text": "Limones", "by": "Maison", "hours_ago": 26},
+    {"id": "c4", "text": "Papel higiénico", "by": "Marie", "hours_ago": 30},
+    {"id": "c5", "text": "Café", "by": "Léa", "done": true, "hours_ago": 2}]},
+   {"id": "taches", "title": "Tareas", "kind": "tasks", "items": [
+    {"id": "t1", "text": "Cita de la caldera", "due_in": 3, "by": "Léa", "hours_ago": 30},
+    {"id": "t2", "text": "Reservar el catering de Navidad", "due_in": 6, "by": "Marie", "hours_ago": 48},
+    {"id": "t3", "text": "Apuntar a Tom a judo", "by": "Marie", "hours_ago": 12},
+    {"id": "t4", "text": "Devolver los libros a la biblioteca", "due_in": -1, "by": "Léa", "done": true, "hours_ago": 4}]},
+   {"id": "dates", "title": "Fechas", "kind": "dates", "items": [
+    {"id": "d1", "text": "Cumpleaños de la abuela", "due_in": 6, "born": 1948, "by": "Marie", "hours_ago": 200},
+    {"id": "d2", "text": "Cena de Navidad en casa de Marie", "due_in": 39, "by": "Maison", "hours_ago": 72},
+    {"id": "d3", "text": "Cumpleaños de Tom", "due_in": 107, "born": 2017, "by": "Léa", "hours_ago": 400}]}
+  ],
+  "pages": [
+   {"id": "p1", "title": "Vacaciones de febrero", "text": "Casa rural en Annecy, del 14 al 21 de febrero.\nQueda por reservar: el tren de ida.", "by": "Maison", "hours_ago": 3},
+   {"id": "p2", "title": "Códigos y números útiles", "text": "Wifi: ver el router.\nFontanero: Sr. Garnier, 06 00 00 00 00.\nColegio de Tom: 01 00 00 00 00.", "by": "Marie", "hours_ago": 26},
+   {"id": "p3", "title": "Menús de la semana", "text": "Lunes: pasta al limón.\nMartes: sopa y tostadas.", "by": "Léa", "hours_ago": 50}
+  ]
+ }
+}
