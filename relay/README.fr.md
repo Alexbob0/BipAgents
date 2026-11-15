@@ -68,13 +68,16 @@ côté pont : `bridge-rs/src/family_rendezvous.rs`).
 | Route | | |
 | --- | --- | --- |
 | `POST /v1/family/mailbox` | `{}`, `{"token": "fm1.…"}` (renouveler) ou `{"invite_until": <unix>}` (celle d'une invitation) | `{"mailbox": "<22 caractères>", "token": "fm1.…", "expires": …}` : l'identifiant scellé dans le jeton, rien de stocké |
-| `POST /v1/family/pass` | le jeton de la boîte ; `{}` ou `{"renew": "fp1.…"}` | `{"pass": "fp1.…", "expires": …}` : permet à qui le reçoit d'appeler cette boîte (scellé : la boîte, un identifiant, une fin) |
+| `POST /v1/family/pass` | le jeton de la boîte ; `{"for": "<la boîte de l'autre foyer>"}`, ou `{"renew": "fp1.…"}` (par la boîte qu'il ouvre seulement) | `{"pass": "fp1.…", "id": …, "expires": …}` : permet à cette boîte-là, et à aucune autre, d'appeler celle-ci (scellé : les deux boîtes, un identifiant, une fin) |
+| `POST /v1/family/passes` | le jeton de la boîte ; `{"accept": [identifiants]}` | 204 : les laissez-passer qu'elle accepte désormais (un lien retiré) ; ses requêtes en attente le redisent (`x-bip-passes`) |
 | `GET /v1/family/next` | le jeton de la boîte | l'appel suivant pour elle (`x-bip-call`, `x-bip-from`, `x-bip-kind`, ses octets), ou 204 après 25 s |
 | `POST /v1/family/call/<boîte>` | le jeton de l'appelant, `Content-Length`, `x-bip-kind: call` avec `x-bip-pass`, ou `invite` (≤ 64 Kio, vers la boîte d'une invitation), les octets scellés (≤ 16 Mio) | la réponse, en flux ; 503 `away` si ce pont n'est pas connecté **ou si l'appelant n'a pas de laissez-passer** (la même réponse) |
 | `POST /v1/family/answer/<appel>` | le jeton de la boîte qui a pris l'appel | 204 ; transmis en flux à l'appelant (≤ 64 Mio) |
 
 **Seuls les foyers reliés appellent une boîte.** Au moment du lien, chaque pont donne à l'autre un laissez-passer pour
-sa propre boîte, scellé dans leur échange. La boîte d'un foyer n'est jamais dans un QR code : une invitation a sa
+sa propre boîte, valable pour la boîte de l'autre seulement, scellé dans leur échange ; il redit à chaque requête en
+attente les laissez-passer qu'il accepte encore, et en retire un tout de suite quand le lien est retiré. Seule la boîte
+qu'il ouvre peut le renouveler. La boîte d'un foyer n'est jamais dans un QR code : une invitation a sa
 propre boîte, qui finit avec elle et ne prend qu'une présentation (`invite`). Un inconnu qui apprend l'identifiant
 d'une boîte ne peut ni l'appeler, ni épuiser ses quotas, ni savoir si son pont est allumé.
 
@@ -83,14 +86,14 @@ détiennent (un échange X25519 au moment du lien, lié au code d'invitation à 
 ChaCha20‑Poly1305, une clé par appel, par sens et par réponse, les rejeux refusés par le pont). Le relais **voit** les
 adresses des ponts, quelle boîte appelle quelle boîte, quand, combien d'octets, et, tant qu'un pont garde sa requête
 ouverte, qu'il est allumé et depuis quelle adresse. Il **ne garde** rien sur disque et ne journalise aucun appel
-réussi (pas de trace de qui parle à qui) : seulement certains refus (quota, boîte bloquée, réponse coupée, relais
-plein), avec une empreinte d'une boîte calculée avec une clé du relais (HMAC-SHA256, pas recalculable depuis
+réussi (pas de trace de qui parle à qui) : seulement certains refus (quota, boîte bloquée, réponse coupée), avec une empreinte d'une boîte calculée avec une clé du relais (HMAC-SHA256, pas recalculable depuis
 l'identifiant seul), et un total par heure. En mémoire : les identifiants des boîtes qui interrogent (jusqu'à une
 heure après), les compteurs des quotas sous des empreintes SHA-256 sans clé (oubliés dans l'heure), les appels le
 temps qu'ils passent. `/health` dit s'il est en marche, rien de son activité.
 
-**Limites.** Les octets d'un appel sont réservés avant d'être lus, d'après son `Content-Length` (256 Mio en tout, tous
-appels confondus ; 32 Mio par appelant, par appelé et par adresse), et doivent arriver en 30 s ; le corps d'un appel
+**Limites.** Les octets d'un appel sont réservés au fil de la lecture, jamais sur la longueur annoncée (256 Mio en
+tout, tous appels confondus ; 32 Mio par appelant, par lien vers un appelé et par adresse) ; un corps qui s'arrête 5 s
+est coupé, et tout doit arriver en 30 s ; le corps d'un appel
 refusé n'est jamais gardé. Quotas : appels et octets par appelant, et par laissez-passer (ce qu'un foyer peut envoyer
 à un autre) ; boîtes et laissez-passer créés par adresse. Une boîte ou un laissez-passer peut être refusé par son
 empreinte dans `RELAY_BLOCKED`. **Un seul** exemplaire pour les familles (le rendez-vous est en mémoire). Déploiement :

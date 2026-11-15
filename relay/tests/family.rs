@@ -94,8 +94,8 @@ impl Harness {
 
     /// `callee` gives `caller` a pass to call it (what the bridges do at a link).
     async fn link(&self, callee: &Mailbox, caller: &Mailbox) -> String {
-        let made =
-            self.http.post(format!("{}/v1/family/pass", self.url)).bearer_auth(&callee.token).send().await.unwrap();
+        let made = self.http.post(format!("{}/v1/family/pass", self.url)).bearer_auth(&callee.token);
+        let made = made.json(&json!({"for": caller.id})).send().await.unwrap();
         assert_eq!(made.status(), 200);
         let pass = made.json::<Value>().await.unwrap()["pass"].as_str().unwrap().to_string();
         self.passes.lock().unwrap().insert((caller.id.clone(), callee.id.clone()), pass.clone());
@@ -230,7 +230,9 @@ async fn nobody_calls_reads_or_answers_without_its_own_mailbox() {
     // the push relay's tokens are no mailbox tokens
     let push = Mailbox { id: String::new(), token: "r2.AAAA".into() };
     assert_eq!(relay.next(&push).await.0, 401);
-    relay.link(&alex, &alex).await;
+    // no pass for its own mailbox, and no call to itself
+    let own = relay.http.post(format!("{}/v1/family/pass", relay.url)).bearer_auth(&alex.token);
+    assert_eq!(own.json(&json!({"for": alex.id})).send().await.unwrap().status(), 400);
     assert_eq!(relay.call(&alex, &alex.id, b"x".to_vec()).send().await.unwrap().status(), 503, "no call to itself");
     relay.link(&lea, &alex).await;
 
@@ -436,11 +438,13 @@ async fn a_pass_opens_one_mailbox_only_and_is_renewed_as_the_same() {
     tokio::time::sleep(Duration::from_millis(200)).await;
     assert_eq!(relay.call(&alex, &paul.id, b"x".to_vec()).send().await.unwrap().status(), 503);
     assert_eq!(poller.await.unwrap().0, 204);
-    // renewed: another pass, for the same mailbox, still opening it
+    // renewed by its holder: refused (a pass withdrawn stays withdrawn); by the mailbox it opens: the same pass id
+    let by_holder = relay.http.post(format!("{}/v1/family/pass", relay.url)).bearer_auth(&alex.token);
+    assert_eq!(by_holder.json(&json!({"renew": pass})).send().await.unwrap().status(), 401);
     let renewed: Value = relay
         .http
         .post(format!("{}/v1/family/pass", relay.url))
-        .bearer_auth(&alex.token)
+        .bearer_auth(&lea.token)
         .json(&json!({"renew": pass}))
         .send()
         .await
@@ -464,7 +468,7 @@ async fn a_pass_opens_one_mailbox_only_and_is_renewed_as_the_same() {
     let forged = relay
         .http
         .post(format!("{}/v1/family/pass", relay.url))
-        .bearer_auth(&alex.token)
+        .bearer_auth(&lea.token)
         .json(&json!({"renew": "fp1.AAAA"}))
         .send()
         .await
@@ -504,4 +508,66 @@ async fn a_call_says_its_length_and_comes_in_time() {
     let slow = raw(format!("{common}Content-Length: 1000\r\n\r\n"), b"0123456789").await;
     assert!(slow.starts_with("HTTP/1.1 408"), "{slow}");
     poll.abort();
+}
+
+#[tokio::test]
+async fn a_pass_works_for_its_holder_only_and_stops_when_its_mailbox_withdraws_it() {
+    let relay = Arc::new(harness(quick()).await);
+    let (lea, alex, paul) = (relay.mailbox().await, relay.mailbox().await, relay.mailbox().await);
+    let for_alex = relay.link(&lea, &alex).await;
+    relay.link(&lea, &paul).await;
+    // a pass for nobody in particular is not given
+    let unbound = relay.http.post(format!("{}/v1/family/pass", relay.url)).bearer_auth(&lea.token);
+    assert_eq!(unbound.send().await.unwrap().status(), 400);
+    // Léa's bridge polls saying it accepts Paul's pass only (Alex unlinked): Alex is refused as by a bridge off
+    let ids: Value = relay
+        .http
+        .post(format!("{}/v1/family/pass", relay.url))
+        .bearer_auth(&lea.token)
+        .json(&json!({"for": paul.id}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let paul_pass = ids["pass"].as_str().unwrap().to_string();
+    relay.passes.lock().unwrap().insert((paul.id.clone(), lea.id.clone()), paul_pass);
+    let poll = |accept: String| {
+        let (relay, lea) = (relay.clone(), Mailbox { id: lea.id.clone(), token: lea.token.clone() });
+        tokio::spawn(async move {
+            let answer = relay
+                .http
+                .get(format!("{}/v1/family/next", relay.url))
+                .bearer_auth(&lea.token)
+                .header("x-bip-passes", accept)
+                .send()
+                .await
+                .unwrap();
+            let call = answer.headers().get("x-bip-call").and_then(|v| v.to_str().ok()).unwrap_or_default().to_string();
+            (answer.status().as_u16(), call)
+        })
+    };
+    let poller = poll(ids["id"].as_str().unwrap().to_string());
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(relay.call(&alex, &lea.id, b"x".to_vec()).send().await.unwrap().status(), 503);
+    // Paul's still works
+    let call = tokio::spawn(relay.call(&paul, &lea.id, b"x".to_vec()).send());
+    let (status, id) = poller.await.unwrap();
+    assert_eq!(status, 200);
+    relay.answer(&lea, &id, b"ok".to_vec()).await;
+    assert_eq!(call.await.unwrap().unwrap().status(), 200);
+    // Alex's pass from another mailbox (a copy): refused too
+    relay.passes.lock().unwrap().insert((paul.id.clone(), lea.id.clone()), for_alex.clone());
+    assert_eq!(relay.call(&paul, &lea.id, b"x".to_vec()).send().await.unwrap().status(), 503);
+    // withdrawn at once without a poll: none accepted
+    let none = relay
+        .http
+        .post(format!("{}/v1/family/passes", relay.url))
+        .bearer_auth(&lea.token)
+        .json(&json!({"accept": []}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(none.status(), 204);
 }

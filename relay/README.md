@@ -64,13 +64,16 @@ rendezvous is in memory (`src/family.rs`, the bridge's side: `bridge-rs/src/fami
 | Route | | |
 | --- | --- | --- |
 | `POST /v1/family/mailbox` | `{}`, `{"token": "fm1.…"}` (renew), or `{"invite_until": <unix>}` (an invitation's) | `{"mailbox": "<22 chars>", "token": "fm1.…", "expires": …}`: the id sealed in the token, nothing stored |
-| `POST /v1/family/pass` | the mailbox's token; `{}` or `{"renew": "fp1.…"}` | `{"pass": "fp1.…", "expires": …}`: lets whoever it is given to call this mailbox (sealed: the mailbox, an id, an end) |
+| `POST /v1/family/pass` | the mailbox's token; `{"for": "<the other household's mailbox>"}`, or `{"renew": "fp1.…"}` (only by the mailbox it opens) | `{"pass": "fp1.…", "id": …, "expires": …}`: lets that mailbox, and no other, call this one (sealed: both mailboxes, an id, an end) |
+| `POST /v1/family/passes` | the mailbox's token; `{"accept": [ids]}` | 204: the passes it accepts from now on (a link removed); its polls say it too (`x-bip-passes`) |
 | `GET /v1/family/next` | the mailbox's token | the next call for it (`x-bip-call`, `x-bip-from`, `x-bip-kind`, its bytes), or 204 after 25 s |
 | `POST /v1/family/call/<mailbox>` | the caller's own token, `Content-Length`, `x-bip-kind: call` with `x-bip-pass`, or `invite` (≤ 64 KiB, to an invitation's mailbox), the sealed bytes (≤ 16 MiB) | the answer, streamed as the other bridge sends it; 503 `away` when that bridge is not connected **or the caller has no pass for it** (the same answer) |
 | `POST /v1/family/answer/<call>` | the token of the mailbox that took the call | 204; streamed on to the caller (≤ 64 MiB) |
 
-**Only linked households call a mailbox.** At the link each bridge gives the other a pass to its own mailbox, sealed
-in their exchange. A household's mailbox id is never in a QR code: an invitation has a mailbox of its own, ending with
+**Only linked households call a mailbox.** At the link each bridge gives the other a pass to its own mailbox, for the
+other's mailbox only, sealed in their exchange; it says with each poll which passes it still accepts, and withdraws
+one at once when the link is removed. A pass works for the mailbox it was given to only, and only the mailbox it opens
+renews it. A household's mailbox id is never in a QR code: an invitation has a mailbox of its own, ending with
 it, that takes only an introduction (`invite`). A stranger who learns a mailbox id can't call it, use up its quotas,
 nor tell whether its bridge is on.
 
@@ -79,13 +82,14 @@ X25519 exchange at the link, bound to the invitation's one-time code; ChaCha20-P
 direction and answer, replays refused by the bridge). The relay **sees** the bridges' addresses, which mailbox calls
 which, when, how many bytes, and, while a bridge keeps its poll open, that it is on and from which address. It
 **keeps** nothing on disk and logs no call that went through (no record of who talks to whom): only some refusals
-(quota, blocked mailbox, answer cut, relay full), with a fingerprint of one mailbox keyed by the relay (HMAC-SHA256,
+(quota, blocked mailbox, answer cut), with a fingerprint of one mailbox keyed by the relay (HMAC-SHA256,
 not computable from the id alone), and one count an hour. In memory: the ids of the mailboxes polling (until an hour
 after), the quotas' counts under unkeyed SHA-256 hashes (forgotten within the hour), the calls while they pass.
 `/health` says whether it is on, nothing of its activity.
 
-**Limits.** A call's bytes are reserved before they are read, against its `Content-Length` (256 MiB held at most,
-every call together; 32 MiB per caller, per callee and per address), and must come in within 30 s; a refused call's
+**Limits.** A call's bytes are reserved as they are read, never on the length it says (256 MiB held at most, every
+call together; 32 MiB per caller, per link to a callee and per address); a body that stops for 5 s is cut, and all of
+it comes within 30 s; a refused call's
 body is never kept. Quotas: calls and bytes per caller, and per pass (what one household may send another); mailboxes
 and passes made per address. A mailbox or a pass can be refused by its fingerprint in `RELAY_BLOCKED`. Run **one** copy
 for the families (the rendezvous is in memory). Deploy: `RELAY_TRUST_FORWARDED_FOR=1` behind a proxy, a high open-files

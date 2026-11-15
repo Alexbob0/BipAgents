@@ -6,11 +6,13 @@
 //!   holds it, sealed with the relay's keys (`fm1.`, like the push tokens: nothing stored, any copy opens it). Only
 //!   the token reads the mailbox. Renewed with the old token, same id.
 //! - **Only the households it linked with may call it**: at the link, each bridge asks the relay for a **pass** to its
-//!   own mailbox (`POST /v1/family/pass`, `fp1.`, sealed too: the mailbox it opens, an id of its own, an end) and gives
-//!   it to the other one, sealed in their exchange. A call (`POST /v1/family/call/<id>`, `x-bip-pass`) without a pass
-//!   for that very mailbox is refused exactly as a mailbox whose bridge is off is (503 `away`): a stranger who learnt
-//!   the id learns nothing, not even whether the home's computer is on, and can't use up what the household may
-//!   receive (quotas per pass, not per mailbox).
+//!   own mailbox, for the other household's mailbox (`POST /v1/family/pass {for}`, `fp1.`, sealed too: the mailbox it
+//!   opens, the one it was given to, an id of its own) and gives it to the other one, sealed in their exchange. A call
+//!   (`POST /v1/family/call/<id>`, `x-bip-pass`) is taken only with a pass for that very mailbox, given to that very
+//!   caller, and one the mailbox still accepts: its bridge says which (`x-bip-passes` with each poll, and
+//!   `POST /v1/family/passes` when a link is removed). Anything else is refused exactly as a mailbox whose bridge is off
+//!   is (503 `away`): a stranger, a household unlinked, or whoever holds a copy of a pass learns nothing, not even
+//!   whether the home's computer is on, and can't use up what the household may receive (quotas per pass).
 //! - An **invitation** has a mailbox of its own (`{"invite_until": …}`), ending with it: its id is what the QR code
 //!   carries, never the household's. Calls to it need no pass (`x-bip-kind: invite`, 64 KiB at most), only while its
 //!   bridge polls it: whoever holds the invitation may introduce itself, nothing more.
@@ -24,9 +26,10 @@
 //! went through, only for some refusals (with a keyed fingerprint of one mailbox, [`Rendezvous::fingerprint`]) and
 //! one count an hour.
 //!
-//! Memory: a call's bytes are reserved before they are read ([`Budget`]: every call together, and each caller,
-//! callee and address its share), against its declared length, and read within [`FamilyConfig::body_timeout`]; a
-//! refused call's body is never kept (read and dropped while it keeps coming). One copy of the relay holds the rendezvous (it is in
+//! Memory: a call's bytes are reserved as they are read ([`Budget`]: every call together, and each caller, each link
+//! to the callee and each address its share), never on the length it says; a body that stops coming for
+//! [`BODY_IDLE`] is cut, and all of it comes within [`FamilyConfig::body_timeout`]. A refused call's body is never kept
+//! (read and dropped while it keeps coming). One copy of the relay holds the rendezvous (it is in
 //! memory): run one, or share mailboxes out by their id.
 
 use std::collections::{HashMap, VecDeque};
@@ -146,16 +149,24 @@ impl Claims {
     }
 }
 
-/// What a pass holds: the mailbox it lets call, its own id (its quotas), its end.
+/// What a pass holds: the mailbox it lets call, the mailbox it was given to (the only one it works for), its own id
+/// (its quotas, and what the mailbox says it still accepts), its end.
 #[derive(Serialize, Deserialize)]
 struct PassClaims {
     #[serde(rename = "t")]
     to: String,
+    #[serde(rename = "f")]
+    holder: String,
     #[serde(rename = "i")]
     id: String,
     #[serde(rename = "x")]
     exp: u64,
 }
+
+/// A pass lasts this long: it is withdrawn by the mailbox (the passes it accepts), not by its end.
+const PASS_LIFETIME_SECS: u64 = 10 * 365 * 86_400;
+/// A call's body that brings nothing for this long is cut (its room given back).
+pub const BODY_IDLE: Duration = Duration::from_secs(5);
 
 /// A call waiting for its mailbox's poll.
 struct Call {
@@ -190,6 +201,24 @@ struct Held {
     budget: Arc<Budget>,
     parties: [String; 3],
     n: usize,
+}
+
+impl Held {
+    /// `n` more bytes reserved for the same parties (false, nothing more reserved, past a share or the whole).
+    fn grow(&mut self, n: usize) -> bool {
+        let mut held = lock(&self.budget.held);
+        let party = self.budget.party;
+        if held.0 + n > self.budget.all || self.parties.iter().any(|p| held.1.get(p).copied().unwrap_or(0) + n > party)
+        {
+            return false;
+        }
+        held.0 += n;
+        for p in &self.parties {
+            *held.1.entry(p.clone()).or_insert(0) += n;
+        }
+        self.n += n;
+        true
+    }
 }
 
 impl Budget {
@@ -240,6 +269,9 @@ pub struct Rendezvous {
     waiting: Mutex<HashMap<String, (String, oneshot::Sender<Body>)>>,
     /// Each mailbox's polls: how many are open, when one last began or ended, whether it is an invitation's.
     seen: Mutex<HashMap<String, (usize, Instant, bool)>>,
+    /// The passes each mailbox says it still accepts (their ids), as its bridge last said: a mailbox that never said
+    /// accepts every pass it gave.
+    accepted: Mutex<HashMap<String, std::collections::HashSet<String>>>,
     budget: Arc<Budget>,
     calls_out: Quota,
     calls_in: Quota,
@@ -301,6 +333,7 @@ impl Rendezvous {
             bells: Mutex::default(),
             waiting: Mutex::default(),
             seen: Mutex::default(),
+            accepted: Mutex::default(),
             counts: Counts::default(),
             last_report: Mutex::new(Instant::now()),
             fingerprint_key,
@@ -325,6 +358,16 @@ impl Rendezvous {
             return Some(self.config.pickup);
         }
         self.config.away.checked_sub(last.elapsed()).filter(|left| !left.is_zero())
+    }
+
+    /// Whether this mailbox still accepts this pass (it said which, or never said).
+    fn accepts(&self, mailbox: &str, pass: &str) -> bool {
+        lock(&self.accepted).get(mailbox).is_none_or(|ids| ids.contains(pass))
+    }
+
+    /// The passes this mailbox accepts from now on.
+    fn accept_only(&self, mailbox: &str, ids: std::collections::HashSet<String>) {
+        lock(&self.accepted).insert(mailbox.to_string(), ids);
     }
 
     /// Whether this mailbox is an invitation's, polled now (or a moment ago).
@@ -360,10 +403,12 @@ impl Rendezvous {
             let mut seen = lock(&self.seen);
             let mut bells = lock(&self.bells);
             let mut queues = lock(&self.queues);
+            let mut accepted = lock(&self.accepted);
             for id in &gone {
                 seen.remove(id);
                 bells.remove(id);
                 queues.remove(id);
+                accepted.remove(id);
             }
             bells.retain(|id, _| seen.contains_key(id) || queues.contains_key(id));
             queues.retain(|_, q| !q.is_empty());
@@ -569,13 +614,16 @@ async fn mailbox(
 
 #[derive(Deserialize, Default)]
 struct PassAsked {
-    /// A pass held, renewed (the same mailbox, the same id).
+    /// The mailbox of the household it is for (the only one it will work for).
+    #[serde(default, rename = "for")]
+    holder: Option<String>,
+    /// A pass this mailbox gave, renewed (the same holder, the same id): only by the mailbox it opens.
     #[serde(default)]
     renew: Option<String>,
 }
 
-/// `POST /v1/family/pass {renew?}` (a mailbox's token): a pass to call this mailbox, for a household it links with;
-/// or a pass this bridge holds, renewed.
+/// `POST /v1/family/pass {for}` (a mailbox's token): a pass to call this mailbox, for the household at mailbox `for`
+/// it links with: `{pass, id, expires}`. Or `{renew}`: one this mailbox gave, renewed.
 async fn pass(
     State(relay): State<Arc<Relay>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -601,16 +649,43 @@ async fn pass(
         }
     };
     let at = now();
-    let pass = match asked.renew.as_deref() {
-        Some(old) => match open_pass(&relay, old) {
-            Some(p) if at < p.exp.saturating_add(RENEW_GRACE_SECS) => {
-                PassClaims { to: p.to, id: p.id, exp: at + MAILBOX_LIFETIME_SECS }
+    let pass = match (asked.renew.as_deref(), asked.holder) {
+        (Some(old), None) => match open_pass(&relay, old) {
+            // only the mailbox it opens renews a pass (never its holder: a pass withdrawn stays withdrawn)
+            Some(p) if p.to == claims.id && at < p.exp.saturating_add(RENEW_GRACE_SECS) => {
+                PassClaims { to: p.to, holder: p.holder, id: p.id, exp: at + PASS_LIFETIME_SECS }
             }
-            _ => return refuse(StatusCode::UNAUTHORIZED, "unknown", "not a pass of this relay"),
+            _ => return refuse(StatusCode::UNAUTHORIZED, "unknown", "not a pass this mailbox gave"),
         },
-        None => PassClaims { to: claims.id, id: new_id(12), exp: at + MAILBOX_LIFETIME_SECS },
+        (None, Some(holder)) if valid_mailbox(&holder) && holder != claims.id => {
+            PassClaims { to: claims.id, holder, id: new_id(12), exp: at + PASS_LIFETIME_SECS }
+        }
+        _ => return refuse(StatusCode::BAD_REQUEST, "invalid", "a pass is for one household's mailbox (for)"),
     };
-    Json(json!({"pass": seal_pass(&relay, &pass), "expires": pass.exp})).into_response()
+    Json(json!({"pass": seal_pass(&relay, &pass), "id": pass.id, "expires": pass.exp})).into_response()
+}
+
+#[derive(Deserialize)]
+struct Accepted {
+    accept: Vec<String>,
+}
+
+/// `POST /v1/family/passes {accept: [ids]}` (a mailbox's token): the passes it accepts from now on (a link removed:
+/// its pass no longer works, at once). Its polls say it again (`x-bip-passes`), so that a relay restarted knows.
+async fn passes(State(relay): State<Arc<Relay>>, headers: HeaderMap, body: Bytes) -> Response {
+    let claims = match authenticated(&relay, &headers) {
+        Ok(c) if !c.invitation() => c,
+        Ok(_) => return refuse(StatusCode::FORBIDDEN, "invalid", "an invitation's mailbox gives no pass"),
+        Err(refused) => return refused,
+    };
+    let Ok(asked) = serde_json::from_slice::<Accepted>(&body) else {
+        return refuse(StatusCode::BAD_REQUEST, "invalid", "invalid request");
+    };
+    if asked.accept.len() > 1000 {
+        return refuse(StatusCode::BAD_REQUEST, "invalid", "too many passes");
+    }
+    relay.family.accept_only(&claims.id, asked.accept.into_iter().filter(|i| i.len() <= 32).collect());
+    StatusCode::NO_CONTENT.into_response()
 }
 
 /// `GET /v1/family/next` (the mailbox's token): the next call for it, or 204 after a poll.
@@ -621,6 +696,11 @@ async fn next(State(relay): State<Arc<Relay>>, headers: HeaderMap) -> Response {
     };
     let (mailbox, invitation) = (claims.id.clone(), claims.invitation());
     let family = &relay.family;
+    // the passes it accepts, said with each poll (`-`: none)
+    if let Some(said) = headers.get("x-bip-passes").and_then(|v| v.to_str().ok()).filter(|_| !invitation) {
+        let ids = said.split(',').map(str::trim).filter(|i| !i.is_empty() && *i != "-" && i.len() <= 32);
+        family.accept_only(&mailbox, ids.take(1000).map(str::to_string).collect());
+    }
     let Some(_open) = Polling::open(family, &mailbox, invitation) else {
         return refuse(StatusCode::TOO_MANY_REQUESTS, "polls", "too many polls open on this mailbox");
     };
@@ -701,8 +781,15 @@ async fn call(
     // polled. Anything else reads exactly as a mailbox whose bridge is off.
     let pair = if kind == "call" {
         let pass = headers.get("x-bip-pass").and_then(|v| v.to_str().ok()).and_then(|p| open_pass(&relay, p));
+        // for this mailbox, given to this caller, still accepted by the mailbox, not ended nor blocked
         match pass {
-            Some(p) if p.to == target && now() < p.exp && !relay.is_blocked_id(&family.fingerprint(&p.id)) => {
+            Some(p)
+                if p.to == target
+                    && p.holder == from
+                    && now() < p.exp
+                    && family.accepts(&target, &p.id)
+                    && !relay.is_blocked_id(&family.fingerprint(&p.id)) =>
+            {
                 format!("pass:{}", p.id)
             }
             _ => return refused_after(away(), body, declared, family).await,
@@ -738,17 +825,53 @@ async fn call(
         let quota = refuse(StatusCode::TOO_MANY_REQUESTS, "quota", "too many bytes this hour");
         return refused_after(quota, body, declared, family).await;
     }
-    // its bytes reserved before they are read: every call together, the caller's, the callee's, the address's share
-    let parties = [format!("from:{from}"), format!("to:{target}"), format!("ip:{}", relay.client_ip(peer, &headers))];
-    let Some(held) = family.budget.reserve(parties, length) else {
-        let busy = refuse(StatusCode::SERVICE_UNAVAILABLE, "busy", "the relay is busy: try again in a moment");
-        return refused_after(busy, body, declared, family).await;
+    // its bytes reserved as they come (never on the length it says): every call together, the caller's, this link
+    // to the callee's (each link its own), the address's share; nothing for BODY_IDLE and it is cut
+    let parties =
+        [format!("from:{from}"), format!("to:{target}:{pair}"), format!("ip:{}", relay.client_ip(peer, &headers))];
+    let Some(mut held) = family.budget.reserve(parties, 0) else {
+        return refused_after(away(), body, declared, family).await;
     };
-    let read = tokio::time::timeout(family.config.body_timeout, axum::body::to_bytes(body, length)).await;
-    let Ok(Ok(body)) = read else {
+    let deadline = Instant::now() + family.config.body_timeout;
+    let mut data = body.into_data_stream();
+    let mut read: Vec<u8> = Vec::new();
+    loop {
+        let wait = BODY_IDLE.min(deadline.saturating_duration_since(Instant::now()));
+        match tokio::time::timeout(wait, data.next()).await {
+            Ok(None) => break,
+            Ok(Some(Ok(chunk))) => {
+                if read.len() + chunk.len() > length {
+                    family.counts.refused.fetch_add(1, Ordering::Relaxed);
+                    return refuse(StatusCode::BAD_REQUEST, "invalid", "more than the request said");
+                }
+                // what is reserved is what is allocated: the buffer grows by doubling (never past the length said),
+                // each growth reserved first
+                let needed = read.len() + chunk.len();
+                if needed > read.capacity() {
+                    let grown = (read.capacity() * 2).max(needed).max(64 * 1024).min(length);
+                    if !held.grow(grown - read.capacity()) {
+                        family.counts.refused.fetch_add(1, Ordering::Relaxed);
+                        drop(held);
+                        drop(read);
+                        drain(Body::from_stream(data), length, family.config.body_timeout).await;
+                        let busy = "the relay is busy: try again in a moment";
+                        return refuse(StatusCode::SERVICE_UNAVAILABLE, "busy", busy);
+                    }
+                    read.reserve_exact(grown - read.len());
+                }
+                read.extend_from_slice(&chunk);
+            }
+            _ => {
+                family.counts.refused.fetch_add(1, Ordering::Relaxed);
+                return refuse(StatusCode::REQUEST_TIMEOUT, "slow", "the request did not come in time");
+            }
+        }
+    }
+    if read.len() != length {
         family.counts.refused.fetch_add(1, Ordering::Relaxed);
-        return refuse(StatusCode::REQUEST_TIMEOUT, "slow", "the request did not come in time");
-    };
+        return refuse(StatusCode::BAD_REQUEST, "invalid", "less than the request said");
+    }
+    let body = Bytes::from(read);
     if lock(&family.queues).get(&target).is_some_and(|q| q.len() >= family.config.queue) {
         family.counts.refused.fetch_add(1, Ordering::Relaxed);
         return refuse(StatusCode::SERVICE_UNAVAILABLE, "busy", "too many calls waiting for this mailbox");
@@ -835,6 +958,7 @@ pub fn routes() -> Router<Arc<Relay>> {
     Router::new()
         .route("/v1/family/mailbox", post(mailbox))
         .route("/v1/family/pass", post(pass))
+        .route("/v1/family/passes", post(passes))
         .route("/v1/family/next", get(next))
         .route("/v1/family/call/{mailbox}", post(call))
         .route("/v1/family/answer/{call}", post(answer))
