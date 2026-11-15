@@ -78,11 +78,16 @@ function page(door, { android = false, activation = undefined } = {}) {
 }
 
 /** The friend's door as both apps build it (ReadShareThreadModel.pageStore, ViewerShares.pageStore): a read answers the
- *  page item's sealed store as the owner's bridge last sent it; a write is sealed to the guichet (202: on its way) and
- *  kept nowhere else on the phone. `view` is that sealed store, unchanged while the owner's bridge has not taken it. */
+ *  page item's sealed store as the owner's bridge last sent it; a write is sealed to the guichet (202: on its way).
+ *  (Fixed 15/11, adapted here as the apps now do it: the app keeps the friend's writes for the page until the store
+ *  lists them in `acts` or `refused`, and gives them back with each read as `pending`.) `view` is that sealed store,
+ *  unchanged while the owner's bridge has not taken it. */
 function friendDoor(view, queued) {
   return (op) => {
-    if (op.op === "get") return { status: 200, body: view };
+    if (op.op === "get") {
+      const done = new Set([...(view.acts || []), ...(view.refused || []).map((r) => r.a)]);
+      return { status: 200, body: { ...view, pending: queued.filter((q) => !done.has(q.a)) } };
+    }
     queued.push(op);
     return { status: 202, body: { queued: true, a: op.a } };
   };

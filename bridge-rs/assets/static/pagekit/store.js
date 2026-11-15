@@ -150,6 +150,20 @@
       else if (note && note.textContent === word("waiting")) say(null);
     }
 
+    // A friend's writes still on their way when the page was closed: their app keeps them (the store's `pending`)
+    // until the owner's bridge lists or refuses them; the page shows them again, « en attente » (second review).
+    function adopt(waiting) {
+      (waiting || []).forEach(function (p) {
+        if (!p || !p.a || !p.op || p.op === "get") return;
+        if ((server.acts || []).indexOf(p.a) >= 0) return;
+        if (pending.some(function (w) { return w.a === p.a; })) return;
+        var w = { op: p.op, key: p.key, a: p.a, at: Date.now(), sent: true };
+        if ("value" in p) w.value = p.value;
+        if (p.id) w.id = p.id;
+        pending.push(w);
+      });
+    }
+
     function ask(op) {
       return fetch(DOOR + "?op=" + encodeURIComponent(JSON.stringify(op)), { cache: "no-store", credentials: "omit" })
         .then(function (r) {
@@ -195,7 +209,11 @@
           else if (!b.same && b.keys) {
             stale = 0;
             if (reset || b.rev < newest) newest = b.rev;   // older for good: the store started again, taken as it is
-            changed(function () { server = { rev: b.rev, keys: b.keys, acts: b.acts || [], gen: b.gen || "", refused: b.refused || [] }; prune(); });
+            changed(function () {
+              server = { rev: b.rev, keys: b.keys, acts: b.acts || [], gen: b.gen || "", refused: b.refused || [] };
+              adopt(b.pending);
+              prune();
+            });
           } else stale = 0;
           setMode(!canWrite ? "readonly" : unsent() ? "offline" : "saved");
           first();

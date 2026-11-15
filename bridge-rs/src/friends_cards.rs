@@ -59,7 +59,11 @@ pub const CARDS_MAX: usize = 60;
 /// Lines waiting for the agent, at most (the newest kept).
 pub const NEWS_MAX: usize = 10;
 /// Action ids remembered per share (a replay of an older one is dropped).
-pub const SEEN_MAX: usize = 500;
+/// (2000 since the second review of 15/11: a tick toggles, so an old one replayed past what is remembered undoes it)
+pub const SEEN_MAX: usize = 2000;
+/// A friend's write in a page that couldn't be written (page_store.rs `retry_later`) is tried again here, waiting longer
+/// each time (`retry_wait`), for this long; then refused (their page hears it). Never holding the guichet's queue.
+pub const RETRY_FOR: f64 = 3600.0;
 /// The keys an action carries, exactly.
 const ACTION_KEYS: [&str; 6] = ["s", "e", "a", "kind", "card", "option"];
 const STD: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
@@ -125,7 +129,7 @@ fn load(path: &PathBuf) -> Dict {
         .and_then(|t| serde_json::from_str::<Value>(&t).ok())
         .and_then(|v| v.as_object().cloned())
         .unwrap_or_default();
-    for key in ["cards", "news", "seen"] {
+    for key in ["cards", "news", "seen", "retry"] {
         if !matches!(data.get(key), Some(Value::Object(_))) {
             data.insert(key.into(), json!({}));
         }
@@ -538,6 +542,61 @@ pub fn read_action(
     vote_of(&open_action(key, share, epoch, data, tag, secret)?)
 }
 
+/// How long to wait before trying a friend's write again, after `tries` tries: 30 s, then twice as long, 15 min at most.
+pub fn retry_wait(tries: i64) -> f64 {
+    (30.0 * 2f64.powi(tries.clamp(0, 6) as i32 - 1)).clamp(30.0, 900.0)
+}
+
+/// The friends' writes in pages of share `id` kept here (couldn't be written), each tried again when due: applied, or
+/// refused for good (noted by page_store.rs), or past `RETRY_FOR` refused (their page hears « Pas enregistré »), or
+/// kept for later. Whether a store changed.
+pub fn retry_writes(config: &Config, id: &str, agent: &str, share: &Value, at: f64) -> bool {
+    let waiting: Vec<Value> =
+        read(config).get("retry").and_then(|r| r.get(id)).and_then(Value::as_array).cloned().unwrap_or_default();
+    if waiting.is_empty() {
+        return false;
+    }
+    let sent = share.get("sent").and_then(Value::as_object).cloned().unwrap_or_default();
+    let mut changed = false;
+    let mut left = Vec::new();
+    for entry in waiting {
+        if entry["next"].as_f64().unwrap_or(0.0) > at {
+            left.push(entry);
+            continue;
+        }
+        let fields = entry["fields"].as_object().cloned().unwrap_or_default();
+        match crate::page_store::friend_write(config, agent, &sent, &fields, &s(&entry, "by")) {
+            Ok(written) => changed |= written,
+            Err(why) if crate::page_store::retry_later(&why) => {
+                if at - entry["first"].as_f64().unwrap_or(at) >= RETRY_FOR {
+                    tracing::warn!(share = %id, "a friend's write in a page never written: refused");
+                    crate::page_store::give_up(config, agent, &fields);
+                    changed = true;
+                } else {
+                    let tries = entry["tries"].as_i64().unwrap_or(1) + 1;
+                    let mut again = entry.clone();
+                    again["tries"] = json!(tries);
+                    again["next"] = json!(at + retry_wait(tries));
+                    left.push(again);
+                }
+            }
+            Err(_) => changed = true, // refused for good: noted in the store by friend_write
+        }
+    }
+    let kept = update(config, |data| {
+        let all = data.get_mut("retry").and_then(Value::as_object_mut).expect("an object");
+        if left.is_empty() {
+            all.remove(id);
+        } else {
+            all.insert(id.to_string(), json!(left));
+        }
+    });
+    if let Err(err) = kept {
+        tracing::warn!(error = %err, "friends' writes to try again not kept");
+    }
+    changed
+}
+
 /// A viewer id as text (the guichet gives it as a string; a number reads the same).
 fn id_text(v: &Value) -> String {
     match v {
@@ -559,22 +618,24 @@ pub async fn take_actions(
 ) -> bool {
     let id = s(share, "id");
     let agent = s(share, "agent");
+    // the friends' writes kept here from an earlier round, when due (whatever the guichet has now)
+    let retried = retry_writes(&state.config(), &id, &agent, share, now());
     let url = format!("{}/v1/rshares/{id}/actions", s(share, "guichet").trim_end_matches('/'));
     let got = state.http.get(&url).timeout(std::time::Duration::from_secs(30)).bearer_auth(s(share, "writer")).send().await;
     let body: Value = match got {
         Ok(r) if r.status().as_u16() == 200 => r.json().await.unwrap_or(Value::Null),
         Ok(r) => {
             tracing::debug!(share = %id, status = r.status().as_u16(), "friends' actions not read");
-            return false;
+            return retried;
         }
         Err(e) => {
             tracing::debug!(share = %id, error = %e, "friends' actions not read");
-            return false;
+            return retried;
         }
     };
     let actions = body["actions"].as_array().cloned().unwrap_or_default();
     if actions.is_empty() {
-        return false;
+        return retried;
     }
     let config = state.config();
     let seen: Vec<String> = read(&config)
@@ -584,11 +645,10 @@ pub async fn take_actions(
         .map(|l| l.iter().filter_map(Value::as_str).map(str::to_string).collect())
         .unwrap_or_default();
     let mut seen_now = seen.clone();
-    let mut changed = false;
+    let mut changed = retried;
     let mut last = 0i64;
-    // the first action to take again at the next round (a write that failed for a while): neither it nor any after
-    // it is marked taken at the guichet (those after it, applied now, are seen: never twice)
-    let mut again: Option<i64> = None;
+    // writes that couldn't be written now: kept here, tried again later (`retry_writes`), the guichet's queue taken
+    let mut later: Vec<Value> = Vec::new();
     for action in &actions {
         let seq = action["seq"].as_i64().unwrap_or(0);
         last = last.max(seq);
@@ -617,9 +677,10 @@ pub async fn take_actions(
             match crate::page_store::friend_write(&config, &agent, &sent, &fields, &first_name(&s(row, "name"))) {
                 Ok(written) => changed |= written,
                 Err(why) if crate::page_store::retry_later(&why) => {
-                    tracing::info!(share = %id, why = %why.code, "a friend's write in a page: again at the next round");
-                    again = Some(again.map_or(seq, |a| a.min(seq)));
-                    continue;
+                    tracing::info!(share = %id, why = %why.code, "a friend's write in a page: kept, tried again later");
+                    let at = now();
+                    later.push(json!({"fields": fields, "by": first_name(&s(row, "name")), "first": at, "tries": 1,
+                                      "next": at + retry_wait(1)}));
                 }
                 Err(why) => tracing::info!(share = %id, why = %why.code, "a friend's write in a page refused"),
             }
@@ -656,12 +717,23 @@ pub async fn take_actions(
             tracing::warn!(error = %err, "friends' actions seen not kept");
         }
     }
+    if !later.is_empty() {
+        let kept = update(&config, |data| {
+            let all = data.get_mut("retry").and_then(Value::as_object_mut).expect("an object");
+            if let Some(list) = all.entry(id.clone()).or_insert_with(|| json!([])).as_array_mut() {
+                list.extend(later);
+            }
+        });
+        if let Err(err) = kept {
+            tracing::warn!(error = %err, "friends' writes to try again not kept");
+        }
+    }
     let taken = state
         .http
         .post(format!("{url}/taken"))
         .timeout(std::time::Duration::from_secs(30))
         .bearer_auth(s(share, "writer"))
-        .json(&json!({"through": again.map_or(last, |a| a - 1)}))
+        .json(&json!({"through": last}))
         .send()
         .await;
     if let Err(e) = taken {

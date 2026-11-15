@@ -511,14 +511,32 @@ pub fn new_photos(inline: &[Dict], wanted: &HashSet<String>) -> (Vec<(String, Va
     (items, found)
 }
 
-/// The pages sent before that are no longer the conversation's (deleted, made private, their message gone): each
-/// sent again as an empty page marked `gone`, over the sealed copy at the guichet and on the friends' phones (which
-/// drop it), so what was typed in it doesn't stay there (review of 15/11). Sent once (its digest is then known).
-pub fn withdrawn_pages(sent: &Map<String, Value>, items: &[(String, Value)]) -> Vec<(String, Value)> {
+/// The pages sent before that this sync's items lack (second review of 15/11). Hermes may no longer list the reply
+/// that holds one (compacted, past its 500 rows) while the page lives on: each page still kept here, and still
+/// shareable, is built again from disk, so what friends type keeps coming back to them; only one that is no longer
+/// (deleted, made private or linked to the Carnet) is sent once more as an empty page marked `gone`, over the sealed
+/// copy at the guichet and on the friends' phones (which drop it): what was typed in it doesn't stay there. Each is
+/// sent only when it changed (its digest).
+pub fn pages_beyond(
+    config: &Config,
+    agent: &str,
+    sent: &Map<String, Value>,
+    items: &[(String, Value)],
+    writable: bool,
+) -> Vec<(String, Value)> {
     let current: HashSet<&str> = items.iter().map(|(id, _)| id.as_str()).collect();
+    let prefix = format!("p-{agent}-");
     sent.keys()
         .filter(|id| id.starts_with("p-") && !current.contains(id.as_str()))
-        .map(|id| (id.clone(), json!({"id": id, "kind": "page", "title": "", "html": "", "map": false, "gone": true})))
+        .map(|id| {
+            let alive = id
+                .strip_prefix(&prefix)
+                .and_then(|page| media_item(config, agent, &format!("{}/{agent}/{page}.html", crate::pages::PREFIX), writable))
+                .filter(|(found, _)| found == id);
+            alive.unwrap_or_else(|| {
+                (id.clone(), json!({"id": id, "kind": "page", "title": "", "html": "", "map": false, "gone": true}))
+            })
+        })
         .collect()
 }
 
@@ -732,8 +750,8 @@ pub async fn sync(state: &AppState, id: &str, notify: bool) -> Result<Option<Val
         let mut batches = Vec::new();
         let mut all_items = photo_items;
         all_items.extend(items_of(&config, &share, &messages));
-        let withdrawn = withdrawn_pages(&sent, &all_items);
-        all_items.extend(withdrawn);
+        let beyond = pages_beyond(&config, &s(&share, "agent"), &sent, &all_items, is_thread(&share));
+        all_items.extend(beyond);
         for (item_id, mut item) in all_items {
             let mark = digest(&item);
             if sent.get(&item_id).and_then(Value::as_str) == Some(mark.as_str()) {

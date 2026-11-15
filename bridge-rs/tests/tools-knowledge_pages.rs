@@ -239,3 +239,24 @@ fn only_a_page_that_remembers_carries_the_kit_s_store() {
     // (18 000 since the review of 15/11: refusals, waiting, a new store generation, the person's touch)
     assert!(pages::store_js().len() < 18_000 && pages::kit_js().contains("esc: esc"));
 }
+
+#[test]
+fn a_page_that_remembers_never_builds_html_from_strings() {
+    // second review of 15/11 (R2-5): a guard that doesn't rely on the model
+    let sloppy = "<div id=t></div><script>Bip.store.onChange(function(){ t.innerHTML = Bip.store.items('l').map(function(r){ return '<p>' + r.value + '</p>' }).join('') })</script>";
+    assert_eq!(pages::draws_typed_html(sloppy), Some(pages::TYPED_AS_HTML));
+    for refused in [
+        "<script>const { store } = Bip; store.onChange(() => el.insertAdjacentHTML('beforeend', x))</script>",
+        "<script>Bip?.store.items('l'); document.write(s)</script>",
+        "<script>var s = Bip.store; s.items('l'); el.outerHTML = s</script>",
+    ] {
+        assert!(pages::draws_typed_html(refused).is_some(), "{refused}");
+    }
+    for kept in [
+        "<table id=t></table><script>Bip.store.onChange(function(){ Bip.rows('#t', Bip.store.items('l'), function(r){ return [r.value.what] }) })</script>",
+        "<div id=c></div><script>c.innerHTML = '<b>Total</b>'; Bip.bars('#c', {labels: ['a'], values: [1]})</script>",
+        "<p>The store opens at 9</p><script>el.innerHTML = '<i>x</i>'</script>",
+    ] {
+        assert!(pages::draws_typed_html(kept).is_none(), "{kept}");
+    }
+}

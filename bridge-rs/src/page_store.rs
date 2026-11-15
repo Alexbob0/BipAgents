@@ -496,21 +496,28 @@ pub fn delete(config: &Config, agent: &str, page: &str) -> bool {
     file.is_file() && std::fs::remove_file(file).is_ok()
 }
 
-// -- a way back (the review of 15/11) ------------------------------------------------------------------------------
+// -- a way back (the reviews of 15/11) -----------------------------------------------------------------------------
 //
 // The agent never writes a store, but it can make its page again under the same id: the new version's script runs
 // in the next person's page, through their door, under their name, and could rewrite every line. So each time a page
-// is made again, its store as it stood is kept (`<page>.store.v<version>.json`, the version it belonged to, the last
-// `SNAPSHOTS_KEPT`), never served, deleted with the page; the person's app can list them and put one back.
+// is made again, its store as it stands is kept as a numbered copy (`<page>.store.v<n>.json`, n growing, never
+// reused nor overwritten), unless it is the same as the last copy; a restore keeps the store it replaces as a new copy
+// before anything is written. Kept: always the oldest copy, every copy of the last `COPY_DAYS` (at most `COPIES_MAX`),
+// else the last `SNAPSHOTS_KEPT` — a few more versions of the page can't flush the copy with the real amounts. Never
+// served, deleted with the page. Put back by the bridge only (`/v1/page-store/versions`, `/v1/page-store/restore`, the
+// app's key: a support procedure for now; a screen in the apps later).
 
-/// Copies kept per page.
+/// Copies kept per page past `COPY_DAYS`.
 pub const SNAPSHOTS_KEPT: usize = 5;
+/// Copies younger than this are all kept (up to `COPIES_MAX`).
+pub const COPY_DAYS: f64 = 7.0;
+pub const COPIES_MAX: usize = 30;
 
-fn snapshot_path(config: &Config, agent: &str, page: &str, version: i64) -> PathBuf {
-    crate::pages::root(config).join(agent).join(format!("{page}.store.v{version}.json"))
+fn snapshot_path(config: &Config, agent: &str, page: &str, n: i64) -> PathBuf {
+    crate::pages::root(config).join(agent).join(format!("{page}.store.v{n}.json"))
 }
 
-/// A page's kept copies: (the page's version they belonged to, their file), the oldest first.
+/// A page's kept copies: (their number, their file), the oldest first.
 pub fn snapshots(config: &Config, agent: &str, page: &str) -> Vec<(i64, PathBuf)> {
     if !safe_part(agent) || !crate::pages::ID.is_match(page) || page.ends_with('\n') {
         return Vec::new();
@@ -523,49 +530,83 @@ pub fn snapshots(config: &Config, agent: &str, page: &str) -> Vec<(i64, PathBuf)
         .flatten()
         .filter_map(|e| {
             let name = e.file_name().to_string_lossy().into_owned();
-            let version = name.strip_prefix(&prefix)?.strip_suffix(".json")?.parse::<i64>().ok()?;
-            Some((version, e.path()))
+            let n = name.strip_prefix(&prefix)?.strip_suffix(".json")?.parse::<i64>().ok()?;
+            Some((n, e.path()))
         })
         .collect();
     found.sort();
     found
 }
 
-/// The page `page` is being made again (its `version` replaced): its store as it stands, kept. Nothing when it has
-/// no data.
-pub fn snapshot(config: &Config, agent: &str, page: &str, version: i64) {
-    let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let live = path(config, agent, page);
-    let store = read_file(&live);
+/// The store as a copy compares it: its keys only (not its rev, generation or write ids).
+fn same_data(a: &Value, b: &Value) -> bool {
+    a.get("keys") == b.get("keys")
+}
+
+/// `store` kept as a new copy (the next number), unless it holds nothing or the same as the last copy. Under `LOCK`.
+fn keep_copy(config: &Config, agent: &str, page: &str, store: &Value) {
     if store.get("keys").and_then(Value::as_object).is_none_or(|k| k.is_empty()) {
         return;
     }
-    let kept = snapshot_path(config, agent, page, version);
-    if let Err(e) = write_file(&kept, &serde_json::to_string(&store).unwrap_or_default()) {
-        tracing::warn!(agent = %agent, page = %page, error = %e, "a page's store not kept before its new version");
+    let all = snapshots(config, agent, page);
+    if all.last().is_some_and(|(_, last)| same_data(&read_file(last), store)) {
         return;
     }
+    let next = all.last().map_or(1, |(n, _)| n + 1);
+    if let Err(e) = write_file(&snapshot_path(config, agent, page, next), &serde_json::to_string(store).unwrap_or_default()) {
+        tracing::warn!(agent = %agent, page = %page, error = %e, "a page's store not kept as a copy");
+        return;
+    }
+    prune_copies(config, agent, page);
+}
+
+/// Copies past what is kept removed: never the oldest, never one of the last `COPY_DAYS` (up to `COPIES_MAX`), never
+/// one of the last `SNAPSHOTS_KEPT`.
+fn prune_copies(config: &Config, agent: &str, page: &str) {
     let all = snapshots(config, agent, page);
-    for (_, old) in all.iter().take(all.len().saturating_sub(SNAPSHOTS_KEPT)) {
-        let _ = std::fs::remove_file(old);
+    let now = std::time::SystemTime::now();
+    let young = |file: &PathBuf| {
+        std::fs::metadata(file)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| now.duration_since(t).ok())
+            .is_none_or(|age| age.as_secs_f64() < COPY_DAYS * 86400.0)
+    };
+    let last = all.len().saturating_sub(SNAPSHOTS_KEPT);
+    let mut kept = all.len();
+    for (i, (_, file)) in all.iter().enumerate() {
+        let protected = i == 0 || i >= last || (young(file) && kept <= COPIES_MAX);
+        if !protected {
+            let _ = std::fs::remove_file(file);
+            kept -= 1;
+        }
+    }
+    // still too many (a page made again many times within days): the oldest but one go
+    let all = snapshots(config, agent, page);
+    for (_, file) in all.iter().skip(1).take(all.len().saturating_sub(COPIES_MAX)) {
+        let _ = std::fs::remove_file(file);
     }
 }
 
-/// A kept copy put back as the page's store (a new generation: every page open on it takes it as it is). The
-/// store it replaces is kept in its turn (as version 0's copy is not: under the page's current version).
-pub fn restore(config: &Config, agent: &str, page: &str, version: i64, current: i64) -> Result<Value, Refused> {
+/// The page `page` is being made again (`version` replaced): its store as it stands, kept as a copy.
+pub fn snapshot(config: &Config, agent: &str, page: &str, _version: i64) {
     let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let kept = snapshot_path(config, agent, page, version);
+    keep_copy(config, agent, page, &read_file(&path(config, agent, page)));
+}
+
+/// The copy `n` put back as the page's store (a new generation: every page open on it takes it as it is). The copy is
+/// read first; the store it replaces is kept as a new copy before anything is written: undoing a restore is restoring
+/// that copy, and nothing is ever lost (second review of 15/11).
+pub fn restore(config: &Config, agent: &str, page: &str, n: i64, _current: i64) -> Result<Value, Refused> {
+    let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let kept = snapshot_path(config, agent, page, n);
     if !kept.is_file() {
         return Err(Refused::new(404, "no_version", "no such copy"));
     }
+    let mut store = read_file(&kept);
     let live = path(config, agent, page);
     let now = read_file(&live);
-    if now.get("keys").and_then(Value::as_object).is_some_and(|k| !k.is_empty()) {
-        let _ =
-            write_file(&snapshot_path(config, agent, page, current), &serde_json::to_string(&now).unwrap_or_default());
-    }
-    let mut store = read_file(&kept);
+    keep_copy(config, agent, page, &now);
     store["rev"] = json!(rev_of(&now).max(rev_of(&store)) + 1);
     store["gen"] = json!(new_gen());
     write_file(&live, &serde_json::to_string(&store).unwrap_or_default())
@@ -985,6 +1026,16 @@ pub fn friend_write(
     let before = rev_of(&read(config, agent, page));
     let done = apply(config, agent, page, &op, act.as_deref(), by).map_err(refuse)?;
     Ok(done.get("rev").and_then(Value::as_i64) != Some(before))
+}
+
+/// A friend's write tried for too long (friends_cards.rs `RETRY_FOR`): refused, their page hears it.
+pub fn give_up(config: &Config, agent: &str, fields: &Map<String, Value>) {
+    let item = fields.get("page").and_then(Value::as_str).unwrap_or("");
+    let page = item.strip_prefix(&format!("p-{agent}-")).unwrap_or("");
+    let act = fields.get("a").and_then(Value::as_str).unwrap_or("");
+    if ACT_ID.is_match(act) && page_exists(config, agent, page) {
+        note_refused(&path(config, agent, page), act, "not_written");
+    }
 }
 
 /// Whether a refused friend's write may come again later (not written for a while), rather than never.

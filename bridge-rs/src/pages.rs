@@ -101,6 +101,28 @@ pub fn uses_store(source: &str) -> bool {
     USES_STORE.is_match(source)
 }
 
+/// A page that keeps what people type (its store) and builds HTML from strings: what a friend types there would run
+/// as a script in everyone's page, writing under their names (second review of 15/11). Refused whatever the model:
+/// such a page draws typed text as text (Bip.rows, Bip.set, textContent, createElement).
+static REMEMBERS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"\bBip\s*(?:\?\.|\.|\[\s*["'`])\s*store\b|\.\s*store\s*(?:\?\.|\.)\s*(?:get|set|del|list|keys|add|items|edit|drop|onChange|ready)\b|\{\s*store\b[^}]*\}\s*=\s*(?:window\s*\.\s*)?Bip\b"#)
+        .expect("valid regex")
+});
+static HTML_SINK: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\b(?:inner|outer)HTML\b|\binsertAdjacentHTML\b|\bdocument\s*(?:\.\s*|\[\s*['\x22`])writeln?\b|\bcreateContextualFragment\b|\bsrcdoc\b|\bDOMParser\b|\bsetHTMLUnsafe\b|\bparseHTMLUnsafe\b")
+        .expect("valid regex")
+});
+
+pub const TYPED_AS_HTML: &str = "No page: it keeps what people type (Bip.store) and builds HTML from strings (innerHTML, \
+outerHTML, insertAdjacentHTML, document.write…): what a friend types would run as a script in everyone's page. Draw \
+what was typed as TEXT: Bip.rows(el, items, r => [cells…]) for lines, Bip.set(el, text) or el.textContent = text for one \
+value, document.createElement for the structure; then call create_page again.";
+
+/// Why a page that remembers is refused for building HTML from strings (None: it may be kept).
+pub fn draws_typed_html(source: &str) -> Option<&'static str> {
+    (USES_STORE.is_match(source) && REMEMBERS.is_match(source) && HTML_SINK.is_match(source)).then_some(TYPED_AS_HTML)
+}
+
 /// The kit as it goes in a page's head, in the colours of the agent's kind (`daily`, `wellness`…; else the app's).
 pub fn kit(tint: Option<&str>) -> String {
     kit_with(tint, false)
@@ -334,6 +356,9 @@ pub fn save_marked(
     let html = tk::strip(html);
     if html.is_empty() {
         return Err(ValueError("the page is empty: give its whole HTML".into()).into());
+    }
+    if let Some(refused) = draws_typed_html(html) {
+        return Err(ValueError(refused.into()).into());
     }
     let size = html.len();
     if size > MAX_BYTES {

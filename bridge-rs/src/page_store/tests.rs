@@ -466,11 +466,14 @@ fn a_page_made_again_keeps_its_data_as_it_was_and_it_can_be_put_back() {
     assert!(back["rev"].as_i64().unwrap() > read_file(&snapshot_path(&config, "queens", &p, 1))["rev"].as_i64().unwrap());
     assert_eq!(snapshots(&config, "queens", &p).iter().map(|(v, _)| *v).collect::<Vec<_>>(), vec![1, 2]);
     assert_eq!(restore(&config, "queens", &p, 9, 2).unwrap_err().code, "no_version");
-    // a page without data keeps no copy; at most SNAPSHOTS_KEPT; all go with the page
+    // the page made again many times: one more copy (the store as restored), none for the same data again; the
+    // oldest, with the real amounts, always kept (second review of 15/11); a page without data keeps no copy; all go
+    // with the page
     for _ in 0..(SNAPSHOTS_KEPT + 2) {
         crate::pages::save(&config, "queens", "<p>v</p>", "Dépenses", Some(p.as_str())).unwrap();
     }
-    assert_eq!(snapshots(&config, "queens", &p).len(), SNAPSHOTS_KEPT);
+    assert_eq!(snapshots(&config, "queens", &p).iter().map(|(n, _)| *n).collect::<Vec<_>>(), vec![1, 2, 3]);
+    assert_eq!(read_file(&snapshot_path(&config, "queens", &p, 1))["keys"]["l"]["items"][0]["value"], json!({"cents": 4250}));
     let empty = page(&config, "queens", "Vide", false);
     crate::pages::save(&config, "queens", "<p>v2</p>", "Vide", Some(empty.as_str())).unwrap();
     assert!(snapshots(&config, "queens", &empty).is_empty());
@@ -479,14 +482,79 @@ fn a_page_made_again_keeps_its_data_as_it_was_and_it_can_be_put_back() {
 }
 
 #[test]
-fn a_page_no_longer_in_the_conversation_is_withdrawn_from_the_share_once() {
-    let sent: Map<String, Value> =
-        [("p-queens-gone".to_string(), json!("d1")), ("p-queens-here".to_string(), json!("d2")), ("m-1".to_string(), json!("d3"))]
-            .into_iter()
-            .collect();
-    let items = vec![("p-queens-here".to_string(), json!({})), ("m-1".to_string(), json!({}))];
-    let gone = crate::read_shares::withdrawn_pages(&sent, &items);
-    assert_eq!(gone.len(), 1);
-    assert_eq!(gone[0].0, "p-queens-gone");
-    assert_eq!(gone[0].1, json!({"id": "p-queens-gone", "kind": "page", "title": "", "html": "", "map": false, "gone": true}));
+fn a_page_beyond_what_hermes_lists_goes_on_from_disk_and_only_a_gone_one_is_withdrawn() {
+    // second review of 15/11 (R2-1): Hermes no longer listing a reply (compacted, past 500 rows) is no deletion
+    let (_dir, config, _) = setup();
+    let alive = page(&config, "queens", "Dépenses", true);
+    apply(&config, "queens", &alive, &op(json!({"op": "add", "key": "l", "id": "a", "value": "Glaces"})), None, "Léa").unwrap();
+    let sent: Map<String, Value> = [
+        (format!("p-queens-{alive}"), json!("d1")),
+        ("p-queens-supprimee".to_string(), json!("d2")),
+        ("p-queens-ici".to_string(), json!("d3")),
+        ("m-1".to_string(), json!("d4")),
+    ]
+    .into_iter()
+    .collect();
+    let items = vec![("p-queens-ici".to_string(), json!({})), ("m-1".to_string(), json!({}))];
+    let beyond: std::collections::HashMap<String, Value> =
+        crate::read_shares::pages_beyond(&config, "queens", &sent, &items, true).into_iter().collect();
+    assert_eq!(beyond.len(), 2);
+    // the live page, built again from disk, with what was typed in it
+    let rebuilt = &beyond[&format!("p-queens-{alive}")];
+    assert!(rebuilt.get("gone").is_none() && rebuilt["html"].as_str().unwrap().contains("Dépenses"));
+    assert_eq!(rebuilt["store"]["keys"]["l"]["items"][0]["value"], json!("Glaces"));
+    // the deleted one, withdrawn
+    assert_eq!(beyond["p-queens-supprimee"],
+               json!({"id": "p-queens-supprimee", "kind": "page", "title": "", "html": "", "map": false, "gone": true}));
+}
+
+#[test]
+fn a_friend_s_write_not_written_is_tried_again_later_then_given_up_without_holding_the_queue() {
+    // second review of 15/11 (point 7): a write that fails for a while (here the disk refuses) is kept by the bridge,
+    // tried again after growing waits, given up after an hour; the guichet's queue is taken meanwhile
+    use std::os::unix::fs::PermissionsExt;
+    let (_dir, config, _) = setup();
+    let p = page(&config, "queens", "Dépenses", true);
+    let item = format!("p-queens-{p}");
+    let share = json!({"id": "sh1", "agent": "queens", "sent": {item.clone(): "d"}});
+    let fields = body(json!({"s": "sh1", "e": 1, "kind": "store", "page": item, "a": "late-1",
+                             "op": "add", "key": "l", "id": "x", "value": "Glaces"}));
+    let folder = crate::pages::root(&config).join("queens");
+    std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let failed = friend_write(&config, "queens", share["sent"].as_object().unwrap(), &fields, "Léa").unwrap_err();
+    assert!(retry_later(&failed), "{failed:?}");
+    let t0 = py::time_time();
+    crate::friends_cards::update(&config, |data| {
+        data["retry"]["sh1"] = json!([{"fields": fields, "by": "Léa", "first": t0, "tries": 1,
+                                       "next": t0 + crate::friends_cards::retry_wait(1)}]);
+    })
+    .unwrap();
+    let waiting = |config: &Config| {
+        let data: Value = serde_json::from_str(&std::fs::read_to_string(PathBuf::from(config.data_dir()).join("friends-cards.json")).unwrap()).unwrap();
+        data["retry"].get("sh1").and_then(Value::as_array).cloned().unwrap_or_default()
+    };
+    // not due yet: nothing tried; due, still failing: kept, waiting longer
+    assert!(!crate::friends_cards::retry_writes(&config, "sh1", "queens", &share, t0 + 10.0));
+    assert_eq!(waiting(&config)[0]["tries"], json!(1));
+    crate::friends_cards::retry_writes(&config, "sh1", "queens", &share, t0 + 31.0);
+    assert_eq!(waiting(&config)[0]["tries"], json!(2));
+    assert!(waiting(&config)[0]["next"].as_f64().unwrap() >= t0 + 31.0 + 60.0);
+    // the disk back: applied at its next try, nothing left waiting
+    std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(crate::friends_cards::retry_writes(&config, "sh1", "queens", &share, t0 + 200.0));
+    assert!(waiting(&config).is_empty());
+    assert_eq!(read(&config, "queens", &p)["keys"]["l"]["items"][0]["by"], json!("Léa"));
+    // one failing past an hour: given up (not kept any more)
+    let mut late = fields.clone();
+    late.insert("a".into(), json!("late-2"));
+    std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o555)).unwrap();
+    crate::friends_cards::update(&config, |data| {
+        data["retry"]["sh1"] = json!([{"fields": late, "by": "Léa", "first": t0, "tries": 6, "next": t0}]);
+    })
+    .unwrap();
+    crate::friends_cards::retry_writes(&config, "sh1", "queens", &share, t0 + crate::friends_cards::RETRY_FOR + 1.0);
+    std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(waiting(&config).is_empty());
+    assert_eq!((crate::friends_cards::retry_wait(1), crate::friends_cards::retry_wait(2), crate::friends_cards::retry_wait(20)),
+               (30.0, 60.0, 900.0));
 }

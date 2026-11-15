@@ -29,8 +29,7 @@ FILES_ROOT = "/home/hermes/.hermes/fichiers"
 MEMORY_PAGE = ('<h1>Courses</h1><p class="sub">Ce que tu tapes ici est gardé</p>'
                '<div class="card"><input id="w" aria-label="Article" placeholder="Article"> '
                '<button id="go">Ajouter</button></div><ul id="l" class="check"></ul>'
-               '<script>function draw(){document.getElementById("l").innerHTML=Bip.store.items("courses")'
-               '.map(function(r){return "<li>"+Bip.esc(r.value)+"</li>"}).join("")}'
+               '<script>function draw(){Bip.rows("#l",Bip.store.items("courses"),function(r){return [r.value]})}'
                'Bip.store.onChange(draw);document.getElementById("go").onclick=function(){'
                'var w=document.getElementById("w");if(w.value){Bip.store.add("courses",w.value);w.value=""}}</script>')
 
