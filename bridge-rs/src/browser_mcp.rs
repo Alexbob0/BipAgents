@@ -831,7 +831,9 @@ pub fn own_refusal(response: &Dict) -> bool {
         .and_then(Value::as_str)
         .unwrap_or("");
     [PASSWORD_REFUSED, SCRIPT_PASSWORD_REFUSED, SCRIPT_SENDS_REFUSED, PASSWORD_SHOWN, TERMS_REFUSED, RESCUE_REFUSED,
-     crate::credit::BROWSER_REFUSED, CARD_REFUSED, SCRIPT_CARD_REFUSED, PROVIDER_SCRIPT_REFUSED]
+     crate::credit::BROWSER_REFUSED, CARD_REFUSED, SCRIPT_CARD_REFUSED, PROVIDER_SCRIPT_REFUSED,
+     // the hotfix's (15/11): what a script may do, said to the agent, not a step the page failed
+     SCRIPT_CHANGES_PAGE_REFUSED, SCRIPT_UNCHECKED_REFUSED, SCRIPT_STORAGE_REFUSED, SCRIPT_ON_CARDS_REFUSED]
         .contains(&text)
 }
 
