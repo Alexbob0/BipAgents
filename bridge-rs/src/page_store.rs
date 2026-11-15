@@ -668,7 +668,8 @@ async fn post_store(State(state): State<AppState>, body: Bytes) -> ApiResult<Res
 }
 
 /// Agents whose project share is to be synced after a write in one of their pages (`after_write`).
-static SYNC_PENDING: LazyLock<Mutex<std::collections::HashSet<String>>> = LazyLock::new(|| Mutex::new(Default::default()));
+static SYNC_PENDING: LazyLock<Mutex<std::collections::HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(Default::default()));
 /// The writes of a few seconds go to the friends together (someone typing several lines).
 const SYNC_AFTER: std::time::Duration = std::time::Duration::from_secs(2);
 
