@@ -128,7 +128,7 @@ def journey_bridge(bridges, fakes, word_gap: float = 0.06, name: str = "journeys
     bridge.config["lan"] = {"enabled": True, "address": "127.0.0.1", "host": "127.0.0.1", "port": door}
     bridge.config["public_url"] = f"https://127.0.0.1:{door}"
     agent["public_url"] = f"https://127.0.0.1:{door}/hermes/{AGENT}"   # an agent without one is not listed to a phone
-    if family_relay:   # J57: Kerfy Studio's relay, for a home's invitation (bbkit/kerfy_relay.py)
+    if family_relay:   # J58: Kerfy Studio's relay, for a home's invitation (bbkit/kerfy_relay.py)
         bridge.config["family"] = {"relay_url": family_relay}
     started(bridge, hub, [AGENT])
     token = TOKENS[AGENT]

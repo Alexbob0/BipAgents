@@ -15,7 +15,7 @@ with the family's agent « Maison » (J54). Writes:
      "relay_family": {"invitation": "<Léo's QR code>", "name": "Léo"}}
 
 (`other_said`: Paul's message, already in the family's common conversation when the apps open it, from « Paul »:
-family_thread.rs. `relay_family`, J57: Léo's home, an address nobody reaches, and its invitation with its mailbox at
+family_thread.rs. `relay_family`, J58: Léo's home, an address nobody reaches, and its invitation with its mailbox at
 Kerfy Studio's relay, the real binary served beside them: the app scans it, the journeys' bridge links through the relay.)
 
 then serves until `JOURNEYS_OUT + ".done"` appears (or `JOURNEYS_MINUTES`, default 60). A friend's journey makes its own
@@ -111,7 +111,7 @@ def family_files(bridges, fakes, journey, marie):
 
 
 def relay_home(bridges, fakes, relay):
-    """J57: Léo's home (no address anyone reaches) and its invitation, its mailbox at Kerfy Studio's relay in it."""
+    """J58: Léo's home (no address anyone reaches) and its invitation, its mailbox at Kerfy Studio's relay in it."""
     def change(c):
         c["agents"] = {"Atelier": {"hermes_url": f"{fakes.hermes.url}/p/atelier", "hermes_key": "atelier-key-" + "x" * 24}}
         c["family"] = {"relay_url": relay.url}

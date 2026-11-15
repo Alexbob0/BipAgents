@@ -292,8 +292,8 @@ def test_j38_agents_of_two_households_write_to_each_other(homes, fakes):
         "the exchange landed in Marie's own conversation with Coach"
 
 
-def test_j57_a_homes_invitation_links_through_the_relay(bridges, fakes, tmp_path):
-    """J57: a home (Léo, an address nobody reaches) shows its invitation; another household's app scans it and the two
+def test_j58_a_homes_invitation_links_through_the_relay(bridges, fakes, tmp_path):
+    """J58: a home (Léo, an address nobody reaches) shows its invitation; another household's app scans it and the two
     link through Kerfy Studio's relay (the real binary): what the apps send (the QR code's fields, its mailbox `relay`
     among them), what Réglages › Famille then lists (« Léo » among « Proches reliés », its agents in « Qui peut écrire
     à qui »). test_family_relay_anywhere.py has the rest (two homes both ways, the relay off, a relay misbehaving)."""
