@@ -343,7 +343,7 @@ pub fn apply_to(store: &mut Value, op: &Op, by: &str, at: f64) -> Result<bool, R
             items.push(json!({"id": id, "value": value, "by": by, "at": at}));
             stamp(entry);
         }
-        Op::Edit { key, id, value } | Op::Drop { key, id } => {
+        Op::Edit { key, id, .. } | Op::Drop { key, id } => {
             let Some(entry) = keys.get_mut(key).and_then(Value::as_object_mut) else {
                 return Err(Refused::new(404, "no_line", format!("{key}: no such line")));
             };

@@ -112,7 +112,7 @@ fn a_write_sent_twice_counts_once_and_the_ids_are_bounded() {
     apply(&config, "queens", &p, &add, None, "Léa").unwrap();
     assert_eq!(read(&config, "queens", &p)["keys"]["lignes"]["items"].as_array().unwrap().len(), 1);
     for n in 0..(ACTS_KEPT + 20) {
-        apply(&config, "queens", &p, &op(json!({"op": "set", "key": "n", "value": n})), Some(&format!("act-{n}")), "").unwrap();
+        apply(&config, "queens", &p, &op(json!({"op": "set", "key": "n", "value": n})), Some(format!("act-{n}").as_str()), "").unwrap();
     }
     let acts = read(&config, "queens", &p)["acts"].as_array().unwrap().clone();
     assert_eq!(acts.len(), ACTS_KEPT);
@@ -199,7 +199,7 @@ fn writes_are_whole_private_and_never_lost_when_many_come_at_once() {
             std::thread::spawn(move || {
                 for n in 0..12 {
                     let add = op(json!({"op": "add", "key": "lignes", "id": format!("t{t}-{n}"), "value": n}));
-                    apply(&config, "queens", &p, &add, Some(&format!("a{t}-{n}")), &format!("P{t}")).unwrap();
+                    apply(&config, "queens", &p, &add, Some(format!("a{t}-{n}").as_str()), &format!("P{t}")).unwrap();
                 }
             })
         })
@@ -232,7 +232,7 @@ fn a_store_goes_with_its_page_and_stays_across_its_versions() {
     let p = page(&config, "queens", "Dépenses", false);
     apply(&config, "queens", &p, &op(json!({"op": "set", "key": "k", "value": 1})), None, "").unwrap();
     // a new version of the page (same id): its data stays
-    crate::pages::save(&config, "queens", "<h1>Dépenses v2</h1>", "Dépenses", Some(&p)).unwrap();
+    crate::pages::save(&config, "queens", "<h1>Dépenses v2</h1>", "Dépenses", Some(p.as_str())).unwrap();
     assert_eq!(read(&config, "queens", &p)["keys"]["k"]["value"], json!(1));
     // the page deleted: its store too, and a new page of that id starts empty
     assert!(crate::pages::delete(&config, "queens", &p));
@@ -318,7 +318,8 @@ fn a_friend_writes_only_a_shared_group_page_of_this_share() {
     };
     let add = json!({"op": "add", "key": "lignes", "id": "f1", "value": {"what": "Glaces", "eur": 9}});
     assert_eq!(friend_write(&config, "queens", &sent, &action(&item, add.clone()), "Léa"), Ok(true));
-    let line = &read(&config, "queens", &shared)["keys"]["lignes"]["items"][0];
+    let stored = read(&config, "queens", &shared);
+    let line = &stored["keys"]["lignes"]["items"][0];
     assert_eq!((line["id"].clone(), line["by"].clone()), (json!("f1"), json!("Léa")));
     // the same action again: nothing more
     assert_eq!(friend_write(&config, "queens", &sent, &action(&item, add.clone()), "Léa"), Ok(false));
