@@ -123,7 +123,7 @@
    {
     "title": "Installing and troubleshooting",
     "text": [
-     "The install guide, the commands and answers to common problems are on <a href=\"https://github.com/Alexbob0/BipAgents\">GitHub</a>.",
+     "The install guide, the commands and answers to common problems are on <a href=\"https://github.com/BipAgents/BipAgents\">GitHub</a>.",
      "If in doubt, write to us with the command’s output: we’ll look at it with you."
     ]
    },
