@@ -16,7 +16,8 @@ Add `--dry-run` to see every step and command without changing anything.
 2. **Asks where the model runs** — usually *not* on this machine:
    - another machine of your network (a PC with a GPU, a Spark, a Mac): it finds the OpenAI-compatible servers by
      itself (Ollama, LM Studio, vLLM, llama.cpp…) and lists their models;
-   - a cloud API (OpenRouter, OpenAI, Anthropic, Mistral) with your key;
+   - a cloud API with your key: EUrouter (European, recommended; a short list of the models that work well with
+     BipAgents, GLM-5.3 Flash by default, as on the all-included offer), OpenRouter, OpenAI, Anthropic or Mistral;
    - this machine, when it has the room.
 
    It checks that the model answers, and whether it reads images (photos are then sent to it as they are).

@@ -11,14 +11,15 @@ in place. Rather not look after a server at all? That is Kerfy Studio's all-incl
 
 - **Your provider has access to the server's disk.** Conversations, the agents' memory and the vault are there (the
   vault is encrypted, but its key is on the same disk). Pick a provider you trust, in Europe if you prefer the GDPR.
-- **The model** does not run there (no GPU): it is **in the cloud** (OpenRouter, Mistral, OpenAI, Anthropic), or on
-  **a PC at home** reached through Tailscale (the installer then asks for its address on your tailnet). In the cloud,
-  each message goes to the model's provider to be answered: with OpenRouter, pick providers that keep nothing in its
-  privacy settings (zero data retention).
+- **The model** does not run there (no GPU): it is **in the cloud** (EUrouter, European and recommended, or
+  OpenRouter, Mistral, OpenAI, Anthropic), or on **a PC at home** reached through Tailscale (the installer then asks
+  for its address on your tailnet). In the cloud, each message goes to the model's provider to be answered: with
+  EUrouter, every call asks for no training on it and zero retention, as on the all-included offer; with OpenRouter,
+  pick providers that keep nothing in its privacy settings (zero data retention).
 - **Notifications** go through Kerfy Studio's [push relay](../relay/README.md), which never sees their text: it is
   sealed for your phone.
 - **Cost**: the server, from ≈ €8 a month (2 vCPU, 4 GB) to ≈ €15 (4 vCPU, 8 GB, with the visible browsers); the
-  model, paid as you use it at OpenRouter. The
+  model, paid as you use it at its provider (EUrouter, OpenRouter…). The
   Bips' voices run on the server's CPU, at no extra cost.
 
 ## 1. Pick the server

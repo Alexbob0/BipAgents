@@ -1,0 +1,15 @@
+{
+  "_about": "Which providers EUrouter tries first for a model (model_route.rs order_for, routing, privacy). Shared by the bridge's test (model_route.rs the_shared_cases_hold) and the installer's (installer/tests/test_routing.py), whose routing.py copies the rule for the hub's config and the model check: change the three together.",
+  "place_order": ["entrim", "greenpt", "inceptron"],
+  "privacy": {"data_collection": "deny", "max_retention_days": 0},
+  "cases": [
+    {"model": "glm-5.3-flash", "order": ["entrim", "greenpt", "inceptron"]},
+    {"model": "deepseek/deepseek-v4.1-flash", "order": ["greenpt"]},
+    {"model": "DeepSeek-V4", "order": ["greenpt"]},
+    {"model": "deepseek-v4-flash-0731", "order": ["greenpt"]},
+    {"model": "my-org/DeepSeek-V4.1-Flash", "order": ["greenpt"]},
+    {"model": "minimax-m3", "order": ["entrim", "greenpt", "inceptron"]},
+    {"model": "", "order": ["entrim", "greenpt", "inceptron"]}
+  ],
+  "pinning_off": ["glm-5.3-flash", "deepseek/deepseek-v4.1-flash"]
+}

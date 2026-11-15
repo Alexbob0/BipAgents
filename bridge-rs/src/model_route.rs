@@ -209,6 +209,30 @@ mod tests {
         assert!(routed.contains("- greenpt\n") && !routed.contains("entrim"), "{routed}");
     }
 
+    /// The cases the installer's copy of this rule is tested on too (installer/bipinstall/routing.py writes the hub's
+    /// routing and routes its model check; installer/tests/test_routing.py): the place's order, the privacy settings,
+    /// a model's order, pinned or not. A change here is a change there.
+    #[test]
+    fn the_shared_cases_hold() {
+        let golden: Value = serde_json::from_str(include_str!("../tests/golden/model_orders.json")).unwrap();
+        let place: Vec<String> = serde_json::from_value(golden["place_order"].clone()).unwrap();
+        assert_eq!(place, order());
+        assert_eq!(golden["privacy"], privacy());
+        let eu = "https://api.eurouter.ai/api/v1";
+        let cases = golden["cases"].as_array().unwrap();
+        assert!(cases.len() >= 5);
+        for case in cases {
+            let model = case["model"].as_str().unwrap();
+            assert_eq!(json!(order_for(&place, model)), case["order"], "{model}");
+            let mut want = json!({"order": case["order"], "allow_fallbacks": true});
+            want.as_object_mut().unwrap().extend(privacy().as_object().unwrap().clone());
+            assert_eq!(routing(&place, eu, model), Some(want), "{model}");
+        }
+        for model in golden["pinning_off"].as_array().unwrap() {
+            assert_eq!(routing(&[], eu, model.as_str().unwrap()), Some(privacy()));
+        }
+    }
+
     /// GLM through EUrouter thinks at « low » (agents_admin::keeps_thinking_on).
     const LOW: &str = "agent:\n  reasoning_effort: low\n";
     /// Pinning off: the router's entry with the privacy settings alone.
