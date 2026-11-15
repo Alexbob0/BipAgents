@@ -109,7 +109,7 @@ static REMEMBERS: LazyLock<Regex> = LazyLock::new(|| {
         .expect("valid regex")
 });
 static HTML_SINK: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(?:inner|outer)HTML\b|\binsertAdjacentHTML\b|\bdocument\s*(?:\.\s*|\[\s*['\x22`])writeln?\b|\bcreateContextualFragment\b|\bsrcdoc\b|\bDOMParser\b|\bsetHTMLUnsafe\b|\bparseHTMLUnsafe\b")
+    Regex::new(r"(?i)\b(?:inner|outer)HTML\b|\binsertAdjacentHTML\b|\bdocument\s*(?:\.\s*|\[\s*['\x22`])write(?:ln)?\b|\bcreateContextualFragment\b|\bsrcdoc\b|\bDOMParser\b|\bsetHTMLUnsafe\b|\bparseHTMLUnsafe\b")
         .expect("valid regex")
 });
 
