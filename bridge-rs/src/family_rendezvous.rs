@@ -319,8 +319,13 @@ async fn send(
         .map_err(|_| CallFailure::RelayDown)?;
     match resp.status().as_u16() {
         200 => {}
-        503 | 504 => return Err(CallFailure::Away),
+        // their bridge not connected or not taking it, the relay busy or over a quota: a household not answering
+        503 | 504 | 429 => return Err(CallFailure::Away),
         502 => return Err(CallFailure::RelayDown),
+        401 | 403 => {
+            tracing::warn!("family relay: our mailbox is refused by the relay (blocked, or sealed with keys it dropped)");
+            return Err(CallFailure::RelayDown);
+        }
         status => {
             tracing::info!(status, "family relay: call refused by the relay");
             return Err(CallFailure::Broken);
