@@ -940,6 +940,9 @@ async fn create(State(state): State<AppState>, body: Bytes) -> ApiResult<Respons
 async fn invite(State(state): State<AppState>, UrlPath(id): UrlPath<String>, body: Bytes) -> ApiResult<Response> {
     let body = body_of(&body)?;
     let config = state.config();
+    // not while a sync goes on: it read the share before, and would write it back without this invitation (seen on
+    // 15/11 with page_store.rs, whose writes in a shared page sync the share at once)
+    let _one = SYNCING.lock().await;
     let mut share = known(&config, &id)?;
     let name = text_field(&body, "name", 40)?;
     let (status, made) = guichet(
@@ -971,20 +974,24 @@ async fn cancel_invite(
     UrlPath((id, hash)): UrlPath<(String, String)>,
 ) -> ApiResult<Response> {
     let config = state.config();
-    let mut share = known(&config, &id)?;
     if !(hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit())) {
         return Err(HttpError::new(422, "an invitation"));
     }
-    let (status, body) = guichet(&state, &share, reqwest::Method::DELETE, &format!("/invites/{hash}"), None)
-        .await
-        .map_err(|e| HttpError::new(502, e))?;
-    if status != 200 {
-        return Err(refused(status, &body));
+    {
+        // not while a sync goes on (`invite`)
+        let _one = SYNCING.lock().await;
+        let mut share = known(&config, &id)?;
+        let (status, body) = guichet(&state, &share, reqwest::Method::DELETE, &format!("/invites/{hash}"), None)
+            .await
+            .map_err(|e| HttpError::new(502, e))?;
+        if status != 200 {
+            return Err(refused(status, &body));
+        }
+        if let Some(all) = share["invites"].as_object_mut() {
+            all.remove(&hash);
+        }
+        put_share(&config, &id, Some(share)).map_err(|e| HttpError::new(500, e.to_string()))?;
     }
-    if let Some(all) = share["invites"].as_object_mut() {
-        all.remove(&hash);
-    }
-    put_share(&config, &id, Some(share)).map_err(|e| HttpError::new(500, e.to_string()))?;
     after(&state, &id).await
 }
 

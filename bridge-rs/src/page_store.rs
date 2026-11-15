@@ -667,12 +667,27 @@ async fn post_store(State(state): State<AppState>, body: Bytes) -> ApiResult<Res
     Ok(web::ok(done))
 }
 
-/// A store changed: the friends of a shared conversation where the page is get it at once (not at the share's next
-/// round).
+/// Agents whose project share is to be synced after a write in one of their pages (`after_write`).
+static SYNC_PENDING: LazyLock<Mutex<std::collections::HashSet<String>>> = LazyLock::new(|| Mutex::new(Default::default()));
+/// The writes of a few seconds go to the friends together (someone typing several lines).
+const SYNC_AFTER: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// A store changed: the friends of a project where the page is shared get it within seconds (not at the share's
+/// next round), one sync for the writes of `SYNC_AFTER`.
 fn after_write(state: &AppState, config: &Config, agent: &str, page: &str) {
-    if group_page(config, agent, page) {
-        crate::friends_cards::sync_soon(state, config, agent);
+    if !group_page(config, agent, page) || crate::read_shares::thread_share(config, agent).is_none() {
+        return;
     }
+    if !SYNC_PENDING.lock().unwrap_or_else(|e| e.into_inner()).insert(agent.to_string()) {
+        return; // one already planned
+    }
+    let (state2, agent) = (state.clone(), agent.to_string());
+    state.spawn(async move {
+        tokio::time::sleep(SYNC_AFTER).await;
+        SYNC_PENDING.lock().unwrap_or_else(|e| e.into_inner()).remove(&agent);
+        let config = state2.config();
+        crate::friends_cards::sync_soon(&state2, &config, &agent);
+    });
 }
 
 pub fn router() -> Router<AppState> {
