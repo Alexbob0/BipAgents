@@ -321,7 +321,9 @@ fn media_item(config: &Config, agent: &str, path: &str, writable: bool) -> Optio
         }
         let title = meta.get("title").and_then(Value::as_str).unwrap_or(page).to_string();
         let id = format!("p-{agent}-{page}");
-        let map = html.contains("bipmap:");
+        // a map page: one with a map card's data (`.map-data`, maps.rs), what the apps draw a map from. Not
+        // `bipmap:`: every kept page carries the kit, which names it (J57, 15/11: every shared page was a « map »)
+        let map = html.contains("class=\"map-data\"");
         let mut item = json!({"id": id, "kind": "page", "title": title, "html": html, "map": map});
         // what people typed in it, seen by everyone who sees it (and written back by the friends, as their votes)
         if let Some((store, write)) = crate::page_store::for_friends(config, agent, page, writable) {
@@ -1220,6 +1222,31 @@ mod tests {
         let listed = items_of(&config, &share, std::slice::from_ref(&message));
         assert_eq!(listed[1].1["media"], json!([items[0].0]));
         assert_eq!(listed[1].1["text"], "Regarde");
+    }
+
+    #[test]
+    fn only_a_page_with_a_map_card_is_shared_as_a_map_page() {
+        // Every kept page carries the kit, and the kit names `bipmap:` (its live maps): that is not a map page. The
+        // apps take a `map` page for one with places (Android: the map icon and tiles; the checks: a map card).
+        let dir = std::env::temp_dir().join(format!("rshare-map-{}", std::process::id()));
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.join("outbox.db").to_string_lossy().into_owned();
+        let folder = crate::pages::root(&config).join("bip");
+        std::fs::create_dir_all(&folder).unwrap();
+        let source = "<h1>Courses</h1><ul id=\"l\"></ul><script>Bip.store.ready</script>";
+        let (plain, _) = crate::pages::lock(source, "Courses");
+        assert!(plain.contains("bipmap:"), "the kit is in the kept page");
+        std::fs::write(folder.join("courses.html"), &plain).unwrap();
+        let card = crate::maps::figure_of(&json!({"id": "m-0123456789", "type": "map", "points": [
+            {"name": "Belém", "lat": 38.6916, "lon": -9.2160, "x": 10, "y": 20}]}));
+        let (with_map, _) = crate::pages::lock(&format!("<h1>Lisbonne</h1>{card}"), "Lisbonne");
+        std::fs::write(folder.join("lisbonne.html"), &with_map).unwrap();
+        let path = |page: &str| format!("{}/bip/{page}.html", crate::pages::PREFIX);
+        let (_, courses) = media_item(&config, "bip", &path("courses"), false).unwrap();
+        assert_eq!(courses["map"], json!(false), "a page without a map card");
+        let (_, lisbonne) = media_item(&config, "bip", &path("lisbonne"), false).unwrap();
+        assert_eq!(lisbonne["map"], json!(true), "a page with a map card");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
