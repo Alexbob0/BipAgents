@@ -63,7 +63,7 @@ import urllib.request
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
-from . import bridgeconf, hermes, release_key
+from . import bridgeconf, hermes, public_repo, release_key
 
 REPO = Path(__file__).resolve().parents[2]
 PATCHES = REPO / "hermes" / "patches"
@@ -78,7 +78,7 @@ LAUNCHERS = ("hermes", "hermes-acp")
 OWN_COPY = ("hermes-agent", "tools", "installs", "cache/uv")
 OWN_CACHES = (".npm/_cacache",)
 PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-SLUG = "Alexbob0/BipAgents"
+SLUG = public_repo.SLUG
 RELEASES = f"https://github.com/{SLUG}/releases/download"
 SUMS = "SHA256SUMS"
 ZSTD_LEVEL = "-15"   # the pack: several times smaller than the tree, unpacked in seconds whatever the level

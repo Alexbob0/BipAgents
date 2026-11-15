@@ -32,6 +32,15 @@ if [ -n "$version" ]; then
     [ "${#version}" -eq 40 ] || { echo "add-seat.sh: a version is a commit's 40 characters" >&2; exit 2; }
     pin="BIPAGENTS_TO=$version "
 fi
+# The public repository that version lives in, when the guichet says it (its switch to the BipAgents organisation's
+# repository, and back): one of these only, as the seat agent's KNOWN_REPOS.
+repo=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("repo") or "")' "$setup") || exit 1
+case "$repo" in
+    "") ;;
+    https://github.com/Alexbob0/BipAgents.git|https://github.com/BipAgents/BipAgents.git)  # known-public-repos
+        [ -n "$version" ] && pin="${pin}BIPAGENTS_TO_REPO=$repo " ;;
+    *) echo "add-seat.sh: $repo is not one of BipAgents' public repositories" >&2; exit 2 ;;
+esac
 here=$(dirname "$0")
 # A place to be encrypted at rest (its setup carries "keys"): the server hardened first, as root (swap emptied and
 # encrypted, no core dumps, the journal in memory; done once, space-hardening.sh beside this script). If that fails,
@@ -64,9 +73,16 @@ systemctl start "user@$(id -u "$user").service"
 # there already: nothing to fetch). Its install then points at them instead of fetching its own. Each phase's time
 # goes to /var/log/bipagents-timeline.log.
 echo "$(date -u +%FT%TZ) place $n shared start" >> /var/log/bipagents-timeline.log
-[ -f "$here/seat-agent.py" ] && python3 "$here/seat-agent.py" --prepare "${version:-main}" >/dev/null 2>&1
+[ -f "$here/seat-agent.py" ] && python3 "$here/seat-agent.py" --prepare "${version:-main}" $repo >/dev/null 2>&1
 echo "$(date -u +%FT%TZ) place $n install start" >> /var/log/bipagents-timeline.log
-sudo -iu "$user" bash -c "curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | ${pin}bash -s -- --cloud $setup" \
+# install.sh of the version it installs, when the guichet pins one (review R10: the branch's tip may be a pre-test's)
+installer=https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh
+if [ -n "$version" ]; then
+    slug=${repo:-https://github.com/Alexbob0/BipAgents.git}
+    slug=${slug#https://github.com/}
+    installer="https://raw.githubusercontent.com/${slug%.git}/$version/install.sh"
+fi
+sudo -iu "$user" bash -c "curl -fsSL $installer | ${pin}bash -s -- --cloud $setup" \
     > "/var/log/bipagents-install$n.log" 2>&1
 echo "$(date -u +%FT%TZ) place $n install done" >> /var/log/bipagents-timeline.log
 # The installer kept the secret for the bridge (deleted once the app has paired); this copy goes.

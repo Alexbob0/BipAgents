@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
-from . import bridgeconf, hermes, ui, volumes
+from . import bridgeconf, hermes, public_repo, ui, volumes
 from .sealed import SealedError, SealedReader, SealedWriter, new_passphrase
 
 REPO = Path(__file__).resolve().parents[2]
@@ -960,8 +960,8 @@ def export_main(argv: List[str]) -> int:
         if name:
             say(f"  2. For your phones to need nothing: in Tailscale's admin, rename this machine ({name}-old) and name "
                 f"the new one {name}.")
-        say(f"  3. On it: curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash -s -- "
-            f"import {out.name}")
+        say(f"  3. On it: curl -fsSL https://raw.githubusercontent.com/{public_repo.SLUG}/{public_repo.BRANCH}/install.sh "
+            f"| bash -s -- import {out.name}")
         say("This install is stopped here; `bipagents resume` starts it again if you change your mind.")
     else:
         say("Keep the file and its passphrase apart. It holds your agents' keys: whoever has both can run them.")

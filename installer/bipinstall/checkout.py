@@ -7,7 +7,10 @@ that way, without the voice states (`narrow` adds them for Pocket's own models: 
 
 `git pull --ff-only` keeps working (new commits come with the contents of the files checked out only), and a
 rewritten public history is taken as it is by install.sh's resync (`fetch --depth 1` then `checkout -B main`).
-Contents left out are fetched from GitHub when something asks for them (`git show <commit>:<path>`)."""
+Contents left out are fetched from GitHub when something asks for them (`git show <commit>:<path>`).
+
+The local branch is always `main`; the branch of the public repository it follows (its channel: stable, pre-test, or
+main on the first repository) is its upstream, which install.sh sets (`followed`)."""
 from __future__ import annotations
 
 import re
@@ -15,10 +18,10 @@ import subprocess
 from pathlib import Path
 from typing import List, Optional
 
-from . import hermes
+from . import hermes, public_repo
 
-# The public repository (https or ssh), not the private ones next to it (bipagents-private, -guichet).
-PUBLIC = re.compile(r"github\.com[/:]Alexbob0/BipAgents(\.git)?/?$")
+# The public repositories (https or ssh), not the private ones next to them (bipagents-private, -guichet).
+PUBLIC = re.compile(r"github\.com[/:](%s)(\.git)?/?$" % "|".join(re.escape(slug) for slug in public_repo.KNOWN))
 # What every install checks out (gitignore syntax, non-cone): all but the apps, the site and the recordings.
 # install.sh writes the same list, with VOICE_STATES.
 BASE = ["/*", "!/App/", "!/android/", "!/site/", "!/voices/**/*.wav"]
@@ -47,6 +50,12 @@ def is_install_clone(repo: Path) -> bool:
     return ahead.returncode != 0 or ahead.stdout.strip() in ("", "0")
 
 
+def followed(repo: Path) -> str:
+    """The branch of its origin this checkout follows (install.sh: follow), main by default."""
+    merge = git(repo, "config", "branch.main.merge").stdout.strip()
+    return merge[len("refs/heads/"):] if merge.startswith("refs/heads/") else public_repo.FALLBACK
+
+
 def is_sparse(repo: Path) -> bool:
     return git(repo, "config", "--bool", "core.sparseCheckout").stdout.strip() == "true"
 
@@ -73,6 +82,7 @@ def lighten(repo: Path, runner: hermes.Runner, voice_states: bool) -> Optional[s
         return f"{repo} kept as it is: files changed by hand"
     url = git(repo, "remote", "get-url", "origin").stdout.strip()
     head = git(repo, "rev-parse", "HEAD").stdout.strip()
+    branch = followed(repo)
     before = 0 if runner.dry else size(repo)
     new, old = repo.with_name(repo.name + ".light"), repo.with_name(repo.name + ".full")
     g = ["git", "-C", str(new)]
@@ -80,11 +90,14 @@ def lighten(repo: Path, runner: hermes.Runner, voice_states: bool) -> Optional[s
     if not runner.dry:
         shutil.rmtree(new, ignore_errors=True)
     try:
-        runner.run(["git", "clone", "--quiet", "--depth", "1", "--filter=blob:none", "--no-checkout", url, str(new)])
+        runner.run(["git", "clone", "--quiet", "--depth", "1", "--filter=blob:none", "--no-checkout", "-b", branch, url,
+                    str(new)])
         runner.run(g + ["sparse-checkout", "set", "--no-cone", *patterns(voice_states)])
-        runner.run(g + ["fetch", "--quiet", "--depth", "1", "origin", head or "main"])
+        runner.run(g + ["fetch", "--quiet", "--depth", "1", "origin", head or branch])
         runner.run(g + ["checkout", "--quiet", "-B", "main", "FETCH_HEAD"])
-        runner.run(g + ["branch", "--quiet", "--set-upstream-to", "origin/main", "main"], check=False)
+        runner.run(g + ["branch", "--quiet", "--set-upstream-to", f"origin/{branch}", "main"], check=False)
+        if branch != "main":
+            runner.run(g + ["branch", "--quiet", "-D", branch], check=False)
     except RuntimeError as exc:
         if not runner.dry:
             shutil.rmtree(new, ignore_errors=True)
