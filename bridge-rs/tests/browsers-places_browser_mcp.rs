@@ -1045,11 +1045,14 @@ async fn the_agent_never_types_a_password_nor_ticks_the_terms() {
             json!({"instance_id": "i", "script": "document.getElementById('cgu').checked = true"}),
         ))
         .await;
-    assert_eq!(text_of(&last(&out)), browser_mcp::TERMS_UNDONE, "ticked by the script, unticked after it");
+    // a script that ticks: never run (hotfix v2: only a read V8 proves runs, and this proxy has no DevTools)
+    assert_eq!(text_of(&last(&out)), browser_mcp::SCRIPT_UNCHECKED_REFUSED, "a script that writes is never run");
+    assert!(!calls(tmp).iter().any(|c| c["arguments"]["script"].as_str().is_some_and(|s| s.contains(".checked = true"))));
     proxy.handle(tool(9, "click_element", json!({"instance_id": "i", "selector": "#newsletter"}))).await;
     assert_eq!(text_of(&last(&out)), "did click_element");
     assert_eq!(typed(tmp), ["type_text #lastname", "press_key #register-password", "click_element #newsletter"]);
-    // a script sent under another tool's name runs as a script (DeepSeek on the lab, 13/11)
+    // a script sent under another tool's name is a script (DeepSeek on the lab, 13/11): checked as one, never given to
+    // the real server (hotfix v2: only V8's proof of a read runs it; this proxy has no DevTools)
     proxy
         .handle(tool(
             10,
@@ -1057,12 +1060,8 @@ async fn the_agent_never_types_a_password_nor_ticks_the_terms() {
             json!({"instance_id": "i", "script": "return document.title", "full_page": true}),
         ))
         .await;
-    let sent: Vec<Value> = calls(tmp).into_iter().filter(|c| c["name"] == "execute_script").collect();
-    assert!(sent.contains(
-        &json!({"name": "execute_script", "arguments": {"instance_id": "i", "script": "return document.title"}})
-    ));
-    // its answer fits take_screenshot's schema: Hermes' client checks the one of the tool it called (review 13/11)
-    assert_eq!(last(&out)["result"]["structuredContent"], json!({"result": "did execute_script"}));
+    assert_eq!(text_of(&last(&out)), browser_mcp::SCRIPT_UNCHECKED_REFUSED);
+    assert!(!calls(tmp).iter().any(|c| c["name"] == "execute_script" && c["arguments"]["script"] == "return document.title"));
     proxy.stop_child().await;
 }
 
@@ -1098,11 +1097,12 @@ async fn what_slips_past_the_checks_before_a_call_is_undone_after_it() {
     assert_eq!(text_of(&last(&out)), browser_mcp::PASSWORD_REFUSED);
     // refusing cookies is no terms box; a passenger's name no password
     let cookies = "document.querySelector('.fc-cta-do-not-consent').click()";
+    // (past the guards: refused only as unproven reads, hotfix v2, this proxy having no DevTools)
     proxy.handle(tool(7, "execute_script", json!({"instance_id": "i", "script": cookies}))).await;
-    assert_eq!(text_of(&last(&out)), "did execute_script");
+    assert_eq!(text_of(&last(&out)), browser_mcp::SCRIPT_UNCHECKED_REFUSED);
     let passenger = "document.querySelector('#passenger-firstname').value = 'Camille'";
     proxy.handle(tool(8, "execute_script", json!({"instance_id": "i", "script": passenger}))).await;
-    assert_eq!(text_of(&last(&out)), "did execute_script");
+    assert_eq!(text_of(&last(&out)), browser_mcp::SCRIPT_UNCHECKED_REFUSED);
     // none of the proxy's own refusals counts as a step that failed
     assert_eq!(proxy.failures.load(Ordering::SeqCst), 0);
     proxy.stop_child().await;
@@ -1126,7 +1126,8 @@ async fn without_its_own_world_the_guard_refuses_a_script_that_acts_on_a_card_pa
     assert_eq!(text_of(&last(&out)), browser_mcp::SCRIPT_ON_CARDS_REFUSED);
     std::fs::remove_file(tmp.join("cardpage")).unwrap();
     proxy.handle(tool(3, "execute_script", click)).await;
-    assert_eq!(text_of(&last(&out)), "did execute_script");
+    // past the guards there too, never run without V8's proof of a read (hotfix v2)
+    assert_eq!(text_of(&last(&out)), browser_mcp::SCRIPT_UNCHECKED_REFUSED);
     proxy.stop_child().await;
 }
 

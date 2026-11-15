@@ -148,7 +148,7 @@ const STRING_FUNCTIONS: &[&str] =
     &["String", "encodeURIComponent", "encodeURI", "decodeURIComponent", "decodeURI", "escape", "unescape", "atob", "btoa"];
 /// Methods that give a string.
 const STRING_METHODS: &[&str] = &[
-    "toString", "trim", "trimStart", "trimEnd", "toLowerCase", "toUpperCase", "toLocaleLowerCase", "toLocaleUpperCase",
+    "trim", "trimStart", "trimEnd", "toLowerCase", "toUpperCase", "toLocaleLowerCase", "toLocaleUpperCase",
     "substring", "substr", "slice", "padStart", "padEnd", "normalize", "repeat", "replace", "replaceAll", "join",
     "concat", "charAt", "toFixed", "toPrecision", "toISOString", "toDateString", "toTimeString", "toLocaleString",
     "toLocaleDateString", "toLocaleTimeString", "toUTCString", "stringify", "getAttribute", "getPropertyValue",
@@ -163,6 +163,10 @@ const STRING_PROPS: &[&str] = &[
     "rel", "characterSet", "contentType", "readyState", "visibilityState", "autocomplete", "htmlFor", "cssText",
     "userAgent", "language", "source",
 ];
+/// The form fields' prototypes whose `value` setter a script may name (a framework's own setter, fix-signup-hold):
+/// any other property's descriptor taken is a way to what it guards (the seventh review on the hotfix: the document's
+/// location, the cookie's setter).
+const FIELD_PROTOTYPES: &[&str] = &["HTMLInputElement", "HTMLTextAreaElement", "HTMLSelectElement"];
 /// The longest text put together from what a script holds to look for a `javascript:` address in.
 const FOLD_MAX: usize = 4096;
 
@@ -500,6 +504,12 @@ impl Reader<'_> {
             if let Some(Expression::ThisExpression(this)) = first {
                 self.window_reads.insert((this.span.start, this.span.end));
             }
+            // a property's own getter or setter called by hand (`….find((x) => x.set).set.call(L, …)`, hotfix v2)
+            if matches!(resolved(member.object()).as_member_expression().and_then(|m| m.static_property_name()).and_then(|n| n.as_str()),
+                Some("get" | "set"))
+            {
+                self.shape.makes_way = true;
+            }
         }
         let on_object =
             matches!(resolved(member.object()), Expression::Identifier(id) if id.name == "Object" && !self.bound("Object"));
@@ -507,8 +517,20 @@ impl Reader<'_> {
             return;
         }
         match method {
-            "values" | "entries" | "getOwnPropertyDescriptor" | "getOwnPropertyDescriptors" => {
+            "values" | "entries" => {
                 if first.is_some_and(|e| self.window_like(e, true)) {
+                    self.shape.makes_way = true;
+                }
+            }
+            // a descriptor: only a form field's own `value` (a framework's setter, read), never another's (hotfix v2:
+            // the document's location, Document.prototype's cookie)
+            "getOwnPropertyDescriptor" | "getOwnPropertyDescriptors" => {
+                let field = first.and_then(|e| e.as_member_expression()).is_some_and(|m| {
+                    m.static_property_name().and_then(|n| n.as_str()) == Some("prototype")
+                        && matches!(resolved(m.object()), Expression::Identifier(id) if FIELD_PROTOTYPES.contains(&id.name.as_str()))
+                });
+                let key = it.arguments.get(1).and_then(|a| a.as_expression()).and_then(literal_name);
+                if !(field && method == "getOwnPropertyDescriptor" && matches!(key.as_deref(), Some("value" | "checked"))) {
                     self.shape.makes_way = true;
                 }
             }

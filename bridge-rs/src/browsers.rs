@@ -467,32 +467,37 @@ const SCRIPTED_FOR_PERSON: f64 = 3600.0;
 static FRESH_FOR_PERSON: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, (f64, String)>>> =
     std::sync::LazyLock::new(Default::default);
 
-/// The sites a script of the agent's ran on within the hour (« unknown » when the page couldn't say), and when the
-/// latest ran.
-fn scripted_sites(config: &Config, agent: &str) -> (HashSet<String>, f64) {
+/// What the agent's scripts ran on (scripts.jsonl, bip-browser-mcp's `note_script`): the documents (DevTools' loader
+/// ids, whenever they ran: hotfix v2 of 15/11), and for lines that name none (an earlier proxy's), the sites within
+/// the hour (« unknown » when the page couldn't say) and when the latest ran.
+fn scripted(config: &Config, agent: &str) -> (HashSet<String>, HashSet<String>, f64) {
     let text = std::fs::read_to_string(folder(config, agent).join(crate::browser_mcp::SCRIPTS_FILE)).unwrap_or_default();
     let since = crate::py::time_time() - SCRIPTED_FOR_PERSON;
-    let mut sites = HashSet::new();
+    let (mut documents, mut sites) = (HashSet::new(), HashSet::new());
     let mut latest: f64 = 0.0;
     for line in text.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok()) {
+        if let Some(doc) = line.get("doc").and_then(Value::as_str).filter(|d| !d.is_empty()) {
+            documents.insert(doc.to_string());
+            continue;
+        }
         let t = line.get("t").and_then(Value::as_f64).unwrap_or(0.0);
         if t >= since {
             sites.insert(line.get("origin").and_then(Value::as_str).unwrap_or("unknown").to_string());
             latest = latest.max(t);
         }
     }
-    (sites, latest)
+    (documents, sites, latest)
 }
 
 /// Before the person takes the agent's browser (« Payer dans le navigateur de l'agent », the Bureau): the page is
-/// reloaded through DevTools when a script of the agent's ran on its site within the hour, every other tab closed and
-/// the site's service workers removed first (card_fill.rs `fresh`, as before a payment), so what a script set up in
-/// it (a reader, an observer, a timer) never sees what the person types (hotfix of 15/11, the seventh review on
-/// production). Done under the person's hold (`token`: the agent's tools and DevTools wait meanwhile). Not again for
-/// the same document until another script. False when it had to and couldn't (DevTools out of reach, no reload).
+/// reloaded through DevTools when a script of the agent's ran on this very document, whenever it ran (hotfix v2 of
+/// 15/11; a line of an earlier proxy, naming no document: its site within the hour), every other tab closed and the
+/// site's service workers removed first (card_fill.rs `fresh`, as before a payment), so nothing a script could have
+/// set up there sees what the person types. Done under the person's hold (`token`: the agent's tools and DevTools
+/// wait meanwhile). False when it had to and couldn't (DevTools out of reach, no reload).
 async fn fresh_for_person(config: &Config, agent: &str, token: &str) -> bool {
-    let (sites, latest) = scripted_sites(config, agent);
-    if sites.is_empty() {
+    let (documents, sites, latest) = scripted(config, agent);
+    if documents.is_empty() && sites.is_empty() {
         return true;
     }
     let Some(port) = ports_of(config, agent).and_then(|p| p.get("cdp").copied()) else { return false };
@@ -504,12 +509,15 @@ async fn fresh_for_person(config: &Config, agent: &str, token: &str) -> bool {
     };
     let Ok(url) = page.url().await else { return false };
     let origin = url::Url::parse(&url).map(|u| u.origin().ascii_serialization()).unwrap_or_default();
-    if !sites.iter().any(|s| *s == origin || s == "unknown" || s == "null") {
+    let Ok(document) = page.loader().await else { return false };
+    let ran_here = !document.is_empty() && documents.contains(&document);
+    let site_ran = sites.iter().any(|s| *s == origin || s == "unknown" || s == "null");
+    if !ran_here && !site_ran {
         return true;
     }
-    let document = page.loader().await.unwrap_or_default();
+    // an earlier proxy's line: not again for the same document until another script
     let done = FRESH_FOR_PERSON.lock().unwrap_or_else(|e| e.into_inner()).get(agent).cloned();
-    if done.is_some_and(|(when, fresh)| when >= latest && !fresh.is_empty() && fresh == document) {
+    if !ran_here && done.is_some_and(|(when, fresh)| when >= latest && !fresh.is_empty() && fresh == document) {
         return true;
     }
     match page.fresh(Duration::from_secs(15), &|| true).await {

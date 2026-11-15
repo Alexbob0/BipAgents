@@ -200,7 +200,8 @@ pub const NOT_CARDS: &str = "Never a payment card's number, expiry, security cod
 pay_with_card, and when it can't, hand_over_payment.";
 
 /// Added to `execute_script` in the tool list (`tame_tool_list`).
-pub const NOT_WAYS: &str = "Never to send the browser to another page or to add links, forms, frames or HTML to a page \
+pub const NOT_WAYS: &str = "execute_script only reads the page: to fill or click, use type_text, click_element or \
+select_option. Never to send the browser to another page or to add links, forms, frames or HTML to a page \
 (refused: open an address with navigate, follow the page's own links with click_element); never to use the page's \
 location but to read its address (location.href), nor to write the site's storage or cookies; never on a page that \
 shows payment card fields (no script runs there). A script runs at once and ends: it never writes or clicks from a \
@@ -275,6 +276,17 @@ pub const SCRIPT_ON_CARDS_REFUSED: &str = "Not done: this page shows payment car
 page. Read it with get_page_content or take_screenshot; fill the other fields with type_text or select_option and \
 click with click_element; the card is paid only through pay_with_card, or by your person (hand_over_payment). \
 Nothing was run.";
+
+/// A script V8 won't run without a side effect (hotfix v2 of 15/11, Alex's option A: an agent's script only reads,
+/// proven by the engine, `read_only`).
+pub const SCRIPT_CHANGES_PAGE_REFUSED: &str = "Not done: this script changes the page, or your browser can't prove that \
+it only reads: execute_script only reads the page. To fill or click, use type_text, click_element or select_option. \
+Nothing was run.";
+
+/// A script while the browser can't prove it only reads (DevTools out of reach, no tab named): never run.
+pub const SCRIPT_UNCHECKED_REFUSED: &str = "Not done: your browser can't check this script right now, and it runs a \
+script only once it is sure the script only reads. Read the page with get_page_content; fill or click with type_text, \
+click_element or select_option. Nothing was run.";
 
 /// What names a card's field in a script (on `card_details::folded` text): its autocomplete token, the usual names and
 /// ids, in four languages.
@@ -834,6 +846,66 @@ pages right now; I'll try again in a moment. »"
 /// The start of hold_gate.py's other refusals: a card payment (or the vault typing a password) holds the browser, or
 /// the gate can't count its calls. Like the person's hold, not a step that failed on the page.
 pub const GATE_HOLDS: [&str; 2] = ["A card payment is going on in this browser", "This browser can't keep track"];
+
+/// How long V8 may take over an agent's script (`read_only`): a read longer than that is not run.
+pub const READ_ONLY_MS: u64 = 5000;
+
+/// What became of an agent's script (`read_only`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum Ran {
+    /// It only read (V8 proved it): its answer as the real server gives it, and the document's loader id.
+    Read(Value, String),
+    /// It would do more than read (a side effect V8 refused, a promise, the time out): not run.
+    Writes,
+    /// It couldn't be checked (no DevTools, no tab): not run.
+    Unchecked,
+}
+
+/// `Runtime.evaluate`'s answer (`throwOnSideEffect`) read: V8's « Possible side-effect » (an EvalError), a termination
+/// (the time out) or a promise are no proof of a read; another exception is the page's own error, thrown before
+/// anything was done (a read that failed: `success` false, as the real server says it).
+pub fn ran_from(evaluated: &Value, loader: String) -> Ran {
+    if let Some(details) = evaluated.get("exceptionDetails") {
+        let exception = details.get("exception").cloned().unwrap_or(Value::Null);
+        let class = exception.get("className").and_then(Value::as_str).unwrap_or("");
+        let text = exception
+            .get("description")
+            .and_then(Value::as_str)
+            .or_else(|| details.get("text").and_then(Value::as_str))
+            .unwrap_or("Uncaught")
+            .to_string();
+        if class == "EvalError" || class.is_empty() || text.contains("side-effect") || text.contains("terminated") {
+            return Ran::Writes;
+        }
+        return Ran::Read(json!({"success": false, "result": null, "error": text}), loader);
+    }
+    let Some(result) = evaluated.get("result") else { return Ran::Writes };
+    if result.get("subtype").and_then(Value::as_str) == Some("promise") {
+        return Ran::Writes;
+    }
+    Ran::Read(json!({"success": true, "result": result.get("value").cloned().unwrap_or(Value::Null), "error": null}), loader)
+}
+
+/// What the real server evaluates for an agent's script (dom_handler.execute_script): the script itself, or
+/// `(function () { script })(args…)` with its arguments.
+pub fn script_expression(script: &str, args: Option<&Value>) -> String {
+    match args.and_then(Value::as_array).filter(|a| !a.is_empty()) {
+        Some(args) => {
+            let given: Vec<String> = args.iter().map(|a| serde_json::to_string(a).unwrap_or_else(|_| "null".into())).collect();
+            format!("(function() {{ {script} }})({})", given.join(","))
+        }
+        None => script.to_string(),
+    }
+}
+
+/// A script's answer as the real server gives it (`success`, `result`, `error`, in text and structured).
+pub fn script_answer(answer: Value) -> Dict {
+    let text = crate::py::dumps(&answer);
+    json!({"jsonrpc": "2.0", "result": {"content": [{"type": "text", "text": text}], "structuredContent": answer}})
+        .as_object()
+        .cloned()
+        .unwrap_or_default()
+}
 
 /// A refusal of the proxy's own, as the real server would answer (softened like any, `soften`).
 fn refused(text: &str) -> Dict {
@@ -2308,9 +2380,30 @@ impl Proxy {
             (None, true) => self.page_before(&instance).await,
             (None, false) => None,
         };
-        let response = self.request("tools/call", sent.as_ref()).await?;
+        // an agent's script: run only by V8 with no side effect allowed (hotfix v2 of 15/11, Alex's option A), never by
+        // the real server; one that would do more than read is refused
+        let mut document = None;
+        let response = if tool == "execute_script" {
+            let script = args.get("script").and_then(Value::as_str).unwrap_or("");
+            match self.read_only(&instance, &script_expression(script, args.get("args"))).await {
+                Ran::Read(answer, loader) => {
+                    document = Some(loader);
+                    script_answer(answer)
+                }
+                Ran::Writes => {
+                    log("execute_script: refused (V8 says it would do more than read)");
+                    return Ok(refused(SCRIPT_CHANGES_PAGE_REFUSED));
+                }
+                Ran::Unchecked => {
+                    log("execute_script: refused (no DevTools to prove it only reads)");
+                    return Ok(refused(SCRIPT_UNCHECKED_REFUSED));
+                }
+            }
+        } else {
+            self.request("tools/call", sent.as_ref()).await?
+        };
         if tool == "execute_script" {
-            self.note_script(before.as_ref());
+            self.note_script(before.as_ref(), document.as_deref());
         }
         if loads_a_page(tool) && !instance.is_empty() {
             let failed = response.contains_key("error")
@@ -2367,7 +2460,7 @@ impl Proxy {
     /// the `scripts` setting), for card_pay.rs: a provider's payment page reached from the card's site is never filled
     /// after a script there (review of 14/11: a link to another merchant's page at the same provider, added by a script
     /// and clicked, looks like the shop's own). The page's origin unknown: written as « unknown » (any site).
-    fn note_script(&self, before: Option<&Value>) {
+    fn note_script(&self, before: Option<&Value>, document: Option<&str>) {
         let origin = before.and_then(|b| b.get("origin")).and_then(Value::as_str).unwrap_or("unknown");
         let path = match self.config.get("scripts").and_then(Value::as_str).filter(|p| !p.is_empty()) {
             Some(path) => PathBuf::from(path),
@@ -2376,7 +2469,11 @@ impl Proxy {
                 None => return,
             },
         };
-        let line = json!({"t": crate::py::time_time(), "origin": origin});
+        // the document it ran on (DevTools' loader id): the person's take-over reloads that one (browsers.rs)
+        let line = match document.filter(|d| !d.is_empty()) {
+            Some(doc) => json!({"t": crate::py::time_time(), "origin": origin, "doc": doc}),
+            None => json!({"t": crate::py::time_time(), "origin": origin}),
+        };
         if std::fs::metadata(&path).is_ok_and(|m| m.len() > SCRIPTS_MAX) {
             let kept = std::fs::read_to_string(&path).unwrap_or_default();
             let lines: Vec<&str> = kept.lines().collect();
@@ -2450,6 +2547,44 @@ impl Proxy {
         let created = cdp.call("Page.createIsolatedWorld", world, Some(&session)).await.map_err(|_| ())?;
         let context = created.get("executionContextId").and_then(Value::as_i64).ok_or(())?;
         Ok(cdp.evaluate(&session, context, script).await.ok())
+    }
+
+    /// An agent's script run by V8 with no side effect allowed (Runtime.evaluate `throwOnSideEffect`, DevTools' eager
+    /// evaluation) in the page's own world of the tab the real server drives (hotfix v2 of 15/11, Alex's option A; the
+    /// seventh review found a `javascript:` address and a cookie reached past every list of names): what passes only
+    /// read — a getter, a coercion (`toString`), a page's function, a Proxy's trap that would write are refused by the
+    /// engine —, its answer given as the real server's; anything else is never run. The tab's document (its loader id)
+    /// with it.
+    async fn read_only(&self, instance: &str, expression: &str) -> Ran {
+        let Some(port) = self.config.get("cdp_port").and_then(Value::as_u64).filter(|p| (1..65536).contains(p)) else {
+            return Ran::Unchecked;
+        };
+        if instance.is_empty() {
+            return Ran::Unchecked;
+        }
+        let secret = self
+            .config
+            .get("cdp_secret_file")
+            .and_then(Value::as_str)
+            .filter(|p| !p.is_empty())
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let connecting = crate::card_fill::Cdp::connect_with(port as u16, secret, None);
+        let Ok(Ok(mut cdp)) = tokio::time::timeout(Duration::from_secs(5), connecting).await else { return Ran::Unchecked };
+        let Some(tab) = self.active_tab(instance).await else { return Ran::Unchecked };
+        let Ok(attached) = cdp.call("Target.attachToTarget", json!({"targetId": tab, "flatten": true}), None).await else {
+            return Ran::Unchecked;
+        };
+        let Some(session) = attached.get("sessionId").and_then(Value::as_str).map(str::to_string) else {
+            return Ran::Unchecked;
+        };
+        let tree = cdp.call("Page.getFrameTree", json!({}), Some(&session)).await.unwrap_or_default();
+        let loader = tree.pointer("/frameTree/frame/loaderId").and_then(Value::as_str).unwrap_or("").to_string();
+        let params = json!({"expression": expression, "throwOnSideEffect": true, "returnByValue": true, "silent": true,
+                            "timeout": READ_ONLY_MS, "awaitPromise": false, "userGesture": false});
+        let Ok(evaluated) = cdp.call("Runtime.evaluate", params, Some(&session)).await else { return Ran::Unchecked };
+        ran_from(&evaluated, loader)
     }
 
     /// The target id of the tab the real server drives for `instance` (its `get_active_tab`), None when it can't say.
@@ -3698,6 +3833,41 @@ themselves). Do not use the browser until they hand it back: tell them you are w
         for refusal in [CARD_REFUSED, SCRIPT_CARD_REFUSED, CARD_UNDONE] {
             assert!(refusal.contains("pay_with_card") && refusal.contains("« Panier prêt »"), "{refusal}");
             assert!(refusal.contains("Never ask your person") || refusal.contains("never ask your person"), "{refusal}");
+        }
+    }
+
+    #[test]
+    fn an_agents_script_runs_only_when_v8_proves_it_reads() {
+        // hotfix v2 of 15/11 (Alex's option A): Runtime.evaluate with `throwOnSideEffect`, read as it answers
+        let read = json!({"result": {"type": "string", "value": "Commande"}});
+        assert_eq!(ran_from(&read, "L1".into()), Ran::Read(json!({"success": true, "result": "Commande", "error": null}), "L1".into()));
+        let undefined = json!({"result": {"type": "undefined"}});
+        assert_eq!(ran_from(&undefined, "L1".into()), Ran::Read(json!({"success": true, "result": null, "error": null}), "L1".into()));
+        // V8's « Possible side-effect in debug-evaluate »: an EvalError, never run
+        let writes = json!({"result": {"type": "object", "subtype": "error", "className": "EvalError"},
+                            "exceptionDetails": {"text": "Uncaught", "exception": {"className": "EvalError",
+                            "description": "EvalError: Possible side-effect in debug-evaluate"}}});
+        assert_eq!(ran_from(&writes, "L1".into()), Ran::Writes);
+        // the time out, a promise: no proof
+        let terminated = json!({"exceptionDetails": {"text": "Uncaught", "exception": {"className": "",
+                                "description": "Execution was terminated"}}});
+        assert_eq!(ran_from(&terminated, "L1".into()), Ran::Writes);
+        let promise = json!({"result": {"type": "object", "subtype": "promise", "className": "Promise"}});
+        assert_eq!(ran_from(&promise, "L1".into()), Ran::Writes);
+        // the page's own error before anything was done: a read that failed, said as the real server says it
+        let error = json!({"exceptionDetails": {"text": "Uncaught", "exception": {"className": "TypeError",
+                           "description": "TypeError: Cannot read properties of null (reading 'innerText')"}}});
+        assert_eq!(ran_from(&error, "L1".into()), Ran::Read(json!({"success": false, "result": null,
+                   "error": "TypeError: Cannot read properties of null (reading 'innerText')"}), "L1".into()));
+        assert_eq!(ran_from(&json!({}), "L1".into()), Ran::Writes);
+        // what the real server evaluates, and its answer's shape (`script_result` reads it)
+        assert_eq!(script_expression("return document.title", None), "return document.title");
+        assert_eq!(script_expression("return a + b", Some(&json!([1, "x"]))), "(function() { return a + b })(1,\"x\")");
+        let answer = script_answer(json!({"success": true, "result": "Commande", "error": null}));
+        assert_eq!(script_result(&answer), Some(json!("Commande")));
+        assert!(NOT_WAYS.starts_with("execute_script only reads the page: to fill or click, use type_text"));
+        for text in [SCRIPT_CHANGES_PAGE_REFUSED, SCRIPT_UNCHECKED_REFUSED] {
+            assert!(text.contains("type_text") && text.contains("click_element") && text.ends_with("Nothing was run."));
         }
     }
 

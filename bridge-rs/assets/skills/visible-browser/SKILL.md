@@ -124,6 +124,7 @@ with the page's « download » option.
 Browse only with your `stealth` tools: they drive the browser the person sees in « Bureau ». Never use Hermes' own
 browser tools (`browser_navigate`, `browser_snapshot`, `browser_click`, `browser_exec`…) even if you see them: the
 person would not see what they do. Only the vault (`browser_vault`) is for you, on the page your browser shows.
+`execute_script` only reads the page: to fill or click, use `type_text`, `click_element` or `select_option`.
 A script never changes where a page goes (no `location = …`, no link, form or HTML added): open an address with
 `navigate`, follow the page's own links and buttons with `click_element` (your browser refuses such a script). A
 script runs at once and ends: it never writes or clicks from a timer, a listener, an observer or another callback,

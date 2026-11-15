@@ -49,6 +49,7 @@ SCRIPT_LATER_REFUSED = "Not done: this script writes or clicks later"
 SCRIPT_TAMPERS_REFUSED = "Not done: a script never changes how the page's own code"
 SCRIPT_LATER_ON_CARDS_REFUSED = "Not done: on a page with payment card fields, a script runs at once"
 SCRIPT_ON_CARDS_REFUSED = "Not done: this page shows payment card fields, and no script runs"
+SCRIPT_CHANGES_PAGE_REFUSED = "Not done: this script changes the page"
 
 
 def serve(folder):
@@ -282,8 +283,12 @@ def test_a_script_never_writes_reads_or_sends_a_cards_details(browser):
     said = browser.tool("execute_script", script="(() => { document.getElementById('address').value = '2 rue du Test'; "
                                                  "return document.title; })()")
     assert said.startswith(SCRIPT_ON_CARDS_REFUSED) and value(browser, "address") != "2 rue du Test", said
-    # ... while on a page without them, ordinary scripts go on
+    # ... while on a page without them, a script that only reads goes on, and one that writes never runs (hotfix v2:
+    # V8 proves the read, Alex's option A)
     browser.tool("navigate", url=browser.url.replace("checkout.html", "later.html"))
+    said = browser.tool("execute_script", script="(() => document.title + ' ' + location.pathname)()")
+    assert "Paiement /later.html" in said, said
     said = browser.tool("execute_script", script="(() => { document.getElementById('later').dataset.seen = '1'; "
-                                                 "return document.title + ' ' + location.pathname; })()")
-    assert "Paiement /later.html" in said and browser.page("document.getElementById('later').dataset.seen") == "1", said
+                                                 "return document.title; })()")
+    assert said.startswith(SCRIPT_CHANGES_PAGE_REFUSED), said
+    assert browser.page("document.getElementById('later').dataset.seen") is None

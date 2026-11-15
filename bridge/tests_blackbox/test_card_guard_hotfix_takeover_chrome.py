@@ -1,9 +1,10 @@
 """Hotfix of 15/11 (card-guards on production, the seventh review: a reader set by a script read the card the person
 typed once they took the agent's browser). Before the person takes it (« Payer dans le navigateur de l'agent », the
-Bureau), the page is reloaded through DevTools when a script of the agent's ran on its site within the hour
-(bip-browser-mcp writes each one down in scripts.jsonl, browser_mcp.rs `note_script`): what the script set up there is
-gone before they type. A page of a site no script ran on is left as it is; when the reload can't be done, the browser
-is not taken (409 « page_not_fresh »). A real Chromium; the bridge on its DevTools directly (no container, no relay)."""
+Bureau), the page is reloaded through DevTools when a script of the agent's ran on this document, whenever (hotfix v2;
+bip-browser-mcp writes each one down in scripts.jsonl with its document, browser_mcp.rs `note_script`), or for an
+earlier proxy's line, on its site within the hour: what the script set up there is gone before they type. A page no
+script ran on is left as it is; when the reload can't be done, the browser is not taken (409 « page_not_fresh »).
+A real Chromium; the bridge on its DevTools directly (no container, no relay)."""
 import functools
 import http.server
 import json
@@ -67,10 +68,25 @@ def page(port, expression):
         return None
 
 
-def scripted(folder, origin, ago=0.0):
-    """A script of the agent's written down on `origin`, `ago` seconds ago (as bip-browser-mcp's `note_script`)."""
+def scripted(folder, origin, ago=0.0, doc=None):
+    """A script of the agent's written down on `origin`, `ago` seconds ago (as bip-browser-mcp's `note_script`), on the
+    document `doc` (DevTools' loader id; an earlier proxy's line names none)."""
+    line = {"t": time.time() - ago, "origin": origin}
+    if doc:
+        line["doc"] = doc
     with open(folder / "scripts.jsonl", "a") as fh:
-        fh.write(json.dumps({"t": time.time() - ago, "origin": origin}) + "\n")
+        fh.write(json.dumps(line) + "\n")
+
+
+def loader(port):
+    """The tab's document: its main frame's loader id."""
+    tab = next(t for t in httpx.get(f"http://127.0.0.1:{port}/json/list").json() if is_tab(t))
+    with connect(tab["webSocketDebuggerUrl"], max_size=None) as ws:
+        ws.send(json.dumps({"id": 1, "method": "Page.getFrameTree", "params": {}}))
+        while True:
+            answer = json.loads(ws.recv(timeout=10))
+            if answer.get("id") == 1:
+                return answer["result"]["frameTree"]["frame"]["loaderId"]
 
 
 def take(bridge, on):
@@ -108,6 +124,30 @@ def test_the_page_a_script_ran_on_is_reloaded_before_the_person_takes_the_browse
     scripted(folder, "unknown")
     assert take(bridge, True).status_code == 200
     assert page(chromium, "window.__reader") is None
+    take(bridge, False)
+
+
+def test_the_document_a_script_ran_on_is_reloaded_whenever_it_ran(bridges, fakes, chromium, shop):
+    # hotfix v2 of 15/11: the proxy writes down the document (DevTools' loader id) each script ran on; the person's
+    # take-over reloads that document, however long ago (no « within the hour » any more)
+    bridge, folder = browser_bridge(bridges, fakes, chromium)
+    plant = "window.__reader = 1; 'ok'"
+    assert page(chromium, plant) == "ok"
+    # another document's script, three hours ago: this page left as it is
+    scripted(folder, shop, ago=3 * 3600, doc="0123456789ABCDEF0123456789ABCDEF")
+    assert take(bridge, True).status_code == 200
+    assert page(chromium, "window.__reader") == 1
+    take(bridge, False)
+    # this very document's, three hours ago: reloaded before the person's hand
+    scripted(folder, shop, ago=3 * 3600, doc=loader(chromium))
+    answer = take(bridge, True)
+    assert answer.status_code == 200 and answer.json()["you_hold"] is True, answer.text
+    assert page(chromium, "window.__reader") is None and page(chromium, "location.pathname") == "/later-pay.html"
+    take(bridge, False)
+    # the new document: no script ran on it, left as it is
+    assert page(chromium, plant) == "ok"
+    assert take(bridge, True).status_code == 200
+    assert page(chromium, "window.__reader") == 1
     take(bridge, False)
 
 
