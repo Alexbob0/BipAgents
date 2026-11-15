@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Commande</title></head>
+<body>
+<!-- Seventh review (card-guards, 15/11): later-pay.html on a WooCommerce shop. Its cart fragments
+     (woocommerce/assets/js/frontend/cart-fragments.js) keep the mini-cart's HTML in sessionStorage and, at every page's
+     load, put it back into the page when the stored cart hash matches the cart's cookie (both empty: no cart yet). -->
+<div class="widget_shopping_cart_content">Panier : 1 article</div>
+<p>Total : 12,50 €</p>
+<button id="reveal" type="button">Payer par carte</button>
+<div id="later"></div>
+<script>
+  // cart-fragments.js at load, without jQuery: `$(key).replaceWith(value)` for each stored fragment
+  try {
+    var fragments = JSON.parse(sessionStorage.getItem("wc_fragments_r7"));
+    var cartHash = sessionStorage.getItem("wc_cart_hash_r7") || "";
+    var cookieHash = (document.cookie.match(/(?:^|; )woocommerce_cart_hash=([^;]*)/) || [])[1] || "";
+    if (fragments && fragments["div.widget_shopping_cart_content"] && cartHash === cookieHash) {
+      Object.keys(fragments).forEach(function (key) {
+        var el = document.querySelector(key);
+        if (el) el.outerHTML = fragments[key];
+      });
+    }
+  } catch (e) {}
+  document.getElementById("reveal").onclick = () => {
+    document.getElementById("later").innerHTML =
+      '<form id="pay"><label for="cc">Numéro de carte</label> <input id="cc" name="cc"> ' +
+      '<button id="payer" type="button">Payer</button></form>';
+    document.getElementById("payer").onclick = () => { document.title = "sent:" + document.getElementById("cc").value; };
+  };
+</script>
+</body></html>
