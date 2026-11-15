@@ -95,7 +95,7 @@ fn values_and_lines_with_their_versions_and_who_wrote() {
     // the view: the same rev answers « same » (the page asks every few seconds)
     let store = read(&config, "queens", &p);
     let rev = store["rev"].as_i64().unwrap();
-    assert_eq!(view(&store, Some(rev), true), json!({"rev": rev, "same": true, "write": true}));
+    assert_eq!(view(&store, Some(rev), true), json!({"rev": rev, "gen": store["gen"], "same": true, "write": true}));
     assert_eq!(view(&store, Some(rev - 1), false)["keys"], store["keys"]);
     assert_eq!(view(&store, None, false)["write"], json!(false));
 }

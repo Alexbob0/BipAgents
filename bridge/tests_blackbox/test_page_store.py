@@ -56,7 +56,8 @@ def test_a_page_keeps_what_is_typed_through_the_app_s_door(bridge):
     assert again.status_code == 200 and len(again.json()["entry"]["items"]) == 2
     view = store_get(bridge, path).json()
     assert view["rev"] == 3 and [i["value"]["what"] for i in view["keys"]["lignes"]["items"]] == ["Resto", "Taxi"]
-    assert store_get(bridge, path, since=3).json() == {"rev": 3, "same": True, "write": True}
+    same = store_get(bridge, path, since=3).json()
+    assert same == {"rev": 3, "gen": same["gen"], "same": True, "write": True} and len(same["gen"]) == 12
 
     # kept beside the page, private, never served as a file
     store_file = pages_dir(bridge) / f"{page}.store.json"
