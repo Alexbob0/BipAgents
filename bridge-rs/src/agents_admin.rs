@@ -656,6 +656,16 @@ pub fn plan_agent(config: &Config, body: &NewAgent) -> anyhow::Result<PlannedAge
     Ok(PlannedAgent { profile, name, soul, description })
 }
 
+/// The agent's description (its profile.yaml, what `profile create --description` writes): `role`, as a new agent's
+/// is made from it ([`plan_agent`]).
+pub fn write_description(config: &Config, agent: &AgentConfig, role: &str) -> anyhow::Result<()> {
+    let description = head(role.trim(), 120);
+    crate::profile_files::edit(&profile_folder(config, agent).join("profile.yaml"), |data| {
+        data.insert("description", Yaml::str(&description))
+    })?;
+    Ok(())
+}
+
 /// The profile ids a new agent can't get: this bridge's agents, and every folder in the hub's `profiles/` (one left
 /// by a creation cut short, a profile the person made on the server, a spare). `hermes profile create` refuses an id
 /// whose folder exists: a claim whose first try made « quotidien » and then failed met « A profile named
@@ -2480,9 +2490,11 @@ async fn new_agent(State(state): State<AppState>, Json(body): Json<NewAgent>) ->
         }
     };
     // its first conversation opens with its welcome (welcome.rs): a kind's own, or the one of an agent with its role
+    // (the person's words, a kind's agent's too: bug 15/11)
     let kind = if body.custom.is_some() { "custom" } else { body.kind.as_deref().unwrap_or("custom") };
     let lang = body.lang.clone().filter(|l| !l.is_empty()).unwrap_or_else(|| crate::notebook::place_language(&state.config()).unwrap_or_else(|| "fr".into()));
-    crate::welcome::wait_for(&state.config(), &agent, kind, &lang);
+    let role = body.custom.as_ref().map(|c| c.role.as_str()).or(body.role.as_deref());
+    crate::welcome::wait_for_role(&state.config(), &agent, kind, &lang, role);
     Ok(web::json_response(201, &created(&state.config(), &agent)))
 }
 

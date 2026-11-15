@@ -72,6 +72,9 @@ pub const PROPOSE_PROFILE: &str = "propose_profile";
 pub const RENAME_SELF: &str = "rename_yourself";
 /// The hidden line a reply carries after a rename, for the apps: `<!--bip:renamed <id> <name>-->`.
 pub const RENAMED_OPEN: &str = "<!--bip:renamed ";
+/// A « Créer X » card's role at most: the person's whole wish (bug 15/11: « Training coach » for a half-marathon in
+/// March, 3 runs a week), which becomes the agent's description, personality and first words.
+pub const CARD_ROLE_MAX: usize = 300;
 /// A name an agent took or proposed for itself stays « its own » for `propose_agent` this long.
 pub const OWN_NAME_SECONDS: f64 = 1800.0;
 /// The hand-over to a project agent (project_agent.rs, 2026-10-28): any of the person's own agents may propose it.
@@ -347,13 +350,16 @@ fn propose_agent_tool() -> Value {
         "inputSchema": {"type": "object", "properties": {
             "kind": {"type": "string", "enum": crate::souls::CATEGORIES},
             "name": {"type": "string"},
-            "role": {"type": "string", "description": "one line, in their language"},
+            "role": {"type": "string", "description": "what it is for, in their own words and language, with every \
+    specific they gave (goal, dates, how often, level…), not a label: one or two sentences. It becomes its description, \
+    personality and first words."},
             "tone": {"type": "string"},
             "for": {"type": "string", "enum": ["me", "family"]},
             "members": {"type": "array", "items": {"type": "string"}, "description": "family: first names; none = all"},
             "tools": {"type": "array", "items": {"type": "string"}, "description": "what it must reach: web, weather, \
     browser, calendar, reminders, contacts, mail, health, file, notebook, or a service (strava…)"},
-            "handover": {"type": "string", "description": "what they told you that it should know"}},
+            "handover": {"type": "string", "description": "other facts about them it should know, not what it is for \
+    (that is role)"}},
             "required": ["kind", "name", "role"]},
     })
 }
@@ -865,9 +871,9 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
         PROPOSE_AGENT => {
             let kind = arg(arguments, "kind", 20);
             let new_name = arg(arguments, "name", 40);
-            let role = arg(arguments, "role", 200);
+            let role = arg(arguments, "role", CARD_ROLE_MAX);
             if !crate::souls::CATEGORIES.contains(&kind.as_str()) || new_name.is_empty() || role.is_empty() {
-                return Ok(tool_text("give a kind from the list, a name and a one-line role", true));
+                return Ok(tool_text("give a kind from the list, a name and its role", true));
             }
             if is_own_name(config, agent, &new_name) {
                 return Ok(tool_text(
@@ -1521,7 +1527,7 @@ async fn accept(
                 kind: Some(kind.clone()),
                 lang: Some(lang.clone()),
                 group: body.group.clone(),
-                role: Some(role),
+                role: Some(role.clone()),
                 tone: Some(tone).filter(|t| !t.is_empty()),
                 ..Default::default()
             };
@@ -1548,7 +1554,8 @@ async fn accept(
             let agent = config.agents.get(&agent.name).cloned().unwrap_or(agent);
             crate::beta_measures::card_accepted(&config, None, now());
             hand_over(&config, &agent, &from.display_name, &str_of(&proposal, "handover"), &lang)?;
-            crate::welcome::wait_for(&config, &agent, &kind, &lang);
+            // its first words say what she asked for, not its kind's generic line (bug 15/11)
+            crate::welcome::wait_for_role(&config, &agent, &kind, &lang, Some(&role));
             refresh(&config);
             Ok(web::json_response(
                 201,
