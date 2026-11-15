@@ -2584,16 +2584,6 @@ impl Proxy {
         };
         let tree = cdp.call("Page.getFrameTree", json!({}), Some(&session)).await.unwrap_or_default();
         let loader = tree.pointer("/frameTree/frame/loaderId").and_then(Value::as_str).unwrap_or("").to_string();
-        // the page laid out first, from a world of the proxy's own (it reads its size, nothing of the page's code
-        // runs): a layout still due makes V8 refuse a read like `innerText` as a side effect
-        if let Some(frame) = tree.pointer("/frameTree/frame/id").and_then(Value::as_str) {
-            let world = json!({"frameId": frame, "worldName": "bipagents-layout", "grantUniveralAccess": false});
-            if let Ok(created) = cdp.call("Page.createIsolatedWorld", world, Some(&session)).await {
-                if let Some(context) = created.get("executionContextId").and_then(Value::as_i64) {
-                    let _ = cdp.evaluate(&session, context, "document.documentElement.getBoundingClientRect().height").await;
-                }
-            }
-        }
         let params = json!({"expression": expression, "throwOnSideEffect": true, "returnByValue": true, "silent": true,
                             "timeout": READ_ONLY_MS, "awaitPromise": false, "userGesture": false});
         let Ok(evaluated) = cdp.call("Runtime.evaluate", params, Some(&session)).await else { return Ran::Unchecked };
