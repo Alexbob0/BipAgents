@@ -27,6 +27,8 @@
 //!     PUT  /v1/calendar                  {from, to, calendars: [{id, title, color?}],
 //!                                        events: [{id, calendar, title, start, end, all_day, location?, notes?,
 //!                                        recurring?}]}
+//!     POST /v1/calendar/verified         {hash}: the phone's copy unchanged (phone_copy.rs; 409: send it whole);
+//!                                        `PUT /v1/calendar` carries its `hash`, `GET` tells `checked` too
 //!     PUT  /v1/calendar/agents           {agents}
 //!     PUT  /v1/calendar/rights           {agent, rights: {read?, write?}}: what that agent may do with the phone's
 //!                                        calendar (phone_rights.rs; a mailbox's calendar follows its mailbox)
@@ -447,13 +449,12 @@ BipAgents app.",
         if phone && !reads {
             sources.push("not the phone's calendar (the person doesn't let you read it)".to_string());
         } else if phone {
-            let at = data.get("at").and_then(Value::as_f64);
             let held = match (data.get("from").and_then(Value::as_str), data.get("to").and_then(Value::as_str)) {
                 (Some(f), Some(t)) if !f.is_empty() && !t.is_empty() => format!(", for {f} to {t}"),
                 _ => String::new(),
             };
-            sources.push(match at {
-                Some(at) => format!("as the phone shared it {} ago{held}", age(now - at)),
+            sources.push(match crate::phone_copy::freshness(&data, now, age) {
+                Some(fresh) => format!("{fresh}{held}"),
                 None => "the phone hasn't shared it yet".to_string(),
             });
         }
@@ -750,12 +751,16 @@ pub struct Snapshot {
     pub calendars: Vec<CalendarInfo>,
     #[serde(default)]
     pub events: Vec<Event>,
+    /// Its fingerprint (the phone's, phone_copy.rs): the next time it is unchanged, the phone only says so.
+    #[serde(default)]
+    pub hash: Option<String>,
 }
 
 impl Validate for Snapshot {
     fn validate(&self, errors: &mut Vec<FieldError>) {
         web::check_max_len(errors, "from", Some(&self.from), 40);
         web::check_max_len(errors, "to", Some(&self.to), 40);
+        web::check_max_len(errors, "hash", self.hash.as_deref(), 128);
         check_max_items(errors, "calendars", Some(&self.calendars), 200);
         check_max_items(errors, "events", Some(&self.events), 5000);
         for (n, c) in self.calendars.iter().enumerate() {
@@ -816,7 +821,8 @@ async fn status(State(state): State<AppState>) -> ApiResult<Response> {
     let data = blocking(move || Ok(read(&config))).await?;
     let get = |k: &str| data.get(k).cloned().unwrap_or(Value::Null);
     Ok(web::ok(json!({
-        "agents": data.get("agents").cloned().unwrap_or(json!([])), "at": get("at"), "from": get("from"), "to": get("to"),
+        "agents": data.get("agents").cloned().unwrap_or(json!([])), "at": get("at"), "checked": get("checked"),
+        "from": get("from"), "to": get("to"),
         "rights": crate::phone_rights::listed(&data, &crate::phone_rights::CALENDAR),
         "calendars": list_of(&data, "calendars").len(), "events": list_of(&data, "events").len(),
         "pending": list_of(&data, "queue").iter().filter(|op| pending(op)).count(),
@@ -832,7 +838,7 @@ async fn snapshot(State(state): State<AppState>, Json(body): Json<Snapshot>) -> 
         data.insert("events".into(), Value::Array(body.events.iter().map(dump).collect()));
         data.insert("from".into(), json!(body.from));
         data.insert("to".into(), json!(body.to));
-        data.insert("at".into(), json!(py::time_time()));
+        crate::phone_copy::sent(&mut data, body.hash.as_deref());
         let cutoff = py::time_time() - (QUEUE_DAYS * 86400) as f64;
         let queue: Vec<Value> = list_of(&data, "queue")
             .into_iter()
@@ -877,6 +883,7 @@ fn set_agents_in(data: &mut Dict, names: &[String]) {
         for key in ["calendars", "events", "from", "to", "at"] {
             data.remove(key);
         }
+        crate::phone_copy::forget(data);
     }
 }
 
@@ -1004,9 +1011,29 @@ async fn done(State(state): State<AppState>, Path(op_id): Path<String>, Json(bod
 }
 
 /// Mounted under /v1 with the bridge key.
+/// `POST /v1/{kind}/verified {hash}`: the phone's copy unchanged (phone_copy.rs); 409 when the one here is another.
+async fn verified(State(state): State<AppState>, Json(body): Json<crate::phone_copy::Verified>) -> ApiResult<Response> {
+    let config = state.config();
+    let checked = blocking(move || {
+        let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let mut data = read(&config);
+        if !crate::phone_copy::verify(&mut data, &body.hash) {
+            return Ok(None);
+        }
+        write(&config, &data)?;
+        Ok(data.get("checked").cloned())
+    })
+    .await?;
+    match checked {
+        Some(checked) => Ok(web::ok(json!({"checked": checked}))),
+        None => Err(HttpError::new(409, "not the copy here: send it whole")),
+    }
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/calendar", get(status).put(snapshot))
+        .route("/calendar/verified", post(verified))
         .route("/calendar/agents", put(set_agents))
         .route("/calendar/rights", put(set_rights))
         .route("/calendar/queue", get(queue))
