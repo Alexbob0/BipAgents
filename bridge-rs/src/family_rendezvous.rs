@@ -267,24 +267,24 @@ fn made_after(config: &Config, after: &[String], id: &str) -> anyhow::Result<()>
 
 /// The number of what this bridge says now of the passes it accepts (R6: `x-bip-passes-seq`, `seq`), taken before
 /// reading them: the relay keeps the highest, so a statement made before a withdrawal and come after it never undoes
-/// it. Counted up for as long as the bridge runs, from a number kept in `family-relay.json` and raised at each start.
+/// it. Counted up for as long as the bridge runs, from this start's number ([`started`], shifted 22 bits: four
+/// million statements a start before they reach the next millisecond's, room until 2109).
 pub fn statement_number(config: &Config) -> u64 {
     static NEXT: OnceLock<std::sync::atomic::AtomicU64> = OnceLock::new();
-    let next = NEXT.get_or_init(|| std::sync::atomic::AtomicU64::new(started(config) << 32));
+    let next = NEXT.get_or_init(|| std::sync::atomic::AtomicU64::new(started(config) << 22));
     next.fetch_add(1, std::sync::atomic::Ordering::AcqRel) + 1
 }
 
-/// This start's number (one more than the last, kept): statement numbers of a later start are always higher.
+/// This start's number: one more than the last kept, and never below the time in milliseconds (R9: a
+/// `family-relay.json` put back from a backup, or a count not written once, never makes a start count from a number
+/// already used; milliseconds, not seconds: a bridge restarted twice within a second, then restored, would).
 fn started(config: &Config) -> u64 {
-    let mut number = 0;
+    let now = (crate::py::time_time().max(0.0) * 1000.0) as u64 & ((1 << 42) - 1);
+    let mut number = now;
     let _ = edit(config, |data| {
-        number = data.get("starts").and_then(Value::as_u64).unwrap_or(0) + 1;
+        number = (data.get("starts").and_then(Value::as_u64).unwrap_or(0) + 1).max(now);
         data.insert("starts".into(), json!(number));
     });
-    if number == 0 {
-        // not kept (a disk that can't be written): the time stands for it, still growing from one start to the next
-        number = (crate::py::time_time() as u64) & 0xffff_ffff;
-    }
     number
 }
 
@@ -1038,6 +1038,13 @@ mod tests {
         assert_eq!(withdrawn(&config), vec!["zoe", "paul-new"]);
         let (first, second) = (started(&config), started(&config));
         assert!(second > first, "a later start counts from higher");
+        // R9: the count put back from an old backup (or never written): the clock is the floor
+        let now = (crate::py::time_time() * 1000.0) as u64;
+        edit(&config, |data| {
+            data.insert("starts".into(), json!(3));
+        })
+        .unwrap();
+        assert!(started(&config) >= now, "a start after a restore counts from a number already used");
         let (a, b) = (statement_number(&config), statement_number(&config));
         assert!(b > a);
     }
