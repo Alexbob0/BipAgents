@@ -314,6 +314,44 @@ impl Households {
         data.get("households")?.as_object()?.get(household)?.as_object().cloned()
     }
 
+    /// These fields of a household's entry, in one write (false: no such household).
+    pub fn mark_all(&self, household: &str, fields: &[(&str, Value)]) -> anyhow::Result<bool> {
+        let mut data = self.load();
+        let Some(entry) = data
+            .get_mut("households")
+            .and_then(Value::as_object_mut)
+            .and_then(|h| h.get_mut(household))
+            .and_then(Value::as_object_mut)
+        else {
+            return Ok(false);
+        };
+        for (key, value) in fields {
+            entry.insert((*key).into(), value.clone());
+        }
+        self.save(&data)?;
+        Ok(true)
+    }
+
+    /// A link removed, in one write: the household gone and, when it could call us through the relay (`given_pass`),
+    /// every household that still can marked to get a newer pass (`renew_pass`: not said to the relay until it has
+    /// one), so that no moment, crash or full disk leaves the withdrawn pass taken. Its entry as it was (None: no such
+    /// household); the write's error when it fails, nothing changed.
+    pub fn withdraw(&self, household: &str) -> anyhow::Result<Option<Dict>> {
+        let mut data = self.load();
+        let Some(households) = data.get_mut("households").and_then(Value::as_object_mut) else { return Ok(None) };
+        let Some(gone) = households.shift_remove(household) else { return Ok(None) };
+        let gone = gone.as_object().cloned().unwrap_or_default();
+        if gone.get("given_pass").and_then(Value::as_str).is_some() {
+            for entry in households.values_mut().filter_map(Value::as_object_mut) {
+                if entry.get("given_pass").and_then(Value::as_str).is_some() {
+                    entry.insert("renew_pass".into(), json!(true));
+                }
+            }
+        }
+        self.save(&data)?;
+        Ok(Some(gone))
+    }
+
     /// Python's `KeyError` when there is no such household.
     pub fn remove(&self, household: &str) -> anyhow::Result<()> {
         let mut data = self.load();
@@ -485,6 +523,49 @@ mod tests {
         data.insert("invites".into(), Value::Object(expired));
         households.save(&data).unwrap();
         assert!(households.accept(&late, "Paul", "https://c.ts.net", &"p".repeat(40), None, None).is_err());
+    }
+
+    /// R8 (review of R5): a link removed and the others marked to renew their passes are one write; a write that
+    /// fails changes nothing and says so (never the household gone with the others' old passes still said).
+    #[test]
+    fn a_link_removed_marks_the_others_in_the_same_write_or_changes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path().join("state");
+        let households = Households::new(&state.join("households.json").to_string_lossy());
+        let mut data = households.load();
+        data.insert(
+            "households".into(),
+            json!({
+                "alex": {"name": "Alex", "given_pass": "a"},
+                "paul": {"name": "Paul", "given_pass": "p"},
+                "zoe": {"name": "Zoé"},
+            }),
+        );
+        households.save(&data).unwrap();
+        assert_eq!(households.withdraw("nobody").unwrap(), None);
+        let gone = households.withdraw("alex").unwrap().unwrap();
+        assert_eq!(gone["given_pass"], "a");
+        let after = households.load();
+        assert!(after["households"].get("alex").is_none());
+        assert_eq!(after["households"]["paul"]["renew_pass"], true);
+        assert!(after["households"]["zoe"].get("renew_pass").is_none(), "no pass of ours: nothing to renew");
+        // a household whose pass never went through the relay: the others' passes stay as they are
+        let mut data = households.load();
+        data["households"]["paul"].as_object_mut().unwrap().remove("renew_pass");
+        households.save(&data).unwrap();
+        households.withdraw("zoe").unwrap().unwrap();
+        assert!(households.load()["households"]["paul"].get("renew_pass").is_none());
+        // the write fails (a folder we can't write to): an error, and nothing changed
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&state, std::fs::Permissions::from_mode(0o500)).unwrap();
+        let failed = households.withdraw("paul");
+        std::fs::set_permissions(&state, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(failed.is_err(), "a write that failed said nothing");
+        assert!(households.load()["households"].get("paul").is_some());
+        // several fields of one entry, one write
+        assert!(households.mark_all("paul", &[("x", json!(1)), ("y", json!(2))]).unwrap());
+        assert_eq!((households.get("paul").unwrap()["x"].clone(), households.get("paul").unwrap()["y"].clone()), (json!(1), json!(2)));
+        assert!(!households.mark_all("nobody", &[("x", json!(1))]).unwrap());
     }
 
     /// A second household with an existing household's name cannot take its place (audit 2026-10-27 #9); the same

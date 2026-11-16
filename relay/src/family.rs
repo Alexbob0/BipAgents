@@ -314,6 +314,28 @@ struct Seen {
     /// The oldest generation of pass it takes, as its bridge last said ([`Rendezvous::takes_from`]); None: it never
     /// said (a bridge from before passes could be withdrawn: every pass it gave).
     from: Option<u64>,
+    /// The number of the statement that said it (`x-bip-passes-seq`, `seq`: its bridge counts them up); 0: none.
+    said: u64,
+}
+
+impl Seen {
+    /// What its bridge says now of the passes it takes (`from`), statement number `seq`: kept only when said after
+    /// what is kept (a higher number), so a statement made before a withdrawal and come after it never undoes it.
+    /// Without a number (a bridge from before), only when it takes no older pass than kept, or nothing was kept but
+    /// « no pass at all ».
+    fn say(&mut self, from: u64, seq: Option<u64>) {
+        match seq {
+            Some(seq) if seq > self.said => {
+                self.said = seq;
+                self.from = Some(from);
+            }
+            Some(_) => {}
+            None if self.said == 0 && self.from.is_none_or(|kept| kept == u64::MAX || from >= kept) => {
+                self.from = Some(from);
+            }
+            None => {}
+        }
+    }
 }
 
 /// Whether this mailbox takes a pass of this generation (not older than it said, or it never said).
@@ -385,12 +407,13 @@ fn pass_tag(key: &[u8; 32], mailbox: &str, signed: &[u8]) -> [u8; PASS_ID_TAG] {
 /// The last generation given here.
 static LAST_GENERATION: AtomicU64 = AtomicU64::new(0);
 
-/// The generation of a pass made now: the time in milliseconds, always above the last one given here.
-fn next_generation() -> u64 {
+/// The generation of a pass made now: the time in milliseconds, always above the last one given here and above
+/// `after` (the newest pass withdrawn the bridge says: a clock set back never makes a pass older than it).
+fn next_generation(after: u64) -> u64 {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(0));
     let mut last = LAST_GENERATION.load(Ordering::Relaxed);
     loop {
-        let next = now.max(last + 1);
+        let next = now.max(last + 1).max(after.saturating_add(1));
         match LAST_GENERATION.compare_exchange_weak(last, next, Ordering::AcqRel, Ordering::Relaxed) {
             Ok(_) => return next,
             Err(other) => last = other,
@@ -429,10 +452,15 @@ impl Rendezvous {
         }
     }
 
-    /// A new pass id for a pass that opens this mailbox: of a new generation, signed for it.
-    fn new_pass_id(&self, mailbox: &str) -> String {
+    /// A new pass id for a pass that opens this mailbox: of a new generation (newer than `after`), signed for it.
+    fn new_pass_id(&self, mailbox: &str, after: u64) -> String {
+        self.pass_id_with(mailbox, next_generation(after))
+    }
+
+    /// The id of a pass of this generation that opens this mailbox.
+    fn pass_id_with(&self, mailbox: &str, generation: u64) -> String {
         let mut raw = [0u8; PASS_ID_SIGNED + PASS_ID_TAG];
-        raw[..PASS_ID_GENERATION].copy_from_slice(&next_generation().to_be_bytes());
+        raw[..PASS_ID_GENERATION].copy_from_slice(&generation.to_be_bytes());
         rand::rngs::OsRng.fill_bytes(&mut raw[PASS_ID_GENERATION..PASS_ID_SIGNED]);
         let tag = pass_tag(&self.pass_keys[0], mailbox, &raw[..PASS_ID_SIGNED]);
         raw[PASS_ID_SIGNED..].copy_from_slice(&tag);
@@ -495,11 +523,12 @@ impl Rendezvous {
         takes(&lock(&self.seen), mailbox, generation)
     }
 
-    /// The oldest generation this mailbox takes from now on (`POST /v1/family/passes`, a link removed), kept with
-    /// what the relay knows of its polls; a mailbox that never polled takes no call anyway, and its next poll says it.
-    fn take_from(&self, mailbox: &str, from: u64) {
+    /// The oldest generation this mailbox takes from now on (`POST /v1/family/passes`, a link removed), statement
+    /// `seq` ([`Seen::say`]), kept with what the relay knows of its polls; a mailbox that never polled takes no call
+    /// anyway, and its next poll says it.
+    fn take_from(&self, mailbox: &str, from: u64, seq: Option<u64>) {
         if let Some(known) = lock(&self.seen).get_mut(mailbox) {
-            known.from = Some(from);
+            known.say(from, seq);
         }
     }
 
@@ -568,19 +597,30 @@ struct Polling<'a> {
 }
 
 impl<'a> Polling<'a> {
-    /// A poll opened, with the oldest generation its mailbox says it takes (`from`), kept under the same lock.
-    fn open(rendezvous: &'a Rendezvous, mailbox: &str, invitation: bool, from: Option<u64>) -> Option<Self> {
+    /// A poll opened, with what its mailbox says it takes (the oldest generation, the statement's number), kept under
+    /// the same lock ([`Seen::say`]).
+    fn open(
+        rendezvous: &'a Rendezvous,
+        mailbox: &str,
+        invitation: bool,
+        said: Option<(u64, Option<u64>)>,
+    ) -> Option<Self> {
         let mut seen = lock(&rendezvous.seen);
-        let known =
-            seen.entry(mailbox.to_string()).or_insert(Seen { open: 0, last: Instant::now(), invitation, from: None });
+        let known = seen.entry(mailbox.to_string()).or_insert(Seen {
+            open: 0,
+            last: Instant::now(),
+            invitation,
+            from: None,
+            said: 0,
+        });
         if known.open >= rendezvous.config.polls_per_mailbox {
             return None;
         }
         known.open += 1;
         known.last = Instant::now();
         known.invitation = invitation;
-        if from.is_some() {
-            known.from = from;
+        if let Some((from, seq)) = said {
+            known.say(from, seq);
         }
         Some(Polling { rendezvous, mailbox: mailbox.to_string() })
     }
@@ -790,6 +830,9 @@ struct PassAsked {
     /// A pass this mailbox gave, renewed (the same holder, the same id): only by the mailbox it opens.
     #[serde(default)]
     renew: Option<String>,
+    /// Passes this mailbox withdrew (their ids): the new one is newer than them, whatever the relay's clock says.
+    #[serde(default)]
+    after: Vec<String>,
 }
 
 /// `POST /v1/family/pass {for}` (a mailbox's token): a pass to call this mailbox, for the household at mailbox `for`
@@ -832,7 +875,8 @@ async fn pass(
             _ => return refuse(StatusCode::UNAUTHORIZED, "unknown", "not a pass this mailbox gave"),
         },
         (None, Some(holder)) if valid_mailbox(&holder) && holder != claims.id => {
-            let id = family.new_pass_id(&claims.id);
+            let after = asked.after.iter().take(100).filter_map(|id| family.generation_for(&claims.id, id)).max();
+            let id = family.new_pass_id(&claims.id, after.unwrap_or(0));
             PassClaims { to: claims.id, holder, id, exp: at + PASS_LIFETIME_SECS }
         }
         _ => return refuse(StatusCode::BAD_REQUEST, "invalid", "a pass is for one household's mailbox (for)"),
@@ -843,6 +887,9 @@ async fn pass(
 #[derive(Deserialize)]
 struct Accepted {
     accept: Vec<String>,
+    /// The statement's number (its bridge counts them up: an older one never undoes a newer one).
+    #[serde(default)]
+    seq: Option<u64>,
 }
 
 /// `POST /v1/family/passes {accept: [ids]}` (a mailbox's token): the passes it accepts from now on (a link removed:
@@ -865,7 +912,7 @@ async fn passes(State(relay): State<Arc<Relay>>, headers: HeaderMap, request: Re
         return refuse(StatusCode::BAD_REQUEST, "invalid", "too many passes");
     }
     let from = relay.family.takes_from(&claims.id, asked.accept.iter().map(String::as_str));
-    relay.family.take_from(&claims.id, from);
+    relay.family.take_from(&claims.id, from, asked.seq);
     StatusCode::NO_CONTENT.into_response()
 }
 
@@ -878,11 +925,12 @@ async fn next(State(relay): State<Arc<Relay>>, headers: HeaderMap) -> Response {
     let (mailbox, invitation) = (claims.id.clone(), claims.invitation());
     let family = &relay.family;
     // the passes it accepts, said with each poll (`-`: none): the oldest generation among them, kept as the poll opens
-    let from = headers.get("x-bip-passes").and_then(|v| v.to_str().ok()).filter(|_| !invitation).map(|said| {
+    let seq = headers.get("x-bip-passes-seq").and_then(|v| v.to_str().ok()).and_then(|v| v.trim().parse().ok());
+    let said = headers.get("x-bip-passes").and_then(|v| v.to_str().ok()).filter(|_| !invitation).map(|said| {
         let ids = said.split(',').map(str::trim).filter(|i| !i.is_empty() && *i != "-");
-        family.takes_from(&mailbox, ids.take(1000))
+        (family.takes_from(&mailbox, ids.take(1000)), seq)
     });
-    let Some(_open) = Polling::open(family, &mailbox, invitation, from) else {
+    let Some(_open) = Polling::open(family, &mailbox, invitation, said) else {
         return refuse(StatusCode::TOO_MANY_REQUESTS, "polls", "too many polls open on this mailbox");
     };
     let bell = family.bell(&mailbox);
@@ -1210,14 +1258,14 @@ mod tests {
     #[test]
     fn the_oldest_generation_a_mailbox_takes_is_said_with_its_polls() {
         let family = Rendezvous::new(FamilyConfig::default(), "test-key");
-        family.take_from("m", 10);
+        family.take_from("m", 10, None);
         assert!(lock(&family.seen).get("m").is_none(), "never polled: nothing kept");
         assert_eq!(family.pickup("m", Some(10)), None, "never polled: away");
-        let open = Polling::open(&family, "m", false, Some(10)).unwrap();
+        let open = Polling::open(&family, "m", false, Some((10, None))).unwrap();
         assert_eq!(family.pickup("m", Some(9)), None, "older than it takes: read as away");
         assert_eq!(family.pickup("m", Some(10)), Some(family.config.pickup));
         assert!(family.still_takes("m", 11) && !family.still_takes("m", 9));
-        family.take_from("m", u64::MAX);
+        family.take_from("m", u64::MAX, None);
         assert_eq!(family.pickup("m", Some(10)), None, "no pass at all from now on, at once");
         drop(open);
         // a poll that says nothing (a bridge from before) changes nothing of what it said
@@ -1231,9 +1279,45 @@ mod tests {
     }
 
     #[test]
+    fn a_statement_older_than_the_one_kept_never_undoes_it() {
+        let mut known = Seen { open: 1, last: Instant::now(), invitation: false, from: None, said: 0 };
+        // numbered: the newest number wins, lower or higher generation alike; an older or the same number is ignored
+        known.say(10, Some(5));
+        known.say(20, Some(7));
+        assert_eq!((known.from, known.said), (Some(20), 7));
+        known.say(10, Some(6));
+        known.say(10, Some(7));
+        assert_eq!(known.from, Some(20), "a statement made before the one kept came after it");
+        known.say(15, Some(8));
+        assert_eq!(known.from, Some(15), "a newer statement may take older passes again (a link made)");
+        // without a number (a bridge from before): never lower, but from « no pass at all »; ignored once numbered
+        let mut old = Seen { open: 1, last: Instant::now(), invitation: false, from: None, said: 0 };
+        old.say(10, None);
+        old.say(20, None);
+        old.say(10, None);
+        assert_eq!(old.from, Some(20));
+        old.say(u64::MAX, None);
+        old.say(30, None);
+        assert_eq!(old.from, Some(30));
+        known.say(100, None);
+        assert_eq!(known.from, Some(15));
+    }
+
+    #[test]
+    fn a_pass_made_after_a_withdrawn_one_is_newer_whatever_the_clock() {
+        let relay = Rendezvous::new(FamilyConfig::default(), "key-a");
+        let ahead = relay.new_pass_id("m", 0);
+        let day_ahead = relay.generation_for("m", &ahead).unwrap() + 86_400_000;
+        let withdrawn = relay.pass_id_with("m", day_ahead);
+        assert_eq!(relay.generation_for("m", &withdrawn), Some(day_ahead));
+        let made = relay.new_pass_id("m", day_ahead);
+        assert!(relay.generation_for("m", &made).is_some_and(|g| g > day_ahead));
+    }
+
+    #[test]
     fn a_pass_id_carries_its_generation_signed_for_its_mailbox_with_any_sealing_key() {
         let relay = Rendezvous::new(FamilyConfig::default(), "key-a");
-        let (first, second) = (relay.new_pass_id("mailbox-a"), relay.new_pass_id("mailbox-a"));
+        let (first, second) = (relay.new_pass_id("mailbox-a", 0), relay.new_pass_id("mailbox-a", 0));
         assert_eq!(first.len(), 34);
         let (g1, g2) = (relay.generation_for("mailbox-a", &first).unwrap(), relay.generation_for("mailbox-a", &second));
         assert!(g2.is_some_and(|g2| g2 > g1), "a pass made later has a newer generation");
@@ -1248,7 +1332,7 @@ mod tests {
         // the sealing keys rotated: a new first key, the old one still listed
         let rotated = Rendezvous::new(FamilyConfig::default(), "key-new, key-a");
         assert_eq!(rotated.generation_for("mailbox-a", &first), Some(g1));
-        assert!(rotated.generation_for("mailbox-a", &rotated.new_pass_id("mailbox-a")).is_some_and(|g| g > g1));
+        assert!(rotated.generation_for("mailbox-a", &rotated.new_pass_id("mailbox-a", 0)).is_some_and(|g| g > g1));
         assert_eq!(Rendezvous::new(FamilyConfig::default(), "key-b").generation_for("mailbox-a", &first), None);
     }
 

@@ -64,8 +64,8 @@ rendezvous is in memory (`src/family.rs`, the bridge's side: `bridge-rs/src/fami
 | Route | | |
 | --- | --- | --- |
 | `POST /v1/family/mailbox` | `{}`, `{"token": "fm1.…"}` (renew), or `{"invite_until": <unix>}` (an invitation's) | `{"mailbox": "<22 chars>", "token": "fm1.…", "expires": …}`: the id sealed in the token, nothing stored |
-| `POST /v1/family/pass` | the mailbox's token; `{"for": "<the other household's mailbox>"}`, or `{"renew": "fp1.…"}` (only by the mailbox it opens) | `{"pass": "fp1.…", "id": …, "expires": …}`: lets that mailbox, and no other, call this one (sealed: both mailboxes, an id, an end) |
-| `POST /v1/family/passes` | the mailbox's token; `{"accept": [ids]}` | 204: the passes it accepts from now on (a link removed); its polls say it too (`x-bip-passes`) |
+| `POST /v1/family/pass` | the mailbox's token; `{"for": "<the other household's mailbox>", "after": [ids withdrawn]}` (newer than them, whatever the relay's clock), or `{"renew": "fp1.…"}` (only by the mailbox it opens) | `{"pass": "fp1.…", "id": …, "expires": …}`: lets that mailbox, and no other, call this one (sealed: both mailboxes, an id, an end) |
+| `POST /v1/family/passes` | the mailbox's token; `{"accept": [ids], "seq": n}` | 204: the passes it accepts from now on (a link removed); its polls say it too (`x-bip-passes`, `x-bip-passes-seq`); the relay keeps the statement with the highest number (one made before a withdrawal never undoes it) |
 | `GET /v1/family/next` | the mailbox's token | the next call for it (`x-bip-call`, `x-bip-from`, `x-bip-kind`, its bytes), or 204 after 25 s |
 | `POST /v1/family/call/<mailbox>` | the caller's own token, `Content-Length`, `x-bip-kind: call` with `x-bip-pass`, or `invite` (≤ 64 KiB, to an invitation's mailbox), the sealed bytes (≤ 16 MiB) | the answer, streamed as the other bridge sends it; 503 `away` when that bridge is not connected **or the caller has no pass for it** (the same answer) |
 | `POST /v1/family/answer/<call>` | the token of the mailbox that took the call | 204; streamed on to the caller (≤ 64 MiB) |
