@@ -175,6 +175,26 @@ async fn an_older_app_turns_on_what_the_bridge_can_alone_and_is_told_where_to_go
 }
 
 #[tokio::test]
+async fn after_arreter_a_late_oui_turns_the_tool_on_but_never_starts_the_agent_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let backend = FakeBackend::start().await;
+    let app = app(dir.path(), &backend, true, 0.3);
+    ask(&app, "weather", "Pour la pluie").await;
+    let card = cards(&app).await[0].clone();
+    let id = card["request_id"].as_str().unwrap().to_string();
+    let run_id = card["run_id"].as_str().unwrap().to_string();
+    let config = app.app.state.config();
+    // the person stopped the turn that asked (« Arrêter »)
+    assert!(bipbridge::tool_asks::mark_stopped(&config, &id));
+    assert_eq!(cards(&app).await.len(), 1, "still answerable");
+    let done = answer(&app, &id, json!({"allow": true})).await;
+    assert_eq!(done.status, 200, "{}", done.text());
+    assert!(bipbridge::weather::enabled(&config, "wellness"), "« Oui » still turns it on");
+    let place = bipbridge::card_place::of(&config, &run_id).expect("placed where it was asked");
+    assert!(place.taken, "kept for no turn: nothing resumes the agent after a stop");
+}
+
+#[tokio::test]
 async fn an_account_is_connected_in_the_apps_screen_never_by_the_card_alone() {
     let dir = tempfile::tempdir().unwrap();
     let backend = FakeBackend::start().await;

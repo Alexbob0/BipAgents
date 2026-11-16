@@ -18,7 +18,9 @@
 //!   (`after_reading`: a mail, a web page, a page friends write in, a file: what a prompt injection would use).
 //!   Shown where the turn asked (card_place.rs), pushed once (its notification has no « Oui »: NotificationActions).
 //! - **The wait**: the call waits `wait_seconds` (330, as `ask_secret`); then the card waits on, `keep_seconds` (24 h),
-//!   and an answer given later makes the agent go on once (card_place.rs `settle`).
+//!   and an answer given later makes the agent go on once (card_place.rs `settle`) — unless the person stopped that
+//!   turn (« Arrêter »): the card stays answerable (« Oui » still turns the tool on), the agent is never started again
+//!   by it, and learns the answer at its next turn like any tool change (`hold_back`).
 //! - **Limits**, kept by the bridge: one card waiting per agent, `per_day` (3) a day per conversation, never the same
 //!   tool again in a conversation where the person said « Non » (D4 A).
 //! - **« Oui »** (`POST /v1/tools/requests/{id}`, the person's app only: the bridge key): the bridge turns on what it
@@ -575,6 +577,10 @@ pub struct Ask {
     pub agents: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub via: Option<String>,
+    /// The turn that asked was stopped (« Arrêter »): the card stays answerable, but an answer never starts the agent
+    /// again by itself (it learns it at its next turn, as any tool change).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub stopped: bool,
 }
 
 pub const WAITING: &str = "waiting";
@@ -634,6 +640,32 @@ fn change<T>(config: &Config, f: impl FnOnce(&mut Book) -> T) -> T {
 /// One ask by its id.
 pub fn get(config: &Config, id: &str) -> Option<Ask> {
     load(config).asks.into_iter().find(|a| a.id == id)
+}
+
+/// The ask `id`'s turn was stopped: answered later, it never resumes the agent (Alex's « Arrêter », 16/11: nothing
+/// runs after a stop). Whether it was waiting and is marked now.
+pub fn mark_stopped(config: &Config, id: &str) -> bool {
+    change(config, |book| match book.asks.iter_mut().find(|a| a.id == id && a.state == WAITING && !a.stopped) {
+        Some(ask) => {
+            ask.stopped = true;
+            true
+        }
+        None => false,
+    })
+}
+
+/// Whether the person stopped the turn `run` of `agent` (« Arrêter »).
+fn run_stopped(state: &AppState, agent: &str, run: Option<&str>) -> bool {
+    run.and_then(|r| state.hub.subscription(agent, r))
+        .is_some_and(|sub| sub.state.lock().unwrap_or_else(|e| e.into_inner()).stop_asked)
+}
+
+/// An ask whose turn was stopped: its answer kept for no turn (card_place.rs `taken`: nothing resumes).
+fn hold_back(state: &AppState, ask: &Ask) {
+    if ask.stopped || run_stopped(state, &ask.agent, ask.run.as_deref()) {
+        mark_stopped(&state.config(), &ask.id);
+        crate::card_place::taken(&state.config(), &ask.run_id());
+    }
 }
 
 fn wake(id: &str) {
@@ -716,8 +748,8 @@ fn close(config: &Config, id: &str, state: &str, agents: Vec<String>, via: &str)
     closed
 }
 
-/// The call's wait: the ask once answered (None: not in time; it waits on for the person).
-async fn wait(config: &Config, id: &str) -> Option<Ask> {
+/// The call's wait: the ask once answered (None: not in time, or its turn stopped; it waits on for the person).
+async fn wait(state: &AppState, config: &Config, id: &str) -> Option<Ask> {
     let notify = Arc::new(Notify::new());
     WAITERS.lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string(), notify.clone());
     let deadline = tokio::time::Instant::now() + Duration::from_secs_f64(config.tool_asks.wait_seconds);
@@ -725,6 +757,10 @@ async fn wait(config: &Config, id: &str) -> Option<Ask> {
         let woken = notify.notified();
         match get(config, id) {
             Some(ask) if ask.state != WAITING => break Some(ask),
+            Some(ask) if run_stopped(state, &ask.agent, ask.run.as_deref()) => {
+                hold_back(state, &ask);
+                break None;
+            }
             Some(_) => {}
             None => break None,
         }
@@ -915,7 +951,7 @@ pub async fn call(state: &AppState, agent: &AgentConfig, arguments: &Dict, run: 
     crate::card_place::place_made(state, agent, &run_id, TOOL_NAME).await;
     let line = format!("{} demande {}", shown_name(&config, &agent.name), item.label);
     state.push.notify_bridge_card(&agent.name, &line, PUSH_KEY, &run_id).await;
-    let answered = wait(&config, &ask.id).await;
+    let answered = wait(state, &config, &ask.id).await;
     match answered {
         Some(done) if done.state == ON => {
             let others: Vec<String> = done.agents.iter().filter(|a| **a != agent.name).map(|a| shown_name(&config, a)).collect();
@@ -1079,6 +1115,7 @@ pub async fn answer(state: &AppState, id: &str, answer: &Answer, via: &str) -> R
     let agent = config.agent(Some(&ask.agent)).cloned().ok_or(Refusal::NotFound)?;
     if !answer.allow {
         let closed = close(&config, id, REFUSED, Vec::new(), via).ok_or(Refusal::NotFound)?;
+        hold_back(state, &closed);
         record(&config, &closed, "deny");
         tracing::info!(target: "bipbridge::tool_asks", agent = %agent.name, tool = %ask.tool, "tool refused");
         return Ok(closed);
@@ -1111,6 +1148,7 @@ pub async fn answer(state: &AppState, id: &str, answer: &Answer, via: &str) -> R
         });
     }
     let closed = close(&config, id, ON, on, via).ok_or(Refusal::NotFound)?;
+    hold_back(state, &closed);
     record(&config, &closed, "once");
     tracing::info!(target: "bipbridge::tool_asks", agent = %agent.name, tool = %ask.tool, agents = %closed.agents.join(","), "tool turned on from its card");
     Ok(closed)
@@ -1176,6 +1214,10 @@ pub async fn sweep(state: AppState) {
                 }
                 continue;
             }
+            // its turn stopped meanwhile (« Arrêter »): answerable still, never resumed
+            if !ask.stopped && run_stopped(&state, &ask.agent, ask.run.as_deref()) {
+                hold_back(&state, &ask);
+            }
             let Some(agent) = config.agent(Some(&ask.agent)).cloned() else { continue };
             let Some(item) = item_of(&config, &agent, &ask.tool) else { continue };
             if is_on(&config, &agent, &item) != Some(true) {
@@ -1186,6 +1228,7 @@ pub async fn sweep(state: AppState) {
                 ask.also.iter().filter(|n| config.agent(Some(n)).is_some_and(|a| is_on(&config, a, &item) == Some(true))).cloned(),
             );
             if let Some(closed) = close(&config, &ask.id, ON, on, "elsewhere") {
+                hold_back(&state, &closed);
                 record(&config, &closed, "once");
                 tracing::info!(target: "bipbridge::tool_asks", agent = %agent.name, tool = %ask.tool, "tool turned on elsewhere: card closed");
                 crate::card_place::answered(&state, &agent, &closed.run_id(), "once").await;
