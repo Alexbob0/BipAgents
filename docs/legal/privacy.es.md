@@ -2,7 +2,7 @@
 
 # Política de privacidad de BipAgents
 
-> Última actualización: 12 de noviembre de 2026.
+> Última actualización: 16 de noviembre de 2026.
 
 ## En resumen
 
@@ -16,11 +16,14 @@
   ningún contenido (sección 5.12). En Android, los servicios de Google integrados en la app (mapas, escáner de documentos)
   envían a Google sus propios datos técnicos (sección 7). Sin cuenta con tu propio servidor; una cuenta para la oferta
   todo incluido.
-- Con tu propio servidor, Kerfy Studio solo puede recibir tres cosas:
+- Con tu propio servidor, Kerfy Studio solo puede recibir cuatro cosas:
   1. lo necesario para entregar tus **notificaciones** a través de su relé: un token de dispositivo sellado, nunca el
      texto de tus mensajes en claro;
   2. lo que decidas enviarnos: un **correo** al soporte o la **denuncia** de una respuesta o de un mensaje desde la app;
-  3. **informes de fallos**, solo si has activado su envío en los ajustes de tu teléfono.
+  3. **informes de fallos**, solo si has activado su envío en los ajustes de tu teléfono;
+  4. si tu instalación y la de un hogar vinculado no pueden comunicarse directamente, sus intercambios a través de
+     su **relé**, cifrados de extremo a extremo: el relé ve las direcciones IP, quién llama a quién, cuándo, el
+     tamaño de los intercambios y cuándo está encendido tu ordenador (sección 4.1 bis).
 - Con la oferta todo incluido, Kerfy Studio trata además tu cuenta, el estado de tu suscripción, datos técnicos sobre
   tu plaza (nunca su contenido) y tus copias de seguridad, ilegibles sin su clave, que se queda en tu plaza y en tus dispositivos (sección 5.5); aloja tu plaza sin
   acceder a ella (sección 5). Si das a un agente su propia dirección de correo, Kerfy Studio guarda además los correos
@@ -324,6 +327,33 @@ notificaciones a los iPhone a través de su servicio APNs.
 sin ellas. Si desinstalas la app, Apple o Google marcan el token como inválido y tu servidor lo olvida.
 
 **En Android**, la app solo pide un token a Google en el momento en que activas las notificaciones.
+
+### 4.1 bis Vincular dos hogares a través del relé de Kerfy Studio
+
+Cuando dos instalaciones no pueden comunicarse directamente (por ejemplo, dos ordenadores en casa, cada uno detrás de
+su router), sus bridges pasan por un relé gestionado por Kerfy Studio (`push.bipagents.com`, el mismo servidor que las
+notificaciones, en OVHcloud, en Francia). Todo lo que pasa por él está cifrado de extremo a extremo con una clave
+propia de cada vínculo, que solo tienen los dos hogares: Kerfy Studio no puede leer ni modificar los mensajes,
+noticias, contenidos compartidos o datos de páginas intercambiados, ni el código de invitación. Solo los hogares que
+has vinculado pueden contactar con tu bridge a través del relé: cuando quitas un vínculo, ese hogar ya no puede
+contactar con él, ni saber si está encendido.
+
+**Lo que ve el relé**: la dirección IP de cada bridge; un identificador aleatorio de «buzón» por instalación (sin
+relación con un nombre, una cuenta o una dirección de correo); qué buzón llama a otro, cuándo, y el tamaño de los
+intercambios. Mientras un vínculo pase por el relé (o una invitación esté pendiente), tu bridge mantiene una solicitud
+abierta hacia él: por tanto, el relé ve, de forma continua, **cuándo está encendido tu ordenador y desde qué dirección
+IP**.
+
+**Lo que guarda**: nada en disco. Un intercambio solo permanece en memoria el tiempo de pasar (unos minutos como
+máximo para una respuesta larga, que pasa en flujo continuo). Los identificadores de los buzones conectados permanecen
+en memoria mientras están conectados, y después una hora. Los contadores contra abusos están en memoria, en forma de
+huellas, y se olvidan en el plazo de una hora. Los intercambios exitosos no se registran. Se registran: algunos
+rechazos (cuota superada, buzón bloqueado, respuesta cortada), con una huella corta de un solo buzón, calculada con
+una clave que solo tiene el relé, y un total por hora (número de intercambios, bytes, buzones conectados). Estos
+registros se conservan 14 días.
+
+Una casa vinculada a una plaza de la oferta solo pasa por el relé una vez, para presentarse; después, sus bridges se
+hablan directamente.
 
 ### 4.2 El soporte y las denuncias
 
