@@ -312,7 +312,8 @@ fn toolset_item(name: &str, label: &str) -> Item {
         gloss: String::new(),
         sf: "puzzlepiece.extension".into(),
         material: "Extension".into(),
-        risk: if sensitive { Check } else { Harmless },
+        // what this file doesn't name is never called harmless (review R9)
+        risk: Check,
         also: !sensitive,
         when: NextTurn,
         switch: Switch::Toolset(name.to_string()),
@@ -329,8 +330,9 @@ fn connector_item(c: &crate::connectors::Connector) -> Item {
     Item {
         id: format!("connector:{}", c.id),
         kind: Server,
-        label: c.name.clone(),
-        line: crate::cards::quoted(&c.description, 80),
+        // the bridge's words: its name and description are the agent's (review R10)
+        label: format!("Connecteur « {} »", crate::cards::quoted(&c.name, 40)),
+        line: "Un connecteur qu'il a fait, approuvé avant".into(),
         gloss: String::new(),
         sf: "puzzlepiece.extension".into(),
         material: "Extension".into(),
@@ -501,6 +503,14 @@ pub fn item_of(config: &Config, agent: &AgentConfig, id: &str) -> Option<Item> {
     seen.get(id).map(|(label, _)| toolset_item(id, label))
 }
 
+/// The tool of `ask`, whatever its state: a toolset Hermes named before a restart stays one (review R8).
+fn item_of_ask(config: &Config, agent: &AgentConfig, ask: &Ask) -> Option<Item> {
+    item_of(config, agent, &ask.tool).or_else(|| {
+        let toolset = !ask.tool.contains(':') && !NOT_ASKABLE.iter().any(|n| n.0 == ask.tool);
+        toolset.then(|| toolset_item(&ask.tool, &ask.label))
+    })
+}
+
 /// The person's other agents `item` could be given to as well: their own, eligible, with it off (D3 A).
 pub fn also_for(config: &Config, asking: &AgentConfig, item: &Item) -> Vec<AgentConfig> {
     if !item.also {
@@ -615,6 +625,9 @@ struct Book {
 }
 
 static LOCK: Mutex<()> = Mutex::new(());
+/// The answers being carried out, by ask id (`answer`: one at a time per card).
+type Gates = HashMap<String, Arc<tokio::sync::Mutex<()>>>;
+static ANSWERING: LazyLock<Mutex<Gates>> = LazyLock::new(Default::default);
 /// The calls waiting for an answer, by ask id.
 static WAITERS: LazyLock<Mutex<HashMap<String, Arc<Notify>>>> = LazyLock::new(Default::default);
 
@@ -810,7 +823,7 @@ fn answered_line(config: &Config, ask: &Ask) -> String {
 /// The waiting card, as the apps show it (Hermes' approvals' shape: older apps draw the generic card).
 fn card_of(config: &Config, ask: &Ask) -> Dict {
     let agent = config.agent(Some(&ask.agent));
-    let item = agent.and_then(|a| item_of(config, a, &ask.tool));
+    let item = agent.and_then(|a| item_of_ask(config, a, ask));
     let shown = shown_name(config, &ask.agent);
     let also: Vec<Value> = match (agent, item.as_ref()) {
         (Some(_), Some(item)) => ask
@@ -881,7 +894,8 @@ fn card_of(config: &Config, ask: &Ask) -> Dict {
 
 /// The cards waiting (card_place.rs `bridge_cards`: the conversations and the Boîte), oldest first.
 pub fn pending_items(config: &Config, agent: Option<&str>) -> Vec<Dict> {
-    if !path(config).exists() {
+    // switched off again: no card shown (review R7)
+    if !config.tool_asks.ask_in_conversation || !path(config).exists() {
         return Vec::new();
     }
     let now = py::time_time();
@@ -893,11 +907,37 @@ pub fn pending_items(config: &Config, agent: Option<&str>) -> Vec<Dict> {
 
 // -- the agent's call ---------------------------------------------------------------------------------------------------
 
-/// What outside content the turn `run` of `agent` read last (a prompt injection's way in): mail, web, page, file.
+/// The last outside read of each conversation, (agent, session) → (kind, when): the amber line holds for the
+/// conversation, not only for the turn that read (review R4).
+type Reads = HashMap<(String, String), (String, f64)>;
+static READS: LazyLock<Mutex<Reads>> = LazyLock::new(Default::default);
+/// How long a read earlier in a conversation still shows the amber line.
+const READ_KEPT: f64 = 86400.0;
+
+/// A tool call started in a turn of `agent` in conversation `session` (runs.rs): kept when it reads outside words.
+pub fn note_read(agent: &str, session: Option<&str>, tool: &str) {
+    let (Some(kind), Some(session)) = (reading_kind(tool), session.filter(|s| !s.is_empty())) else { return };
+    let now = py::time_time();
+    let mut reads = READS.lock().unwrap_or_else(|e| e.into_inner());
+    reads.retain(|_, (_, at)| now - *at < READ_KEPT);
+    reads.insert((agent.to_string(), session.to_string()), (kind.to_string(), now));
+}
+
+/// What outside content the turn `run` of `agent` read last, else its conversation in the last day (a prompt
+/// injection's way in): mail, web, page, file, agent.
 fn after_reading(state: &AppState, agent: &str, run: Option<&str>) -> Option<String> {
     let sub = state.hub.subscription(agent, run?)?;
-    let recent = sub.state.lock().unwrap_or_else(|e| e.into_inner()).recent_tools.clone();
-    recent.iter().rev().find_map(|tool| reading_kind(tool).map(str::to_string))
+    let (recent, session) = {
+        let st = sub.state.lock().unwrap_or_else(|e| e.into_inner());
+        (st.recent_tools.clone(), st.session_id.clone())
+    };
+    let here = recent.iter().rev().find_map(|tool| reading_kind(tool).map(str::to_string));
+    // or earlier in the same conversation: what was read stays in its history (review R4)
+    here.or_else(|| {
+        let key = (agent.to_string(), session.filter(|s| !s.is_empty())?);
+        let reads = READS.lock().unwrap_or_else(|e| e.into_inner());
+        reads.get(&key).filter(|(_, at)| py::time_time() - at < READ_KEPT).map(|(kind, _)| kind.clone())
+    })
 }
 
 /// The outside content a tool call reads (its bare or MCP name).
@@ -909,13 +949,17 @@ pub fn reading_kind(tool: &str) -> Option<&'static str> {
         "web_extract" | "web_search" | "x_search" => Some("web"),
         b if b.starts_with("browser_") || ["navigate", "get_page_content"].contains(&b) => Some("web"),
         "read_page" | "page_data" => Some("page"),
-        "read_sent_file" | "archive_read" | "read_file" => Some("file"),
+        "read_sent_file" | "archive_read" | "archive_search" | "read_file" | "search_files" => Some("file"),
+        // another agent's answer, a sub-agent's report: whatever they read (review R4)
+        "message_agent" | "ask_agent" | "delegate_task" => Some("agent"),
         _ => None,
     }
 }
 
 const UNATTENDED: &str = "Nobody is here to answer (this turn runs on its own): no card was made. Do what you can \
 without it, and in your report say in one sentence that « {label} » would let you do it.";
+const FOR_AN_AGENT: &str = "Another agent wrote to you here: no card. Say in one sentence that « {label} » would let \
+you do it; the person can ask you in your own conversation.";
 const IN_A_ROOM: &str = "Not in a group discussion: say in one sentence that « {label} » would let you do it; the \
 person can ask you again in your own conversation.";
 
@@ -940,17 +984,26 @@ pub async fn call(state: &AppState, agent: &AgentConfig, arguments: &Dict, run: 
         return tool_text("why: one short sentence in their language, what you'll do with it for them.", true);
     }
     let words = |text: &str| text.replace("{label}", &item.label);
-    if let Some(run) = run {
-        if state.hub.nobody_there_for(&agent.name, run).is_some() {
-            tracing::info!(target: "bipbridge::tool_asks", agent = %agent.name, tool = %item.id, "asked in a turn nobody follows: no card");
-            return tool_text(&words(UNATTENDED), false);
-        }
-        let room = state.hub.subscription(&agent.name, run).and_then(|s| s.state.lock().unwrap_or_else(|e| e.into_inner()).room_id.clone());
-        if room.is_some() {
-            return tool_text(&words(IN_A_ROOM), false);
-        }
+    // a call no followed turn carries (a sub-agent still working, Hermes' own turns): a routine's, no card (review R2)
+    let Some(run) = run else {
+        tracing::info!(target: "bipbridge::tool_asks", agent = %agent.name, tool = %item.id, "asked in a call no turn carries: no card");
+        return tool_text(&words(UNATTENDED), false);
+    };
+    if state.hub.nobody_there_for(&agent.name, run).is_some() {
+        tracing::info!(target: "bipbridge::tool_asks", agent = %agent.name, tool = %item.id, "asked in a turn nobody follows: no card");
+        return tool_text(&words(UNATTENDED), false);
     }
-    let session = run.and_then(|r| state.hub.subscription(&agent.name, r)).and_then(|s| s.session_id()).filter(|s| !s.is_empty());
+    let room = state.hub.subscription(&agent.name, run).and_then(|s| s.state.lock().unwrap_or_else(|e| e.into_inner()).room_id.clone());
+    if room.is_some() {
+        return tool_text(&words(IN_A_ROOM), false);
+    }
+    let session = state.hub.subscription(&agent.name, run).and_then(|s| s.session_id()).filter(|s| !s.is_empty());
+    // its answer to another agent (their pair's conversation, agent_pairs.rs): as in a room (review R1)
+    if session.as_deref().is_some_and(|s| crate::agent_pairs::is_pair_session(&config, &agent.name, s)) {
+        tracing::info!(target: "bipbridge::tool_asks", agent = %agent.name, tool = %item.id, "asked answering another agent: no card");
+        return tool_text(&words(FOR_AN_AGENT), false);
+    }
+    let run = Some(run);
     let read = after_reading(state, &agent.name, run);
     let also: Vec<String> = also_for(&config, agent, &item).into_iter().map(|a| a.name).collect();
     let ask = match open(&config, &agent.name, &item, &reason, session.as_deref(), run, read.as_deref(), also) {
@@ -1121,6 +1174,13 @@ async fn switch_on(state: &AppState, item: &Item, agents: &[AgentConfig]) -> Res
 /// The conversations showing it are not touched here (the routes do: card_place.rs `answered`).
 pub async fn answer(state: &AppState, id: &str, answer: &Answer, via: &str) -> Result<Ask, Refusal> {
     let config = state.config();
+    // switched off again: no card answered (review R7)
+    if !config.tool_asks.ask_in_conversation {
+        return Err(Refusal::NotFound);
+    }
+    // one answer at a time per card: a « Non » waits for a « Oui » being switched on, then finds it answered (review R6)
+    let gate = ANSWERING.lock().unwrap_or_else(|e| e.into_inner()).entry(id.to_string()).or_default().clone();
+    let _one = gate.lock().await;
     let now = py::time_time();
     let ask = get(&config, id).filter(|a| a.waiting(now)).ok_or(Refusal::NotFound)?;
     let agent = config.agent(Some(&ask.agent)).cloned().ok_or(Refusal::NotFound)?;
@@ -1131,7 +1191,7 @@ pub async fn answer(state: &AppState, id: &str, answer: &Answer, via: &str) -> R
         tracing::info!(target: "bipbridge::tool_asks", agent = %agent.name, tool = %ask.tool, "tool refused");
         return Ok(closed);
     }
-    let item = item_of(&config, &agent, &ask.tool).ok_or(Refusal::NotFound)?;
+    let item = item_of_ask(&config, &agent, &ask).ok_or(Refusal::NotFound)?;
     if answer.also.iter().any(|n| !ask.also.contains(n)) {
         return Err(Refusal::BadAlso);
     }
@@ -1141,7 +1201,10 @@ pub async fn answer(state: &AppState, id: &str, answer: &Answer, via: &str) -> R
     let off: Vec<AgentConfig> = targets.iter().filter(|a| is_on(&config, a, &item) != Some(true)).cloned().collect();
     if !off.is_empty() {
         match item.kind {
-            Phone if !answer.phone_ready && !phone_shares(&config, &item.switch) => return Err(Refusal::NeedsPhone),
+            // Santé: its own consent on the phone, every time (D6 A; an older app's « Oui, vas-y » never: review R3)
+            Phone if !answer.phone_ready && (item.switch == Switch::Health || !phone_shares(&config, &item.switch)) => {
+                return Err(Refusal::NeedsPhone)
+            }
             // only from its own screen (its confirmation, a setup per agent): never turned on from a card
             Screen => return Err(Refusal::ScreenOnly),
             _ => {}
@@ -1219,7 +1282,11 @@ pub async fn sweep(state: AppState) {
         }
         let now = py::time_time();
         for ask in load(&config).asks.into_iter().filter(|a| a.state == WAITING) {
-            if now >= ask.until {
+            // a card being answered: left for the next look (review R6)
+            let gate = ANSWERING.lock().unwrap_or_else(|e| e.into_inner()).get(&ask.id).cloned();
+            let Ok(_one) = gate.as_ref().map(|g| g.try_lock()).transpose() else { continue }; // being answered
+            // past its time, or the place switched asking off again: expired (review R7)
+            if now >= ask.until || !config.tool_asks.ask_in_conversation {
                 if close(&config, &ask.id, EXPIRED, Vec::new(), "expired").is_some() {
                     tracing::info!(target: "bipbridge::tool_asks", agent = %ask.agent, tool = %ask.tool, "tool card expired");
                 }
@@ -1230,7 +1297,7 @@ pub async fn sweep(state: AppState) {
                 hold_back(&state, &ask);
             }
             let Some(agent) = config.agent(Some(&ask.agent)).cloned() else { continue };
-            let Some(item) = item_of(&config, &agent, &ask.tool) else { continue };
+            let Some(item) = item_of_ask(&config, &agent, &ask) else { continue };
             if is_on(&config, &agent, &item) != Some(true) {
                 continue;
             }

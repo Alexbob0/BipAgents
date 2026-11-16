@@ -5,7 +5,7 @@
 mod common;
 
 use bipbridge::agent_tools;
-use common::fakes::FakeBackend;
+use common::fakes::{sse, wait_until, FakeBackend, RunItem};
 use common::{auth, config_dict, TestApp};
 use indexmap::IndexMap;
 use serde_json::{json, Value};
@@ -25,6 +25,19 @@ fn app(dir: &std::path::Path, backend: &FakeBackend, on: bool, wait: f64) -> Tes
     tokens.insert("wellness".to_string(), agent_tools::digest(TOKEN));
     agent_tools::save_tokens(&config, &tokens).unwrap();
     TestApp::new(config)
+}
+
+/// A turn of Wellness the person's app follows, inside its `ask_for_tool` call (review R2: a call no followed turn
+/// carries makes no card).
+async fn followed(app: &TestApp, backend: &FakeBackend) -> bipbridge::runs::Listener {
+    let item = RunItem::Text(sse("tool.started", json!({"run_id": "run_t", "tool": "mcp_bipagents_ask_for_tool"})));
+    backend.with(|s| s.runs.insert("run_t".to_string(), vec![item]));
+    let state = app.app.state.clone();
+    let agent = state.config().agent(Some("wellness")).cloned().unwrap();
+    let sub = state.hub.watch(&agent, "run_t", Some("api_t"), false);
+    let listener = state.hub.subscribe(&agent, "run_t", "app", true);
+    assert!(wait_until(|| sub.state.lock().unwrap().last_tool == "ask_for_tool", std::time::Duration::from_secs(5)).await);
+    listener
 }
 
 async fn rpc(app: &TestApp, method: &str, params: Value) -> Value {
@@ -78,6 +91,7 @@ async fn a_card_waits_then_oui_turns_the_phone_tool_on_for_the_agent_and_paul() 
     let dir = tempfile::tempdir().unwrap();
     let backend = FakeBackend::start().await;
     let app = app(dir.path(), &backend, true, 0.3);
+    let _turn = followed(&app, &backend).await;
     let text = ask(&app, "reminders", "Pour te rappeler le pain demain à 18 h").await;
     // the app's parts in the agent's language (names.rs: « Reminders » for an English one)
     assert!(text.contains("Not answered yet") && (text.contains("Rappels") || text.contains("Reminders")), "{text}");
@@ -116,6 +130,7 @@ async fn the_waiting_call_gets_the_answer_and_the_agent_goes_on_in_the_same_turn
     let dir = tempfile::tempdir().unwrap();
     let backend = FakeBackend::start().await;
     let app = app(dir.path(), &backend, true, 20.0);
+    let _turn = followed(&app, &backend).await;
     let asking = ask(&app, "weather", "Pour savoir s'il pleut demain");
     let answering = async {
         for _ in 0..100 {
@@ -138,6 +153,7 @@ async fn non_holds_for_the_conversation_and_one_card_waits_at_a_time() {
     let dir = tempfile::tempdir().unwrap();
     let backend = FakeBackend::start().await;
     let app = app(dir.path(), &backend, true, 0.3);
+    let _turn = followed(&app, &backend).await;
     ask(&app, "contacts", "Pour trouver le numéro de Marc").await;
     let other = ask(&app, "weather", "Pour la pluie").await;
     assert!(other.contains("already waits"), "{other}");
@@ -154,6 +170,7 @@ async fn an_older_app_turns_on_what_the_bridge_can_alone_and_is_told_where_to_go
     let dir = tempfile::tempdir().unwrap();
     let backend = FakeBackend::start().await;
     let app = app(dir.path(), &backend, true, 0.3);
+    let _turn = followed(&app, &backend).await;
     let (k, v) = auth();
     // a server tool: on from the generic card's « Oui, vas-y »
     ask(&app, "weather", "Pour la pluie").await;
@@ -179,6 +196,7 @@ async fn after_arreter_a_late_oui_turns_the_tool_on_but_never_starts_the_agent_a
     let dir = tempfile::tempdir().unwrap();
     let backend = FakeBackend::start().await;
     let app = app(dir.path(), &backend, true, 0.3);
+    let _turn = followed(&app, &backend).await;
     ask(&app, "weather", "Pour la pluie").await;
     let card = cards(&app).await[0].clone();
     let id = card["request_id"].as_str().unwrap().to_string();
@@ -199,6 +217,7 @@ async fn an_account_is_connected_in_the_apps_screen_never_by_the_card_alone() {
     let dir = tempfile::tempdir().unwrap();
     let backend = FakeBackend::start().await;
     let app = app(dir.path(), &backend, true, 0.3);
+    let _turn = followed(&app, &backend).await;
     ask(&app, "mail", "Pour chercher la facture de mars").await;
     let card = cards(&app).await[0].clone();
     assert_eq!(card["bip_tool"]["kind"], "account");
