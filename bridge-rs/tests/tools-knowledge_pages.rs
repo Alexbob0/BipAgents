@@ -252,7 +252,24 @@ fn a_page_that_remembers_never_builds_html_from_strings() {
     ] {
         assert!(pages::draws_typed_html(refused).is_some(), "{refused}");
     }
+    // re-check of 15/11 (R3-2): document.write through an alias, and a link (or a place to go) made from a string: a
+    // friend's « javascript:… » would run when someone taps it
+    for (refused, why) in [
+        ("<script>var doc = document; Bip.store.onChange(function(){ doc.write('<p>' + Bip.store.get('n') + '</p>') })</script>", pages::TYPED_AS_HTML),
+        ("<script>const { writeln } = document; Bip.store.onChange(() => writeln(Bip.store.get('n')))</script>", pages::TYPED_AS_HTML),
+        ("<script>Bip.store.onChange(function(){ Bip.store.items('r').forEach(function(r){ var a = document.createElement('a'); a.href = r.value.lien; l.appendChild(a) }) })</script>", pages::TYPED_AS_LINK),
+        ("<script>Bip.store.onChange(() => { a.setAttribute('href', Bip.store.get('url')) })</script>", pages::TYPED_AS_LINK),
+        ("<script>Bip.store.onChange(() => { a['href'] = Bip.store.get('url') })</script>", pages::TYPED_AS_LINK),
+        ("<script>go.onclick = () => { location = Bip.store.get('url') }</script>", pages::TYPED_AS_LINK),
+        ("<script>go.onclick = () => window.location.assign(Bip.store.get('url'))</script>", pages::TYPED_AS_LINK),
+        ("<script>Bip.store.onChange(() => { f.action = Bip.store.get('url') })</script>", pages::TYPED_AS_LINK),
+    ] {
+        assert_eq!(pages::draws_typed_html(refused), Some(why), "{refused}");
+    }
     for kept in [
+        "<a href=\"https://www.sncf-connect.com\">Billets</a><table id=t></table><script>Bip.rows('#t', Bip.store.items('l'), r => [r.value])</script>",
+        "<script>Bip.store.onChange(() => { if (a.href == Bip.store.get('url')) a.textContent = 'ok' })</script>",
+        "<script>Bip.store.onChange(() => { navigator.clipboard.writeText(Bip.store.get('n')) })</script>",
         "<table id=t></table><script>Bip.store.onChange(function(){ Bip.rows('#t', Bip.store.items('l'), function(r){ return [r.value.what] }) })</script>",
         "<div id=c></div><script>c.innerHTML = '<b>Total</b>'; Bip.bars('#c', {labels: ['a'], values: [1]})</script>",
         "<p>The store opens at 9</p><script>el.innerHTML = '<i>x</i>'</script>",
