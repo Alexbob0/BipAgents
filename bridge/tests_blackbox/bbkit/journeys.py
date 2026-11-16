@@ -101,6 +101,23 @@ def photo(seed: int = 1) -> bytes:
     return tiny_png(256, 256, ((seed * 70) % 256, (120 + seed * 40) % 256, (200 - seed * 30) % 256))
 
 
+def hermes_holds(folder: Path, token: str) -> None:
+    """The journeys' token where an install's Hermes keeps it too: its profile's config.yaml (the bridge's entries,
+    each with the token the bridge minted). The bridge registers an agent's tools again when they change (a tool turned
+    on, a home linked: agent_tools::register_at) and keeps the token Hermes holds; one it does not see there is
+    replaced by a new one, and the journeys' calls as the agent are refused from then on (« unknown agent »: J59–J62
+    after J58's link, J62's Météo, 16/11)."""
+    import yaml
+    path = folder / "config.yaml"
+    data = yaml.safe_load(path.read_text())
+    servers = data["mcp_servers"]
+    minted = servers["bipagents"]["headers"]["Authorization"]
+    for entry in servers.values():
+        if isinstance(entry, dict) and (entry.get("headers") or {}).get("Authorization") == minted:
+            entry["headers"]["Authorization"] = f"Bearer {token}"
+    path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
+
+
 def journey_bridge(bridges, fakes, word_gap: float = 0.06, name: str = "journeys",
                    family_relay: Optional[str] = None, tool_asks: bool = False) -> Journey:
     from test_connectors import IMAGE, SERVER
@@ -138,6 +155,7 @@ def journey_bridge(bridges, fakes, word_gap: float = 0.06, name: str = "journeys
     tokens = json.loads(path.read_text())["tokens"]
     tokens[AGENT] = hashlib.sha256(token.encode()).hexdigest()
     path.write_text(json.dumps({"tokens": tokens}))
+    hermes_holds(profile(hub, AGENT), token)
     main = bridge.get("/v1/threads/main", headers=AUTH, params={"agent": AGENT})
     assert main.status_code == 200, main.text
     journey = Journey(bridge, fakes, None, main.json()["id"], token)   # type: ignore[arg-type]

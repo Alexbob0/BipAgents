@@ -136,9 +136,11 @@ def test_j62_a_server_tool_is_on_at_once(journey):
     done = answer(journey, card, {"allow": True})
     assert done.status_code == 200 and done.json()["state"] == "on", done.text
     reply_in(journey.bridge, journey.thread, AGENT, "C’est fait", timeout=60)
+    # the agent's Hermes, with the token it held before (its tools' new version keeps it), sees Météo
     listed = journey.bridge.post("/v1/agent-tools/mcp", headers={"Authorization": f"Bearer {journey.token}"},
-                                 json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}).json()
-    names = [t["name"] for t in listed["result"]["tools"]]
+                                 json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})
+    assert listed.status_code == 200 and "result" in listed.json(), (listed.status_code, listed.text)
+    names = [t["name"] for t in listed.json()["result"]["tools"]]
     assert "weather" in names, names
 
 
