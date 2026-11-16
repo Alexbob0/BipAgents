@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><title>Espace membres | Essai</title></head>
+<body>
+<!-- Confirmation of the review of vault-no-readback (16/11). A login whose « se souvenir de moi » keeps what is typed
+     in the site's storage (as form-saving libraries do, the password included): the site's own copy, out of the page.
+     Fake data only. -->
+<h1>Espace membres</h1>
+<form id="login" action="/session" method="post">
+  <label for="ident">Identifiant</label>
+  <input type="text" name="login" id="ident" autocomplete="username">
+  <label for="mdp">Mot de passe</label>
+  <input type="password" name="mdp" id="mdp" autocomplete="current-password">
+  <label><input type="checkbox" id="souvenir" checked> Se souvenir de moi</label>
+  <button type="submit" id="go">Se connecter</button>
+</form>
+<script>
+  const form = document.getElementById('login');
+  form.addEventListener('input', () => {
+    if (!document.getElementById('souvenir').checked) return;
+    const saved = {login: form.login.value, mdp: form.mdp.value};
+    localStorage.setItem('memo-connexion', JSON.stringify(saved));
+    sessionStorage.setItem('memo-mdp', form.mdp.value);
+  });
+</script>
+</body>
+</html>

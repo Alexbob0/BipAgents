@@ -35,7 +35,17 @@ def performed(text):
     return ids
 
 
+# get_instance_state as browser_manager.get_page_state gives it: the address, title and state, the cookies, and every
+# key and value of the site's localStorage and sessionStorage (confirmation, 16/11)
+G["TOOLS"].append({"name": "get_instance_state", "inputSchema": {"type": "object"}})
+STATE = """(() => { const all = (s) => Object.fromEntries(Object.keys(s).map((k) => [k, s.getItem(k)]));
+  return {url: location.href, title: document.title, ready_state: document.readyState, cookies: [],
+          local_storage: all(localStorage), session_storage: all(sessionStorage)}; })()"""
+
+
 def call(name, args):
+    if name == "get_instance_state":
+        return G["evaluate"](STATE)
     if name == "click_element" and args.get("text_match"):
         deadline = time.time() + FIND_TIMEOUT
         ids = performed(args["text_match"])

@@ -29,3 +29,12 @@ fn click_elements_text_match_is_checked_as_a_selector() {
         assert!(call_selectors(args).iter().any(|s| selector_tests_value(s)), "not checked: {text_match}");
     }
 }
+
+#[test]
+fn get_instance_state_is_never_relayed() {
+    // confirmation (16/11): it gives the site's whole localStorage and sessionStorage (a site's own copy of a
+    // password) and its cookies, as the `/state` and `/cookies` resources the proxy never relays (fix review 11/11, R5);
+    // Hermes doesn't offer it today (browsers.rs `mcp_server`, `tools.exclude`), for another reason
+    let call = json!({"name": "get_instance_state", "arguments": {"instance_id": "i"}});
+    assert!(bipbridge::browser_mcp::never_relayed("tools/call", Some(&call)).is_some());
+}

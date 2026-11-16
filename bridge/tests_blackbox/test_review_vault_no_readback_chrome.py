@@ -240,3 +240,36 @@ def test_a_recovery_e_mail_field_reads_as_typed(browser):
     assert "agence-nord@example.org" in said, said[:200]
     browser.image("take_screenshot")
     assert browser.page("document.querySelector('#passwordRecoveryInput').type") == "text"
+
+
+@pytest.fixture
+def remembered(browser):
+    """A site that keeps what is typed in its storage (« se souvenir de moi », a form-saving library): the password
+    out of the page, where the setting aside doesn't reach (confirmation, 16/11)."""
+    browser.open("/review/remember.html")
+    browser.vault_fills()
+    assert json.loads(browser.page("localStorage.getItem('memo-connexion')"))["mdp"] == SECRET
+    assert browser.page("sessionStorage.getItem('memo-mdp')") == SECRET
+    return browser
+
+
+def test_a_script_never_reads_the_sites_storage(remembered):
+    """V8 takes a storage's getItem for a side effect, the text rules refuse the rest: refused, every way tried."""
+    for script in [codes("localStorage.getItem('memo-connexion')"), codes("sessionStorage.getItem('memo-mdp')"),
+                   codes("JSON.stringify(Object.entries(localStorage))"), codes("localStorage['memo-connexion']"),
+                   codes("sessionStorage['memo-' + 'mdp']"), codes("window['session' + 'Storage'].getItem('memo-mdp')"),
+                   codes("self.sessionStorage.getItem('memo-mdp')"),
+                   codes("Storage.prototype.getItem.call(sessionStorage, 'memo-mdp')"),
+                   codes("JSON.stringify({...sessionStorage})")]:
+        said = remembered.tool("execute_script", script=script)
+        print(f"\nstorage, {script[:70]}: {said[:80]!r}")
+        assert not leaks(said), (script, leaks(said), said[:200])
+
+
+def test_get_instance_state_never_gives_the_sites_storage(remembered):
+    """get_instance_state gives every key and value of the site's localStorage and sessionStorage (and its cookies).
+    Hermes doesn't offer it to the agent today (`tools.exclude` in browsers.rs `mcp_server`, set because it hangs on
+    some pages), but the proxy relays it to whoever calls it, as it never does the `/state` and `/cookies` resources
+    holding the same (fix review 11/11, R5)."""
+    said = remembered.tool("get_instance_state")
+    assert not leaks(said), (leaks(said), said[:300])
