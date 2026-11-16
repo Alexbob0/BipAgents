@@ -83,17 +83,20 @@ direction and answer, replays refused by the bridge). The relay **sees** the bri
 which, when, how many bytes, and, while a bridge keeps its poll open, that it is on and from which address. It
 **keeps** nothing on disk and logs no call that went through (no record of who talks to whom): only some refusals
 (quota, blocked mailbox, answer cut), with a fingerprint of one mailbox keyed by the relay (HMAC-SHA256,
-not computable from the id alone), and one count an hour. In memory: the ids of the mailboxes polling (until an hour
+not computable from the id alone), one count an hour, and, should the room for the lists of passes run out, one line a
+minute saying so (a number, no mailbox). In memory: the ids of the mailboxes polling (until an hour
 after), the quotas' counts under unkeyed SHA-256 hashes (forgotten within the hour), the calls while they pass.
 `/health` says whether it is on, nothing of its activity.
 
 **Limits.** A call's bytes are reserved as they are read, never on the length it says (256 MiB held at most, every
 call together; 32 MiB per caller, per link to a callee and per address); a body that stops for 5 s is cut, so is one
-slower than 128 KiB/s on average past its first second (about 1 Mbit/s: a slower upload sends a few hundred KiB at
-most through the relay), and all of it comes within 30 s; a refused call's body is never kept. The small routes
+slower than 16 KiB/s on average past its first second (a caller sending next to nothing holds no room; a slow upload
+still has the 30 s), and all of it comes within 30 s; a refused call's body is never kept. The small routes
 (`mailbox`, `pass`, `passes`) read 64 KiB at most, within 10 s. The lists of passes a mailbox accepts are kept only
-while it polls (and a minute after), 250,000 ids in all: past that, a list only shrinks (a pass withdrawn always
-goes; one newly accepted waits for room). Quotas: calls and bytes per caller, and per pass (what one household may send another); mailboxes
+while it polls (and a minute after), with only the ids of passes the relay gave for that mailbox (a pass id is signed
+for it, and each pass made counts in the quota per address), 250,000 ids in all: past that, a list only shrinks (a
+pass withdrawn always goes; one newly accepted waits for room) and a mailbox that never said one stays so (it accepts
+its passes: the bound never cuts a household off). Quotas: calls and bytes per caller, and per pass (what one household may send another); mailboxes
 and passes made per address. A mailbox or a pass can be refused by its fingerprint in `RELAY_BLOCKED`. Run **one** copy
 for the families (the rendezvous is in memory). Deploy: `RELAY_TRUST_FORWARDED_FOR=1` behind a proxy, a high open-files
 limit (one waiting request per household linked through the relay), `flush_interval -1` in Caddy, logs kept 14 days.
@@ -114,7 +117,7 @@ limit (one waiting request per household linked through the relay), `flush_inter
 | `RELAY_R1_UNTIL` | `2026-12-15` (UTC midnight): the end of the transition from `r1.` tokens (see above); `0` ends it now |
 | `RELAY_FAMILY` | `1`; `0` turns the families' rendezvous off (its routes answer 404) |
 | `RELAY_FAMILY_REQUEST_MB`, `RELAY_FAMILY_ANSWER_MB` | `16`, `64`: a call's size, its answer's |
-| `RELAY_FAMILY_BODY_KIB_PER_S` | `128`: how fast a call's body comes at least, past its first second (`0`: no minimum) |
+| `RELAY_FAMILY_BODY_KIB_PER_S` | `16`: how fast a call's body comes at least, past its first second (`0`: no minimum) |
 | `RELAY_FAMILY_CALLS_PER_HOUR`, `RELAY_FAMILY_MB_PER_HOUR`, `RELAY_FAMILY_MAILBOXES_PER_IP_HOUR` | `3000` per mailbox as caller and as callee, `2048` MiB per mailbox, `20` mailboxes made per address |
 | `RUST_LOG` | `info` (JSON lines) |
 

@@ -87,18 +87,21 @@ ChaCha20‑Poly1305, une clé par appel, par sens et par réponse, les rejeux re
 adresses des ponts, quelle boîte appelle quelle boîte, quand, combien d'octets, et, tant qu'un pont garde sa requête
 ouverte, qu'il est allumé et depuis quelle adresse. Il **ne garde** rien sur disque et ne journalise aucun appel
 réussi (pas de trace de qui parle à qui) : seulement certains refus (quota, boîte bloquée, réponse coupée), avec une empreinte d'une boîte calculée avec une clé du relais (HMAC-SHA256, pas recalculable depuis
-l'identifiant seul), et un total par heure. En mémoire : les identifiants des boîtes qui interrogent (jusqu'à une
+l'identifiant seul), un total par heure, et, si la place des listes de laissez-passer vient à manquer, une ligne par
+minute qui le dit (un nombre, sans aucune boîte). En mémoire : les identifiants des boîtes qui interrogent (jusqu'à une
 heure après), les compteurs des quotas sous des empreintes SHA-256 sans clé (oubliés dans l'heure), les appels le
 temps qu'ils passent. `/health` dit s'il est en marche, rien de son activité.
 
 **Limites.** Les octets d'un appel sont réservés au fil de la lecture, jamais sur la longueur annoncée (256 Mio en
 tout, tous appels confondus ; 32 Mio par appelant, par lien vers un appelé et par adresse) ; un corps qui s'arrête 5 s
-est coupé, de même qu'un corps plus lent que 128 Kio/s en moyenne après sa première seconde (environ 1 Mbit/s : un
-envoi plus lent ne fait passer que quelques centaines de Kio par le relais), et tout doit arriver en 30 s ; le corps
+est coupé, de même qu'un corps plus lent que 16 Kio/s en moyenne après sa première seconde (un appelant qui
+n'envoie presque rien ne tient aucune place ; un envoi lent garde les 30 s), et tout doit arriver en 30 s ; le corps
 d'un appel refusé n'est jamais gardé. Les petites routes (`mailbox`, `pass`, `passes`) lisent 64 Kio au plus, en
 10 s. Les listes de laissez-passer qu'une boîte accepte ne sont gardées que tant qu'elle interroge (et une minute
-après), 250 000 identifiants en tout : au-delà, une liste ne peut que rétrécir (un laissez-passer retiré part
-toujours ; un nouveau attend de la place). Quotas : appels et octets par appelant, et par laissez-passer (ce qu'un foyer peut envoyer
+après), avec seulement les identifiants des laissez-passer que le relais a donnés pour cette boîte (un identifiant
+est signé pour elle, et chaque laissez-passer créé compte dans le quota par adresse), 250 000 identifiants en tout :
+au-delà, une liste ne peut que rétrécir (un laissez-passer retiré part toujours ; un nouveau attend de la place), et
+une boîte qui n'en a jamais dit reste ainsi (elle accepte ses laissez-passer : la borne ne coupe jamais un foyer). Quotas : appels et octets par appelant, et par laissez-passer (ce qu'un foyer peut envoyer
 à un autre) ; boîtes et laissez-passer créés par adresse. Une boîte ou un laissez-passer peut être refusé par son
 empreinte dans `RELAY_BLOCKED`. **Un seul** exemplaire pour les familles (le rendez-vous est en mémoire). Déploiement :
 `RELAY_TRUST_FORWARDED_FOR=1` derrière un proxy, une limite de fichiers ouverts large (une requête en attente par
@@ -119,7 +122,7 @@ foyer relié par le relais), `flush_interval -1` dans Caddy, journaux gardés 14
 | `RELAY_GUICHET_KEY` ou `RELAY_GUICHET_KEY_FILE` | la clé avec laquelle le guichet envoie ses notifications (séparées par des virgules pour en changer : l'ancienne et la nouvelle passent) ; sans elle, les jetons `guichet` sont refusés |
 | `RELAY_FAMILY` | `1` ; `0` coupe le rendez-vous des familles (ses routes répondent 404) |
 | `RELAY_FAMILY_REQUEST_MB`, `RELAY_FAMILY_ANSWER_MB` | `16`, `64` : la taille d'un appel, de sa réponse |
-| `RELAY_FAMILY_BODY_KIB_PER_S` | `128` : le débit minimal du corps d'un appel, après sa première seconde (`0` : aucun) |
+| `RELAY_FAMILY_BODY_KIB_PER_S` | `16` : le débit minimal du corps d'un appel, après sa première seconde (`0` : aucun) |
 | `RELAY_FAMILY_CALLS_PER_HOUR`, `RELAY_FAMILY_MB_PER_HOUR`, `RELAY_FAMILY_MAILBOXES_PER_IP_HOUR` | `3000` par boîte comme appelant et comme appelé, `2048` Mio par boîte, `20` boîtes créées par adresse |
 | `RUST_LOG` | `info` (lignes JSON) |
 

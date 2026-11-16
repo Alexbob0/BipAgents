@@ -64,7 +64,7 @@ impl Relay {
             r1_until: config.r1_until,
             r1_used: AtomicU64::new(0),
             unkeyed_guichet: AtomicU64::new(0),
-            family: Rendezvous::new(config.family, crate::family::fingerprint_key(&config.seal_keys)),
+            family: Rendezvous::new(config.family, &config.seal_keys),
         })
     }
 

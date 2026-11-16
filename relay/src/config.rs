@@ -12,7 +12,7 @@
 //! - `RELAY_GUICHET_KEY` (or `_FILE`): the key the guichet sends its pushes with (tokens sealed for the guichet)
 //! - `RELAY_FAMILY` (`1`; `0`: off), `RELAY_FAMILY_REQUEST_MB` (16), `RELAY_FAMILY_ANSWER_MB` (64),
 //!   `RELAY_FAMILY_CALLS_PER_HOUR` (3000), `RELAY_FAMILY_MB_PER_HOUR` (2048), `RELAY_FAMILY_MAILBOXES_PER_IP_HOUR` (20),
-//!   `RELAY_FAMILY_BODY_KIB_PER_S` (128; 0: no minimum): the family rendezvous (family.rs)
+//!   `RELAY_FAMILY_BODY_KIB_PER_S` (16; 0: no minimum): the family rendezvous (family.rs)
 //! - `RELAY_R1_UNTIL` (`2026-12-15`, UTC midnight): until then the first token format (`r1.`) is still taken and
 //!   still sealed for older apps, and a guichet token sent without the guichet's key is let through (an older
 //!   guichet); each such use is logged and `/health` warns. `0` closes the transition now.
