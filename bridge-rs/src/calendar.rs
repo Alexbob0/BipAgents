@@ -140,6 +140,29 @@ pub fn agents(config: &Config) -> Vec<String> {
     }
 }
 
+/// Whether a phone sent its copy here (some phone shares it already).
+pub fn copied(config: &Config) -> bool {
+    let data = read(config);
+    data.contains_key("at") || data.contains_key("android")
+}
+
+/// `names` allowed too (a « Oui » on a tool card, tool_asks.rs), the agents allowed before kept.
+pub fn allow(config: &Config, names: &[String]) -> std::io::Result<()> {
+    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut data = read(config);
+    let mut agents: Vec<String> = match data.get("agents") {
+        Some(Value::Array(v)) => v.iter().filter_map(|n| n.as_str().map(str::to_string)).collect(),
+        _ => Vec::new(),
+    };
+    for name in names {
+        if !agents.contains(name) {
+            agents.push(name.clone());
+        }
+    }
+    set_agents_in(&mut data, &agents);
+    write(config, &data)
+}
+
 /// Whether `agent` may use the calendar (and gets its tools).
 pub fn enabled(config: &Config, agent: &str) -> bool {
     agents(config).iter().any(|a| a == agent)
@@ -346,6 +369,9 @@ pub fn call(
     let mut data = read(config);
     let phone = tk::py_in(agent, data.get("agents").unwrap_or(&json!([])));
     if !phone && !remote.any {
+        if let Some(ask) = crate::tool_asks::ask_hint(config, agent, "calendar") {
+            return Ok(tool_text(&format!("The person hasn't shared their phone calendar with you. {ask}"), true));
+        }
         return Ok(tool_text(
             "The person hasn't shared their phone calendar with you: they switch « Calendrier » on in your page of the \
 BipAgents app.",

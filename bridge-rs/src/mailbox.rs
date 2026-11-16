@@ -878,6 +878,9 @@ fn split_id(text: &str) -> (String, String, String) {
 pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict, opener: &Connect) -> anyhow::Result<Dict> {
     let accounts = of(config).of_agent(agent)?;
     if accounts.is_empty() {
+        if let Some(ask) = crate::tool_asks::ask_hint(config, agent, "mail") {
+            return Ok(tool_text(&format!("No mailbox is connected for you. {ask}"), true));
+        }
         return Ok(tool_text(
             "No mailbox is connected for you: the person connects one in the BipAgents app (your settings › Boîtes mail).",
             true,

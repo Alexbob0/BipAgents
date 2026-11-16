@@ -142,6 +142,7 @@ pub mod steps;
 /// The styled documents skills (decks and Word documents), in place of Hermes' `powerpoint` and `docx`.
 pub mod style_skills;
 /// What each kind of agent keeps in view of Hermes' tools (token diet, phase 2).
+pub mod tool_asks;
 pub mod tool_diet;
 pub mod turn_thinking;
 /// A message sent mid-turn before the agent acted: the turn started again with it.
