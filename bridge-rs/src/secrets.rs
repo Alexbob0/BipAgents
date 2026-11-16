@@ -263,8 +263,10 @@ pub struct Request {
     pub edit: bool,
     pub connector: Option<String>,
     /// A login for the agent's visible browser on `origin` (a supplier's portal): kept as a vault login the agent
-    /// fills with `browser_vault`, not as a connector's secret. Same card.
+    /// logs in with (`vault_login`), not as a connector's secret. Same card.
     pub browser_login: bool,
+    /// Such a login's own login page, when the site the agent gave says more than its origin (vault.rs `login_url_of`).
+    pub login_url: Option<String>,
 }
 
 impl Request {
@@ -568,7 +570,7 @@ pub async fn give(
         let mut body = Dict::new();
         body.insert("kind".into(), json!("login"));
         body.insert("label".into(), json!(request.host()));
-        body.insert("site".into(), json!(request.origin));
+        body.insert("site".into(), json!(request.login_url.as_deref().unwrap_or(&request.origin)));
         body.insert("identifier_type".into(), json!(crate::vault::identifier_type_of(&identifier)));
         body.insert("identifier".into(), json!(identifier));
         body.insert("password".into(), json!(value.as_str()));

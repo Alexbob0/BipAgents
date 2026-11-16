@@ -359,6 +359,28 @@ fn touch(path: &Path) -> std::io::Result<()> {
     file.set_modified(std::time::SystemTime::now())
 }
 
+/// `vault_login` typed an identifier that looks like a card's number into a field of `origin` (the frame's): written
+/// down for the agent's bip-browser-mcp (`browser_mcp::VAULT_TYPED_FILE`, beside `busy`), whose card checks then
+/// leave that exact value alone in that origin's fields for a while instead of emptying it. Only its hash is kept.
+pub fn vault_typed(config: &Config, agent: &str, origin: &str, identifier: &str) {
+    let path = folder(config, agent).join(crate::browser_mcp::VAULT_TYPED_FILE);
+    let now = crate::py::time_time();
+    let mut rows: Vec<Value> = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| serde_json::from_str::<Vec<Value>>(&t).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|r| r.get("t").and_then(Value::as_f64).is_some_and(|t| now - t < crate::browser_mcp::VAULT_TYPED_SECONDS))
+        .collect();
+    rows.push(json!({"o": origin, "h": crate::browser_mcp::guard_hash(identifier), "t": now}));
+    let rows = &rows[rows.len().saturating_sub(20)..];
+    let partial = path.with_file_name(format!("{}.part", crate::browser_mcp::VAULT_TYPED_FILE));
+    let written = std::fs::write(&partial, Value::Array(rows.to_vec()).to_string()).and_then(|()| std::fs::rename(&partial, &path));
+    if let Err(exc) = written {
+        tracing::warn!(agent = %agent, error = %exc, "vault login: the browser's card checks not told of the identifier typed");
+    }
+}
+
 /// Someone uses the agent's browser (the person watching its desktop): not stopped for `idle_minutes` from now.
 pub fn busy(config: &Config, agent: &str) {
     let _ = touch(&folder(config, agent).join("busy"));

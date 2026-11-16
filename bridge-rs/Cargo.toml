@@ -55,6 +55,9 @@ oxc_parser = "0.158"
 oxc_span = "0.158"
 oxc_syntax = "0.158"
 pem = "3"
+# vault_match.rs: a saved login fills on its registrable domain (Public Suffix List, private section included),
+# compiled into the crate; its patch releases follow the list (`cargo update -p psl`)
+psl = "2.1"
 percent-encoding = "2"
 png = "0.17"
 qrcode = { version = "0.14", default-features = false }

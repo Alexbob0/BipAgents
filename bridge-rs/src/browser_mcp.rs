@@ -138,12 +138,13 @@ return out.join('; '); })()";
 /// password » itself).
 pub const PASSWORD_REFUSED: &str = "Not done: this is a password field, and you never type a password yourself, not \
 even a temporary one, nor one your person wrote to you. To create an account, call vault_create_login: the person's vault makes the password and types \
-it here once they approve. To log in, use the vault's fill (browser_vault). Nothing was typed.";
+it here once they approve. To log in, call vault_login: the vault types the identifier and the password. Nothing was \
+typed.";
 
 /// A script writing or reading a password field (`script_touches_password`).
 pub const SCRIPT_PASSWORD_REFUSED: &str = "Not done: a script never writes or reads a password field. To create an \
 account, call vault_create_login: the person's vault makes the password and types it once they approve; to log in, \
-browser_vault fill. If your script only fills other fields, run it again without anything about passwords. Nothing \
+vault_login. If your script only fills other fields, run it again without anything about passwords. Nothing \
 was run.";
 
 /// Ticking a terms or consent box (`guard`, `TERMS_UNDONE`): the person's, never the agent's.
@@ -153,7 +154,7 @@ your person « Oui / Non », and on « Oui » the box is ticked for you. Nothing
 
 /// Added to `type_text` and `paste_text` in the tool list (`tame_tool_list`).
 pub const NOT_PASSWORDS: &str = "Never into a password field, not even a temporary password nor one your person wrote \
-to you: to sign up, vault_create_login has the person's vault make and type it; to log in, browser_vault fill.";
+to you: to sign up, vault_create_login has the person's vault make and type it; to log in, vault_login.";
 
 // --- a payment card's details (card-guards, 14/11) ------------------------------------------------------------------
 //
@@ -979,7 +980,7 @@ return inputs.some(({{e}}) => kind(e) === 'password' && e.value.length >= 4 && n
 /// What the agent reads when its script's answer held a password (`shows_password`).
 pub const PASSWORD_SHOWN: &str = "Not shown: that answer held what a password field holds, and you never \
 read a password. Read the other fields by their selectors, never all of a form's values. The vault fills and keeps \
-passwords (vault_create_login, browser_vault).";
+passwords (vault_create_login, vault_login).";
 
 /// `press_key` typing a character (« a », « P » with Shift), not a key (« Enter », « Tab ») nor a shortcut.
 pub fn presses_a_character(args: &Dict) -> bool {
@@ -1068,17 +1069,64 @@ const kind = (e) => (e.getAttribute('type') || '').toLowerCase(); ";
 /// it (`guard_after`).
 pub const GUARD_BEFORE: &str = "/* bipagents guard: before */ (() => { ";
 
-/// The full script before a call (`GUARD_BEFORE`, `LABEL_JS`, `GUARD_JS`).
+/// Where `vault_login` writes down an identifier it typed that looks like a card's number (`vault_typed`), beside
+/// `busy`: (the field's frame origin, the guard's hash of the value, when).
+pub const VAULT_TYPED_FILE: &str = "vault-typed.json";
+/// How long such an identifier is left alone by the card checks (a login form is sent within minutes).
+pub const VAULT_TYPED_SECONDS: f64 = 1800.0;
+
+/// The guard's hash of a value (`GUARD_JS` `h`: FNV-1a over its UTF-16 code units), as the page computes it.
+pub fn guard_hash(value: &str) -> String {
+    let mut x: u32 = 0x811c9dc5;
+    for unit in value.encode_utf16() {
+        x ^= u32::from(unit);
+        x = x.wrapping_mul(0x0100_0193);
+    }
+    format!("{x:x}")
+}
+
+/// The identifiers `vault_login` typed lately (`VAULT_TYPED_FILE`), as the guard's scripts take them: `[{o, h}]`.
+pub fn vault_typed(path: &Path, now: f64) -> Value {
+    let rows = std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok());
+    let kept: Vec<Value> = rows
+        .as_ref()
+        .and_then(Value::as_array)
+        .map(|rows| {
+            rows.iter()
+                .filter(|r| r.get("t").and_then(Value::as_f64).is_some_and(|t| t <= now && now - t < VAULT_TYPED_SECONDS))
+                .filter_map(|r| {
+                    let o = r.get("o").and_then(Value::as_str)?;
+                    let h = r.get("h").and_then(Value::as_str)?;
+                    Some(json!({"o": o, "h": h}))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Value::Array(kept)
+}
+
+/// Card-guards exemption for `vault_login` (16/11, kept strictly to it): an identifier the vault itself typed that
+/// looks like a card's number (a client code of 13 to 19 digits passing Luhn) is left in its field, on the very
+/// frame origin it was typed on and with that exact value only (`VT`, from `vault_typed`); never in a card's field.
+const VAULT_TYPED_JS: &str = "const vaultTyped = (e, v) => e.tagName === 'INPUT' && VT.some((x) => x.o === e.ownerDocument.location.origin && x.h === h(v)); ";
+
+/// The full script before a call (`GUARD_BEFORE`, `LABEL_JS`, `GUARD_JS`), no identifier of the vault's to leave alone.
 pub fn guard_before() -> String {
+    guard_before_with(&json!([]))
+}
+
+/// `guard_before`, leaving alone the identifiers `vault_login` typed (`vault_typed`).
+pub fn guard_before_with(typed: &Value) -> String {
     let cards = card_js();
+    let typed = serde_json::to_string(typed).unwrap_or_else(|_| "[]".into());
     format!(
-        "{GUARD_BEFORE}{LABEL_JS}{GUARD_JS}{cards}{CARD_FIELDS_JS}const pw = {{}}, known = [], boxes = []; \
+        "{GUARD_BEFORE}{LABEL_JS}{GUARD_JS}{cards}{CARD_FIELDS_JS}const VT = {typed}; {VAULT_TYPED_JS}const pw = {{}}, known = [], boxes = []; \
 inputs.forEach(({{e, k}}) => {{ if (kind(e) === 'password') {{ pw[k] = e.value ? h(e.value) : ''; if (e.value) known.push(h(e.value)); }} \
 else if (kind(e) === 'checkbox' && !e.checked && isTerms(label(e))) boxes.push(k); }}); \
 const cards = {{}}; let cardtext = false, cleared = 0, frames = 0; \
 roots.forEach((r) => {{ for (const f of r.querySelectorAll('iframe, frame')) if (payFrame(f)) frames++; }}); \
 fields.forEach(({{e, k}}) => {{ let v = valueOf(e); const c = cardOf(e, ctxOf(e)); const select = e.tagName === 'SELECT'; \
-const number = !select && holdsCard(v) && !isOther(e); \
+const number = !select && holdsCard(v) && !isOther(e) && !vaultTyped(e, v); \
 if (!select && v && (c || number)) {{ setv(e, ''); v = ''; cleared++; }} \
 if (c || number) {{ cards[k] = select ? v : h(v); }} }}); \
 return JSON.stringify({{pw: pw, known: known, boxes: boxes, cards: cards, cardtext: cardtext, cleared: cleared, frames: frames, \
@@ -1106,9 +1154,9 @@ pub fn guard_after(before: &Value) -> String {
     let cards = card_js();
     format!(
         "/* bipagents guard: after */ (() => {{ const B = {before}; {GUARD_JS}{cards}{CARD_FIELDS_JS}\
-const C = B.cards || {{}}; let cards = 0; \
+const VT = Array.isArray(B.vt) ? B.vt : []; {VAULT_TYPED_JS}const C = B.cards || {{}}; let cards = 0; \
 fields.forEach(({{e, k}}) => {{ const v = valueOf(e); const c = cardOf(e, ctxOf(e)); const select = e.tagName === 'SELECT'; \
-if (!c && (select || !holdsCard(v) || isOther(e))) return; const had = k in C ? C[k] : null; \
+if (!c && (select || !holdsCard(v) || isOther(e) || vaultTyped(e, v))) return; const had = k in C ? C[k] : null; \
 if (select) {{ if (had === null ? e.selectedIndex <= 0 : had === v) return; e.selectedIndex = had === null ? 0 : parseInt(had.slice(1), 10); \
 e.dispatchEvent(new Event('change', {{bubbles: true}})); cards++; return; }} \
 if (!v || had === h(v)) return; setv(e, ''); cards++; }}); \
@@ -1127,7 +1175,8 @@ return JSON.stringify({{passwords: passwords, terms: terms, cards: cards}}); }})
 /// What the agent reads when the check after its call undid it.
 pub const PASSWORD_UNDONE: &str = "Not done: that put text into a password field, and you never type a password \
 yourself, not even a temporary one: the field was emptied. To create an account, call vault_create_login: the person's vault \
-makes the password and types it here once they approve. To log in, use the vault's fill (browser_vault).";
+makes the password and types it here once they approve. To log in, call vault_login: the vault types the identifier and \
+the password.";
 pub const TERMS_UNDONE: &str = "Not done: that ticked the site's terms (or a consent), and you never tick it \
 yourself: it was unticked. Call accept_terms with the site and the box's label (and the terms' link if the page has \
 one): a card asks your person « Oui / Non », and on « Oui » the box is ticked for you.";
@@ -2324,11 +2373,19 @@ impl Proxy {
 
     /// `page_before`, and whether the guard looked from its own world (`look_in`).
     async fn page_before_in(&self, instance: &str) -> (Option<Value>, bool) {
-        let (read, own) = self.look_in(instance, &guard_before()).await;
-        let before = match read {
+        let typed = match self.config.get("busy").and_then(Value::as_str).filter(|p| !p.is_empty()) {
+            Some(busy) => vault_typed(&Path::new(busy).with_file_name(VAULT_TYPED_FILE), crate::py::time_time()),
+            None => json!([]),
+        };
+        let (read, own) = self.look_in(instance, &guard_before_with(&typed)).await;
+        let mut before = match read {
             Some(Value::String(text)) => serde_json::from_str::<Value>(&text).ok(),
             _ => None,
         };
+        // the same identifiers left alone after the call (`guard_after` reads `B.vt`), from here, not from the page
+        if let Some(Value::Object(map)) = before.as_mut() {
+            map.insert("vt".into(), typed);
+        }
         let cleared = before.as_ref().and_then(|b| b.get("cleared")).and_then(Value::as_u64).unwrap_or(0);
         if cleared > 0 {
             log(&format!("{cleared} card field(s) held a card's details before the call: emptied"));
@@ -3202,10 +3259,54 @@ out of your reach";
     }
 
     #[test]
+    fn the_guards_hash_is_the_pages() {
+        // GUARD_JS `h` (FNV-1a over UTF-16 code units), values checked in Chrome
+        assert_eq!(guard_hash(""), "811c9dc5");
+        assert_eq!(guard_hash("a"), "e40c292c");
+        assert_eq!(guard_hash("4970101234567893"), "f445ad40");
+        assert_eq!(guard_hash("4970101234567890"), guard_hash("4970101234567890"));
+        assert_ne!(guard_hash("4970101234567890"), guard_hash("4970101234567891"));
+    }
+
+    #[test]
+    fn only_recent_identifiers_of_the_vault_are_left_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(VAULT_TYPED_FILE);
+        assert_eq!(vault_typed(&path, 1000.0), json!([]));
+        std::fs::write(&path, "not json").unwrap();
+        assert_eq!(vault_typed(&path, 1000.0), json!([]));
+        let rows = json!([
+            {"o": "https://extranet.example.fr", "h": "abc", "t": 1000.0},
+            {"o": "https://old.example.fr", "h": "def", "t": 1000.0 - VAULT_TYPED_SECONDS - 1.0},
+            {"o": "https://future.example.fr", "h": "ghi", "t": 5000.0},
+            {"o": "https://broken.example.fr", "t": 1000.0},
+        ]);
+        std::fs::write(&path, rows.to_string()).unwrap();
+        assert_eq!(vault_typed(&path, 1100.0), json!([{"o": "https://extranet.example.fr", "h": "abc"}]));
+        // in the scripts around a call: before (VT), after (B.vt, set by the proxy, not the page)
+        let before = guard_before_with(&json!([{"o": "https://extranet.example.fr", "h": "abc"}]));
+        assert!(before.contains(r#"const VT = [{"o":"https://extranet.example.fr","h":"abc"}];"#));
+        assert!(before.contains("holdsCard(v) && !isOther(e) && !vaultTyped(e, v)"));
+        assert!(guard_before().contains("const VT = [];"));
+        let after = guard_after(&json!({"vt": [{"o": "https://x.example", "h": "1"}]}));
+        assert!(after.contains("const VT = Array.isArray(B.vt) ? B.vt : [];") && after.contains("|| vaultTyped(e, v)"));
+        // a card's field is never left alone: the exemption only spares a value outside one (`!c`)
+        assert!(after.contains("if (!c && (select || !holdsCard(v) || isOther(e) || vaultTyped(e, v))) return;"));
+        // both still parse (a guard script that doesn't run can't say what the page holds)
+        for script in [before, after, guard_before()] {
+            let allocator = oxc_allocator::Allocator::default();
+            let parsed = oxc_parser::Parser::new(&allocator, &script, oxc_span::SourceType::script()).parse();
+            assert!(!parsed.diagnostics.has_errors(), "a guard script that doesn't parse");
+        }
+    }
+
+    #[test]
     fn the_skill_gives_the_same_script() {
         let skill = crate::browsers::skill();
         assert!(skill.contains(&format!("`{AROUND_A_WORD}`")), "visible-browser/SKILL.md § 2 and AROUND_A_WORD");
-        assert!(skill.contains("version: 1.13.4"));
+        assert!(skill.contains("version: 1.14.0"));
+        // 16/11: logging in is vault_login's, both fields, the agent naming one when several fit
+        assert!(skill.contains("call `vault_login` on that page") && skill.contains("with the `id` of the one the person"));
         assert!(skill.contains("runs at once and ends"), "no timers, observers…: the second review of 14/11");
         assert!(skill.contains("never changes where a page goes"));
         // card-guards, 14/11: never a card's details typed or asked; the hand-over when the vault can't fill the form

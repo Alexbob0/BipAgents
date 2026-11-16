@@ -1,7 +1,7 @@
 ---
 name: visible-browser
 description: "Browse the web with your own visible browser: a real Chrome on your desktop, which the person can watch and take over from the BipAgents app. Use its `stealth` tools for every website, including sites that block automated browsers."
-version: 1.13.4
+version: 1.14.0
 author: BipAgents
 license: MIT
 metadata:
@@ -71,12 +71,17 @@ phone is not relaying now, say that, never « the site blocks servers ». When y
 `ask_phone_exit` with `done: true`.
 
 ## 4. Logging in with the vault
-The vault fills a password without you ever seeing it, on the exact site it was saved for:
-1. open the login page with your browser (`navigate`), type the identifier yourself if it asks for it first;
-2. call the vault (`browser_vault`): list first, then fill with the item for this site, on this same page;
-3. continue with your browser (submit, next page).
-The vault tools act on the same Chrome as your `stealth` tools. If they answer that no browser is running, start
-yours with `spawn_browser` first.
+The vault types the identifier and the password for you, on the site the login was saved for (any page of its domain);
+you never see the password:
+1. open the login page with your browser (`navigate`);
+2. call `vault_login` on that page: it picks the login kept for this site and types both fields. When it answers that
+   several logins fit (several accounts or agencies on one site), call it again with the `id` of the one the person
+   means; ask them in one short question if the names don't tell. Never pick one yourself;
+3. a site that asks for the identifier first and the password on a next page: call `vault_login` on each page;
+4. submit the form yourself (its button). A verification code after that: `browser_vault` with `enter_code`.
+The vault acts on the same Chrome as your `stealth` tools. If it answers that no browser is running, start yours with
+`spawn_browser` first. Hermes' `browser_vault` fill types the password only: if you used it, type the identifier
+yourself into its field (`browser_vault` list shows it) before you submit.
 
 ## 4b. Creating an account with the vault
 When the person asks you to sign up somewhere, the vault makes the password and types it for you; you never see it,
@@ -107,10 +112,9 @@ tool names). While they have taken over your browser in the app, don't use it: s
 it back, then stop.
 
 ## 4c. No login saved for a site yet
-If the vault has no login for a site you must log in to for the person (`browser_vault` list shows none), ask for it
+If the vault has no login for a site you must log in to for the person (`vault_login` says it has none), ask for it
 once with `ask_secret` (`kind: password`, `use: browser`, the site, a short reason): ONE card in the app asks the
-person for the identifier and the password, which go to the vault, never to you. Then log in with `browser_vault`
-fill. Never ask in a message, never twice for the same site. Never for a payment card: `ask_secret` refuses a card's
+person for the identifier and the password, which go to the vault, never to you. Then log in with `vault_login`. Never ask in a message, never twice for the same site. Never for a payment card: `ask_secret` refuses a card's
 number, expiry, holder or security code (§ 5).
 
 ## 4d. Downloads
@@ -123,7 +127,8 @@ with the page's « download » option.
 ## Only these tools, for every website
 Browse only with your `stealth` tools: they drive the browser the person sees in « Bureau ». Never use Hermes' own
 browser tools (`browser_navigate`, `browser_snapshot`, `browser_click`, `browser_exec`…) even if you see them: the
-person would not see what they do. Only the vault (`browser_vault`) is for you, on the page your browser shows.
+person would not see what they do. Only the vault (`vault_login`, `browser_vault`) is for you, on the page your browser
+shows.
 A script never changes where a page goes (no `location = …`, no link, form or HTML added): open an address with
 `navigate`, follow the page's own links and buttons with `click_element` (your browser refuses such a script). A
 script runs at once and ends: it never writes or clicks from a timer, a listener, an observer or another callback,

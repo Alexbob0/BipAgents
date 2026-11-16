@@ -165,12 +165,13 @@ fn handoff_tool(tool: &str) -> bool {
 }
 
 /// The agent's visible browser (skill visible-browser: the `stealth` MCP server's tools, `mcp_stealth_*`; the vault's
-/// `browser_vault` and `vault_*_login` on that same browser; Hermes' own `browser_*`).
+/// `browser_vault`, `vault_login` and `vault_*_login` on that same browser; Hermes' own `browser_*`).
 pub fn browser_tool(tool: &str) -> bool {
     let tool = tool.to_ascii_lowercase();
     tool.contains("stealth")
         || tool.starts_with("browser_")
         || tool.contains("vault_create_login")
+        || tool.ends_with("vault_login")
         || tool.contains("vault_confirm_login")
 }
 

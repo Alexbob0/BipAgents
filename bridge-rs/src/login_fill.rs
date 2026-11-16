@@ -84,6 +84,110 @@ pub async fn find(page: &mut Page, origin: &str) -> Result<Option<Fields>, FillE
     Ok((fallback.len() == 1).then(|| fallback.remove(0)))
 }
 
+/// A login form found for a saved login (`vault_login`): its password field (`fields.indexes`: none on a first step
+/// that asks for the identifier alone) and whether it has an identifier field.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LoginFields {
+    /// `origin`: the frame's own origin, checked again in the frame before each write.
+    pub fields: Fields,
+    pub identifier: bool,
+}
+
+/// Where to log in with a login kept for `kept` (its origin): in the frames whose own address (Chrome's) is on that
+/// login's site (vault_match.rs `fills_on`: its registrable domain), the one whose login field has the agent's focus,
+/// else the only one with a password field, else the only one asking for the identifier alone. Frames of any other
+/// site are never looked at. None: no login form, or several and none focused.
+pub async fn find_login(page: &mut Page, kept: &str) -> Result<Option<LoginFields>, FillError> {
+    let mut focused = Vec::new();
+    let mut with_password = Vec::new();
+    let mut identifier_only = Vec::new();
+    for crate::card_fill::FrameSeen { session, id: frame_id, url: frame_url, .. } in page.frames().await? {
+        if !(frame_url.starts_with("http") && crate::vault_match::fills_on(kept, &frame_url)) {
+            continue; // another site's frame (or none of its own): never looked at, never typed into
+        }
+        // as the frame's `location.origin` says it (ASCII host, its port unless the default)
+        let Some(origin) = url::Url::parse(&frame_url).ok().map(|u| u.origin().ascii_serialization()) else {
+            continue;
+        };
+        let world = json!({"frameId": frame_id, "worldName": WORLD, "grantUniveralAccess": false});
+        let Ok(created) = page.cdp.call("Page.createIsolatedWorld", world, Some(&session)).await else { continue };
+        let Some(context) = created.get("executionContextId").and_then(Value::as_i64) else { continue };
+        let expression = format!("{SCRIPT}\n;globalThis.__bipLogin.detectLogin()");
+        let Ok(found) = page.cdp.evaluate(&session, context, &expression).await else { continue };
+        let password = found.get("password").and_then(Value::as_bool) == Some(true);
+        let identifier = found.get("identifier").and_then(Value::as_bool) == Some(true);
+        if !password && !identifier {
+            continue;
+        }
+        let is_focused = found.get("focused").and_then(Value::as_bool) == Some(true);
+        let indexes = if password { vec![0] } else { Vec::new() };
+        let fields = Fields { origin, session, context, frame_url, focused: is_focused, indexes };
+        let login = LoginFields { fields, identifier };
+        if is_focused {
+            focused.push(login);
+        } else if password {
+            with_password.push(login);
+        } else {
+            identifier_only.push(login);
+        }
+    }
+    if let Some(first) = focused.into_iter().next() {
+        return Ok(Some(first));
+    }
+    if with_password.len() == 1 {
+        return Ok(with_password.pop());
+    }
+    Ok((with_password.is_empty() && identifier_only.len() == 1).then(|| identifier_only.remove(0)))
+}
+
+const IS_IDENTIFIER: &str = "function () { return this.tagName === 'INPUT' && ['text', 'email', 'tel', ''].includes((this.getAttribute('type') || '').toLowerCase()); }";
+/// Focused, and its frame still on the origin found (`o`): checked right before typing.
+const FOCUSED_IDENTIFIER: &str = "function (o) { return this.tagName === 'INPUT' && ['text', 'email', 'tel', ''].includes((this.getAttribute('type') || '').toLowerCase()) && this.getRootNode().activeElement === this && this.ownerDocument.location.origin === o; }";
+const HOLDS_IDENTIFIER: &str = "function (v) { return this.tagName === 'INPUT' && this.value === v; }";
+const SET_IDENTIFIER: &str = "function (v, o) { if (this.ownerDocument.location.origin !== o) return false; const p = globalThis.__bipLogin; return this === p.userEl() && p.setUser(v); }";
+
+/// The login's identifier typed into the form's identifier field (`find_login`): whether it holds it (it may have
+/// already). Never a password field.
+pub async fn fill_identifier(page: &mut Page, login: &LoginFields, identifier: &str) -> Result<bool, FillError> {
+    let fields = &login.fields;
+    if !login.identifier || identifier.is_empty() {
+        return Ok(false);
+    }
+    let arg = serde_json::to_string(identifier).unwrap_or_else(|_| "\"\"".into());
+    let prepared =
+        page.cdp.evaluate(&fields.session, fields.context, &format!("globalThis.__bipLogin.prepareUser({arg})")).await?;
+    let Ok(result) = page
+        .cdp
+        .call(
+            "Runtime.evaluate",
+            json!({"expression": "globalThis.__bipLogin.userEl()", "contextId": fields.context}),
+            Some(&fields.session),
+        )
+        .await
+    else {
+        return Ok(false);
+    };
+    let Some(object) = result.get("result").and_then(|r| r.get("objectId")).and_then(Value::as_str).map(str::to_string)
+    else {
+        return Ok(false);
+    };
+    if !on_field(page, fields, &object, IS_IDENTIFIER, &[]).await {
+        return Ok(false); // never anything but a text, e-mail or phone field
+    }
+    if prepared == json!(true) {
+        let _ = page.cdp.call("DOM.focus", json!({"objectId": object}), Some(&fields.session)).await;
+        if on_field(page, fields, &object, FOCUSED_IDENTIFIER, &[&fields.origin]).await {
+            let _ = page.cdp.call("Input.insertText", json!({"text": identifier}), Some(&fields.session)).await;
+        }
+    }
+    let mut ok = on_field(page, fields, &object, HOLDS_IDENTIFIER, &[identifier]).await;
+    if !ok {
+        on_field(page, fields, &object, SET_IDENTIFIER, &[identifier, &fields.origin]).await;
+        ok = on_field(page, fields, &object, HOLDS_IDENTIFIER, &[identifier]).await;
+    }
+    Ok(ok)
+}
+
 async fn object(page: &mut Page, fields: &Fields, index: u64) -> Option<String> {
     let result = page
         .cdp

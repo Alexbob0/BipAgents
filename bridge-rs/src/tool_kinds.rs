@@ -43,7 +43,7 @@ pub const KINDS: &[Kind] = &[
     Kind { id: "delegate", names: &["delegate_task"], prefixes: &[], step: Some("delegate") },
     Kind { id: "webSearch", names: &["web_search"], prefixes: &[], step: Some("webSearch") },
     Kind { id: "webRead", names: &["web_extract"], prefixes: &[], step: Some("browser") },
-    Kind { id: "browser", names: &[], prefixes: &["browser_"], step: Some("browser") },
+    Kind { id: "browser", names: &["vault_login"], prefixes: &["browser_"], step: Some("browser") },
     Kind { id: "terminal", names: &["terminal", "process_manage"], prefixes: &[], step: Some("compute") },
     Kind { id: "compute", names: &["execute_code"], prefixes: &[], step: Some("compute") },
     Kind { id: "prepareFile", names: &["write_file", "patch"], prefixes: &[], step: Some("prepareFile") },
