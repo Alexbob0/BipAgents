@@ -837,7 +837,7 @@ pub fn own_refusal(response: &Dict) -> bool {
      // the hotfix's (15/11): what a script may do, said to the agent, not a step the page failed
      SCRIPT_CHANGES_PAGE_REFUSED, SCRIPT_UNCHECKED_REFUSED, SCRIPT_STORAGE_REFUSED, SCRIPT_ON_CARDS_REFUSED,
      // vault-no-readback (16/11)
-     SELECTOR_VALUE_REFUSED]
+     SELECTOR_VALUE_REFUSED, TEXT_MATCH_REFUSED]
         .contains(&text)
 }
 
@@ -1089,7 +1089,7 @@ pub fn shows_password_with(answer: &str, secrets: &Value) -> String {
     let answer = serde_json::to_string(answer).unwrap_or_else(|_| "\"\"".into());
     let secrets = serde_json::to_string(secrets).unwrap_or_else(|_| "{}".into());
     format!(
-        "/* bipagents guard: shown */ (() => {{ const A = {answer}; const secMM = {secrets}; {GUARD_JS}{SECRET_JS}\
+        "/* bipagents guard: shown */ (() => {{ const A = {answer}; const secMM = {secrets}; {GUARD_JS}{OPENERS_JS}{SECRET_JS}\
 const esc = (v) => JSON.stringify(v).slice(1, -1); const forms = (v) => [v, esc(v), esc(esc(v)), esc(esc(esc(v)))]; \
 const told = [...secS].filter((v) => v.length >= 4 && new Set(v).size > 1).concat(secF.filter((f) => new Set(f).size > 1)); \
 return told.some((v) => forms(v).some((f) => A.includes(f))); }})()"
@@ -1336,13 +1336,13 @@ one): a card asks your person « Oui / Non », and on « Oui » the box is ticke
 const SECRET_JS: &str = "const secM = secMM[location.origin] || {k: [], h: []}; \
 const secTexty = ['password', 'text', 'email', 'tel', 'number', 'search', 'url']; \
 const secNamed = /password|passwd|passwort|mot.?de.?passe|motdepasse|\\bmdp\\b|\\bpwd\\b|kennwort|contrase/i; \
-const secNotNamed = /mail|user|login|ident|hint|indice|question|forgot|oubli|reset|lost|perdu/i; \
+const secNotNamed = /mail|user|login|ident|hint|indice|question|forgot|oubli|reset|lost|perdu|recover|r[ée]cup|remind|rappel/i; \
 const secMasked = (e) => { try { return (e.ownerDocument.defaultView.getComputedStyle(e).webkitTextSecurity || 'none') !== 'none'; } catch (x) { return false; } }; \
 const secKey = new Map(inputs.map(({e, k}) => [e, k])); \
 const secNameOf = (e) => (e.getAttribute('name') || '') + ' ' + (e.id || ''); \
-const secField = (e) => e.tagName === 'INPUT' && secTexty.includes(e.type) && (e.type === 'password' || secMasked(e) \
-|| e.type === 'text' && secNamed.test(secNameOf(e)) && !secNotNamed.test(secNameOf(e)) \
-|| (secM.k || []).includes(secKey.get(e))); \
+const secNamedSo = (e) => secNamed.test(secNameOf(e)) && !secNotNamed.test(secNameOf(e)); \
+const secField = (e) => e.tagName === 'INPUT' && (secTexty.includes(e.type) && (e.type === 'password' || secMasked(e) \
+|| e.type === 'text' && secNamedSo(e) || (secM.k || []).includes(secKey.get(e))) || e.type === 'hidden' && secNamedSo(e)); \
 const secTexts = []; roots.forEach((r) => secTexts.push(...r.querySelectorAll('input, textarea'))); \
 const secS = new Set(); secTexts.forEach((e) => { const v = e.value; if (v && (secField(e) || (secM.h || []).includes(h(v)))) secS.add(v); }); \
 const secGuarded = new Set(secTexts.filter((e) => (e.tagName === 'TEXTAREA' || secTexty.includes(e.type)) && (secField(e) || (e.value && secS.has(e.value))))); \
@@ -1350,8 +1350,21 @@ const secForms = (s) => { const f = [s, [...s].reverse().join('')]; try { f.push
 f.push(encodeURIComponent(s)); f.push([...s].map((c) => c.charCodeAt(0).toString(16).padStart(2, '0')).join('')); return f; }; \
 const secF = []; secS.forEach((s) => { if (s.length >= 4) (s.length >= 6 ? secForms(s) : [s]).forEach((f) => { if (f.length >= 4 && !secF.includes(f)) secF.push(f); }); }); \
 const secHolds = (t) => !!t && secF.some((f) => t.includes(f)); \
+const secWide = (t) => !!t && secF.some((f) => f.length >= 6 && t.includes(f)); \
+const secLoads = ['src', 'srcset', 'srcdoc', 'href', 'xlink:href', 'data', 'poster', 'action', 'formaction', 'background', 'ping', 'manifest', 'codebase']; \
 const secSeen = () => ({sk: inputs.filter(({e, k}) => secField(e) && !k.includes('@')).map(({k}) => k), sh: [...secS].map(h)}); \
 const secQuiet = (e, v) => Object.getOwnPropertyDescriptor(e.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value').set.call(e, v); ";
+
+/// The pages that opened this one, up the chain (review of vault-no-readback, 16/11): a page of the same site opened
+/// by the login page or one of its frames (its window.open, then switch_tab) reads the login page through `opener`
+/// (`opener.top`). Their documents from the top, frames and shadow roots join `roots`, their inputs `inputs`, keyed as
+/// their own page keys them (`GUARD_JS`): what is set aside, and what an answer is checked against. After `GUARD_JS`,
+/// before `SECRET_JS`.
+const OPENERS_JS: &str = "for (let w = window.opener, n = 1; w && n <= 8; n++) { let d = null; try { d = w.top.document; } catch (x) { \
+try { d = w.document; } catch (y) {} } \
+if (d && !roots.includes(d)) { const from = roots.length; walk(d); roots.slice(from).forEach((r, ri) => { const own = [...r.querySelectorAll('input')]; \
+own.forEach((e, i) => inputs.push({e: e, k: (ri ? 'r' + ri + ':' : '') + (e.id ? '#' + e.id : (e.name ? e.tagName + '|' + e.name + '|' \
++ own.filter((x) => x.name === e.name).indexOf(e) : 'input@' + i))})); }); } try { w = w.top.opener || w.opener; } catch (x) { w = null; } } ";
 
 /// Before a tool that reads or acts on the page (in `guard_before`, or alone: `conceal_script`): a protected field
 /// holding text that the site shows in clear (its eye, or a « shown » twin it reveals) is a password field again, and its
@@ -1381,11 +1394,13 @@ return JSON.stringify(Object.assign({{origin: location.origin, masks: secMasks, 
 pub fn hide_script(secrets: &Value) -> String {
     let secrets = serde_json::to_string(secrets).unwrap_or_else(|_| "{}".into());
     format!(
-        "/* bipagents guard: hide */ (() => {{ const st = (globalThis.__bipHidden = []); const secMM = {secrets}; {GUARD_JS}{SECRET_JS}\
+        "/* bipagents guard: hide */ (() => {{ const st = (globalThis.__bipHidden = []); const secMM = {secrets}; {GUARD_JS}{OPENERS_JS}{SECRET_JS}\
 if (secS.size) {{ \
 secTexts.forEach((e) => {{ const v = e.value; if (v && (secGuarded.has(e) || secHolds(v))) {{ st.push([e, 0, '', v]); secQuiet(e, ''); }} }}); \
-roots.forEach((r) => {{ for (const el of r.querySelectorAll('*')) for (const a of [...el.attributes]) {{ \
-if (a.value && (secHolds(a.value) || secGuarded.has(el) && secS.has(a.value))) {{ st.push([el, 1, a.name, a.value]); el.setAttribute(a.name, ''); }} }} }}); }} \
+roots.forEach((r) => {{ for (const el of r.querySelectorAll('*')) for (const a of [...el.attributes]) {{ if (secLoads.includes(a.name.toLowerCase())) continue; \
+if (a.value && (secHolds(a.value) || secGuarded.has(el) && secS.has(a.value))) {{ st.push([el, 1, a.name, a.value]); el.setAttribute(a.name, ''); }} }} }}); \
+roots.forEach((r) => {{ const tw = (r.ownerDocument || r).createTreeWalker(r, 4); for (let x = tw.nextNode(); x; x = tw.nextNode()) \
+if (secWide(x.data)) {{ st.push([x, 2, '', x.data]); x.data = ''; }} }}); }} \
 return JSON.stringify(Object.assign({{origin: location.origin, hidden: st.length}}, secSeen())); }})()"
     )
 }
@@ -1395,9 +1410,10 @@ return JSON.stringify(Object.assign({{origin: location.origin, hidden: st.length
 pub const RESTORE_SCRIPT: &str = "/* bipagents guard: restore */ (() => { const st = globalThis.__bipHidden || []; \
 delete globalThis.__bipHidden; let n = 0; \
 const quiet = (e, v) => Object.getOwnPropertyDescriptor(e.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value').set.call(e, v); \
-for (let i = st.length - 1; i >= 0; i--) { const [e, w, a, v] = st[i]; try { \
-if (w === 1) { if (e.getAttribute(a) === '') { e.setAttribute(a, v); n++; } } else if (e.value === '') { quiet(e, v); n++; } \
-} catch (x) {} } return n; })()";
+let back = 0; for (let i = st.length - 1; i >= 0; i--) { const [e, w, a, v] = st[i]; try { \
+if (w === 1) { const now = e.getAttribute(a); if (now === '') { e.setAttribute(a, v); n++; } else if (now !== null) back++; } \
+else if (w === 2) { if (e.data === '') { e.data = v; n++; } else back++; } else if (e.value === '') { quiet(e, v); n++; } else back++; \
+} catch (x) {} } return JSON.stringify({n: n, back: back}); })()";
 
 /// Tools that read the page without `guard_before` before them: `CONCEAL_JS` runs first (`conceal_script`), and their
 /// answer is checked (`shows_password_with`). get_page_content's own reading (`readable_script`) shows no field's value
@@ -1482,8 +1498,9 @@ impl Secrets {
 /// A selector testing part of a field's « value » attribute (vault-no-readback, 16/11): a React page mirrors the
 /// password there, and `input[value^="a"]` found or not, a character at a time, would give it all. Refused in every
 /// tool: CSS's `^= $= *= ~= |=` on `value` (escapes and comments undone, any case, any namespace); an XPath naming
-/// `@value` (or any attribute, `@*`) with a function or a comparison (starts-with, contains, substring, <, >…). The whole
-/// value named (`[value="Rechercher"]`, a radio's `[value="2"]`) goes on.
+/// `@value` (or any attribute, `@*`) other than equal to a string (starts-with, contains, substring, <, >…, and sums:
+/// `floor(@value div 1000)=4` gives a numeric code a digit per call, review 16/11). The whole value named
+/// (`[value="Rechercher"]`, a radio's `[value="2"]`, `//input[@value='OK']`) goes on.
 pub const SELECTOR_VALUE_REFUSED: &str = "Not done: a selector never tests part of a field's value (value^=, value*=, \
 value$=, or starts-with, contains, substring on @value): find the field by its id, name, type or label. Nothing was \
 done.";
@@ -1493,12 +1510,13 @@ static CSS_VALUE_PART: LazyLock<Regex> =
 static XPATH_ATTRIBUTE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"@value\b|attribute::value\b|@\*|attribute::\*|attribute::node\(").expect("valid regex")
 });
-static XPATH_TEST: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(starts-with|ends-with|contains|substring|substring-before|substring-after|string-length|translate|normalize-space|matches|number|string|sum|concat|lower-case|upper-case|tokenize|replace|codepoints-to-string|string-to-codepoints|compare)\(|[<>]|!=",
-    )
-    .expect("valid regex")
+/// The one way an XPath may name the « value » attribute (`XPATH_SPACES` applied): equal to a string, or present.
+static XPATH_VALUE_WHOLE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?:@|attribute::)value=(?:'[^']*'|"[^"]*")|(?:'[^']*'|"[^"]*")=(?:@|attribute::)value\b|\[(?:@|attribute::)value\]"#)
+        .expect("valid regex")
 });
+/// An XPath's spaces next to a sign dropped, those between words kept (`@ value div 10` → `@value div 10`).
+static XPATH_SPACES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*([^\w\s-])\s*").expect("valid regex"));
 static CSS_COMMENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)/\*.*?\*/").expect("valid regex"));
 
 /// A CSS selector with its escapes undone (`\76 ` → `v`, `\v` → `v`).
@@ -1535,17 +1553,26 @@ fn css_unescaped(selector: &str) -> String {
 pub fn selector_tests_value(selector: &str) -> bool {
     let start = selector.trim_start().trim_start_matches('(').trim_start();
     if start.starts_with('/') {
-        let flat: String = selector.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_lowercase();
-        return XPATH_ATTRIBUTE.is_match(&flat) && XPATH_TEST.is_match(&flat);
+        let tight = XPATH_SPACES.replace_all(&selector.to_lowercase(), "$1").into_owned();
+        return XPATH_ATTRIBUTE.is_match(&XPATH_VALUE_WHOLE.replace_all(&tight, ""));
     }
     let plain = css_unescaped(&CSS_COMMENT.replace_all(selector, "")).to_lowercase();
     CSS_VALUE_PART.is_match(&plain)
 }
 
-/// Every selector a call carries (`selector`, and any argument named so), for `selector_tests_value`.
+/// click_element's `text_match` while the page holds a password (review of vault-no-readback, 16/11): the real server
+/// finds the element with nodriver's `tab.find`, DOM.performSearch, which matches the text in every attribute's value
+/// (a site's base64 copy of the password in a hidden field, a mirrored « value ») and takes it as a CSS selector and an
+/// XPath too: found or not, a guess at a time. Refused whatever the text, so the answer tells nothing of it.
+pub const TEXT_MATCH_REFUSED: &str = "Not done: on a page holding a password, click_element finds its element by its \
+selector only (text_match is not used there): give the button's or the link's selector (its id, name or type; \
+query_elements lists them). Nothing was clicked.";
+
+/// Every selector a call carries (`selector`, and any argument named so, click_element's `text_match` too: the real
+/// server's search takes it as a selector), for `selector_tests_value`.
 pub fn call_selectors(args: &Dict) -> Vec<String> {
     args.iter()
-        .filter(|(k, _)| k.as_str() == "selector" || k.ends_with("_selector") || k.as_str() == "xpath")
+        .filter(|(k, _)| k.as_str() == "selector" || k.ends_with("_selector") || k.as_str() == "xpath" || k.as_str() == "text_match")
         .filter_map(|(_, v)| v.as_str().map(str::to_string))
         .collect()
 }
@@ -2738,6 +2765,14 @@ impl Proxy {
             (None, true) => self.page_before(&instance).await,
             (None, false) => None,
         };
+        // a click by text while the page holds a password (its protected fields' fingerprints, `sh`): never the real
+        // server's search, which reads every attribute (review of vault-no-readback, 16/11)
+        let by_text = args.get("text_match").and_then(Value::as_str).is_some_and(|t| !t.trim().is_empty());
+        let holds = before.as_ref().and_then(|b| b.get("sh")).and_then(Value::as_array).is_some_and(|h| !h.is_empty());
+        if tool == "click_element" && by_text && holds {
+            log("click_element: a click by text refused (a password on the page)");
+            return Ok(refused(TEXT_MATCH_REFUSED));
+        }
         // an agent's script: run only by V8 with no side effect allowed (hotfix v2 of 15/11, Alex's option A), never by
         // the real server; one that would do more than read is refused
         let mut document = None;
@@ -2985,6 +3020,17 @@ impl Proxy {
                 Ok(_) => log(&format!("execute_script: {count} password value(s) or copies set aside while it ran")),
                 Err(_) => log("WARNING: execute_script: a password field set aside could not be put back (left empty)"),
             }
+        }
+        // what the page put back between the setting aside and the script (its own tasks run between two DevTools
+        // calls: a React form rendered from its state), the script may have read: its answer is not given (review of
+        // vault-no-readback, 16/11); nor when the page couldn't say
+        let back = match &restored {
+            Ok(Value::String(text)) => serde_json::from_str::<Value>(text).ok().and_then(|r| r.get("back")?.as_u64()),
+            _ => None,
+        };
+        if count > 0 && back != Some(0) {
+            log("execute_script: the page put a password back while it ran: its answer not given");
+            return Ran::Unchecked;
         }
         let Ok(evaluated) = evaluated else { return Ran::Unchecked };
         ran_from(&evaluated, loader)
