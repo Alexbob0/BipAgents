@@ -63,6 +63,7 @@ class Browser:
         threading.Thread(target=self.site.serve_forever, daemon=True).start()
         self.base = f"http://127.0.0.1:{self.site.server_address[1]}"
         port = free_port()
+        (self.dir / "profile").mkdir()   # mounted as it is by a Chromium in a container (bip-chrome)
         self.chrome = subprocess.Popen([CHROME, "--headless=new", f"--remote-debugging-port={port}",
                                         f"--user-data-dir={self.dir / 'profile'}", "--no-first-run", "--disable-gpu",
                                         "about:blank"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
