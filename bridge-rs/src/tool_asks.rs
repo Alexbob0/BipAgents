@@ -381,23 +381,28 @@ fn note_toolset_on(agent: &str, name: &str) {
 /// app read it; else the profile's `platform_toolsets.api_server` when it is an explicit list (`hermes tools
 /// enable/disable` saved one): listed, on; a known toolset left out, off. Hermes' platform default (its composite
 /// `hermes-api-server`, or no list): unknown.
-fn toolset_on(config: &Config, agent: &AgentConfig, name: &str) -> Option<bool> {
+fn toolset_on(config: &Config, agent: &AgentConfig, name: &str, sets: &ProfileSets) -> Option<bool> {
     if crate::agents_admin::managed(config, &agent.name).is_err() {
         return None; // not run by this bridge: its toolsets are changed where it runs
     }
     if let Some(seen) = TOOLSETS.lock().unwrap_or_else(|e| e.into_inner()).get(&agent.name) {
         return seen.get(name).map(|(_, on)| *on);
     }
+    sets.get_or_init(|| profile_toolsets(config, agent)).as_ref().map(|names| names.iter().any(|n| n == name))
+}
+
+/// The profile's own list, read once per look (`toolset_on`).
+type ProfileSets = std::sync::OnceLock<Option<Vec<String>>>;
+
+/// The profile's `platform_toolsets.api_server` when it is an explicit list (None: Hermes' platform default, its
+/// composite `hermes-api-server`, or no list).
+fn profile_toolsets(config: &Config, agent: &AgentConfig) -> Option<Vec<String>> {
     let folder = crate::agents_admin::profile_folder(config, agent);
     let data = crate::shares::profile_config(&folder);
-    let sets = data.get("platform_toolsets").and_then(|p| p.get(crate::tool_diet::API_PLATFORM));
-    match sets {
+    match data.get("platform_toolsets").and_then(|p| p.get(crate::tool_diet::API_PLATFORM)) {
         Some(Value::Array(items)) => {
-            let names: Vec<&str> = items.iter().filter_map(Value::as_str).collect();
-            if names.iter().any(|n| n.starts_with("hermes-")) {
-                return None;
-            }
-            Some(names.contains(&name))
+            let names: Vec<String> = items.iter().filter_map(Value::as_str).map(str::to_string).collect();
+            (!names.iter().any(|n| n.starts_with("hermes-"))).then_some(names)
         }
         _ => None,
     }
@@ -405,9 +410,14 @@ fn toolset_on(config: &Config, agent: &AgentConfig, name: &str) -> Option<bool> 
 
 /// Whether `item` is on for `agent` (None: not available on this place, never asked).
 pub fn is_on(config: &Config, agent: &AgentConfig, item: &Item) -> Option<bool> {
+    is_on_with(config, agent, item, &ProfileSets::new())
+}
+
+/// `is_on`, the profile's toolsets read at most once for several items (`sets`).
+fn is_on_with(config: &Config, agent: &AgentConfig, item: &Item, sets: &ProfileSets) -> Option<bool> {
     let name = agent.name.as_str();
     match &item.switch {
-        Switch::Toolset(set) => toolset_on(config, agent, set),
+        Switch::Toolset(set) => toolset_on(config, agent, set, sets),
         Switch::Browser => crate::browsers::available(config)
             .then(|| crate::browsers::state(&crate::agents_admin::home_root(config, agent), name) == Some(true)),
         Switch::Weather => Some(crate::weather::enabled(config, name)),
@@ -457,8 +467,9 @@ pub fn askable(config: &Config, agent: &AgentConfig) -> Vec<Item> {
     if !config.tool_asks.ask_in_conversation || !eligible(config, agent) {
         return Vec::new();
     }
+    let sets = ProfileSets::new();
     let mut out: Vec<Item> =
-        REGISTRY.iter().map(Entry::item).filter(|item| is_on(config, agent, item) == Some(false)).collect();
+        REGISTRY.iter().map(Entry::item).filter(|item| is_on_with(config, agent, item, &sets) == Some(false)).collect();
     // Hermes' toolsets this file doesn't name, as the app last read them (the generic way: a new toolset is askable)
     let known: Vec<&str> = REGISTRY.iter().map(|e| e.id).chain(NOT_ASKABLE.iter().map(|n| n.0)).collect();
     if crate::agents_admin::managed(config, &agent.name).is_ok() {
