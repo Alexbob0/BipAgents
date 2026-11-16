@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><title>Banque | Essai</title></head>
+<body>
+<!-- Review of vault-no-readback (16/11). A bank's login with a virtual keypad, as several French banks draw it: the
+     person clicks the digits, the page keeps the code in a hidden field named as a password, and shows dots. Fake data
+     only. -->
+<h1>Accès à vos comptes</h1>
+<form id="acces" action="/acces" method="post">
+  <input type="hidden" name="password" id="password" value="">
+  <p>Code secret : <span id="dots"></span></p>
+  <div id="pad">
+    <button type="button" data-d="1">1</button><button type="button" data-d="2">2</button>
+    <button type="button" data-d="3">3</button><button type="button" data-d="4">4</button>
+    <button type="button" data-d="5">5</button><button type="button" data-d="6">6</button>
+    <button type="button" data-d="7">7</button><button type="button" data-d="8">8</button>
+    <button type="button" data-d="9">9</button><button type="button" data-d="0">0</button>
+  </div>
+  <button type="submit" id="ok">Valider</button>
+</form>
+<script>
+  const code = document.getElementById('password'), dots = document.getElementById('dots');
+  document.getElementById('pad').addEventListener('click', (ev) => {
+    const d = ev.target.dataset.d;
+    if (d === undefined) return;
+    code.value += d;
+    dots.textContent = '•'.repeat(code.value.length);
+  });
+</script>
+</body>
+</html>
