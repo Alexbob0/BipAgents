@@ -493,8 +493,32 @@ list (« Étapes »), numbers. `text`: the bridge's words in the agent's languag
 
 The statuses go in the run's backlog (an app coming back gets the latest) and end with the run (a restart or a rescue
 turn has its own). Without `status=1` nothing changes: an iPhone app from before them takes an unknown event for « not
-words » and drops its working line during a pause in the reply. Shared and family readers get none (only text crosses,
-§6.6). `[status] enabled = false` until both apps read them.
+words » and drops its working line during a pause in the reply. `[status] enabled = false` until both apps read them.
+
+**A loop** (`state: looping`): at the brake's two thirds (loop_brake.rs, the same moment the agent is told), with
+`loop: {over, kind?, site?, count, stop_at}` (`over`: `same_call`, `same_tool`, `too_many`, `page_reads`, `browser`,
+`discovery`) and `actions: ["continue", "stop", "help"]` (empty in every other state); text « Je tourne en rond sur
+sncf-connect.com (27 étapes) ». The person's answer:
+
+```text
+POST /v1/runs/{run_id}/brake?agent=<id>  {"action": "continue" | "stop"}
+  → 200 {"ok": true, "continued": true}   this turn's limits half as high again, once; the agent told to change approach
+  → 200 {"ok": true, "stopped": true}     the brake's stop at once: its plain line, its rescue turn
+  → 400 unknown_action · 404 run_gone (over or unknown) · 409 not_looping | already_continued
+```
+
+« help » is the app's: its composer opens on « Aide Léon : … », sent into the turn as any message during a turn.
+
+**Times.** `steps.updated` (§6.3b) gives each step its `secs` (done: from when it was first seen going on to when it
+was seen done; going on: so far) and the list the turn's `time`: `{secs, model, tools, person, agent, actions, top}`,
+`top` the one or two waits that took a fifth of it or more (`{what: model | person | agent | site | kind, site?, kind?,
+secs}`). A turn of 60 s or more ends on a status `state: done` with `took` (the same shape), sent before the run's
+end; kept in bridge.db (`turn_times`, numbers only), it comes back on the turn's last reply in timeline pages
+(`message.took`), for « 4 min 10 · surtout sncf-connect.com (2 min 30) ».
+
+**Family.** A member's app that asks (`status=1` on her bridge's relay, passed to the owner's) reads a reduced status:
+`state`, `slow`, `stuck`, `since`, `started`, `now`, `kind`, `limit_s`, `took`, and `text` from the status's `plain`
+words (no site, no connector, no step): never the agent's step, a site or the buttons. Friends and feeds: none.
 
 ### 6.6 Rooms and shared agents
 
