@@ -12,6 +12,7 @@ a relay that changes a bit, sends a call again, back to its sender or to another
 - A place scanning a home's invitation links (the « wrong side » message is gone): afterwards they need the relay no
   more (the home fetches the place's calls for it, as when it scans the place's).
 - The relay switched off: the homes' calls fail at once, plainly; their pages open; back on, it all works again.
+- A link removed stays removed (the others keep calling, with newer passes), after the relay restarts too.
 - The relay misbehaving: a bit changed in a call or in its answer, a call sent again, back to its sender or to
   another household: refused, nothing reaches an agent."""
 import json
@@ -246,6 +247,50 @@ def test_the_relay_off_then_back(bridges, fakes, relay):
     again = write(alex, vie, "cuisine__lea", "tu es là ?", "vie")
     assert again.status_code == 200, again.text
     assert RECEIVED[-1][0] == "/p/cuisine/v1/runs"
+
+
+def test_a_link_removed_stays_removed_and_the_others_keep_calling_even_after_the_relay_restarts(
+        bridges, fakes, relay):
+    """Léa (a home) is linked through the relay with Alex and Paul (two homes). She removes Alex: Paul gets a new pass
+    from her through their link (a newer generation than every pass she gave before) and keeps writing to her; Alex's
+    pass, older, is refused by the relay, the same refusal as a bridge switched off — and still after the relay
+    restarts, when it remembers nothing of anyone (review « R5 »: never a fallback that takes a pass withdrawn)."""
+    RECEIVED.clear()
+    fakes.hermes.override = echo
+    alex = install(bridges, fakes, "alex", ["vie"], relay.url)
+    lea = install(bridges, fakes, "lea", ["cuisine"], relay.url)
+    paul = install(bridges, fakes, "paul", ["coach"], relay.url)
+    named(alex, "Alex")
+    named(lea, "Léa")
+    named(paul, "Paul")
+    link(alex, lea)
+    link(paul, lea)
+    assert wait_until(lambda: "cuisine__lea" in link_agents(alex), timeout=40), alex.log_tail()
+    assert wait_until(lambda: "cuisine__lea" in link_agents(paul), timeout=40), paul.log_tail()
+    coach, _ = allow_messages(paul, "coach", lea, "cuisine", "paul", "lea")
+    held = households(alex)["lea"]
+    box, alex_pass, token = held["mailbox"], held["pass"], own_mailbox(alex)["token"]
+    paul_pass = households(paul)["lea"]["pass"]
+
+    def alex_calls():
+        return httpx.post(f"{relay.url}/v1/family/call/{box}", content=b"\x01" + b"x" * 64, timeout=30,
+                          headers={"Authorization": f"Bearer {token}", "x-bip-kind": "call", "x-bip-pass": alex_pass,
+                                   "content-type": "application/octet-stream"})
+
+    assert lea.delete("/v1/family/alex", headers=AUTH).status_code in (200, 204)
+    # Paul has a new pass from Léa, and still writes to her through the relay
+    assert wait_until(lambda: households(paul)["lea"].get("pass") not in (None, paul_pass), timeout=40), lea.log_tail()
+    assert wait_until(lambda: write(paul, coach, "cuisine__lea", "tu es là ?", "coach").status_code == 200,
+                      timeout=40), paul.log_tail()
+    assert RECEIVED[-1][0] == "/p/cuisine/v1/runs"
+    assert alex_calls().status_code == 503, "Alex's pass, withdrawn, still reaches Léa's bridge"
+
+    # the relay restarts: it remembers nothing of anyone; Léa's first poll says again what it takes
+    relay.stop()
+    relay.start()
+    assert wait_until(lambda: write(paul, coach, "cuisine__lea", "encore", "coach").status_code == 200,
+                      timeout=60), paul.log_tail()
+    assert alex_calls().status_code == 503, "after the relay restarted, Alex's withdrawn pass reaches Léa's bridge again"
 
 
 def test_the_relay_off_when_linking_says_so(bridges, fakes, relay):
