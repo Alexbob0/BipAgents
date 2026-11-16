@@ -138,8 +138,9 @@ pub fn tools() -> Vec<Value> {
     it types the login's identifier and its password into the login form of the page your browser shows; you \
     never see the password, and you never type one yourself. First open the site's login page with your browser \
     (a login kept with its own login page: that address). Then call this without an id: the vault picks the \
-    login kept for this site (any page of its domain: www., another subdomain), told apart by its login page \
-    when several share the site. If it answers that several fit, call again with the id of the one the person \
+    login kept for this site: on the hosts the person saved it for (its site's and its login page's, with or \
+    without www.), told apart by its login page when several share the host. On another host of the same site it \
+    types nothing: tell the person, who saves that page's address for the login in the app, or logs in themselves. If it answers that several fit, call again with the id of the one the person \
     means (ask them in one short question if the names don't tell); never pick one yourself. A site that asks \
     for the identifier first and the password on a next page: call this on each page. Then submit the form \
     yourself. No login for this site: ask_secret (kind password, use browser) asks the person once. Only on a site \
@@ -818,6 +819,25 @@ fn several_text(items: &[&crate::vault::Item], host: &str) -> String {
     )
 }
 
+/// The site's logins are kept for other hosts than the page's (review R1, Alex's choice of 16/11): nothing is ever typed
+/// there; the agent tells the person, who saves this page's address for the login, or logs in themselves.
+fn other_host_text(items: &[&crate::vault::Item], host: &str) -> String {
+    let kept: Vec<String> = items
+        .iter()
+        .map(|i| {
+            let page = i.login_url.as_deref().or(i.origin.as_deref()).unwrap_or("");
+            format!("« {} » is kept for {} (login page {page})", crate::cards::quoted(&i.label, 120), host_of(page))
+        })
+        .collect();
+    format!(
+        "{}, not for {host} (another host of the same site): nothing was typed, and nothing may be typed on this page, \
+         neither by the vault nor by you. If you were sent here to log in to that site, open its own login page \
+         instead. If the person wants to log in on {host}, tell them plainly: they can save this page's address for \
+         that login in their vault, in the app, or log in themselves in your browser from the app.",
+        kept.join("; ")
+    )
+}
+
 /// `vault_login`: the agent's page (Chrome's own address), the login of the vault given to it that fits that page's
 /// site (vault_match.rs), its identifier and its password typed into that site's frames only (login_fill.rs). Neither
 /// is answered nor logged.
@@ -876,15 +896,7 @@ async fn login(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> anyho
             )));
         }
         crate::vault_match::Choice::Several(items) => return Ok(refusal(&several_text(&items, &host))),
-        crate::vault_match::Choice::OtherHost(item) => {
-            let page = item.login_url.as_deref().or(item.origin.as_deref()).unwrap_or("");
-            return Ok(refusal(&format!(
-                "« {} » is kept for {}, not for {host} (another host of the same site): nothing was typed. Open its own \
-                 login page ({page}) and call again; if the person wants it used on {host}, tell them so.",
-                crate::cards::quoted(&item.label, 120),
-                host_of(page)
-            )));
-        }
+        crate::vault_match::Choice::OtherHost(items) => return Ok(refusal(&other_host_text(&items, &host))),
     };
     let label = crate::cards::quoted(&item.label, 120);
     let kept = item.origin.clone().unwrap_or_default();

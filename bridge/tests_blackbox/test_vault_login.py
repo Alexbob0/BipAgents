@@ -391,3 +391,31 @@ def test_no_login_no_browser_no_page(bridges, fakes):
         assert unknown["isError"] is True and "No login of yours has this id" in said(unknown)
     finally:
         chrome.stop()
+
+
+def test_on_another_host_of_the_site_nothing_is_typed_and_the_person_is_told_what_they_can_do(bridges, fakes):
+    """Alex's choice of 16/11 (review R1): without the person, a login is typed only on the hosts they saved it for.
+    On another host of the same domain nothing is typed, even by id; the agent tells the person to save that page's
+    address for the login, or to log in themselves. Several logins of one host are still chosen by their login page,
+    never mixed with a login kept for another host."""
+    chrome = FakeChrome("https://extranet9.example.fr/V5/connexion-agence-a.html")
+    try:
+        bridge = login_bridge(bridges, fakes, chrome)
+        a = keep(bridge, "Extranet agence A", PAGE_A, IDENTIFIER_A, PASSWORD_A)
+        b = keep(bridge, "Extranet agence B", PAGE_B, IDENTIFIER_B, PASSWORD_B)
+        other = keep(bridge, "Extranet 1", "https://extranet1.example.fr/V5/login.html", "x1@example.org", "Fake-x1-pw-1!")
+        refused = vault_login(bridge)
+        text = said(refused)
+        assert refused["isError"] is True and chrome.typed == []
+        assert "another host of the same site" in text and "nothing may be typed on this page" in text
+        assert "save this page's address for that login in their vault" in text and "log in themselves" in text
+        assert f"« Extranet agence A » is kept for extranet2.example.fr (login page {PAGE_A})" in text
+        by_id = vault_login(bridge, {"id": a["id"]})
+        assert by_id["isError"] is True and "another host of the same site" in said(by_id) and chrome.typed == []
+        # on the agencies' own host, a tie names only that host's logins
+        chrome.frames = [Frame(f"{SITE}/V5/accueil.html")]
+        several = said(vault_login(bridge))
+        assert a["id"] in several and b["id"] in several and other["id"] not in several
+        nowhere_but_the_page(bridge, [refused, by_id], IDENTIFIER_A, IDENTIFIER_B, PASSWORD_A, PASSWORD_B)
+    finally:
+        chrome.stop()

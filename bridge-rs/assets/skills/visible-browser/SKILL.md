@@ -1,7 +1,7 @@
 ---
 name: visible-browser
 description: "Browse the web with your own visible browser: a real Chrome on your desktop, which the person can watch and take over from the BipAgents app. Use its `stealth` tools for every website, including sites that block automated browsers."
-version: 1.14.0
+version: 1.14.1
 author: BipAgents
 license: MIT
 metadata:
@@ -71,14 +71,17 @@ phone is not relaying now, say that, never « the site blocks servers ». When y
 `ask_phone_exit` with `done: true`.
 
 ## 4. Logging in with the vault
-The vault types the identifier and the password for you, on the site the login was saved for (any page of its domain);
-you never see the password:
+The vault types the identifier and the password for you, on the site the login was saved for (the hosts the person
+saved: its site's and its login page's, with or without `www.`); you never see the password:
 1. open the login page with your browser (`navigate`);
 2. call `vault_login` on that page: it picks the login kept for this site and types both fields. When it answers that
    several logins fit (several accounts or agencies on one site), call it again with the `id` of the one the person
    means; ask them in one short question if the names don't tell. Never pick one yourself;
 3. a site that asks for the identifier first and the password on a next page: call `vault_login` on each page;
-4. submit the form yourself (its button). A verification code after that: `browser_vault` with `enter_code`.
+4. submit the form yourself (its button). A verification code after that: `browser_vault` with `enter_code`;
+5. when it answers that the login is kept for another host of the same site, nothing may be typed on that page, not
+   even by you: if you came to log in to that site, open its own login page; otherwise tell the person plainly that
+   they can save this page's address for that login in their vault, in the app, or log in themselves in your browser.
 The vault acts on the same Chrome as your `stealth` tools. If it answers that no browser is running, start yours with
 `spawn_browser` first. Hermes' `browser_vault` fill types the password only: if you used it, type the identifier
 yourself into its field (`browser_vault` list shows it) before you submit.

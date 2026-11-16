@@ -3518,7 +3518,9 @@ out of your reach";
     fn the_skill_gives_the_same_script() {
         let skill = crate::browsers::skill();
         assert!(skill.contains(&format!("`{AROUND_A_WORD}`")), "visible-browser/SKILL.md § 2 and AROUND_A_WORD");
-        assert!(skill.contains("version: 1.14.0"));
+        assert!(skill.contains("version: 1.14.1"));
+        // R1 (Alex, 16/11): another host of the site, nothing typed; the person saves the page or logs in
+        assert!(skill.contains("nothing may be typed on that page, not\n   even by you"));
         // 16/11: logging in is vault_login's, both fields, the agent naming one when several fit
         assert!(skill.contains("call `vault_login` on that page") && skill.contains("with the `id` of the one the person"));
         assert!(skill.contains("runs at once and ends"), "no timers, observers…: the second review of 14/11");
