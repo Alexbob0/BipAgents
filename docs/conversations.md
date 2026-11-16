@@ -469,6 +469,33 @@ new words fading in from 30 % to full in 250 ms (`StreamReveal`; none with Reduc
 removed), and show their working line under a reply whose words stopped for 2.5 s (`ReplyPause`: Hermes sends
 nothing while the model writes a call's arguments or its own notes).
 
+### 6.5b What the agent does now (`turn.status`, 16/11)
+
+Alex, 16/11: « on attend 5-6 min et on sait pas trop ce que l'agent essaye de faire ». An app that asks for it
+(`GET /v1/runs/{id}/events?agent=…&status=1`) gets, in the run's stream, one `turn.status` each time what the agent does
+changes, and one more when that wait grows abnormal (turn_status.rs):
+
+```json
+{"event": "turn.status", "run_id": "r_…", "v": 1, "state": "tool", "slow": true, "stuck": false,
+ "since": 1794818000.0, "started": 1794817860.0, "now": 1794818025.0,
+ "kind": "browser", "action": "fill", "site": "sncf-connect.com", "service": null, "limit_s": 120,
+ "step": {"index": 3, "total": 4, "text": "Choisir la place"},
+ "text": "Sur sncf-connect.com : la page met du temps"}
+```
+
+`state`: `thinking`, `model` (the model has the hand), `tool`, `waiting_agent` (`message_agent`), `waiting_person` (an
+approval, a question), `unreachable` (the bridge lost Hermes and keeps trying). `since`: when this state began, `now`:
+the bridge's clock (the apps count from these two, never from their own clock). `slow`: past `[status]`'s threshold for
+the state (model 20 s, a page 15 s, another tool 20 s, another agent 15 s; × 3 for a model on the person's machine);
+`stuck`: the model past 90 s. Never a call's arguments: the tool's kind, a browsing call's bare domain, its action
+(`open`, `click`, `fill`, `read`, `look`, `scroll`, `browse`) from the tool's name, the step in progress of the turn's
+list (« Étapes »), numbers. `text`: the bridge's words in the agent's language, for a state an app doesn't know.
+
+The statuses go in the run's backlog (an app coming back gets the latest) and end with the run (a restart or a rescue
+turn has its own). Without `status=1` nothing changes: an iPhone app from before them takes an unknown event for « not
+words » and drops its working line during a pause in the reply. Shared and family readers get none (only text crosses,
+§6.6). `[status] enabled = false` until both apps read them.
+
 ### 6.6 Rooms and shared agents
 
 - **Rooms** (branch rooms-items, reduced in rooms-reduction) are threads `room:<id>` on the same routes, no agent

@@ -734,6 +734,9 @@ pub struct Config {
     /// `[brake]` (loop_brake.rs): a turn going round in circles stopped. Not in the serialized form either.
     #[serde(skip)]
     pub brake: crate::loop_brake::Settings,
+    /// `[status]` (turn_status.rs): what the agent does now, for the apps that ask. Not in the serialized form either.
+    #[serde(skip)]
+    pub status: crate::turn_status::Settings,
     /// `[rooms]` (rooms.rs): not in the serialized form either.
     #[serde(skip)]
     pub rooms: RoomsConfig,
@@ -877,6 +880,7 @@ impl Config {
             notebook: NotebookConfig::default(),
             jobs: JobsConfig::default(),
             brake: crate::loop_brake::Settings::default(),
+            status: crate::turn_status::Settings::default(),
             rooms: RoomsConfig::default(),
             guide: GuideConfig::default(),
             place_agents_max: None,
@@ -1921,6 +1925,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         notebook,
         jobs,
         brake: crate::loop_brake::Settings::from_table(table(data, "brake")),
+        status: crate::turn_status::Settings::from_table(table(data, "status")),
         rooms,
         guide,
         place_agents_max,

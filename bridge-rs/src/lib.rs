@@ -144,6 +144,8 @@ pub mod style_skills;
 /// What each kind of agent keeps in view of Hermes' tools (token diet, phase 2).
 pub mod tool_diet;
 pub mod turn_thinking;
+/// What the agent does now, for the apps (`turn.status`, 16/11).
+pub mod turn_status;
 /// A message sent mid-turn before the agent acted: the turn started again with it.
 pub mod turn_restart;
 pub mod terms_consent;

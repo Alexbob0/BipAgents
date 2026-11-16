@@ -544,6 +544,8 @@ pub struct SubscriptionState {
     /// This run is the restart of that run (`restart`), whose stream shows it: a conversation turn like it (its cards
     /// seen through it, the long-work and brake nets, a task's conversation), never continued itself.
     pub restart_of: Option<String>,
+    /// What the agent does now, for the apps that ask (turn_status.rs, `[status]`): made at the run's first event.
+    pub status: Option<crate::turn_status::Tracker>,
     listeners: Vec<Slot>,
     cancel: Option<CancellationToken>,
     task: Option<JoinHandle<()>>,
@@ -609,6 +611,7 @@ impl Default for SubscriptionState {
             restart: None,
             restarted_as: None,
             restart_of: None,
+            status: None,
             listeners: Vec::new(),
             cancel: None,
             task: None,
@@ -1376,6 +1379,19 @@ impl RunHub {
 
     async fn upstream(self: Arc<Self>, sub: Arc<RunSubscription>, cancel: CancellationToken) {
         let limit = Duration::from_secs(self.watch_max_seconds);
+        // what the agent does now: a wait grown abnormal is said without an event of the run's (turn_status.rs)
+        let ticker = {
+            let (hub, sub) = (self.clone(), sub.clone());
+            tokio::spawn(async move {
+                let every = Duration::from_secs_f64(crate::turn_status::TICK_SECONDS);
+                loop {
+                    tokio::time::sleep(every).await;
+                    if !hub.status_tick(&sub) {
+                        break;
+                    }
+                }
+            })
+        };
         let outcome = tokio::select! {
             _ = cancel.cancelled() => Outcome::Cancelled,
             result = tokio::time::timeout(limit, self.upstream_loop(&sub)) => match result {
@@ -1394,6 +1410,7 @@ impl RunHub {
             }
             Outcome::Done | Outcome::Cancelled => {}
         }
+        ticker.abort();
         {
             let mut st = lock(&sub.state);
             st.finished = true;
@@ -1431,6 +1448,10 @@ impl RunHub {
                                 failures = 0;
                                 let terminal = is_terminal(&event.r#type);
                                 let event = if terminal {
+                                    // its statuses end here, whatever turn takes over (a restart, a rescue…)
+                                    if let Some(status) = lock(&sub.state).status.as_mut() {
+                                        status.end();
+                                    }
                                     self.flush_media(sub);
                                     self.rescue(sub, &event).await;
                                     // a turn stopped for the person's new words: the end of the one restarted
@@ -1527,6 +1548,46 @@ impl RunHub {
         SSEEvent::new(event.r#type, data, raw)
     }
 
+    /// What the agent does now after this event (turn_status.rs), as a `turn.status` of the run's stream: only with
+    /// `[status] enabled`, and only for the apps that ask (`status=1`, app.rs `listener_events_with`).
+    fn status_of(&self, sub: &RunSubscription, st: &mut SubscriptionState, event: &SSEEvent) -> Option<SSEEvent> {
+        if event.r#type == crate::turn_status::EVENT {
+            return None;
+        }
+        let config = self.config.as_ref()?.get();
+        if !config.status.enabled {
+            return None;
+        }
+        let now = crate::py::time_time();
+        if st.status.is_none() {
+            let lang = crate::handback::language_of(&config, &sub.agent);
+            st.status = Some(crate::turn_status::Tracker::new(now, &lang, false));
+        }
+        let status = st.status.as_mut()?.on_event(&event.r#type, &event.data, now, &config.status)?;
+        Some(self.status_event(sub, status))
+    }
+
+    fn status_event(&self, sub: &RunSubscription, mut status: Map<String, Value>) -> SSEEvent {
+        status.insert("run_id".into(), json!(sub.run_id));
+        let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(status.clone()));
+        SSEEvent::new(crate::turn_status::EVENT, status, raw)
+    }
+
+    /// The hub's clock for one run (`upstream`'s ticker): a wait grown abnormal said now. false once the run is over.
+    pub fn status_tick(&self, sub: &RunSubscription) -> bool {
+        let Some(config) = self.config.as_ref().map(|c| c.get()) else { return false };
+        let mut st = lock(&sub.state);
+        if st.finished {
+            return false;
+        }
+        let now = crate::py::time_time();
+        let Some(status) = st.status.as_mut().and_then(|t| t.tick(now, &config.status)) else { return true };
+        let event = self.status_event(sub, status);
+        append_to_backlog(&mut st.backlog, &event);
+        st.send_all(Some(&event));
+        true
+    }
+
     /// A call started or ended in a run without a list of the agent's own: the automatic list (steps.rs), as a
     /// `steps.updated` when it changed (only from its 2nd step).
     fn auto_steps(&self, sub: &RunSubscription, st: &mut SubscriptionState, event: &SSEEvent) -> Option<SSEEvent> {
@@ -1599,10 +1660,12 @@ impl RunHub {
         let delta = is_delta(&event.r#type);
         let mut shown = st.media.event(event);
         shown.extend(auto);
+        let statuses: Vec<SSEEvent> = shown.iter().filter_map(|e| self.status_of(sub, &mut st, e)).collect();
+        shown.extend(statuses);
         for event in &shown {
             append_to_backlog(&mut st.backlog, event);
             st.send_all(Some(event));
-            if let Some(push) = &self.push {
+            if let (Some(push), false) = (&self.push, event.r#type == crate::turn_status::EVENT) {
                 // the Live Activities following this run (its own, its task's, its discussion's): live_activities.rs
                 let followed = st.followers() > 0;
                 push.live_event(&sub.agent.name, &sub.run_id, st.room_id.as_deref(), &event.r#type, &event.data, followed);
@@ -3653,6 +3716,50 @@ mod tests {
         hub.dispatch(&lone, event("tool.started", json!({"tool": "browser_navigate"})));
         hub.dispatch(&lone, event("run.completed", json!({})));
         assert!(!root.join("lea").exists());
+    }
+
+    /// What the agent does now (turn_status.rs): a `turn.status` after the event that
+    /// changed it, in the run's backlog (an app that comes back gets it), only with `[status] enabled`.
+    #[tokio::test]
+    async fn what_the_agent_does_reaches_the_runs_stream_only_when_on() {
+        let event = |kind: &str, data: Value| SSEEvent::new(kind, data.as_object().cloned().unwrap(), "{}");
+        let statuses = |sub: &RunSubscription| {
+            lock(&sub.state).backlog.iter().filter(|e| e.r#type == crate::turn_status::EVENT).map(|e| e.data.clone())
+                .collect::<Vec<_>>()
+        };
+        for enabled in [false, true] {
+            let data = json!({"bridge_key": "k".repeat(40), "status": {"enabled": enabled, "page_slow": 1}});
+            let config = SharedConfig::new(crate::config::parse_config(&data, None).unwrap());
+            let hub = RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None).with_config(config);
+            let sub = Arc::new(RunSubscription::new(AgentConfig { name: "vie".into(), ..Default::default() }, "run_s"));
+            lock(&hub.inner).subs.insert(sub.key(), sub.clone());
+            hub.dispatch(&sub, event("tool.started", json!({"tool": "mcp_stealth_navigate", "tool_call_id": "a",
+                                                            "preview": "https://www.sncf-connect.com/home?x=1"})));
+            hub.dispatch(&sub, event("message.delta", json!({"delta": "…"})));
+            if !enabled {
+                assert!(statuses(&sub).is_empty(), "off by default");
+                assert!(hub.status_tick(&sub), "the clock goes on, saying nothing");
+                continue;
+            }
+            let first = statuses(&sub);
+            assert_eq!(first.len(), 1, "{first:?}");
+            assert_eq!((first[0]["state"].as_str(), first[0]["site"].as_str()), (Some("tool"), Some("sncf-connect.com")));
+            assert_eq!(first[0]["run_id"], "run_s");
+            let kinds: Vec<String> = lock(&sub.state).backlog.iter().map(|e| e.r#type.clone()).collect();
+            assert_eq!(&kinds[..2], ["tool.started", crate::turn_status::EVENT], "after the event that changed it");
+            // a wait grown abnormal is said by the hub's clock, once
+            tokio::time::sleep(Duration::from_millis(1100)).await;
+            assert!(hub.status_tick(&sub));
+            assert!(hub.status_tick(&sub));
+            let all = statuses(&sub);
+            assert_eq!(all.len(), 2, "{all:?}");
+            assert_eq!(all[1]["slow"], true);
+            // the run's end ends them
+            hub.dispatch(&sub, event("run.completed", json!({"output": "Voilà."})));
+            tokio::time::sleep(Duration::from_millis(1100)).await;
+            hub.status_tick(&sub);
+            assert_eq!(statuses(&sub).len(), 2);
+        }
     }
 
     #[tokio::test]

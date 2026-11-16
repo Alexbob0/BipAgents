@@ -1106,17 +1106,21 @@ async fn run_events(State(state): State<AppState>, Path(run_id): Path<String>, q
         crate::family_thread::author_of(&config, &agent_cfg.name, &run_id, &state.households.name())
             .by_of(crate::family_thread::CREATOR)
     });
-    Ok(listener_events_with(listener, by))
+    // what the agent does now (turn_status.rs): only for an app that reads it
+    let status = q.get("status").is_some_and(|v| v == "1");
+    Ok(listener_events_with(listener, by, status))
 }
 
 /// A listener of the run hub as the SSE the app reads (`event: <type>`, `data: <json>`, a keepalive comment every
 /// 10 s): the bridge's `GET /v1/runs/{id}/events`, and the door's relay of Hermes' own (lan.rs).
 pub fn listener_events(listener: crate::runs::Listener) -> Response {
-    listener_events_with(listener, None)
+    listener_events_with(listener, None, false)
 }
 
-/// `listener_events`, with `by` on its cards (`approval.request`, `clarify.request`): whose turn it is.
-pub fn listener_events_with(mut listener: crate::runs::Listener, by: Option<Value>) -> Response {
+/// `listener_events`, with `by` on its cards (`approval.request`, `clarify.request`): whose turn it is; `status`: with
+/// the run's `turn.status` events (turn_status.rs), which an app asks for (`status=1`): an iPhone app from before them
+/// takes an unknown event for « not words » and drops its working line during a pause in the reply.
+pub fn listener_events_with(mut listener: crate::runs::Listener, by: Option<Value>, status: bool) -> Response {
     let events = async_stream::stream! {
         loop {
             match tokio::time::timeout(Duration::from_secs_f64(SSE_KEEPALIVE_SECONDS), listener.queue.recv()).await {
@@ -1124,6 +1128,7 @@ pub fn listener_events_with(mut listener: crate::runs::Listener, by: Option<Valu
                     yield Ok::<_, std::io::Error>(bytes::Bytes::from_static(b": keepalive\n\n"));
                 }
                 Ok(None) | Ok(Some(None)) => break,
+                Ok(Some(Some(event))) if !crate::turn_status::crosses(&event.r#type, status) => {}
                 Ok(Some(Some(event))) => {
                     let card = ["approval.request", "clarify.request"].contains(&event.r#type.as_str());
                     let data = match (&by, card) {
