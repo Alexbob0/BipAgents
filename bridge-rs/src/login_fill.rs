@@ -97,14 +97,19 @@ pub struct LoginFields {
 /// login's site (vault_match.rs `fills_on`: its registrable domain), the one whose login field has the agent's focus,
 /// else the only one with a password field, else the only one asking for the identifier alone. Frames of any other
 /// site are never looked at. None: no login form, or several and none focused.
-pub async fn find_login(page: &mut Page, kept: &str) -> Result<Option<LoginFields>, FillError> {
+pub async fn find_login(page: &mut Page, kept: &str, chosen_on: &str) -> Result<Option<LoginFields>, FillError> {
     let mut focused = Vec::new();
     let mut with_password = Vec::new();
     let mut identifier_only = Vec::new();
     let frames = page.frames().await?;
     // review R3: the page itself still on the login's site (it may have left it since its address was read)
     let top = frames.iter().find(|f| f.parent.is_none() && f.session == page.session).map(|f| f.url.as_str());
-    if !top.is_some_and(|url| crate::vault_match::fills_on(kept, url)) {
+    // review R9: and on the very host the login was chosen on (Alex's R1: only the hosts the person gave)
+    let same_host = |url: &str| match (crate::vault_match::site_of(url), crate::vault_match::site_of(chosen_on)) {
+        (Some(a), Some(b)) => a.scheme == b.scheme && a.host == b.host && a.port == b.port,
+        _ => false,
+    };
+    if !top.is_some_and(|url| crate::vault_match::fills_on(kept, url) && same_host(url)) {
         return Ok(None);
     }
     for crate::card_fill::FrameSeen { session, id: frame_id, url: frame_url, .. } in frames {

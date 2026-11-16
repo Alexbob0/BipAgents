@@ -570,7 +570,12 @@ pub async fn give(
         let mut body = Dict::new();
         body.insert("kind".into(), json!("login"));
         body.insert("label".into(), json!(request.host()));
-        body.insert("site".into(), json!(request.login_url.as_deref().unwrap_or(&request.origin)));
+        // review R8: the site is the origin the person's card named; the login page only beside it (vault.rs keeps it
+        // on that origin only)
+        body.insert("site".into(), json!(request.origin));
+        if let Some(page) = &request.login_url {
+            body.insert("login_url".into(), json!(page));
+        }
         body.insert("identifier_type".into(), json!(crate::vault::identifier_type_of(&identifier)));
         body.insert("identifier".into(), json!(identifier));
         body.insert("password".into(), json!(value.as_str()));

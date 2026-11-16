@@ -116,11 +116,9 @@ pub enum Choice<'a> {
 /// www/bare twin of either, with the same port.
 fn own_host(item: &Item, here: &Site) -> bool {
     let bare = |h: &str| h.strip_prefix("www.").unwrap_or(h).to_string();
-    [item.origin.as_deref(), item.login_url.as_deref()]
-        .into_iter()
-        .flatten()
-        .filter_map(site_of)
-        .any(|s| s.port == here.port && bare(&s.host) == bare(&here.host))
+    // review R8: the login's own origin only; its login page is kept on that origin (vault.rs `login_url_of`), so its
+    // host never adds one
+    item.origin.as_deref().and_then(site_of).is_some_and(|s| s.port == here.port && bare(&s.host) == bare(&here.host))
 }
 
 /// How well a login fits the page: its login page's path (the page's own: above any prefix; a longer prefix above a

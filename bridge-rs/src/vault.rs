@@ -230,6 +230,16 @@ pub fn login_url_of(typed: &str, origin: &str) -> Option<String> {
     if !matches!(url.scheme(), "https" | "http") {
         return None;
     }
+    // review R8: the site as the `url` crate (and Chrome) reads it, never another one behind a difference with
+    // `normalize_origin` (Python's urlsplit: `https://other.example\@site.example/` is site.example there, other.example
+    // here)
+    let same = |a: &crate::vault_match::Site, b: &crate::vault_match::Site| {
+        a.scheme == b.scheme && a.host == b.host && a.port == b.port
+    };
+    match (crate::vault_match::site_of(url.as_str()), crate::vault_match::site_of(origin)) {
+        (Some(here), Some(kept)) if same(&here, &kept) => {}
+        _ => return None,
+    }
     let _ = url.set_username("");
     let _ = url.set_password(None);
     url.set_fragment(None);
