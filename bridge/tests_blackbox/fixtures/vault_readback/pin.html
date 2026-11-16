@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><title>Code d'accès | Essai</title></head>
+<body>
+<!-- A code field nothing names as a password (vault-no-readback, 16/11): only its type says it, and the eye of the
+     site turns it into text. The person types it while holding the browser. Fake data only. -->
+<h1>Code d'accès</h1>
+<form id="acces" action="/acces" method="post">
+  <label for="code">Code</label>
+  <input type="password" name="code" id="code" autocomplete="off">
+  <button type="button" id="voir">Voir</button>
+  <button type="submit" id="ok">Valider</button>
+</form>
+<script>
+  document.getElementById('voir').addEventListener('click', () => {
+    const c = document.getElementById('code');
+    c.type = c.type === 'password' ? 'text' : 'password';
+  });
+</script>
+</body>
+</html>
