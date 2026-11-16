@@ -5,7 +5,8 @@ column « Pont »), as the apps do them over HTTP, each page checked as the pers
   the agent goes on in the same turn;
 - J60: Mails, nothing connected: « Oui » is refused until the mailbox is connected in the app's own screen, then the
   card closes and the agent goes on;
-- J61: « Non »: the answered line, the agent does without; asked again in the same conversation, no second card;
+- J61: « Non » on Calendrier (on the apps, J59 turned Rappels on already: one bridge for every journey): the answered
+  line, the agent does without; asked again in the same conversation, no second card;
 - J62: a server tool (Météo): on at once;
 - J63: an older app's generic card: « Oui, vas-y » on Rappels no phone shares says where to go, the card stays.
 
@@ -24,6 +25,7 @@ WHY = {
     "reminders": "Pour te rappeler le pain demain à 18 h",
     "mail": "Pour chercher la facture de mars dans ta boîte",
     "weather": "Pour savoir s'il pleut demain",
+    "calendar": "Pour noter la réunion dans ton calendrier",
 }
 
 
@@ -116,15 +118,15 @@ def test_j60_mails_oui_connecter_waits_for_the_mailbox_then_vie_goes_on(journey,
 
 
 def test_j61_non_vie_does_without_and_asks_no_more_here(journey):
-    journey.send(cid(61), "Rappelle-moi la réunion #demande-outil rappels")
+    journey.send(cid(61), "Note la réunion dans mon calendrier #demande-outil calendrier")
     card = waiting_tool_card(journey)
     refused = answer(journey, card, {"allow": False})
     assert refused.status_code == 200 and refused.json()["state"] == "refused", refused.text
     reply_in(journey.bridge, journey.thread, AGENT, "je fais sans", timeout=60)
     rows = answered_rows(journey)
-    assert rows and rows[-1]["approval"]["choice"] == "deny" and rows[-1]["approval"]["description"] == "Rappels"
+    assert rows and rows[-1]["approval"]["choice"] == "deny" and rows[-1]["approval"]["description"] == "Calendrier", rows
     # asked again in the same conversation: no second card
-    journey.send(cid(61, 1), "Et pour demain ? #demande-outil rappels")
+    journey.send(cid(61, 1), "Et pour demain ? #demande-outil calendrier")
     page = reply_in(journey.bridge, journey.thread, AGENT, "je fais sans", timeout=60)
     assert not tool_cards(journey), page["pending"]
 

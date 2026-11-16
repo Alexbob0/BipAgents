@@ -492,6 +492,8 @@ def tool_asked(words: str) -> str:
         return "mail"
     if "meteo" in words or "météo" in words:
         return "weather"
+    if "calendrier" in words:
+        return "calendar"
     return "reminders"
 
 
@@ -510,7 +512,7 @@ class PeopleModel(ScriptedModel):
 | `#carnet` | reads a page of the Carnet, files a fact, asks the question of the day (`notebook_read`, `notebook_write`) |
 | `#rangement` | files a fact on the Carnet's « Famille » page again (`notebook_write`): J52, after the person moved one like it |
 | `#fichiers` | lists the files everyone sent the agent (`read_sent_file`, no path): J55, a shared agent's pool |
-| `#demande-outil` | asks for a tool it has off (`ask_for_tool`: « rappels », « mails » or « meteo » in the words), waits for the card's answer, then goes on or does without: J59–J63 |
+| `#demande-outil` | asks for a tool it has off (`ask_for_tool`: « rappels », « mails », « meteo » or « calendrier » in the words), waits for the card's answer, then goes on or does without: J59–J63 |
 
     A run started with `message` instead of `input` (another household's agent through `/peer/…`) is read the same."""
 
