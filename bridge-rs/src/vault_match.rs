@@ -107,6 +107,20 @@ pub enum Choice<'a> {
     NotHere(&'a Item),
     /// No login of the agent's has the `id` asked for.
     Unknown,
+    /// The login fits the page's domain, but the page is on a host the person never gave for it (review R1): not
+    /// typed without the person.
+    OtherHost(&'a Item),
+}
+
+/// Whether the page is on a host the person gave for the login (review R1): its site's, its login page's, or the
+/// www/bare twin of either, with the same port.
+fn own_host(item: &Item, here: &Site) -> bool {
+    let bare = |h: &str| h.strip_prefix("www.").unwrap_or(h).to_string();
+    [item.origin.as_deref(), item.login_url.as_deref()]
+        .into_iter()
+        .flatten()
+        .filter_map(site_of)
+        .any(|s| s.port == here.port && bare(&s.host) == bare(&here.host))
 }
 
 /// How well a login fits the page: its login page's path (the page's own: above any prefix; a longer prefix above a
@@ -139,9 +153,10 @@ pub fn choose<'a>(items: &'a [Item], page: &str, id: Option<&str>) -> Choice<'a>
     let Some(here) = site_of(page) else { return Choice::NotWeb };
     let logins: Vec<&Item> = items.iter().filter(|i| i.kind == "login").collect();
     let fits = |i: &Item| i.origin.as_deref().and_then(site_of).is_some_and(|kept| same_site(&kept, &here));
+    let one = |item: &'a Item| if own_host(item, &here) { Choice::One(item) } else { Choice::OtherHost(item) };
     if let Some(id) = id.map(str::trim).filter(|s| !s.is_empty()) {
         return match logins.iter().find(|i| i.id == id) {
-            Some(item) if fits(item) => Choice::One(item),
+            Some(item) if fits(item) => one(item),
             Some(item) => Choice::NotHere(item),
             None => Choice::Unknown,
         };
@@ -149,13 +164,13 @@ pub fn choose<'a>(items: &'a [Item], page: &str, id: Option<&str>) -> Choice<'a>
     let fitting: Vec<&Item> = logins.into_iter().filter(|i| fits(i)).collect();
     match fitting.len() {
         0 => return Choice::Nothing,
-        1 => return Choice::One(fitting[0]),
+        1 => return one(fitting[0]),
         _ => {}
     }
     let best = fitting.iter().map(|i| rank(i, &here)).max().unwrap_or((0, false));
     let top: Vec<&Item> = fitting.iter().copied().filter(|i| rank(i, &here) == best).collect();
     if top.len() == 1 && best != (0, false) {
-        return Choice::One(top[0]);
+        return one(top[0]);
     }
     Choice::Several(if best == (0, false) { fitting } else { top })
 }

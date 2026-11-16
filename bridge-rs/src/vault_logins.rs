@@ -876,6 +876,15 @@ async fn login(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> anyho
             )));
         }
         crate::vault_match::Choice::Several(items) => return Ok(refusal(&several_text(&items, &host))),
+        crate::vault_match::Choice::OtherHost(item) => {
+            let page = item.login_url.as_deref().or(item.origin.as_deref()).unwrap_or("");
+            return Ok(refusal(&format!(
+                "« {} » is kept for {}, not for {host} (another host of the same site): nothing was typed. Open its own \
+                 login page ({page}) and call again; if the person wants it used on {host}, tell them so.",
+                crate::cards::quoted(&item.label, 120),
+                host_of(page)
+            )));
+        }
     };
     let label = crate::cards::quoted(&item.label, 120);
     let kept = item.origin.clone().unwrap_or_default();

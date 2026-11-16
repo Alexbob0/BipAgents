@@ -282,9 +282,14 @@ def test_a_login_fills_on_its_subdomains_never_on_another_site(bridges, fakes):
         assert shop["login_url"] is None
         assert vault_login(bridge)["isError"] is False
         assert chrome.frames[0].values == {"login": "client@example.org", "mdp": "Fake-shop-pw-1!"}
-        # another subdomain of amazon.fr: the same login
-        chrome.frames = [Frame("https://smile.amazon.fr/ap/signin")]
+        # its bare twin: the same login
+        chrome.frames = [Frame("https://amazon.fr/ap/signin")]
         assert vault_login(bridge)["isError"] is False and chrome.frames[0].values["mdp"] == "Fake-shop-pw-1!"
+        # another host of amazon.fr (review R1): not without the person
+        chrome.frames = [Frame("https://smile.amazon.fr/ap/signin")]
+        other = vault_login(bridge)
+        assert other["isError"] is True and "another host of the same site" in said(other)
+        assert chrome.frames[0].values["mdp"] == ""
         # look-alikes, another country's site, plain http: nothing typed
         for url in ["https://www.amazon.fr.evil.example/ap/signin", "https://www.amazon.com/ap/signin",
                     "https://amaz0n.fr/ap/signin", "http://www.amazon.fr/ap/signin"]:
