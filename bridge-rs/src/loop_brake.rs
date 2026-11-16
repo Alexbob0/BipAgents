@@ -293,6 +293,16 @@ pub fn write_tool(tool: &str) -> bool {
     WRITE_TOOLS.contains(&bare(tool))
 }
 
+/// A tool that reads or writes by its arguments: `page_data` writes its page's store with `ops` (page_store.rs, the
+/// agent's writing, 16/11), and reads it without.
+pub const WRITES_WITH_OPS: &str = "page_data";
+
+/// A call that changes something for the person: a write tool, or `page_data` with `ops` (a live page fed by a
+/// looping routine is held like any other write: `writes`, `task_writes`).
+pub fn write_call(tool: &str, arguments: &Dict) -> bool {
+    write_tool(tool) || (bare(tool) == WRITES_WITH_OPS && arguments.get("ops").is_some_and(|o| !o.is_null()))
+}
+
 /// Write tools that only propose: each call makes or joins a card, and nothing changes before the person's « Oui »
 /// (mail_bulk: a waiting card for the same action joins it, mail_tidy.rs). Not held to `same_tool` nor counted in
 /// `writes`; still to the total, and the very same call twice is « already done ». 5/11, token lab (GLM-5.3 Flash,
@@ -328,6 +338,9 @@ pub fn lookup_tool(tool: &str, signature: Option<&str>) -> bool {
     let name = bare(tool);
     if write_tool(name) {
         return false;
+    }
+    if name == WRITES_WITH_OPS && signature.is_some_and(|s| s.contains("\"ops\"")) {
+        return false; // writing its page's store: a write, held to `same_call`
     }
     if name == "memory" {
         let s = signature.unwrap_or("").to_ascii_lowercase();
@@ -979,7 +992,7 @@ turn. Answer the person now with what you already have."
             // a big job writes with one tool many times (40 pages corrected: the task's limit), but searching or
             // reading the same thing again and again is going round in circles whatever the job (the morning brief's
             // 35 Carnet searches): a conversation's limit for those
-            let same_tool = if write_tool(tool) { limits.same_tool } else { settings.conversation.same_tool };
+            let same_tool = if write_call(tool, arguments) { limits.same_tool } else { settings.conversation.same_tool };
             let same = entry.per_tool.entry(key).or_insert(0);
             *same += 1;
             let (same, calls) = (*same, entry.calls);
@@ -1017,7 +1030,7 @@ what you have, and say plainly what you couldn't find or do (no limits or tools 
                 ));
             }
         }
-        if !write_tool(tool) {
+        if !write_call(tool, arguments) {
             return None;
         }
         // Only within a followed run: without one, the « turn » is a guess, and the person may well have asked for
@@ -1054,7 +1067,7 @@ what you have, and say plainly what you couldn't find or do (no limits or tools 
     /// A write tool's call that `check` let through went well: counted in its turn (a refused or failed one is not:
     /// the model may correct its arguments and call again).
     pub fn record(&self, agent: &str, turn: Option<&Turn>, tool: &str, arguments: &Dict) {
-        if !write_tool(tool) {
+        if !write_call(tool, arguments) {
             return;
         }
         let mut turns = self.turns.lock().unwrap_or_else(|e| e.into_inner());
@@ -1070,7 +1083,7 @@ what you have, and say plainly what you couldn't find or do (no limits or tools 
     /// upgrade journey: GLM made two pages, deleted them, asked for them again and was told « already done » until
     /// the brake stopped the routine).
     pub fn record_answer(&self, agent: &str, turn: Option<&Turn>, tool: &str, arguments: &Dict, result: &Dict) {
-        if !write_tool(tool) {
+        if !write_call(tool, arguments) {
             return;
         }
         self.record(agent, turn, tool, arguments);
@@ -1195,6 +1208,31 @@ mod tests {
             }
         }
         assert_eq!(stopped, Some((20, Over::SameTool("calendar_add".into()))));
+    }
+
+    #[test]
+    fn a_page_s_data_written_by_its_agent_counts_as_a_write_and_read_as_a_lookup() {
+        // 16/11 (page_store.rs, the agent's writing): `page_data` with `ops` writes its page's store
+        let ops = |n: i64| json!({"page": "jardin", "ops": [{"op": "set", "key": "temp", "value": n}]}).as_object().cloned().unwrap();
+        let read = json!({"page": "jardin"}).as_object().cloned().unwrap();
+        assert!(write_call("mcp_bipagents_page_data", &ops(1)) && write_call("page_data", &ops(1)));
+        assert!(!write_call("page_data", &read) && !write_call("page_data", &json!({"ops": null}).as_object().cloned().unwrap()));
+        assert!(lookup_tool("page_data", Some(r#"{"page":"jardin"}"#)));
+        assert!(!lookup_tool("page_data", Some(r#"{"ops":[{"op":"set"}],"page":"jardin"}"#)));
+        // a conversation's turn: its writes counted and held at `writes`; its readings never
+        let turns = Turns::default();
+        let settings = Settings::default();
+        let turn = Some(Turn { run_id: "run_jardin".into(), background: false, banned: None });
+        for n in 0..settings.conversation.writes as i64 {
+            assert!(turns.check(&settings, "vie", turn.as_ref(), "page_data", &ops(n), n as f64).is_none(), "{n}");
+            turns.record_answer("vie", turn.as_ref(), "page_data", &ops(n), &tool_text("Written in page jardin.", false));
+        }
+        let held = turns.check(&settings, "vie", turn.as_ref(), "page_data", &ops(99), 99.0).expect("held");
+        assert_eq!(held["isError"], json!(true));
+        assert!(turns.check(&settings, "vie", turn.as_ref(), "page_data", &read, 100.0).is_none());
+        // the same write again in the turn: already done
+        let again = turns.check(&settings, "vie", turn.as_ref(), "page_data", &ops(0), 101.0).expect("already done");
+        assert!(again["content"][0]["text"].as_str().unwrap().starts_with("Already done"));
     }
 
     #[test]

@@ -167,6 +167,16 @@ de l’offre tout compris. Tout ce qui est personnel va ici, avec la clé de ce 
   Le téléphone ne contacte aucun de ces services.
 - **Le navigateur visible de l’agent** (`App/Features/Agents/DesktopView.swift`) : une vue web de la page de
   visualisation du bridge, sans données de site conservées.
+- **Les pages qui se souviennent** (`bridge-rs/src/page_store.rs`) : ce qui est tapé dans la page d’un agent, et ce
+  que l’agent y garde lui-même (16/11 : une page qu’il tient à jour — un tableau de bord, des prix, des scores — depuis
+  une conversation, une routine ou une tâche de fond, avec ce qu’il a trouvé sur le web, dans les e-mails ou l’agenda ;
+  `page_data` avec `ops`, dans ses propres pages seulement), est gardé par le bridge à côté de la page
+  (`<page>.store.json`, 256 Ko au plus) et dans les sauvegardes de la place. La page le lit par l’app (`bipstore:` sur
+  l’iPhone, `https://bipstore.invalid` sur Android, auxquels l’app répond avec la clé du bridge) toutes les 5 secondes
+  environ tant qu’elle est ouverte ; le téléphone ne le demande nulle part ailleurs. Tous ceux qui voient la page le
+  voient : la famille par ses propres bridges, les amis d’un projet dans l’élément scellé de la page (read_shares.rs,
+  en 20 secondes environ). Avant que l’agent change ce qu’une personne a écrit, le bridge garde une copie du carnet
+  (le support peut la remettre).
 - **Le passage par le téléphone** (`docs/phone-exit.md` ; Android `phoneexit/`, iOS `App/Features/PhoneExit/`) : pour un
   site que la personne a accepté, le téléphone ouvre un WebSocket sortant vers son bridge et fait sortir par sa propre
   connexion les flux TLS de l’agent vers ce site. Le site voit l’adresse IP du téléphone ; le TLS reste de bout en bout

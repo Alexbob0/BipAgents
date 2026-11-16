@@ -100,7 +100,8 @@ pub const TOOLS: [&str; 15] = [
     crate::shared_files::TOOL_NAME,
     // a page for the family (12/11): every member sees it, « Faite à la demande de … », never in a personal Carnet
     crate::agent_tools::CREATE_PAGE,
-    // what the members typed in its pages that remember (15/11, page_store.rs: read only, as untrusted data)
+    // what the members typed in its pages that remember (15/11, page_store.rs: read as untrusted data), and the
+    // data it keeps there itself (`ops`, 16/11: a live family page kept up to date)
     crate::page_store::TOOL_NAME,
     // an audio, a podcast for the family (12/11): into its pool, every member's bridge serves it (shared_files.rs)
     crate::agent_tools::CREATE_AUDIO,
