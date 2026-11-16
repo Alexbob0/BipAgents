@@ -121,13 +121,16 @@ class LeavingChrome(vl.FakeChrome):
         super().__init__(url)
         self.elsewhere = elsewhere
         self.trees = 0
+        self.move = self.into_a_frame
+
+    def into_a_frame(self):
+        self.frames = [vl.Frame(self.elsewhere, identifier=False, password=False), vl.Frame(self.frames[0].url, context=2)]
 
     def _answer(self, method, params):
         if method == "Page.getFrameTree":
             self.trees += 1
             if self.trees == 2:
-                self.frames = [vl.Frame(self.elsewhere, identifier=False, password=False),
-                               vl.Frame(self.frames[0].url, context=2)]
+                self.move()
         return super()._answer(method, params)
 
 
@@ -156,6 +159,47 @@ def test_r4_an_agent_other_people_talk_to_logs_in_only_with_a_login_confirmed_fo
         agents = {a["id"]: a for a in bridge.get("/v1/vault", headers=vl.AUTH).json()["agents"]}
         assert agents["vie"]["others"] is True
         result = vl.vault_login(bridge)
+        assert result["isError"] is True and chrome.typed == [], (result, chrome.typed)
+    finally:
+        chrome.stop()
+
+
+# --- confirmation (16/11, on 404cb9e39): two more, found while checking R1 against `login_url` ---------------------
+
+
+def test_r8_a_login_asked_for_one_site_is_kept_for_that_site_only(bridges, fakes):
+    """ask_secret (kind password, use browser) with a `site` the two address parsers read apart: the bridge's
+    `normalize_origin` (Python's urlsplit: the host after the last « @ ») gives the portal, which the person's card
+    shows; the `url` crate (WHATWG, as Chrome: a backslash ends the host) gives another site, which `login_url_of`
+    kept, and which secrets.rs `give` then sent as the login's `site`. The person types the portal's password into a
+    card that names the portal: it must be kept for the portal, never for the other site."""
+    from test_connectors import PASSWORD, ask, setup, vault_records  # noqa: PLC0415
+    bridge, _, _ = setup(bridges, fakes)
+    site = "https://evil.example\\@accounts.portail.example/login"
+    result, card = ask(bridge, {"name": "portail", "site": site, "kind": "password", "use": "browser",
+                                "reason": "Récupérer les factures du mois"},
+                       {"value": PASSWORD, "identifier": "compta@example.org"})
+    shown = json.dumps(card, ensure_ascii=False)
+    assert "accounts.portail.example" in shown, shown
+    login = next(r for r in vault_records(bridge) if r.get("kind") == "login")
+    assert login["origin"] == "https://accounts.portail.example", (login["origin"], login.get("login_url"), shown)
+    assert "evil.example" not in json.dumps(login.get("login_url")), login.get("login_url")
+
+
+def test_r9_a_page_that_moved_to_another_host_of_the_site_before_the_fields_were_found_gets_nothing(bridges, fakes):
+    """R3's check, with Alex's R1: the page read on the host the login was saved for, then (when the fields are
+    looked for) on another host of the same site, which the person never gave: nothing typed there either."""
+    kept = "https://kerfy.helpdesk-example.com/access/login"
+    chrome = LeavingChrome(kept, "https://eve.helpdesk-example.com/access/login")
+    try:
+        # the page itself moves (its main frame on the other host, with the form), no frame of the saved host left
+        def moved(self=chrome):
+            self.frames = [vl.Frame(self.elsewhere)]
+        chrome.move = moved
+        bridge = vl.login_bridge(bridges, fakes, chrome)
+        vl.keep(bridge, "Support Kerfy", kept, "support@kerfy.example", "Fake-desk-pw-41!")
+        result = vl.vault_login(bridge)
+        assert chrome.trees >= 2, "the fake's second look never came"
         assert result["isError"] is True and chrome.typed == [], (result, chrome.typed)
     finally:
         chrome.stop()
