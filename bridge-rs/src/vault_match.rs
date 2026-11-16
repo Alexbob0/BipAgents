@@ -82,7 +82,8 @@ fn same_site(kept: &Site, here: &Site) -> bool {
     if !scheme_ok {
         return false;
     }
-    if kept.port.is_some() || here.port.is_some() {
+    // a port, or a login kept for plain http (review R5): exactly that host
+    if kept.port.is_some() || here.port.is_some() || kept.scheme == "http" {
         return kept.host == here.host && kept.port == here.port;
     }
     match (&kept.domain, &here.domain) {
@@ -106,6 +107,18 @@ pub enum Choice<'a> {
     NotHere(&'a Item),
     /// No login of the agent's has the `id` asked for.
     Unknown,
+    /// The logins fit the page's domain, but the page is on a host the person never gave for any of them (review
+    /// R1, Alex's choice of 16/11): nothing typed there; the person saves this page for a login, or logs in.
+    OtherHost(Vec<&'a Item>),
+}
+
+/// Whether the page is on a host the person gave for the login (review R1): its site's, its login page's, or the
+/// www/bare twin of either, with the same port.
+fn own_host(item: &Item, here: &Site) -> bool {
+    let bare = |h: &str| h.strip_prefix("www.").unwrap_or(h).to_string();
+    // review R8: the login's own origin only; its login page is kept on that origin (vault.rs `login_url_of`), so its
+    // host never adds one
+    item.origin.as_deref().and_then(site_of).is_some_and(|s| s.port == here.port && bare(&s.host) == bare(&here.host))
 }
 
 /// How well a login fits the page: its login page's path (the page's own: above any prefix; a longer prefix above a
@@ -140,23 +153,29 @@ pub fn choose<'a>(items: &'a [Item], page: &str, id: Option<&str>) -> Choice<'a>
     let fits = |i: &Item| i.origin.as_deref().and_then(site_of).is_some_and(|kept| same_site(&kept, &here));
     if let Some(id) = id.map(str::trim).filter(|s| !s.is_empty()) {
         return match logins.iter().find(|i| i.id == id) {
-            Some(item) if fits(item) => Choice::One(item),
+            Some(item) if fits(item) && own_host(item, &here) => Choice::One(item),
+            Some(item) if fits(item) => Choice::OtherHost(vec![item]),
             Some(item) => Choice::NotHere(item),
             None => Choice::Unknown,
         };
     }
     let fitting: Vec<&Item> = logins.into_iter().filter(|i| fits(i)).collect();
-    match fitting.len() {
-        0 => return Choice::Nothing,
-        1 => return Choice::One(fitting[0]),
+    if fitting.is_empty() {
+        return Choice::Nothing;
+    }
+    // only the logins the person gave this host for are ever typed here: the choice by login page is among them
+    let given: Vec<&Item> = fitting.iter().copied().filter(|i| own_host(i, &here)).collect();
+    match given.len() {
+        0 => return Choice::OtherHost(fitting),
+        1 => return Choice::One(given[0]),
         _ => {}
     }
-    let best = fitting.iter().map(|i| rank(i, &here)).max().unwrap_or((0, false));
-    let top: Vec<&Item> = fitting.iter().copied().filter(|i| rank(i, &here) == best).collect();
+    let best = given.iter().map(|i| rank(i, &here)).max().unwrap_or((0, false));
+    let top: Vec<&Item> = given.iter().copied().filter(|i| rank(i, &here) == best).collect();
     if top.len() == 1 && best != (0, false) {
         return Choice::One(top[0]);
     }
-    Choice::Several(if best == (0, false) { fitting } else { top })
+    Choice::Several(if best == (0, false) { given } else { top })
 }
 
 #[cfg(test)]
@@ -277,7 +296,9 @@ mod tests {
     fn https_never_falls_back_to_http_and_http_moves_up_to_https() {
         assert!(!fills_on("https://www.amazon.fr", "http://www.amazon.fr/ap/signin"));
         assert!(fills_on("http://old.example.com", "http://old.example.com/login"));
-        assert!(fills_on("http://old.example.com", "https://www.example.com/login"));
+        assert!(fills_on("http://old.example.com", "https://old.example.com/login"));
+        // review R5: an http login, exactly its host
+        assert!(!fills_on("http://old.example.com", "https://www.example.com/login"));
         assert!(!fills_on("http://old.example.com", "ftp://old.example.com/"));
     }
 
@@ -336,13 +357,43 @@ mod tests {
     }
 
     #[test]
+    fn the_choice_is_only_among_the_logins_given_for_this_host() {
+        // Alex's choice of 16/11 (review R1): typed without the person only on the hosts it was saved for
+        let items = [
+            login("a", "https://extranet2.ics-example.fr", Some("https://extranet2.ics-example.fr/V5/a.html")),
+            login("b", "https://extranet2.ics-example.fr", Some("https://extranet2.ics-example.fr/V5/b.html")),
+            login("other", "https://extranet1.ics-example.fr", Some("https://extranet1.ics-example.fr/V5/a.html")),
+        ];
+        assert_eq!(choose(&items, "https://extranet2.ics-example.fr/V5/a.html", None), Choice::One(&items[0]));
+        // a tie on this host names only this host's logins, never the one kept for another host
+        match choose(&items, "https://extranet2.ics-example.fr/V5/accueil.html", None) {
+            Choice::Several(found) => assert_eq!(found.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), ["a", "b"]),
+            other => panic!("{other:?}"),
+        }
+        // the only login given for this host, whatever the others on the domain
+        assert_eq!(choose(&items, "https://extranet1.ics-example.fr/V5/z.html", None), Choice::One(&items[2]));
+        // a host of the domain none was given for: each one named, none typed, even by its id
+        match choose(&items, "https://extranet3.ics-example.fr/V5/a.html", None) {
+            Choice::OtherHost(found) => assert_eq!(found.len(), 3),
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(choose(&items, "https://extranet3.ics-example.fr/V5/a.html", Some("a")), Choice::OtherHost(vec![&items[0]]));
+        // the www twin of a host given counts as given
+        let shop = [login("shop", "https://www.amazon.fr", Some("https://www.amazon.fr/ap/signin"))];
+        assert_eq!(choose(&shop, "https://amazon.fr/ap/signin", None), Choice::One(&shop[0]));
+        assert_eq!(choose(&shop, "https://smile.amazon.fr/ap/signin", None), Choice::OtherHost(vec![&shop[0]]));
+    }
+
+    #[test]
     fn the_exact_origin_breaks_a_tie_on_one_domain() {
         let items = [
             login("www", "https://www.example.com", None),
             login("business", "https://business.example.com", None),
         ];
         assert_eq!(choose(&items, "https://business.example.com/login", None), Choice::One(&items[1]));
-        assert!(matches!(choose(&items, "https://example.com/login", None), Choice::Several(v) if v.len() == 2));
+        // the bare host is www.'s twin: given for « www » only (R1)
+        assert_eq!(choose(&items, "https://example.com/login", None), Choice::One(&items[0]));
+        assert!(matches!(choose(&items, "https://shop.example.com/login", None), Choice::OtherHost(v) if v.len() == 2));
     }
 
     #[test]

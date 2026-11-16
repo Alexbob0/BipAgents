@@ -1224,6 +1224,23 @@ pub fn vault_typed(path: &Path, now: f64) -> Value {
     Value::Array(kept)
 }
 
+/// The identifiers' file removed once its 30 minutes are over (review R6: never left listing the sites where the person
+/// logs in with a client code): nothing fresh in it, and last written over `VAULT_TYPED_SECONDS` ago (the bridge's
+/// write meanwhile makes it fresh). Whether it was removed.
+pub fn drop_stale_vault_typed(path: &Path, now: f64) -> bool {
+    let Ok(meta) = std::fs::metadata(path) else { return false };
+    let written = meta
+        .modified()
+        .ok()
+        .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
+    if now - written < VAULT_TYPED_SECONDS || vault_typed(path, now).as_array().is_some_and(|rows| !rows.is_empty()) {
+        return false;
+    }
+    std::fs::remove_file(path).is_ok()
+}
+
 /// Card-guards exemption for `vault_login` (16/11, kept strictly to it): an identifier the vault itself typed that
 /// looks like a card's number (a client code of 13 to 19 digits passing Luhn) is left in its field, on the very
 /// frame origin it was typed on and with that exact value only (`VT`, from `vault_typed`); never in a card's field.
@@ -2838,7 +2855,14 @@ impl Proxy {
     /// `page_before`, and whether the guard looked from its own world (`look_in`).
     async fn page_before_in(&self, instance: &str) -> (Option<Value>, bool) {
         let typed = match self.config.get("busy").and_then(Value::as_str).filter(|p| !p.is_empty()) {
-            Some(busy) => vault_typed(&Path::new(busy).with_file_name(VAULT_TYPED_FILE), crate::py::time_time()),
+            Some(busy) => {
+                let (path, now) = (Path::new(busy).with_file_name(VAULT_TYPED_FILE), crate::py::time_time());
+                let typed = vault_typed(&path, now);
+                if typed.as_array().is_some_and(Vec::is_empty) {
+                    drop_stale_vault_typed(&path, now);
+                }
+                typed
+            }
             None => json!([]),
         };
         let (read, own) = self.look_in(instance, &guard_before_in(&typed, &self.secrets_now())).await;
@@ -3855,10 +3879,37 @@ out of your reach";
     }
 
     #[test]
+    fn the_identifiers_file_goes_once_its_thirty_minutes_are_over() {
+        // review R6: never left behind listing the sites where the person logs in with a client code
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(VAULT_TYPED_FILE);
+        let now = crate::py::time_time();
+        assert!(!drop_stale_vault_typed(&path, now)); // none
+        let age = |seconds: f64| {
+            let at = std::time::UNIX_EPOCH + Duration::from_secs_f64(now - seconds);
+            std::fs::File::options().write(true).open(&path).unwrap().set_modified(at).unwrap();
+        };
+        // written a moment ago (the bridge's write): stays, even with nothing fresh left in it
+        std::fs::write(&path, json!([{"o": "https://a.example", "h": "1", "t": now - 4000.0}]).to_string()).unwrap();
+        assert!(!drop_stale_vault_typed(&path, now) && path.exists());
+        // a row still fresh: stays
+        std::fs::write(&path, json!([{"o": "https://a.example", "h": "1", "t": now - 60.0}]).to_string()).unwrap();
+        age(VAULT_TYPED_SECONDS + 60.0);
+        assert!(!drop_stale_vault_typed(&path, now) && path.exists());
+        // every row past its 30 minutes and nothing written since: gone
+        std::fs::write(&path, json!([{"o": "https://a.example", "h": "1", "t": now - VAULT_TYPED_SECONDS - 5.0}]).to_string())
+            .unwrap();
+        age(VAULT_TYPED_SECONDS + 5.0);
+        assert!(drop_stale_vault_typed(&path, now) && !path.exists());
+    }
+
+    #[test]
     fn the_skill_gives_the_same_script() {
         let skill = crate::browsers::skill();
         assert!(skill.contains(&format!("`{AROUND_A_WORD}`")), "visible-browser/SKILL.md § 2 and AROUND_A_WORD");
-        assert!(skill.contains("version: 1.14.0"));
+        assert!(skill.contains("version: 1.14.1"));
+        // R1 (Alex, 16/11): another host of the site, nothing typed; the person saves the page or logs in
+        assert!(skill.contains("nothing may be typed on that page, not\n   even by you"));
         // 16/11: logging in is vault_login's, both fields, the agent naming one when several fit
         assert!(skill.contains("call `vault_login` on that page") && skill.contains("with the `id` of the one the person"));
         assert!(skill.contains("runs at once and ends"), "no timers, observers…: the second review of 14/11");

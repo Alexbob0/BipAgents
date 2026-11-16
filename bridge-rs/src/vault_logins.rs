@@ -138,8 +138,9 @@ pub fn tools() -> Vec<Value> {
     it types the login's identifier and its password into the login form of the page your browser shows; you \
     never see the password, and you never type one yourself. First open the site's login page with your browser \
     (a login kept with its own login page: that address). Then call this without an id: the vault picks the \
-    login kept for this site (any page of its domain: www., another subdomain), told apart by its login page \
-    when several share the site. If it answers that several fit, call again with the id of the one the person \
+    login kept for this site: on the hosts the person saved it for (its site's and its login page's, with or \
+    without www.), told apart by its login page when several share the host. On another host of the same site it \
+    types nothing: tell the person, who saves that page's address for the login in the app, or logs in themselves. If it answers that several fit, call again with the id of the one the person \
     means (ask them in one short question if the names don't tell); never pick one yourself. A site that asks \
     for the identifier first and the password on a next page: call this on each page. Then submit the form \
     yourself. No login for this site: ask_secret (kind password, use browser) asks the person once. Only on a site \
@@ -709,6 +710,11 @@ async fn create(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> anyh
     if username.is_empty() {
         return Ok(refusal("Give the identifier you sign up with (username): the e-mail address or user name."));
     }
+    // review R2: a card's number is never an account's identifier (vault_login would type it)
+    if crate::card_details::holds_card_number(&username) {
+        return Ok(refusal("Refused: a payment card's number is never an account's identifier, and you never type or \
+            give one. Payments go only through pay_with_card. Nothing was asked or typed."));
+    }
     let reason = crate::cards::quoted(&arg(arguments, "reason"), 300);
     if reason.is_empty() {
         return Ok(refusal("Say why you create this account (reason), in a few words the person understands."));
@@ -813,6 +819,25 @@ fn several_text(items: &[&crate::vault::Item], host: &str) -> String {
     )
 }
 
+/// The site's logins are kept for other hosts than the page's (review R1, Alex's choice of 16/11): nothing is ever typed
+/// there; the agent tells the person, who saves this page's address for the login, or logs in themselves.
+fn other_host_text(items: &[&crate::vault::Item], host: &str) -> String {
+    let kept: Vec<String> = items
+        .iter()
+        .map(|i| {
+            let page = i.login_url.as_deref().or(i.origin.as_deref()).unwrap_or("");
+            format!("« {} » is kept for {} (login page {page})", crate::cards::quoted(&i.label, 120), host_of(page))
+        })
+        .collect();
+    format!(
+        "{}, not for {host} (another host of the same site): nothing was typed, and nothing may be typed on this page, \
+         neither by the vault nor by you. If you were sent here to log in to that site, open its own login page \
+         instead. If the person wants to log in on {host}, tell them plainly: they can save this page's address for \
+         that login in their vault, in the app, or log in themselves in your browser from the app.",
+        kept.join("; ")
+    )
+}
+
 /// `vault_login`: the agent's page (Chrome's own address), the login of the vault given to it that fits that page's
 /// site (vault_match.rs), its identifier and its password typed into that site's frames only (login_fill.rs). Neither
 /// is answered nor logged.
@@ -846,7 +871,7 @@ async fn login(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> anyho
         Err(e) => return Ok(unreachable(e)),
     };
     let host = host_of(&url);
-    let logins = state.vault.logins_of(&agent.name)?;
+    let logins = state.vault.logins_of(&config, &agent.name)?;
     let id = arg(arguments, "id");
     let item = match crate::vault_match::choose(&logins, &url, Some(id.as_str()).filter(|s| !s.is_empty())) {
         crate::vault_match::Choice::One(item) => item.clone(),
@@ -871,10 +896,11 @@ async fn login(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> anyho
             )));
         }
         crate::vault_match::Choice::Several(items) => return Ok(refusal(&several_text(&items, &host))),
+        crate::vault_match::Choice::OtherHost(items) => return Ok(refusal(&other_host_text(&items, &host))),
     };
     let label = crate::cards::quoted(&item.label, 120);
     let kept = item.origin.clone().unwrap_or_default();
-    let found = match crate::login_fill::find_login(&mut page, &kept).await {
+    let found = match crate::login_fill::find_login(&mut page, &kept, &url).await {
         Ok(found) => found,
         Err(e) => return Ok(unreachable(e)),
     };
@@ -885,6 +911,13 @@ async fn login(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> anyho
         )));
     };
     let identifier = item.identifier.clone().unwrap_or_default();
+    // review R2: a card-like identifier is typed (and spared by the card checks) only when the person typed it
+    if item.created_by.is_some() && crate::card_details::holds_card_number(&identifier) {
+        return Ok(refusal(&format!(
+            "The identifier of « {label} » looks like a payment card's number and was not typed by the person: the \
+             vault never types it. Nothing was typed; tell the person."
+        )));
+    }
     let typed_identifier = match crate::login_fill::fill_identifier(&mut page, &form, &identifier).await {
         Ok(done) => done,
         Err(e) => return Ok(unreachable(e)),

@@ -8,7 +8,9 @@ The page mirrors the extranet Alex could not log in to (« page de connexion pro
 type="password">`, two hidden `groupe`, a submit. Fake entries only."""
 import asyncio
 import json
+import os
 import re
+import stat
 import threading
 
 from websockets.asyncio.server import serve
@@ -280,9 +282,14 @@ def test_a_login_fills_on_its_subdomains_never_on_another_site(bridges, fakes):
         assert shop["login_url"] is None
         assert vault_login(bridge)["isError"] is False
         assert chrome.frames[0].values == {"login": "client@example.org", "mdp": "Fake-shop-pw-1!"}
-        # another subdomain of amazon.fr: the same login
-        chrome.frames = [Frame("https://smile.amazon.fr/ap/signin")]
+        # its bare twin: the same login
+        chrome.frames = [Frame("https://amazon.fr/ap/signin")]
         assert vault_login(bridge)["isError"] is False and chrome.frames[0].values["mdp"] == "Fake-shop-pw-1!"
+        # another host of amazon.fr (review R1): not without the person
+        chrome.frames = [Frame("https://smile.amazon.fr/ap/signin")]
+        other = vault_login(bridge)
+        assert other["isError"] is True and "another host of the same site" in said(other)
+        assert chrome.frames[0].values["mdp"] == ""
         # look-alikes, another country's site, plain http: nothing typed
         for url in ["https://www.amazon.fr.evil.example/ap/signin", "https://www.amazon.com/ap/signin",
                     "https://amaz0n.fr/ap/signin", "http://www.amazon.fr/ap/signin"]:
@@ -362,6 +369,7 @@ def test_a_numeric_client_code_typed_by_the_vault_is_left_alone_by_the_card_chec
         assert result["isError"] is False and chrome.frames[0].values["login"] == code
         [row] = json.loads(typed_file.read_text())
         assert row["o"] == SITE and code not in typed_file.read_text()
+        assert stat.S_IMODE(os.stat(typed_file).st_mode) == 0o600      # review R6
         assert re.fullmatch(r"[0-9a-f]{1,8}", row["h"])
         nowhere_but_the_page(bridge, [result], code, PASSWORD_A)
         # an e-mail identifier: nothing written down
@@ -381,5 +389,33 @@ def test_no_login_no_browser_no_page(bridges, fakes):
         assert none["isError"] is True and "ask_secret" in said(none) and chrome.typed == []
         unknown = vault_login(bridge, {"id": "item_000000000000"})
         assert unknown["isError"] is True and "No login of yours has this id" in said(unknown)
+    finally:
+        chrome.stop()
+
+
+def test_on_another_host_of_the_site_nothing_is_typed_and_the_person_is_told_what_they_can_do(bridges, fakes):
+    """Alex's choice of 16/11 (review R1): without the person, a login is typed only on the hosts they saved it for.
+    On another host of the same domain nothing is typed, even by id; the agent tells the person to save that page's
+    address for the login, or to log in themselves. Several logins of one host are still chosen by their login page,
+    never mixed with a login kept for another host."""
+    chrome = FakeChrome("https://extranet9.example.fr/V5/connexion-agence-a.html")
+    try:
+        bridge = login_bridge(bridges, fakes, chrome)
+        a = keep(bridge, "Extranet agence A", PAGE_A, IDENTIFIER_A, PASSWORD_A)
+        b = keep(bridge, "Extranet agence B", PAGE_B, IDENTIFIER_B, PASSWORD_B)
+        other = keep(bridge, "Extranet 1", "https://extranet1.example.fr/V5/login.html", "x1@example.org", "Fake-x1-pw-1!")
+        refused = vault_login(bridge)
+        text = said(refused)
+        assert refused["isError"] is True and chrome.typed == []
+        assert "another host of the same site" in text and "nothing may be typed on this page" in text
+        assert "save this page's address for that login in their vault" in text and "log in themselves" in text
+        assert f"« Extranet agence A » is kept for extranet2.example.fr (login page {PAGE_A})" in text
+        by_id = vault_login(bridge, {"id": a["id"]})
+        assert by_id["isError"] is True and "another host of the same site" in said(by_id) and chrome.typed == []
+        # on the agencies' own host, a tie names only that host's logins
+        chrome.frames = [Frame(f"{SITE}/V5/accueil.html")]
+        several = said(vault_login(bridge))
+        assert a["id"] in several and b["id"] in several and other["id"] not in several
+        nowhere_but_the_page(bridge, [refused, by_id], IDENTIFIER_A, IDENTIFIER_B, PASSWORD_A, PASSWORD_B)
     finally:
         chrome.stop()
