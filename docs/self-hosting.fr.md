@@ -303,6 +303,16 @@ et le début de son message sont scellés pour la clé de ton téléphone ; le r
 ligne neutre (« Nouveau message »…). Avec `service_url`, le bridge n'envoie plus lui-même à Apple : une section
 `[apns]` peut être retirée. Sans lui, tout le reste fonctionne, sans les notifications.
 
+**Relier des foyers depuis la maison** (Réglages › Famille) : quand le serveur de l'autre foyer ne peut pas être joint
+depuis le tien (deux installations à la maison sur deux réseaux, ou un serveur de l'offre qui scanne ton invitation),
+les deux bridges se relient et se parlent par le même relais, chacun s'y connectant : rien à ouvrir sur ta box. Tout
+ce qui y passe est scellé avec une clé propre à ce lien, que seuls les deux foyers détiennent, et seuls les foyers
+que tu as reliés peuvent y joindre ton bridge ; le relais voit quel bridge appelle quel bridge, quand et combien
+d'octets, et, tant qu'un lien passe par lui, que ton bridge est allumé et depuis quelle adresse ; il ne garde rien sur
+disque (voir [le README du
+relais](../relay/README.fr.md#familles--deux-foyers-qui-ne-peuvent-pas-se-joindre)). `[family] relay_url` choisit un
+autre relais (par défaut l'adresse du relais de notifications) ; `relay_url = "off"` le coupe.
+
 ## Bonus : ton propre modèle de voix (GPU)
 
 Avec un GPU, un serveur de voix plus expressif peut parler à la place des Bips pour certains usages : le Live, les

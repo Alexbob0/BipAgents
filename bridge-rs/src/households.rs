@@ -26,6 +26,10 @@ use crate::Dict;
 /// « cuisine__lea »: agent cuisine of the household lea.
 pub const SEPARATOR: &str = "__";
 pub const INVITE_SECONDS: f64 = 600.0;
+/// What starts the code of an invitation of this version: its exchange is always sealed with the code
+/// (family_rendezvous.rs), never sent in clear. The code goes as it is through every app (`.` never appears in a
+/// token of `token_urlsafe`).
+pub const SEALED: &str = "s1.";
 /// A link whose name would take an existing household's place (its id is the name's slug): refused, unless the
 /// request carries that household's current key (the same household linking again). Mapped to 409.
 pub const NAME_TAKEN: &str = "a household with this name is already linked: unlink it first";
@@ -151,7 +155,7 @@ impl Households {
         if self.name().is_empty() {
             return Err(HouseholdError("set this household's name first".into()).into());
         }
-        let code = crate::py::token_urlsafe(24);
+        let code = format!("{SEALED}{}", crate::py::token_urlsafe(24));
         let mut data = self.load();
         if let Some(Value::Object(invites)) = data.get_mut("invites") {
             invites.insert(digest(&code), json!(crate::py::time_time() + seconds));

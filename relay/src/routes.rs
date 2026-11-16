@@ -16,6 +16,7 @@ use sha2::{Digest, Sha256};
 
 use crate::apns::Apns;
 use crate::config::Config;
+use crate::family::Rendezvous;
 use crate::fcm::Fcm;
 use crate::limits::Quota;
 use crate::payload::{scrub, scrub_live};
@@ -40,6 +41,8 @@ pub struct Relay {
     r1_until: u64,
     r1_used: AtomicU64,
     unkeyed_guichet: AtomicU64,
+    /// The family rendezvous (family.rs).
+    pub family: Rendezvous,
 }
 
 impl Relay {
@@ -61,6 +64,7 @@ impl Relay {
             r1_until: config.r1_until,
             r1_used: AtomicU64::new(0),
             unkeyed_guichet: AtomicU64::new(0),
+            family: Rendezvous::new(config.family, &config.seal_keys),
         })
     }
 
@@ -85,13 +89,19 @@ impl Relay {
         self.per_ip_push.sweep();
         self.per_ip_register.sweep();
         self.per_ip_report.sweep();
+        self.family.sweep();
     }
 
     fn is_blocked(&self, token: &str) -> bool {
         !self.blocked.is_empty() && self.blocked.contains(&fingerprint(token))
     }
 
-    fn client_ip(&self, peer: SocketAddr, headers: &HeaderMap) -> String {
+    /// A family mailbox refused (`RELAY_BLOCKED`), by its fingerprint (family.rs).
+    pub(crate) fn is_blocked_id(&self, fingerprint: &str) -> bool {
+        !self.blocked.is_empty() && self.blocked.contains(fingerprint)
+    }
+
+    pub(crate) fn client_ip(&self, peer: SocketAddr, headers: &HeaderMap) -> String {
         client_key(peer, headers, self.trust_forwarded_for)
     }
 }
@@ -119,14 +129,16 @@ fn client_key(peer: SocketAddr, headers: &HeaderMap, trust_forwarded_for: bool) 
 }
 
 pub fn router(relay: Arc<Relay>) -> Router {
-    Router::new()
+    let push = Router::new()
         .route("/health", get(health))
         .route("/v1/register", post(register))
         .route("/v1/relay/push", post(push))
         .route("/v1/push", post(push))
         .route("/v1/report", post(report))
-        .layer(DefaultBodyLimit::max(32 * 1024))
-        .with_state(relay)
+        .layer(DefaultBodyLimit::max(32 * 1024));
+    // the family rendezvous, with its own limits (the layer above is the push routes' only)
+    let app = if relay.family.config.enabled { push.merge(crate::family::routes()) } else { push };
+    app.with_state(relay)
 }
 
 fn refuse(status: StatusCode, detail: &str) -> Response {
@@ -154,7 +166,8 @@ fn day_of(secs: u64) -> String {
 }
 
 async fn health(State(relay): State<Arc<Relay>>) -> Json<Value> {
-    let mut health = json!({"status": "ok", "apns": relay.apns.is_some(), "fcm": relay.fcm.is_some()});
+    let mut health = json!({"status": "ok", "apns": relay.apns.is_some(), "fcm": relay.fcm.is_some(),
+                            "family": crate::family::health(&relay.family)});
     if relay.in_transition(now()) {
         let (r1, unkeyed) = (relay.r1_used.load(Ordering::Relaxed), relay.unkeyed_guichet.load(Ordering::Relaxed));
         health["r1_until"] = json!(day_of(relay.r1_until));

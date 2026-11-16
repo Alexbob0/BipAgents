@@ -292,6 +292,14 @@ own key; the relay, Apple and Google see only a neutral line (« New message »�
 longer sends to Apple itself: an `[apns]` section can be removed. Without it, everything else works, just without
 notifications.
 
+**Linking households from home** (Settings › Family): when the other household's server can't be reached from yours
+(two installs at home on different networks, or a server of the offer scanning your invitation), the two bridges link
+and talk through the same relay, both connecting out: nothing to open on your router. Everything that passes is sealed
+with a key of that link only the two households hold, and only households you linked with can reach your bridge
+there; the relay sees which bridge calls which, when and how many bytes, and, while a link goes through it, that your
+bridge is on and from which address; it keeps nothing on disk (see [the relay's README](../relay/README.md#families-two-households-that-cant-reach-each-other)).
+`[family] relay_url` sets another relay (by default the push relay's address); `relay_url = "off"` turns it off.
+
 ## Bonus: your own voice model (GPU)
 
 With a GPU, a more expressive voice server can speak instead of the Bips for some uses: the Live, the spoken replies,

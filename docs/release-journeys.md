@@ -115,6 +115,7 @@ la bêta.
 | J37 | Trouver une date avec un autre foyer | Chez Marie (Boîte) : « Dîner » d'Alex et les soirs libres pour les deux, jamais leurs rendez-vous ; d'accord : réservé dans les deux agendas | P ; apps : manuel |
 | J38 | Les agents de deux foyers s'écrivent | Chez Marie : « Vie (Alex) ⇄ Coach · 2 messages · Voir l'échange », l'échange en lecture ; rien dans SA conversation avec Coach | P ; apps : manuel |
 | J51 | La famille avec un ordinateur à la maison éteint | Réglages › Famille s'ouvre sur ce qui répond (« Ton foyer », « Proches reliés ») ; une ligne simple : « Ton ordinateur à la maison ne répond pas pour l'instant… » ; jamais « … ont eu un souci » en rouge. Une maison (tailnet) et une place : la maison scanne l'invitation de la place, la place la joint par le relais | P (`test_family_relay.py`), i, A |
+| J58 | Relier deux maisons, ou une place à une maison, par le relais de Kerfy Studio | Deux installations à la maison sur deux réseaux : l'invitation scannée dans un sens ou dans l'autre relie les foyers (plus de « c'est son app qui scanne ») ; leurs agents, nouvelles et partages passent ; le relais coupé : « … ne répondent pas pour l'instant », puis tout revient ; au moment du lien : « Le relais de Kerfy Studio ne répond pas pour l'instant » | P (`test_journeys_people.py`, et `test_family_relay_anywhere.py` : deux maisons, relais coupé, relais qui triche), i, A (l’invitation d’une maison scannée depuis le pont des parcours) |
 
 ### Nouveautés de cette sortie
 

@@ -123,6 +123,7 @@ async fn harness_full(per_device: u32, blocked: Vec<String>, seal_keys: String, 
         blocked,
         guichet_keys: vec!["guichet-key-1".into()],
         r1_until,
+        family: Default::default(),
     };
     let relay = Arc::new(Relay::new(config, reqwest::Client::new()).unwrap());
     Harness { relay: serve(router(relay)).await, seen, http: reqwest::Client::new() }
@@ -246,7 +247,8 @@ async fn quotas_and_validation_hold() {
         h.post("/v1/relay/push", json!({"token": relay_token, "payload": preview("vie"), "push_type": "voip"})).await;
     assert_eq!(status, 400);
     let health: Value = h.http.get(format!("{}/health", h.relay)).send().await.unwrap().json().await.unwrap();
-    assert_eq!(health, json!({"status": "ok", "apns": true, "fcm": true}));
+    let family = json!({"enabled": true});
+    assert_eq!(health, json!({"status": "ok", "apns": true, "fcm": true, "family": family}));
 }
 
 #[tokio::test]

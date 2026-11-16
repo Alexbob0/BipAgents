@@ -11,10 +11,12 @@ with the family's agent « Maison » (J54). Writes:
 
     {"url", "door", "key", "agent": "vie", "thread", "pairing", "log",
      "guichet": "http://127.0.0.1:<port>", "project": {"agent", "thread", "share"},
-     "family": {"agent": "maison__marie", "name", "owner", "other", "other_file", "other_said"}}
+     "family": {"agent": "maison__marie", "name", "owner", "other", "other_file", "other_said"},
+     "relay_family": {"invitation": "<Léo's QR code>", "name": "Léo"}}
 
 (`other_said`: Paul's message, already in the family's common conversation when the apps open it, from « Paul »:
-family_thread.rs.)
+family_thread.rs. `relay_family`, J58: Léo's home, an address nobody reaches, and its invitation with its mailbox at
+Kerfy Studio's relay, the real binary served beside them: the app scans it, the journeys' bridge links through the relay.)
 
 then serves until `JOURNEYS_OUT + ".done"` appears (or `JOURNEYS_MINUTES`, default 60). A friend's journey makes its own
 link (`POST /v1/read-shares/<share>/invites`, the bridge's key): a link opens once."""
@@ -108,9 +110,25 @@ def family_files(bridges, fakes, journey, marie):
     journey.model.calls["files"] = lambda run: mcp_as(marie, token, "/v1/agent-tools/mcp", "read_sent_file", {})
 
 
-def test_serve_people(bridges, fakes):
+def relay_home(bridges, fakes, relay):
+    """J58: Léo's home (no address anyone reaches) and its invitation, its mailbox at Kerfy Studio's relay in it."""
+    def change(c):
+        c["agents"] = {"Atelier": {"hermes_url": f"{fakes.hermes.url}/p/atelier", "hermes_key": "atelier-key-" + "x" * 24}}
+        c["family"] = {"relay_url": relay.url}
+    leo = bridges.new("leo", change=change)
+    leo.config["public_url"] = "http://leo.home.arpa:8642"
+    leo.start()
+    assert leo.put("/v1/family/name", headers=AUTH, json={"name": "Léo"}).status_code == 200
+    invitation = leo.post("/v1/family/invite", headers=AUTH, json={"days": 1}).json()
+    assert invitation.get("relay"), invitation
+    return {"invitation": json.dumps(invitation), "name": "Léo"}
+
+
+def test_serve_people(bridges, fakes, tmp_path):
+    from bbkit.kerfy_relay import KerfyRelay
+    relay = KerfyRelay(tmp_path).start()
     journey = journey_bridge(bridges, fakes, word_gap=float(os.environ.get("JOURNEYS_WORD_GAP", "0.12")),
-                             name="journeys-people")
+                             name="journeys-people", family_relay=relay.url)
     journey.model = PeopleModel.upgrade(journey.model)
     bridge = journey.bridge
     assert bridge.patch("/v1/notebook/settings", headers=AUTH, json={"language": "fr"}).status_code == 200
@@ -146,6 +164,7 @@ def test_serve_people(bridges, fakes):
                                   "facts": ["BipAgents : panorama concurrentiel mis à jour le 9/11"]}),
     ]
     family = family_agent(bridges, fakes, journey)
+    relayed = relay_home(bridges, fakes, relay)
     guichet = Guichet().start()
     try:
         shared = project_share(journey, guichet)
@@ -153,7 +172,7 @@ def test_serve_people(bridges, fakes):
                "thread": journey.thread, "pairing": journey.pairing(), "log": str(bridge.log_path),
                "guichet": guichet.url, "project": {"agent": shared.agent, "thread": shared.thread,
                                                    "share": shared.share},
-               "family": family}
+               "family": family, "relay_family": relayed}
         target = Path(os.environ.get("JOURNEYS_OUT", "/tmp/people.json"))
         target.write_text(json.dumps(out))
         print(f"\n[journeys-people] {json.dumps(out)}", flush=True)
@@ -164,3 +183,4 @@ def test_serve_people(bridges, fakes):
         assert bridge.running, bridge.log_tail(80)
     finally:
         guichet.stop()
+        relay.stop()

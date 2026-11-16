@@ -773,6 +773,10 @@ pub struct Config {
     /// `[phone_exit]` (phone_exit.rs): the prototype phone exit, off unless switched on. Not serialized either.
     #[serde(skip)]
     pub phone_exit: crate::phone_exit::Settings,
+    /// `[family]` (family_rendezvous.rs): Kerfy Studio's relay for two households that can't reach each other (the
+    /// push relay's address unless set). Not serialized either.
+    #[serde(skip)]
+    pub family: crate::family_rendezvous::Settings,
     /// `[archive_records]` (archives/records_fill.rs): not in the serialized form either.
     #[serde(skip)]
     pub archive_records: ArchiveRecordsConfig,
@@ -885,6 +889,7 @@ impl Config {
             shared_pages: crate::shared_pages::Settings::default(),
             link: crate::link_wallet::Settings::default(),
             phone_exit: crate::phone_exit::Settings::default(),
+            family: crate::family_rendezvous::Settings::default(),
             archive_records: ArchiveRecordsConfig::default(),
             cards: "auto".into(),
             test_payment_providers: Vec::new(),
@@ -1928,6 +1933,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         shared_pages: crate::shared_pages::Settings::from_table(table(data, "shared_pages")),
         link: crate::link_wallet::Settings::from_table(table(data, "link")),
         phone_exit: crate::phone_exit::Settings::from_table(table(data, "phone_exit")),
+        family: crate::family_rendezvous::Settings::from_table(table(data, "family")),
         archive_records,
         cards,
         test_payment_providers,

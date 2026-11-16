@@ -101,7 +101,8 @@ def photo(seed: int = 1) -> bytes:
     return tiny_png(256, 256, ((seed * 70) % 256, (120 + seed * 40) % 256, (200 - seed * 30) % 256))
 
 
-def journey_bridge(bridges, fakes, word_gap: float = 0.06, name: str = "journeys") -> Journey:
+def journey_bridge(bridges, fakes, word_gap: float = 0.06, name: str = "journeys",
+                   family_relay: Optional[str] = None) -> Journey:
     from test_connectors import IMAGE, SERVER
     from test_sandbox import TOKENS, isolated, started
     from conftest import profile
@@ -127,6 +128,8 @@ def journey_bridge(bridges, fakes, word_gap: float = 0.06, name: str = "journeys
     bridge.config["lan"] = {"enabled": True, "address": "127.0.0.1", "host": "127.0.0.1", "port": door}
     bridge.config["public_url"] = f"https://127.0.0.1:{door}"
     agent["public_url"] = f"https://127.0.0.1:{door}/hermes/{AGENT}"   # an agent without one is not listed to a phone
+    if family_relay:   # J58: Kerfy Studio's relay, for a home's invitation (bbkit/kerfy_relay.py)
+        bridge.config["family"] = {"relay_url": family_relay}
     started(bridge, hub, [AGENT])
     token = TOKENS[AGENT]
     path = bridge.state_dir / "agent-tools.json"

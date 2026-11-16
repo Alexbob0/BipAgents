@@ -112,6 +112,8 @@ pub mod shared_expenses; // a shared project's account: who paid what, balances,
 pub mod project_agent;
 pub mod family_news;
 pub mod family_relay;
+pub mod family_rendezvous;
+pub mod family_seal;
 pub mod body_limit;
 pub mod files;
 pub mod files_kept;
