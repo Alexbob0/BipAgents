@@ -86,3 +86,17 @@ def test_a_background_tasks_activity_says_what_it_does_now(bridges, fakes):
     assert found["kind"] == "mailRead" and found["site"] is None
     assert "analyses" not in json.dumps(found, ensure_ascii=False), "never a call's arguments"
     assert bridge.delete(f"/v1/jobs/{job['id']}", headers=AUTH).status_code == 200
+
+
+def test_the_brake_route_answers_plainly(bridges, fakes):
+    """« Continuer » / « Arrêter » on a loop (POST /v1/runs/{id}/brake): a run over or unknown is gone, an unknown
+    action refused (the loop itself: runs.rs the_brakes_two_thirds_are_told_to_the_person_who_may_go_on_once_or_stop)."""
+    bridge = start(bridges, fakes, enabled=True)
+    events(bridge, asked=True)  # the run is over
+
+    def post(run, action):
+        return bridge.post(f"/v1/runs/{run}/brake", params={"agent": "wellness"}, headers=AUTH, json={"action": action})
+
+    assert post("r1", "jump").status_code == 400
+    assert post("r1", "continue").status_code == 404
+    assert post("r9", "stop").status_code == 404

@@ -500,6 +500,10 @@ mod tests {
         t.on_event("tool.completed", &data(json!({"tool": tool, "tool_call_id": id})), now, &on())
     }
 
+    fn reduced_text(status: &Map<String, Value>) -> String {
+        reduced(status).get("text").and_then(Value::as_str).unwrap_or_default().to_string()
+    }
+
     fn s<'a>(status: &'a Map<String, Value>, key: &str) -> &'a Value {
         status.get(key).unwrap_or(&Value::Null)
     }
@@ -646,6 +650,125 @@ mod tests {
         assert_eq!(s(&started(&mut t, "web_search", "a", "x", 1.0).unwrap(), "text"), "Search the web");
         assert_eq!(t.on_event("run.completed", &data(json!({})), 2.0, &on()), None);
         assert_eq!(t.tick(60.0, &on()), None);
+    }
+
+    // -- the loop card, the steps' times, the summary, the family, a local model (16/11, phase 2) ----------------
+
+    #[test]
+    fn the_brakes_two_thirds_become_a_looping_status_with_its_buttons() {
+        let mut t = Tracker::new(0.0, "fr", false);
+        started(&mut t, "mcp__stealth__click_element", "a", "https://www.sncf-connect.com/checkout/payment", 1.0);
+        let lp = Loop::of(&crate::loop_brake::Warning::Browser(27, 40));
+        assert_eq!((lp.over, lp.count, lp.stop_at), ("browser", 27, 41));
+        let status = t.looping(lp, 200.0, &on()).expect("said at once");
+        assert_eq!(s(&status, "state"), "looping");
+        assert_eq!(s(&status, "actions"), &json!(["continue", "stop", "help"]));
+        assert_eq!(s(&status, "loop"), &json!({"over": "browser", "site": "sncf-connect.com", "count": 27, "stop_at": 41}));
+        assert_eq!(s(&status, "text"), "Je tourne en rond sur sncf-connect.com (27 étapes)");
+        // the person's question still comes first; once answered, the loop again
+        let asked = t.on_event("approval.request", &data(json!({})), 201.0, &on()).unwrap();
+        assert_eq!(s(&asked, "state"), "waiting_person");
+        let back = t.on_event("approval.responded", &data(json!({})), 202.0, &on()).unwrap();
+        assert_eq!(s(&back, "state"), "looping");
+        // « Continuer »: what it does again, no buttons
+        let again = t.continued(203.0, &on()).unwrap();
+        assert_eq!(s(&again, "state"), "tool");
+        assert_eq!(s(&again, "actions"), &json!([]));
+        assert_eq!(s(&again, "loop"), &Value::Null);
+    }
+
+    #[test]
+    fn each_warning_says_how_many_times_and_where_it_stops() {
+        use crate::loop_brake::Warning;
+        let cases = [
+            (Warning::SameCall("calendar_add".into(), 2, 3), "same_call", 2, 3),
+            (Warning::SameTool("mail_search".into(), 7, 10), "same_tool", 7, 11),
+            (Warning::TooMany(40, 60), "too_many", 40, 61),
+            (Warning::PageReads(10, 15), "page_reads", 10, 16),
+            (Warning::DiscoverySame(3, 5), "discovery", 3, 5),
+            (Warning::Discovery(5, 8), "discovery", 5, 9),
+        ];
+        for (w, over, count, stop_at) in cases {
+            let lp = Loop::of(&w);
+            assert_eq!((lp.over, lp.count, lp.stop_at), (over, count, stop_at), "{w:?}");
+        }
+        let mut t = Tracker::new(0.0, "fr", false);
+        let said = t.looping(Loop::of(&Warning::SameCall("calendar_add".into(), 2, 3)), 5.0, &on()).unwrap();
+        assert_eq!(s(&said, "text"), "Je tourne en rond (2 essais)");
+        assert_eq!(s(&said, "loop")["kind"], "calendarChange");
+    }
+
+    #[test]
+    fn each_step_gets_its_time_and_the_turn_where_it_went() {
+        let mut t = Tracker::new(0.0, "fr", false);
+        let list = |a: &str, b: &str| {
+            json!({"items": [{"text": "Trouver les trains", "status": a}, {"text": "Comparer les prix", "status": b}],
+                   "done": 0, "total": 2})
+        };
+        t.steps_with_times(&list("in_progress", "pending"), 0.0);
+        started(&mut t, "mcp__stealth__navigate", "a", "https://www.sncf-connect.com/", 2.0);
+        completed(&mut t, "mcp__stealth__navigate", "a", 32.0);
+        let timed = t.steps_with_times(&list("done", "in_progress"), 50.0);
+        assert_eq!(timed["items"][0]["secs"], 50);
+        assert_eq!(timed["items"][1]["secs"], 0);
+        let timed = t.steps_with_times(&list("done", "in_progress"), 80.0);
+        assert_eq!(timed["items"][0]["secs"], 50, "a done step keeps its time");
+        assert_eq!(timed["items"][1]["secs"], 30, "the step going on, so far");
+        assert_eq!(timed["time"]["secs"], 80);
+        let time = t.time(80.0);
+        assert_eq!((time["secs"].clone(), time["tools"].clone(), time["model"].clone()), (json!(80), json!(30), json!(50)));
+        assert_eq!((time["person"].clone(), time["agent"].clone(), time["actions"].clone()), (json!(0), json!(0), json!(1)));
+        assert_eq!(time["top"], json!([{"what": "model", "secs": 50}, {"what": "site", "site": "sncf-connect.com", "secs": 30}]));
+    }
+
+    #[test]
+    fn a_long_turn_ends_with_where_its_time_went_a_short_one_says_nothing() {
+        let mut short = Tracker::new(0.0, "fr", false);
+        started(&mut short, "web_search", "a", "x", 1.0);
+        assert_eq!(short.on_event("run.completed", &data(json!({})), 59.0, &on()), None);
+        let mut long = Tracker::new(0.0, "fr", false);
+        assert!(long.on_event("clarify.request", &data(json!({})), 10.0, &on()).is_some());
+        long.on_event("clarify.responded", &data(json!({})), 50.0, &on());
+        let done = long.on_event("run.completed", &data(json!({})), 75.0, &on()).expect("a summary");
+        assert_eq!(s(&done, "state"), "done");
+        assert_eq!(s(&done, "took")["secs"], 75);
+        assert_eq!(s(&done, "took")["person"], 40);
+        assert_eq!(s(&done, "took")["top"][0], json!({"what": "person", "secs": 40}));
+        assert_eq!(long.tick(200.0, &on()), None);
+    }
+
+    #[test]
+    fn the_summary_goes_on_the_turns_last_reply() {
+        // (segment, at, an agent's message): a person's message, a short word between calls, the reply, the next turn
+        let items = [("s1", 100.0, false), ("s1", 130.0, true), ("s1", 170.0, true), ("s1", 300.0, false), ("s1", 310.0, true),
+                     ("s2", 171.0, true)];
+        let took = json!({"secs": 72});
+        let rows = vec![("s1".to_string(), 100.0, 172.0, took.clone()), ("s1".to_string(), 400.0, 470.0, json!({"secs": 70}))];
+        assert_eq!(place_took(&items, &rows), vec![(2, took)], "the reply, not the next turn's, nor another segment's");
+    }
+
+    #[test]
+    fn a_family_member_reads_a_reduced_status() {
+        let mut t = Tracker::new(0.0, "fr", false);
+        let steps = json!({"items": [{"text": "Vérifier le taux de sucre de Marie", "status": "in_progress"}], "done": 0, "total": 1});
+        t.on_event(crate::steps::EVENT, &data(json!({"steps": steps})), 1.0, &on());
+        let full = started(&mut t, "mcp__stealth__navigate", "a", "https://www.pharmacie-exemple.fr/x", 2.0).unwrap();
+        let reduced = reduced(&full);
+        let raw = Value::Object(reduced.clone()).to_string();
+        assert!(!raw.contains("pharmacie") && !raw.contains("sucre"), "{raw}");
+        assert_eq!((&reduced["state"], &reduced["text"]), (&json!("tool"), &json!("Dans le navigateur : j'ouvre une page")));
+        for key in ["actions", "step", "site", "loop", "service"] {
+            assert!(reduced.get(key).is_none(), "{key} in {raw}");
+        }
+        let lp = t.looping(Loop::of(&crate::loop_brake::Warning::Browser(27, 40)), 5.0, &on()).unwrap();
+        assert_eq!(reduced_text(&lp), "Je tourne en rond (27 étapes)");
+    }
+
+    #[test]
+    fn a_model_on_this_machine_or_the_network_is_local() {
+        assert!(local_base("http://127.0.0.1:8080/v1") && local_base("http://192.168.1.4:8000/v1"));
+        assert!(local_base("http://spark.local/v1"));
+        assert!(!local_base("https://api.eurouter.ai/api/v1") && !local_base(""));
     }
 
     #[test]

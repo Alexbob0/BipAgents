@@ -3762,6 +3762,47 @@ mod tests {
         }
     }
 
+    /// The brake's two thirds told to the person too (« Je tourne en rond », 16/11): « Continuer » raises this turn's
+    /// limits once, « Arrêter » takes the brake's own stop (its plain line, its rescue turn) at once.
+    #[tokio::test]
+    async fn the_brakes_two_thirds_are_told_to_the_person_who_may_go_on_once_or_stop() {
+        let data = json!({"bridge_key": "k".repeat(40), "status": {"enabled": true}});
+        let config = SharedConfig::new(crate::config::parse_config(&data, None).unwrap());
+        let hub = RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None).with_config(config);
+        let agent = AgentConfig { name: "daily".into(), ..Default::default() };
+        let run = |id: &str| {
+            let sub = Arc::new(RunSubscription::new(agent.clone(), id));
+            lock(&hub.inner).subs.insert(sub.key(), sub.clone());
+            sub
+        };
+        let add = |n: &str| {
+            let data = json!({"tool": "mcp__bipagents__calendar_add", "tool_call_id": n, "preview": "{\"title\": \"Dentiste\"}"});
+            SSEEvent::new("tool.started", data.as_object().cloned().unwrap(), "{}")
+        };
+        let looping = |sub: &RunSubscription| {
+            lock(&sub.state).backlog.iter().filter(|e| e.r#type == crate::turn_status::EVENT && e.data["state"] == "looping").count()
+        };
+        assert_eq!(hub.brake_action("daily", "nope", "continue"), Err((404, "run_gone")));
+        let (going, stopping) = (run("run_go"), run("run_stop"));
+        hub.dispatch(&going, add("a"));
+        assert_eq!(hub.brake_action("daily", "run_go", "continue"), Err((409, "not_looping")));
+        assert_eq!(hub.brake_action("daily", "run_go", "jump"), Err((400, "unknown_action")));
+        hub.dispatch(&going, add("b"));
+        assert_eq!(looping(&going), 1, "told at the second identical write (stopped at the third)");
+        let said = lock(&going.state).backlog.iter().rev().find(|e| e.r#type == crate::turn_status::EVENT).unwrap().data.clone();
+        assert_eq!(said["actions"], json!(["continue", "stop", "help"]));
+        assert!(hub.brake_action("daily", "run_go", "continue").is_ok());
+        assert_eq!(hub.brake_action("daily", "run_go", "continue"), Err((409, "already_continued")));
+        hub.dispatch(&going, add("c"));
+        assert!(!lock(&going.state).braked, "the third goes on: its limits raised once");
+        hub.dispatch(&stopping, add("a"));
+        hub.dispatch(&stopping, add("b"));
+        assert!(hub.brake_action("daily", "run_stop", "stop").is_ok());
+        assert!(lock(&stopping.state).braked);
+        assert!(lock(&stopping.state).backlog.iter().any(|e| e.r#type == NOTICE && e.data["code"] == "loop_stopped"));
+        assert_eq!(hub.brake_action("daily", "run_stop", "continue"), Err((409, "not_looping")), "stopped already");
+    }
+
     #[tokio::test]
     async fn a_turn_going_round_in_circles_is_stopped_and_said() {
         // 2026-10-27, token lab: calendar_add and calendar_list in turns, 262 times in one turn
