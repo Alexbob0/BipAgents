@@ -93,8 +93,12 @@ temps qu'ils passent. `/health` dit s'il est en marche, rien de son activité.
 
 **Limites.** Les octets d'un appel sont réservés au fil de la lecture, jamais sur la longueur annoncée (256 Mio en
 tout, tous appels confondus ; 32 Mio par appelant, par lien vers un appelé et par adresse) ; un corps qui s'arrête 5 s
-est coupé, et tout doit arriver en 30 s ; le corps d'un appel
-refusé n'est jamais gardé. Quotas : appels et octets par appelant, et par laissez-passer (ce qu'un foyer peut envoyer
+est coupé, de même qu'un corps plus lent que 128 Kio/s en moyenne après sa première seconde (environ 1 Mbit/s : un
+envoi plus lent ne fait passer que quelques centaines de Kio par le relais), et tout doit arriver en 30 s ; le corps
+d'un appel refusé n'est jamais gardé. Les petites routes (`mailbox`, `pass`, `passes`) lisent 64 Kio au plus, en
+10 s. Les listes de laissez-passer qu'une boîte accepte ne sont gardées que tant qu'elle interroge (et une minute
+après), 250 000 identifiants en tout : au-delà, une liste ne peut que rétrécir (un laissez-passer retiré part
+toujours ; un nouveau attend de la place). Quotas : appels et octets par appelant, et par laissez-passer (ce qu'un foyer peut envoyer
 à un autre) ; boîtes et laissez-passer créés par adresse. Une boîte ou un laissez-passer peut être refusé par son
 empreinte dans `RELAY_BLOCKED`. **Un seul** exemplaire pour les familles (le rendez-vous est en mémoire). Déploiement :
 `RELAY_TRUST_FORWARDED_FOR=1` derrière un proxy, une limite de fichiers ouverts large (une requête en attente par
@@ -115,6 +119,7 @@ foyer relié par le relais), `flush_interval -1` dans Caddy, journaux gardés 14
 | `RELAY_GUICHET_KEY` ou `RELAY_GUICHET_KEY_FILE` | la clé avec laquelle le guichet envoie ses notifications (séparées par des virgules pour en changer : l'ancienne et la nouvelle passent) ; sans elle, les jetons `guichet` sont refusés |
 | `RELAY_FAMILY` | `1` ; `0` coupe le rendez-vous des familles (ses routes répondent 404) |
 | `RELAY_FAMILY_REQUEST_MB`, `RELAY_FAMILY_ANSWER_MB` | `16`, `64` : la taille d'un appel, de sa réponse |
+| `RELAY_FAMILY_BODY_KIB_PER_S` | `128` : le débit minimal du corps d'un appel, après sa première seconde (`0` : aucun) |
 | `RELAY_FAMILY_CALLS_PER_HOUR`, `RELAY_FAMILY_MB_PER_HOUR`, `RELAY_FAMILY_MAILBOXES_PER_IP_HOUR` | `3000` par boîte comme appelant et comme appelé, `2048` Mio par boîte, `20` boîtes créées par adresse |
 | `RUST_LOG` | `info` (lignes JSON) |
 

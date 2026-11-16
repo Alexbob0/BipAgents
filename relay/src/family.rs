@@ -28,11 +28,13 @@
 //!
 //! Memory: a call's bytes are reserved as they are read ([`Budget`]: every call together, and each caller, each link
 //! to the callee and each address its share), never on the length it says; a body that stops coming for
-//! [`BODY_IDLE`] is cut, and all of it comes within [`FamilyConfig::body_timeout`]. A refused call's body is never kept
-//! (read and dropped while it keeps coming). One copy of the relay holds the rendezvous (it is in
-//! memory): run one, or share mailboxes out by their id.
+//! [`BODY_IDLE`] is cut, so is one slower than [`FamilyConfig::body_rate`] past its first second, and all of it comes
+//! within [`FamilyConfig::body_timeout`]. A refused call's body is never kept (read and dropped while it keeps
+//! coming). The small routes (mailbox, pass, passes) read [`SMALL_BODY_BYTES`] at most, within [`SMALL_BODY_TIME`].
+//! The lists of passes accepted are kept only for a mailbox that polls (and a moment after), [`ACCEPTED_MAX`] ids in
+//! all. One copy of the relay holds the rendezvous (it is in memory): run one, or share mailboxes out by their id.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -95,6 +97,9 @@ pub struct FamilyConfig {
     pub queued_per_party: usize,
     /// How long a call's body may take to come in.
     pub body_timeout: Duration,
+    /// How fast it comes at least, on average past its first second (bytes a second; 0: no minimum)
+    /// (`RELAY_FAMILY_BODY_KIB_PER_S`, 128 KiB/s, about 1 Mbit/s): a trickle holds its room no longer.
+    pub body_rate: usize,
     /// Long polls open at once on one mailbox (a bridge restarted leaves one behind for a moment).
     pub polls_per_mailbox: usize,
     /// How long a call waits for its mailbox's bridge to take it.
@@ -120,6 +125,7 @@ impl Default for FamilyConfig {
             queued_bytes: 256 << 20,
             queued_per_party: 32 << 20,
             body_timeout: Duration::from_secs(30),
+            body_rate: 128 * 1024,
             polls_per_mailbox: 4,
             pickup: Duration::from_secs(15),
             answer_start: Duration::from_secs(660),
@@ -167,6 +173,16 @@ struct PassClaims {
 const PASS_LIFETIME_SECS: u64 = 10 * 365 * 86_400;
 /// A call's body that brings nothing for this long is cut (its room given back).
 pub const BODY_IDLE: Duration = Duration::from_secs(5);
+/// Its first second: what it brings then is not held to [`FamilyConfig::body_rate`].
+const BODY_GRACE: Duration = Duration::from_secs(1);
+
+/// The body of a small route (mailbox, pass, passes: a little JSON), at most: a request past it is refused unread.
+pub const SMALL_BODY_BYTES: usize = 64 * 1024;
+/// And the time it may take to come.
+pub const SMALL_BODY_TIME: Duration = Duration::from_secs(10);
+
+/// The ids of the passes accepted, every mailbox's list together (about 20 MiB): past that, a list may only shrink.
+pub const ACCEPTED_MAX: usize = 250_000;
 
 /// A call waiting for its mailbox's poll.
 struct Call {
@@ -269,9 +285,10 @@ pub struct Rendezvous {
     waiting: Mutex<HashMap<String, (String, oneshot::Sender<Body>)>>,
     /// Each mailbox's polls: how many are open, when one last began or ended, whether it is an invitation's.
     seen: Mutex<HashMap<String, (usize, Instant, bool)>>,
-    /// The passes each mailbox says it still accepts (their ids), as its bridge last said: a mailbox that never said
-    /// accepts every pass it gave.
-    accepted: Mutex<HashMap<String, std::collections::HashSet<String>>>,
+    /// The passes each mailbox says it still accepts (their ids), as its bridge last said, kept while it polls (and a
+    /// moment after: its calls fail at once past that): a mailbox that never said accepts every pass it gave. Locked
+    /// after `seen` when both are.
+    accepted: Mutex<Lists>,
     budget: Arc<Budget>,
     calls_out: Quota,
     calls_in: Quota,
@@ -282,6 +299,41 @@ pub struct Rendezvous {
     last_report: Mutex<Instant>,
     /// The key of the logs' fingerprints (from the relay's sealing key: the same on every copy, none outside).
     fingerprint_key: [u8; 32],
+}
+
+/// The lists of passes accepted, and how many ids they hold together.
+#[derive(Default)]
+struct Lists {
+    by_mailbox: HashMap<String, HashSet<String>>,
+    ids: usize,
+}
+
+impl Lists {
+    /// This mailbox accepts these passes from now on; past [`ACCEPTED_MAX`] in all, only those it accepted already
+    /// (a pass withdrawn always is; one newly accepted waits for room). False when it was cut so.
+    fn set(&mut self, mailbox: &str, ids: HashSet<String>) -> bool {
+        let old = self.by_mailbox.get(mailbox);
+        let others = self.ids - old.map_or(0, HashSet::len);
+        let (ids, whole) = if others + ids.len() <= ACCEPTED_MAX {
+            (ids, true)
+        } else {
+            (ids.into_iter().filter(|i| old.is_some_and(|o| o.contains(i))).collect(), false)
+        };
+        self.ids = others + ids.len();
+        self.by_mailbox.insert(mailbox.to_string(), ids);
+        whole
+    }
+
+    fn remove(&mut self, mailbox: &str) {
+        if let Some(ids) = self.by_mailbox.remove(mailbox) {
+            self.ids -= ids.len();
+        }
+    }
+}
+
+/// Whether a mailbox polls now, or did a moment ago (`away`): its calls may be taken.
+fn polling(seen: &HashMap<String, (usize, Instant, bool)>, mailbox: &str, away: Duration) -> bool {
+    seen.get(mailbox).is_some_and(|(open, last, _)| *open > 0 || last.elapsed() < away)
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -351,8 +403,7 @@ impl Rendezvous {
 
     /// How long a call may wait for this mailbox's bridge: `pickup` while a poll is open, what is left of `away`
     /// just after one ended, None when it does not poll (the call fails at once).
-    fn pickup(&self, mailbox: &str) -> Option<Duration> {
-        let seen = lock(&self.seen);
+    fn pickup_in(&self, seen: &HashMap<String, (usize, Instant, bool)>, mailbox: &str) -> Option<Duration> {
         let (open, last, _) = seen.get(mailbox)?;
         if *open > 0 {
             return Some(self.config.pickup);
@@ -360,19 +411,34 @@ impl Rendezvous {
         self.config.away.checked_sub(last.elapsed()).filter(|left| !left.is_zero())
     }
 
-    /// Whether this mailbox still accepts this pass (it said which, or never said).
-    fn accepts(&self, mailbox: &str, pass: &str) -> bool {
-        lock(&self.accepted).get(mailbox).is_none_or(|ids| ids.contains(pass))
+    /// [`Self::pickup_in`], for a call with this pass: None too when the mailbox no longer accepts it (both looked
+    /// at together: a poll saying its list can't come between them).
+    fn pickup(&self, mailbox: &str, pass: Option<&str>) -> Option<Duration> {
+        let seen = lock(&self.seen);
+        if pass.is_some_and(|p| !self.accepts(mailbox, p)) {
+            return None;
+        }
+        self.pickup_in(&seen, mailbox)
     }
 
-    /// The passes this mailbox accepts from now on.
-    fn accept_only(&self, mailbox: &str, ids: std::collections::HashSet<String>) {
-        lock(&self.accepted).insert(mailbox.to_string(), ids);
+    /// Whether this mailbox still accepts this pass (it said which, or never said).
+    fn accepts(&self, mailbox: &str, pass: &str) -> bool {
+        lock(&self.accepted).by_mailbox.get(mailbox).is_none_or(|ids| ids.contains(pass))
+    }
+
+    /// The passes this mailbox accepts from now on (`POST /v1/family/passes`): kept only if it polls now or did a
+    /// moment ago; otherwise its next poll says them (and its calls fail until then).
+    fn accept_only(&self, mailbox: &str, ids: HashSet<String>) {
+        let seen = lock(&self.seen);
+        if polling(&seen, mailbox, self.config.away) && !lock(&self.accepted).set(mailbox, ids) {
+            self.counts.refused.fetch_add(1, Ordering::Relaxed);
+        }
     }
 
     /// Whether this mailbox is an invitation's, polled now (or a moment ago).
     fn invitation_polled(&self, mailbox: &str) -> bool {
-        lock(&self.seen).get(mailbox).is_some_and(|(_, _, invitation)| *invitation) && self.pickup(mailbox).is_some()
+        let seen = lock(&self.seen);
+        seen.get(mailbox).is_some_and(|(_, _, invitation)| *invitation) && self.pickup_in(&seen, mailbox).is_some()
     }
 
     /// Mailboxes with a poll open now.
@@ -394,24 +460,30 @@ impl Rendezvous {
         self.kib_in.sweep();
         self.registrations.sweep();
         let hour = Duration::from_secs(3600);
-        let gone: Vec<String> = lock(&self.seen)
-            .iter()
-            .filter(|(_, (open, last, _))| *open == 0 && last.elapsed() > hour)
-            .map(|(id, _)| id.clone())
-            .collect();
         {
+            // under `seen` all along: a poll that comes meanwhile says its list after this, never before
             let mut seen = lock(&self.seen);
+            let gone: Vec<String> = seen
+                .iter()
+                .filter(|(_, (open, last, _))| *open == 0 && last.elapsed() > hour)
+                .map(|(id, _)| id.clone())
+                .collect();
             let mut bells = lock(&self.bells);
             let mut queues = lock(&self.queues);
-            let mut accepted = lock(&self.accepted);
             for id in &gone {
                 seen.remove(id);
                 bells.remove(id);
                 queues.remove(id);
-                accepted.remove(id);
             }
             bells.retain(|id, _| seen.contains_key(id) || queues.contains_key(id));
             queues.retain(|_, q| !q.is_empty());
+            // the lists of the mailboxes that no longer poll: their calls fail at once, their next poll says it again
+            let mut lists = lock(&self.accepted);
+            let stale: Vec<String> =
+                lists.by_mailbox.keys().filter(|id| !polling(&seen, id, self.config.away)).cloned().collect();
+            for id in &stale {
+                lists.remove(id);
+            }
         }
         let mut last = lock(&self.last_report);
         if last.elapsed() >= hour {
@@ -436,13 +508,24 @@ struct Polling<'a> {
 }
 
 impl<'a> Polling<'a> {
-    fn open(rendezvous: &'a Rendezvous, mailbox: &str, invitation: bool) -> Option<Self> {
+    /// A poll opened, with the passes its mailbox says it accepts (`said`), kept with it under the same lock.
+    fn open(
+        rendezvous: &'a Rendezvous,
+        mailbox: &str,
+        invitation: bool,
+        said: Option<HashSet<String>>,
+    ) -> Option<Self> {
         let mut seen = lock(&rendezvous.seen);
         let entry = seen.entry(mailbox.to_string()).or_insert((0, Instant::now(), invitation));
         if entry.0 >= rendezvous.config.polls_per_mailbox {
             return None;
         }
         *entry = (entry.0 + 1, Instant::now(), invitation);
+        if let Some(ids) = said {
+            if !lock(&rendezvous.accepted).set(mailbox, ids) {
+                rendezvous.counts.refused.fetch_add(1, Ordering::Relaxed);
+            }
+        }
         Some(Polling { rendezvous, mailbox: mailbox.to_string() })
     }
 }
@@ -561,6 +644,32 @@ async fn drain(body: Body, at_most: usize, within: Duration) {
     .await;
 }
 
+/// The body of a small route: [`SMALL_BODY_BYTES`] at most (past that, refused at once and its connection closed,
+/// unread), within [`SMALL_BODY_TIME`].
+#[allow(clippy::result_large_err)] // the refusal, answered as it is
+async fn small_body(headers: &HeaderMap, body: Body) -> Result<Bytes, Response> {
+    let too_large = || refuse(StatusCode::PAYLOAD_TOO_LARGE, "too_large", "request too large");
+    let declared = headers.get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.trim().parse().ok());
+    if declared.is_some_and(|n: usize| n > SMALL_BODY_BYTES) {
+        return Err(too_large());
+    }
+    let read = async {
+        let mut data = body.into_data_stream();
+        let mut read = Vec::new();
+        while let Some(chunk) = data.next().await {
+            let chunk = chunk.map_err(|_| refuse(StatusCode::BAD_REQUEST, "invalid", "invalid request"))?;
+            if read.len() + chunk.len() > SMALL_BODY_BYTES {
+                return Err(too_large());
+            }
+            read.extend_from_slice(&chunk);
+        }
+        Ok(Bytes::from(read))
+    };
+    tokio::time::timeout(SMALL_BODY_TIME, read)
+        .await
+        .unwrap_or_else(|_| Err(refuse(StatusCode::REQUEST_TIMEOUT, "slow", "the request did not come in time")))
+}
+
 #[derive(Deserialize, Default)]
 struct Register {
     #[serde(default)]
@@ -575,13 +684,17 @@ async fn mailbox(
     State(relay): State<Arc<Relay>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    body: Bytes,
+    request: Request,
 ) -> Response {
     let family = &relay.family;
     if !family.registrations.allow(relay.client_ip(peer, &headers).as_bytes()) {
         family.counts.refused.fetch_add(1, Ordering::Relaxed);
         return refuse(StatusCode::TOO_MANY_REQUESTS, "quota", "too many mailboxes from this address");
     }
+    let body = match small_body(&headers, request.into_body()).await {
+        Ok(body) => body,
+        Err(refused) => return refused,
+    };
     let Ok(asked) = (if body.iter().all(u8::is_ascii_whitespace) {
         Ok(Register::default())
     } else {
@@ -628,7 +741,7 @@ async fn pass(
     State(relay): State<Arc<Relay>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    body: Bytes,
+    request: Request,
 ) -> Response {
     let claims = match authenticated(&relay, &headers) {
         Ok(c) if !c.invitation() => c,
@@ -640,6 +753,10 @@ async fn pass(
         family.counts.refused.fetch_add(1, Ordering::Relaxed);
         return refuse(StatusCode::TOO_MANY_REQUESTS, "quota", "too many passes from this address");
     }
+    let body = match small_body(&headers, request.into_body()).await {
+        Ok(body) => body,
+        Err(refused) => return refused,
+    };
     let asked: PassAsked = if body.iter().all(u8::is_ascii_whitespace) {
         PassAsked::default()
     } else {
@@ -671,11 +788,16 @@ struct Accepted {
 }
 
 /// `POST /v1/family/passes {accept: [ids]}` (a mailbox's token): the passes it accepts from now on (a link removed:
-/// its pass no longer works, at once). Its polls say it again (`x-bip-passes`), so that a relay restarted knows.
-async fn passes(State(relay): State<Arc<Relay>>, headers: HeaderMap, body: Bytes) -> Response {
+/// its pass no longer works, at once). Its polls say it again (`x-bip-passes`), so that a relay restarted knows. Kept
+/// only for a mailbox polling (or a moment ago): one that does not poll takes no call anyway, and its next poll says it.
+async fn passes(State(relay): State<Arc<Relay>>, headers: HeaderMap, request: Request) -> Response {
     let claims = match authenticated(&relay, &headers) {
         Ok(c) if !c.invitation() => c,
         Ok(_) => return refuse(StatusCode::FORBIDDEN, "invalid", "an invitation's mailbox gives no pass"),
+        Err(refused) => return refused,
+    };
+    let body = match small_body(&headers, request.into_body()).await {
+        Ok(body) => body,
         Err(refused) => return refused,
     };
     let Ok(asked) = serde_json::from_slice::<Accepted>(&body) else {
@@ -696,12 +818,13 @@ async fn next(State(relay): State<Arc<Relay>>, headers: HeaderMap) -> Response {
     };
     let (mailbox, invitation) = (claims.id.clone(), claims.invitation());
     let family = &relay.family;
-    // the passes it accepts, said with each poll (`-`: none)
-    if let Some(said) = headers.get("x-bip-passes").and_then(|v| v.to_str().ok()).filter(|_| !invitation) {
-        let ids = said.split(',').map(str::trim).filter(|i| !i.is_empty() && *i != "-" && i.len() <= 32);
-        family.accept_only(&mailbox, ids.take(1000).map(str::to_string).collect());
-    }
-    let Some(_open) = Polling::open(family, &mailbox, invitation) else {
+    // the passes it accepts, said with each poll (`-`: none), kept as the poll opens
+    let said: Option<HashSet<String>> =
+        headers.get("x-bip-passes").and_then(|v| v.to_str().ok()).filter(|_| !invitation).map(|said| {
+            let ids = said.split(',').map(str::trim).filter(|i| !i.is_empty() && *i != "-" && i.len() <= 32);
+            ids.take(1000).map(str::to_string).collect()
+        });
+    let Some(_open) = Polling::open(family, &mailbox, invitation, said) else {
         return refuse(StatusCode::TOO_MANY_REQUESTS, "polls", "too many polls open on this mailbox");
     };
     let bell = family.bell(&mailbox);
@@ -779,6 +902,7 @@ async fn call(
     }
     // Whether this mailbox takes calls from this caller: a pass it gave for itself, or an invitation's mailbox being
     // polled. Anything else reads exactly as a mailbox whose bridge is off.
+    let mut pass_id = None;
     let pair = if kind == "call" {
         let pass = headers.get("x-bip-pass").and_then(|v| v.to_str().ok()).and_then(|p| open_pass(&relay, p));
         // for this mailbox, given to this caller, still accepted by the mailbox, not ended nor blocked
@@ -790,7 +914,9 @@ async fn call(
                     && family.accepts(&target, &p.id)
                     && !relay.is_blocked_id(&family.fingerprint(&p.id)) =>
             {
-                format!("pass:{}", p.id)
+                let pair = format!("pass:{}", p.id);
+                pass_id = Some(p.id);
+                pair
             }
             _ => return refused_after(away(), body, declared, family).await,
         }
@@ -808,7 +934,7 @@ async fn call(
         let quota = refuse(StatusCode::TOO_MANY_REQUESTS, "quota", "too many calls this hour");
         return refused_after(quota, body, declared, family).await;
     }
-    let Some(wait) = family.pickup(&target) else {
+    let Some(wait) = family.pickup(&target, pass_id.as_deref()) else {
         return refused_after(away(), body, declared, family).await;
     };
     let limit = if kind == "invite" { INVITE_REQUEST_BYTES } else { family.config.request_bytes };
@@ -832,11 +958,19 @@ async fn call(
     let Some(mut held) = family.budget.reserve(parties, 0) else {
         return refused_after(away(), body, declared, family).await;
     };
-    let deadline = Instant::now() + family.config.body_timeout;
+    let started = Instant::now();
+    let deadline = started + family.config.body_timeout;
+    let rate = family.config.body_rate;
     let mut data = body.into_data_stream();
     let mut read: Vec<u8> = Vec::new();
     loop {
-        let wait = BODY_IDLE.min(deadline.saturating_duration_since(Instant::now()));
+        // past its first second, it keeps up with the minimal rate (what came so far, at that rate), or it is cut
+        let behind =
+            (rate > 0).then(|| started + BODY_GRACE + Duration::from_secs_f64(read.len() as f64 / rate as f64));
+        let moment = Instant::now();
+        let wait = BODY_IDLE
+            .min(deadline.saturating_duration_since(moment))
+            .min(behind.map_or(Duration::MAX, |b| b.saturating_duration_since(moment)));
         match tokio::time::timeout(wait, data.next()).await {
             Ok(None) => break,
             Ok(Some(Ok(chunk))) => {
@@ -1000,19 +1134,53 @@ mod tests {
     #[tokio::test]
     async fn a_mailbox_polls_while_a_poll_is_open_and_a_moment_after() {
         let family = Rendezvous::new(FamilyConfig::default(), [0u8; 32]);
-        assert!(family.pickup("m").is_none(), "never polled: away");
-        let open = Polling::open(&family, "m", false).unwrap();
-        assert_eq!(family.pickup("m"), Some(family.config.pickup));
+        assert!(family.pickup("m", None).is_none(), "never polled: away");
+        let open = Polling::open(&family, "m", false, None).unwrap();
+        assert_eq!(family.pickup("m", None), Some(family.config.pickup));
         assert_eq!(family.online(), 1);
         assert!(!family.invitation_polled("m"));
         drop(open);
-        assert!(family.pickup("m").is_some_and(|d| d <= family.config.away));
-        let polls: Vec<_> = (0..4).map(|_| Polling::open(&family, "m", false).unwrap()).collect();
-        assert!(Polling::open(&family, "m", false).is_none(), "four polls at most");
+        assert!(family.pickup("m", None).is_some_and(|d| d <= family.config.away));
+        let polls: Vec<_> = (0..4).map(|_| Polling::open(&family, "m", false, None).unwrap()).collect();
+        assert!(Polling::open(&family, "m", false, None).is_none(), "four polls at most");
         drop(polls);
-        let invite = Polling::open(&family, "i", true).unwrap();
+        let invite = Polling::open(&family, "i", true, None).unwrap();
         assert!(family.invitation_polled("i"));
         drop(invite);
+    }
+
+    #[tokio::test]
+    async fn a_list_of_passes_is_kept_only_for_a_mailbox_that_polls() {
+        let quick = FamilyConfig { away: Duration::from_millis(50), ..FamilyConfig::default() };
+        let family = Rendezvous::new(quick, [0u8; 32]);
+        let only = |id: &str| HashSet::from([id.to_string()]);
+        family.accept_only("m", only("p1"));
+        assert!(family.accepts("m", "p2"), "never polled: no list kept");
+        let open = Polling::open(&family, "m", false, Some(only("p1"))).unwrap();
+        assert!(family.accepts("m", "p1") && !family.accepts("m", "p2"));
+        assert_eq!(family.pickup("m", Some("p2")), None, "a pass it no longer accepts reads as away");
+        family.accept_only("m", HashSet::new());
+        assert!(!family.accepts("m", "p1"), "withdrawn at once while it polls");
+        drop(open);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        family.sweep();
+        assert!(lock(&family.accepted).by_mailbox.is_empty(), "no longer polling: its list forgotten");
+        assert_eq!(lock(&family.accepted).ids, 0);
+    }
+
+    #[test]
+    fn the_lists_of_passes_are_bounded_in_all_and_only_shrink_when_full() {
+        let ids = |r: std::ops::Range<usize>| r.map(|i| i.to_string()).collect::<HashSet<String>>();
+        let mut lists = Lists::default();
+        assert!(lists.set("a", ids(0..ACCEPTED_MAX - 10)));
+        assert!(lists.set("b", ids(0..10)));
+        // full: b's new passes wait for room, those it withdraws go at once
+        assert!(!lists.set("b", ids(5..20)));
+        assert_eq!(lists.by_mailbox["b"], ids(5..10));
+        assert_eq!(lists.ids, ACCEPTED_MAX - 5);
+        lists.remove("a");
+        assert!(lists.set("b", ids(5..20)));
+        assert_eq!(lists.ids, 15);
     }
 
     #[test]

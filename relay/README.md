@@ -88,9 +88,12 @@ after), the quotas' counts under unkeyed SHA-256 hashes (forgotten within the ho
 `/health` says whether it is on, nothing of its activity.
 
 **Limits.** A call's bytes are reserved as they are read, never on the length it says (256 MiB held at most, every
-call together; 32 MiB per caller, per link to a callee and per address); a body that stops for 5 s is cut, and all of
-it comes within 30 s; a refused call's
-body is never kept. Quotas: calls and bytes per caller, and per pass (what one household may send another); mailboxes
+call together; 32 MiB per caller, per link to a callee and per address); a body that stops for 5 s is cut, so is one
+slower than 128 KiB/s on average past its first second (about 1 Mbit/s: a slower upload sends a few hundred KiB at
+most through the relay), and all of it comes within 30 s; a refused call's body is never kept. The small routes
+(`mailbox`, `pass`, `passes`) read 64 KiB at most, within 10 s. The lists of passes a mailbox accepts are kept only
+while it polls (and a minute after), 250,000 ids in all: past that, a list only shrinks (a pass withdrawn always
+goes; one newly accepted waits for room). Quotas: calls and bytes per caller, and per pass (what one household may send another); mailboxes
 and passes made per address. A mailbox or a pass can be refused by its fingerprint in `RELAY_BLOCKED`. Run **one** copy
 for the families (the rendezvous is in memory). Deploy: `RELAY_TRUST_FORWARDED_FOR=1` behind a proxy, a high open-files
 limit (one waiting request per household linked through the relay), `flush_interval -1` in Caddy, logs kept 14 days.
@@ -111,6 +114,7 @@ limit (one waiting request per household linked through the relay), `flush_inter
 | `RELAY_R1_UNTIL` | `2026-12-15` (UTC midnight): the end of the transition from `r1.` tokens (see above); `0` ends it now |
 | `RELAY_FAMILY` | `1`; `0` turns the families' rendezvous off (its routes answer 404) |
 | `RELAY_FAMILY_REQUEST_MB`, `RELAY_FAMILY_ANSWER_MB` | `16`, `64`: a call's size, its answer's |
+| `RELAY_FAMILY_BODY_KIB_PER_S` | `128`: how fast a call's body comes at least, past its first second (`0`: no minimum) |
 | `RELAY_FAMILY_CALLS_PER_HOUR`, `RELAY_FAMILY_MB_PER_HOUR`, `RELAY_FAMILY_MAILBOXES_PER_IP_HOUR` | `3000` per mailbox as caller and as callee, `2048` MiB per mailbox, `20` mailboxes made per address |
 | `RUST_LOG` | `info` (JSON lines) |
 

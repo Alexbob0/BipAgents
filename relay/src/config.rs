@@ -11,8 +11,8 @@
 //!   one the proxy added; an IPv6 address counts by its /64)
 //! - `RELAY_GUICHET_KEY` (or `_FILE`): the key the guichet sends its pushes with (tokens sealed for the guichet)
 //! - `RELAY_FAMILY` (`1`; `0`: off), `RELAY_FAMILY_REQUEST_MB` (16), `RELAY_FAMILY_ANSWER_MB` (64),
-//!   `RELAY_FAMILY_CALLS_PER_HOUR` (3000), `RELAY_FAMILY_MB_PER_HOUR` (2048), `RELAY_FAMILY_MAILBOXES_PER_IP_HOUR` (20):
-//!   the family rendezvous (family.rs)
+//!   `RELAY_FAMILY_CALLS_PER_HOUR` (3000), `RELAY_FAMILY_MB_PER_HOUR` (2048), `RELAY_FAMILY_MAILBOXES_PER_IP_HOUR` (20),
+//!   `RELAY_FAMILY_BODY_KIB_PER_S` (128; 0: no minimum): the family rendezvous (family.rs)
 //! - `RELAY_R1_UNTIL` (`2026-12-15`, UTC midnight): until then the first token format (`r1.`) is still taken and
 //!   still sealed for older apps, and a guichet token sent without the guichet's key is let through (an older
 //!   guichet); each such use is logged and `/health` warns. `0` closes the transition now.
@@ -165,6 +165,7 @@ fn family_from_env() -> Result<FamilyConfig, String> {
         calls_per_hour: number("RELAY_FAMILY_CALLS_PER_HOUR", defaults.calls_per_hour)?,
         kib_per_hour: number("RELAY_FAMILY_MB_PER_HOUR", defaults.kib_per_hour / 1024)?.saturating_mul(1024),
         mailboxes_per_ip_hour: number("RELAY_FAMILY_MAILBOXES_PER_IP_HOUR", defaults.mailboxes_per_ip_hour)?,
+        body_rate: number("RELAY_FAMILY_BODY_KIB_PER_S", (defaults.body_rate / 1024) as u32)? as usize * 1024,
         ..defaults
     })
 }
