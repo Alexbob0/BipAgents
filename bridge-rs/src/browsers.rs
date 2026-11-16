@@ -455,6 +455,92 @@ pub enum Hold {
     Done,
     /// Not taken: the bridge holds the browser for a card payment or a vault fill (the flag reads « card »).
     Payment,
+    /// Not taken: the page a script of the agent's ran on couldn't be reloaded first (`fresh_for_person`).
+    NotFresh,
+}
+
+/// How long a script of the agent's on a site keeps that site's page from the person's hand until it is reloaded (as
+/// card_pay.rs `SCRIPTED_WINDOW`: bip-browser-mcp writes each script down, browser_mcp.rs `note_script`).
+const SCRIPTED_FOR_PERSON: f64 = 3600.0;
+
+/// The page last made fresh for the person, by agent: when, and its document (DevTools' loader id).
+static FRESH_FOR_PERSON: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, (f64, String)>>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// What the agent's scripts ran on (scripts.jsonl, bip-browser-mcp's `note_script`): the documents (DevTools' loader
+/// ids, whenever they ran: hotfix v2 of 15/11), and for lines that name none (an earlier proxy's), the sites within
+/// the hour (« unknown » when the page couldn't say) and when the latest ran.
+fn scripted(config: &Config, agent: &str) -> (HashSet<String>, HashSet<String>, f64) {
+    let text = std::fs::read_to_string(folder(config, agent).join(crate::browser_mcp::SCRIPTS_FILE)).unwrap_or_default();
+    let since = crate::py::time_time() - SCRIPTED_FOR_PERSON;
+    let (mut documents, mut sites) = (HashSet::new(), HashSet::new());
+    let mut latest: f64 = 0.0;
+    for line in text.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok()) {
+        if let Some(doc) = line.get("doc").and_then(Value::as_str).filter(|d| !d.is_empty()) {
+            documents.insert(doc.to_string());
+            continue;
+        }
+        let t = line.get("t").and_then(Value::as_f64).unwrap_or(0.0);
+        if t >= since {
+            sites.insert(line.get("origin").and_then(Value::as_str).unwrap_or("unknown").to_string());
+            latest = latest.max(t);
+        }
+    }
+    (documents, sites, latest)
+}
+
+/// Before the person takes the agent's browser (« Payer dans le navigateur de l'agent », the Bureau): the page is
+/// reloaded through DevTools when a script of the agent's ran on this very document, whenever it ran (hotfix v2 of
+/// 15/11; a line of an earlier proxy, naming no document: its site within the hour), every other tab closed and the
+/// site's service workers removed first (card_fill.rs `fresh`, as before a payment), so nothing a script could have
+/// set up there sees what the person types. Done under the person's hold (`token`: the agent's tools and DevTools
+/// wait meanwhile). False when it had to and couldn't (DevTools out of reach, no reload).
+async fn fresh_for_person(config: &Config, agent: &str, token: &str) -> bool {
+    let (documents, sites, latest) = scripted(config, agent);
+    if documents.is_empty() && sites.is_empty() {
+        return true;
+    }
+    let Some(port) = ports_of(config, agent).and_then(|p| p.get("cdp").copied()) else { return false };
+    let mut page = match crate::card_fill::Page::open(port, Some(token)).await {
+        Ok(page) => page,
+        // no web page open: nothing a script ran on
+        Err(crate::card_fill::FillError::NoPage) => return true,
+        Err(_) => return false,
+    };
+    let Ok(url) = page.url().await else { return false };
+    let origin = url::Url::parse(&url).map(|u| u.origin().ascii_serialization()).unwrap_or_default();
+    let Ok(document) = page.loader().await else { return false };
+    let ran_here = !document.is_empty() && documents.contains(&document);
+    let site_ran = sites.iter().any(|s| *s == origin || s == "unknown" || s == "null");
+    if !ran_here && !site_ran {
+        return true;
+    }
+    // an earlier proxy's line: not again for the same document until another script
+    let done = FRESH_FOR_PERSON.lock().unwrap_or_else(|e| e.into_inner()).get(agent).cloned();
+    if !ran_here && done.is_some_and(|(when, fresh)| when >= latest && !fresh.is_empty() && fresh == document) {
+        return true;
+    }
+    match page.fresh(Duration::from_secs(15), &|| true).await {
+        Ok(_) => {
+            let document = page.loader().await.unwrap_or_default();
+            FRESH_FOR_PERSON
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(agent.to_string(), (crate::py::time_time(), document));
+            tracing::info!(agent = %agent, "page reloaded before the person takes the browser: a script ran on it");
+            true
+        }
+        // the new document not loaded in time, but the old one gone (its loader replaced): what a script set up there
+        // is gone with it; the person sees the page finish loading
+        Err(_) if page.loader().await.is_ok_and(|now| !now.is_empty() && now != document) => {
+            tracing::info!(agent = %agent, "page reloading before the person takes the browser: the old document is gone");
+            true
+        }
+        Err(e) => {
+            tracing::warn!(agent = %agent, error = ?e, "page not reloaded before the person takes the browser");
+            false
+        }
+    }
 }
 
 /// The command that sets the person's hold: never over a payment's (exit 3 then, nothing written).
@@ -491,8 +577,8 @@ pub async fn hold_with(host: &Host, config: &Config, agent: &str, on: bool) -> H
     // The person's hold carries a token of its own: the bridge's connections showing it (`X-Bip-Hold`) still reach
     // Chrome's DevTools (devtools_relay.py), to show the page on the phone and pass on the person's taps and keys.
     let token_file = folder(config, agent).join(HOLD_TOKEN);
+    let token = crate::py::token_hex(16);
     let command = if on {
-        let token = crate::py::token_hex(16);
         if crate::py::write_with_mode(&token_file.to_string_lossy(), token.as_bytes(), 0o600).is_err() {
             tracing::warn!(agent = %agent, "browser hold token not kept");
         }
@@ -501,7 +587,7 @@ pub async fn hold_with(host: &Host, config: &Config, agent: &str, on: bool) -> H
         let _ = std::fs::remove_file(&token_file);
         human_release_command()
     };
-    let code = (host.exec)(vec![engine, "exec".into(), container(agent), "sh".into(), "-c".into(), command]).await;
+    let code = (host.exec)(vec![engine.clone(), "exec".into(), container(agent), "sh".into(), "-c".into(), command]).await;
     if on && code == 3 {
         let _ = std::fs::remove_file(&token_file);
         tracing::info!(agent = %agent, "browser not taken over: a payment holds it");
@@ -509,6 +595,14 @@ pub async fn hold_with(host: &Host, config: &Config, agent: &str, on: bool) -> H
     }
     if code != 0 {
         tracing::warn!(agent = %agent, on = on, "browser hold not set");
+    }
+    // the page a script of the agent's ran on, reloaded before the person's hand; not taken when it can't be
+    if on && !fresh_for_person(config, agent, &token).await {
+        let _ = std::fs::remove_file(&token_file);
+        let release = human_release_command();
+        (host.exec)(vec![engine, "exec".into(), container(agent), "sh".into(), "-c".into(), release]).await;
+        tracing::warn!(agent = %agent, "browser not taken over: the page a script ran on could not be reloaded");
+        return Hold::NotFresh;
     }
     Hold::Done
 }

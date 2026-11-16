@@ -2,7 +2,7 @@
 
 # Politique de confidentialité de BipAgents
 
-> Dernière mise à jour : 12 novembre 2026.
+> Dernière mise à jour : 16 novembre 2026.
 
 ## En bref
 
@@ -16,11 +16,14 @@
   aucun contenu (section 5.12). Sur Android, les services Google intégrés à l'app (cartes, scanner de documents)
   envoient à Google leurs propres données techniques (section 7). Pas de compte avec ton propre serveur ; un compte pour
   l'offre tout compris.
-- Avec ton propre serveur, Kerfy Studio ne peut recevoir que trois choses :
+- Avec ton propre serveur, Kerfy Studio ne peut recevoir que quatre choses :
   1. de quoi acheminer tes **notifications** par son relais : un jeton d'appareil scellé, jamais le texte de tes
      messages en clair ;
   2. ce que tu choisis de nous envoyer : un **e-mail** au support, ou le **signalement** d'une réponse ou d'un message depuis l'app ;
-  3. des **rapports de plantage**, seulement si tu as activé leur partage dans les réglages de ton téléphone.
+  3. des **rapports de plantage**, seulement si tu as activé leur partage dans les réglages de ton téléphone ;
+  4. si ton installation et celle d'un foyer relié ne peuvent pas se joindre directement, leurs échanges par son
+     **relais**, chiffrés de bout en bout : le relais voit les adresses IP, qui appelle qui, quand, la taille des
+     échanges, et quand ton ordinateur est allumé (section 4.1 bis).
 - Avec l'offre tout compris, Kerfy Studio traite aussi ton compte, l'état de ton abonnement, des données techniques
   sur ta place (jamais son contenu) et tes sauvegardes, illisibles sans leur clé, qui reste sur ta place et sur tes appareils (section 5.5) ; il héberge ta place
   sans y accéder (section 5). Si tu donnes à un agent sa propre adresse e-mail, Kerfy Studio garde aussi les e-mails
@@ -334,6 +337,30 @@ fonctionne sans elles. Si tu désinstalles l'app, Apple ou Google signalent le j
 l'oublie.
 
 **Sur Android**, l'app ne demande un jeton à Google qu'au moment où tu actives les notifications.
+
+### 4.1 bis Relier deux foyers par le relais de Kerfy Studio
+
+Quand deux installations ne peuvent pas se joindre directement (par exemple deux ordinateurs à la maison, chacun
+derrière sa box), leurs ponts passent par un relais tenu par Kerfy Studio (`push.bipagents.com`, le même serveur que
+les notifications, chez OVHcloud en France). Tout ce qui y passe est chiffré de bout en bout avec une clé propre à
+chaque lien, que seuls les deux foyers détiennent : Kerfy Studio ne peut ni lire ni modifier les messages, nouvelles,
+partages ou données de pages échangés, ni le code d'invitation. Seuls les foyers que tu as reliés peuvent joindre ton
+pont par le relais : quand tu retires un lien, ce foyer ne peut plus le joindre, ni savoir s'il est allumé.
+
+**Ce que le relais voit** : l'adresse IP de chaque pont ; un identifiant aléatoire de « boîte aux lettres » par
+installation (sans lien avec un nom, un compte ou une adresse e-mail) ; quelle boîte en appelle une autre, quand, et
+la taille des échanges. Tant qu'un lien passe par le relais (ou qu'une invitation attend), ton pont garde une requête
+ouverte vers lui : le relais voit donc, en continu, **quand ton ordinateur est allumé et depuis quelle adresse IP**.
+
+**Ce qu'il garde** : rien sur disque. Un échange ne reste en mémoire que le temps de passer (au plus quelques minutes
+pour une réponse longue, qui passe en flux). Les identifiants des boîtes connectées restent en mémoire tant qu'elles
+sont connectées, puis une heure. Les compteurs anti-abus sont en mémoire, sous forme d'empreintes, et oubliés dans
+l'heure. Les échanges réussis ne sont pas journalisés. Sont journalisés : certains refus (quota dépassé, boîte
+bloquée, réponse coupée), avec une empreinte courte d'une seule boîte, calculée avec une clé que seul le relais
+détient, et un total par heure (nombre d'échanges, octets, boîtes connectées). Ces journaux sont conservés 14 jours.
+
+Une maison reliée à une place de l'offre ne passe par le relais qu'une fois, pour se présenter ; ensuite leurs ponts
+se parlent directement.
 
 ### 4.2 Le support et les signalements
 

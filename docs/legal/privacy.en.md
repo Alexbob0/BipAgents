@@ -2,7 +2,7 @@ English · [Français](privacy.fr.md) · [Deutsch](privacy.de.md) · [Español](
 
 # BipAgents privacy policy
 
-> Last updated: 12 November 2026.
+> Last updated: 16 November 2026.
 
 ## In short
 
@@ -14,11 +14,14 @@ English · [Français](privacy.fr.md) · [Deutsch](privacy.de.md) · [Español](
   week (section 5.11), and, with the all-included offer, a few measures of a place's first days, without any content
   (section 5.12). On Android, the Google services built into the app (maps, document scanner) send Google their
   own technical data (section 7). No account with your own server; an account for the all-included offer.
-- With your own server, Kerfy Studio can receive only three things:
+- With your own server, Kerfy Studio can receive only four things:
   1. what it takes to deliver your **notifications** through its relay: a sealed device token, never the text of your
      messages in clear;
   2. what you choose to send us: an **email** to support, or a **report** of a reply or a message from the app;
-  3. **crash reports**, only if you turned on sharing them in your phone's settings.
+  3. **crash reports**, only if you turned on sharing them in your phone's settings;
+  4. if your install and a linked household's cannot reach each other directly, their exchanges through its
+     **relay**, encrypted end to end: the relay sees the IP addresses, who calls whom, when, the size of the
+     exchanges, and when your computer is on (section 4.1 bis).
 - With the all-included offer, Kerfy Studio also processes your account, the state of your subscription, technical
   data about your place (never its content) and your backups, unreadable without their key, which stays on your place and on your devices (section 5.5); it hosts your
   place without accessing it (section 5). If you give an agent its own e-mail address, Kerfy Studio also keeps that
@@ -314,6 +317,30 @@ by a contract that complies with GDPR article 28. Apple delivers notifications t
 them. If you uninstall the app, Apple or Google report the token as invalid and your server forgets it.
 
 **On Android**, the app only asks Google for a token when you turn notifications on.
+
+### 4.1 bis Linking two households through Kerfy Studio's relay
+
+When two installs cannot reach each other directly (for example two computers at home, each behind its own router),
+their bridges go through a relay run by Kerfy Studio (`push.bipagents.com`, the same server as notifications, at
+OVHcloud in France). Everything that passes through it is encrypted end to end with a key specific to each link, which
+only the two households hold: Kerfy Studio can neither read nor change the messages, news, shares or page data
+exchanged, nor the invitation code. Only the households you have linked with can reach your bridge through the relay:
+when you remove a link, that household can no longer reach it, nor tell whether it is on.
+
+**What the relay sees**: the IP address of each bridge; a random « mailbox » identifier per install (not tied to a
+name, an account or an email address); which mailbox calls which other, when, and the size of the exchanges. As long
+as a link goes through the relay (or an invitation is waiting), your bridge keeps a request open to it: the relay
+therefore sees, continuously, **when your computer is on and from which IP address**.
+
+**What it keeps**: nothing on disk. An exchange stays in memory only for as long as it takes to pass through (a few
+minutes at most for a long answer, which is streamed). The identifiers of connected mailboxes stay in memory as long
+as they are connected, then for one hour. The anti-abuse counters are in memory, as fingerprints, and forgotten within
+the hour. Successful exchanges are not logged. What is logged: some refusals (quota exceeded, mailbox blocked, answer
+cut off), with a short fingerprint of a single mailbox, computed with a key only the relay holds, and one total per
+hour (number of exchanges, bytes, connected mailboxes). These logs are kept for 14 days.
+
+A home linked to a place of the offer goes through the relay only once, to introduce itself; after that, their bridges
+talk to each other directly.
 
 ### 4.2 Support and reports
 

@@ -33,6 +33,7 @@ TOOLS = [
     {"name": "type_text", "inputSchema": {"type": "object"}, "outputSchema": WRAPPED_BOOL},
     {"name": "press_key", "inputSchema": {"type": "object"}, "outputSchema": OBJECT},
     {"name": "execute_script", "inputSchema": {"type": "object"}, "outputSchema": OBJECT},
+    {"name": "get_active_tab", "inputSchema": {"type": "object"}, "outputSchema": OBJECT},
 ]
 
 
@@ -74,6 +75,8 @@ FIND = """((t) => { let best = null, gap = Infinity;
 
 
 def call(name, args):
+    if name == "get_active_tab":   # server.get_active_tab: the tab's target id (the proxy runs a script through DevTools)
+        return {"tab_id": sys.argv[1].rstrip("/").split("/")[-1], "url": evaluate("location.href"), "type": "page"}
     if name == "navigate":
         cdp("Page.navigate", {"url": args["url"]})
         deadline = time.time() + 10

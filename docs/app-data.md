@@ -155,6 +155,15 @@ their place on the all-included offer. Everything personal goes here, with that 
   (`routing.openstreetmap.de`, the stops' coordinates to 5 decimals). The phone contacts none of these services.
 - **The agent's visible browser** (`App/Features/Agents/DesktopView.swift`): a web view of the bridge's viewer page,
   with no stored website data.
+- **Pages that remember** (`bridge-rs/src/page_store.rs`): what is typed in an agent's page, and what the agent itself
+  keeps there (16/11: a page it keeps up to date — a dashboard, prices, scores — from a conversation, a routine or a
+  background task, with what it found on the web, in the mail or the calendar; `page_data` with `ops`, its own pages
+  only), is kept by the bridge beside the page (`<page>.store.json`, 256 KB at most) and in the place's backups. The
+  page reads it through the app (`bipstore:` on the iPhone, `https://bipstore.invalid` on Android, answered by the app
+  with the bridge's key) about every 5 seconds while it is open; the phone fetches it from nowhere else. Everyone who
+  sees the page sees it: the family through their own bridges, a project's friends inside the page's sealed item
+  (read_shares.rs, within about 20 seconds). Before the agent changes what a person wrote, the bridge keeps a copy
+  of the store (support can put it back).
 - **The phone exit** (`docs/phone-exit.md`; Android `phoneexit/`, iOS `App/Features/PhoneExit/`): for a site the person
   accepted, the phone opens one outbound WebSocket to its bridge and carries the agent's TLS streams to that site from
   its own connection. The site sees the phone's IP address; TLS stays end to end between the agent's Chrome and the
