@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><title>Extranet - connexion</title></head>
+<body>
+<!-- mirrors the extranet's own login page (« page de connexion propre au compte », 16/11): one form, a relative
+     action, an identifier field with neither id nor label, two hidden « groupe » -->
+<h1>Extranet</h1>
+<form action="../login_externe.php" method="post">
+  <input type="hidden" name="groupe" value="g1">
+  <input type="hidden" name="groupe" value="g2">
+  Identifiant : <input name="login" type="text"><br>
+  Mot de passe : <input name="mdp" id="mdp" type="password"><br>
+  <input type="submit" value="Connexion">
+</form>
+<form action="/newsletter" method="post"><input type="email" name="newsletter" placeholder="Votre e-mail"></form>
+</body></html>

@@ -38,8 +38,10 @@ def test_items_reach_only_the_agents_allowed_and_never_come_back(bridges, fakes)
     assert {k: item[k] for k in ("kind", "label", "origin", "identifier_type", "identifier", "has_otp", "agents")} == {
         "kind": "login", "label": "SNCF", "origin": "https://sncf-connect.com", "identifier_type": "email",
         "identifier": "alex@example.org", "has_otp": True, "agents": ["vie"]}
-    assert set(item) == {"id", "kind", "label", "origin", "identifier_type", "identifier", "has_otp", "agents",
-                         "created_at", "updated_at"}
+    assert set(item) == {"id", "kind", "label", "origin", "login_url", "identifier_type", "identifier", "has_otp",
+                         "agents", "created_at", "updated_at"}
+    # the login page typed is kept beside the site (16/11), never sent to the agent's Hermes
+    assert item["login_url"] == "https://sncf-connect.com/login"
     assert "s3cret" not in made.text and "JBSWY" not in made.text
     [(argv, request)] = requests_to_vie(bridge)
     assert argv[:5] == ["exec", "-i", "hermes-vie", "/opt/hermes/venv/bin/python", "-c"] and len(argv) == 6
