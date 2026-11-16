@@ -140,10 +140,11 @@ def test_serve_people(bridges, fakes, tmp_path):
     journey.model.calls["task"] = lambda run: mcp_as(bridge, journey.token, "/v1/agent-tools/mcp", "propose_task", {
         "title": "Dossier location", "prompt": f"Prépare le dossier de location {journey_tag(run)} #lent",
         "budget": "small"})
-    # J59–J62, a tool asked on a card (tool_asks.rs): Vie's call waits for the app's answer
+    # J59–J62, a tool asked on a card (tool_asks.rs): Vie's call waits for the app's answer. One bridge for every
+    # journey: J61 asks for Calendrier, as J59 turned Rappels on already
     from bbkit.model import tool_asked
     why = {"reminders": "Pour te rappeler le pain demain à 18 h", "mail": "Pour chercher la facture de mars",
-           "weather": "Pour savoir s'il pleut demain"}
+           "weather": "Pour savoir s'il pleut demain", "calendar": "Pour noter la réunion dans ton calendrier"}
     journey.model.calls["tool_ask"] = lambda run: mcp_as(bridge, journey.token, "/v1/agent-tools/mcp", "ask_for_tool", {
         "tool": tool_asked(run.words.lower()), "why": why[tool_asked(run.words.lower())]}, timeout=400)
     # J47, the Carnet: Léa's page, the question of the day at any hour (quiet hours of one minute), Vie's calls
