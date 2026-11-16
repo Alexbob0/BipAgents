@@ -2,7 +2,7 @@ English · [Français](privacy.fr.md) · [Deutsch](privacy.de.md) · [Español](
 
 # BipAgents privacy policy
 
-> Last updated: 12 November 2026.
+> Last updated: 16 November 2026.
 
 ## In short
 
@@ -314,6 +314,30 @@ by a contract that complies with GDPR article 28. Apple delivers notifications t
 them. If you uninstall the app, Apple or Google report the token as invalid and your server forgets it.
 
 **On Android**, the app only asks Google for a token when you turn notifications on.
+
+### 4.1 bis Linking two households through Kerfy Studio's relay
+
+When two installs cannot reach each other directly (for example two computers at home, each behind its own router),
+their bridges go through a relay run by Kerfy Studio (`push.bipagents.com`, the same server as notifications, at
+Hetzner in Germany). Everything that passes through it is encrypted end to end with a key specific to each link, which
+only the two households hold: Kerfy Studio can neither read nor change the messages, news, shares or page data
+exchanged, nor the invitation code. Only the households you have linked with can reach your bridge through the relay:
+when you remove a link, that household can no longer reach it, nor tell whether it is on.
+
+**What the relay sees**: the IP address of each bridge; a random « mailbox » identifier per install (not tied to a
+name, an account or an email address); which mailbox calls which other, when, and the size of the exchanges. As long
+as a link goes through the relay (or an invitation is waiting), your bridge keeps a request open to it: the relay
+therefore sees, continuously, **when your computer is on and from which IP address**.
+
+**What it keeps**: nothing on disk. An exchange stays in memory only for as long as it takes to pass through (a few
+minutes at most for a long answer, which is streamed). The identifiers of connected mailboxes stay in memory as long
+as they are connected, then for one hour. The anti-abuse counters are in memory, as fingerprints, and forgotten within
+the hour. Successful exchanges are not logged. What is logged: some refusals (quota exceeded, mailbox blocked, answer
+cut off), with a short fingerprint of a single mailbox, computed with a key only the relay holds, and one total per
+hour (number of exchanges, bytes, connected mailboxes). These logs are kept for 14 days.
+
+A home linked to a place of the offer goes through the relay only once, to introduce itself; after that, their bridges
+talk to each other directly.
 
 ### 4.2 Support and reports
 

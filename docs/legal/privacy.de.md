@@ -2,7 +2,7 @@
 
 # Datenschutzerklärung von BipAgents
 
-> Zuletzt aktualisiert: 12. November 2026.
+> Zuletzt aktualisiert: 16. November 2026.
 
 ## Kurz gesagt
 
@@ -347,6 +347,35 @@ ausschalten: Die App funktioniert ohne sie. Wenn du die App deinstallierst, meld
 ungültig, und dein Server vergisst es.
 
 **Auf Android** fragt die App Google erst dann nach einem Token, wenn du Benachrichtigungen einschaltest.
+
+### 4.1 bis Zwei Haushalte über das Relay von Kerfy Studio verbinden
+
+Wenn sich zwei Installationen nicht direkt erreichen können (zum Beispiel zwei Computer zu Hause, jeder hinter seinem
+eigenen Router), laufen ihre Bridges über ein Relay, das Kerfy Studio betreibt (`push.bipagents.com`, derselbe Server
+wie für die Benachrichtigungen, bei Hetzner in Deutschland). Alles, was darüber läuft, ist Ende-zu-Ende-verschlüsselt,
+mit einem eigenen Schlüssel für jede Verbindung, den nur die beiden Haushalte haben: Kerfy Studio kann die
+ausgetauschten Nachrichten, Neuigkeiten, geteilten Inhalte oder Seitendaten weder lesen noch verändern, ebenso wenig
+den Einladungscode. Nur die Haushalte, mit denen du dich verbunden hast, können deine Bridge über das Relay erreichen:
+Wenn du eine Verbindung entfernst, kann dieser Haushalt sie nicht mehr erreichen und auch nicht erkennen, ob sie
+eingeschaltet ist.
+
+**Was das Relay sieht**: die IP-Adresse jeder Bridge; eine zufällige „Briefkasten“-Kennung pro Installation (ohne
+Bezug zu einem Namen, einem Konto oder einer E-Mail-Adresse); welcher Briefkasten welchen anderen anruft, wann, und
+die Größe der Austausche. Solange eine Verbindung über das Relay läuft (oder eine Einladung wartet), hält deine Bridge
+eine Anfrage an das Relay offen: Das Relay sieht also ununterbrochen, **wann dein Computer eingeschaltet ist und von
+welcher IP-Adresse aus**.
+
+**Was es aufbewahrt**: nichts auf der Festplatte. Ein Austausch bleibt nur so lange im Arbeitsspeicher, wie er zum
+Durchlaufen braucht (höchstens einige Minuten für eine lange Antwort, die als Datenstrom durchläuft). Die Kennungen
+der verbundenen Briefkästen bleiben im Arbeitsspeicher, solange sie verbunden sind, danach noch eine Stunde. Die
+Zähler gegen Missbrauch liegen im Arbeitsspeicher, als Fingerabdrücke, und werden innerhalb einer Stunde vergessen.
+Erfolgreiche Austausche werden nicht protokolliert. Protokolliert werden: einige Ablehnungen (Kontingent
+überschritten, Briefkasten gesperrt, Antwort abgebrochen), mit einem kurzen Fingerabdruck eines einzigen Briefkastens,
+berechnet mit einem Schlüssel, den nur das Relay hat, und eine Summe pro Stunde (Anzahl der Austausche, Bytes,
+verbundene Briefkästen). Diese Protokolle werden 14 Tage aufbewahrt.
+
+Ein Zuhause, das mit einem Platz des Angebots verbunden ist, geht nur einmal über das Relay, um sich vorzustellen;
+danach sprechen ihre Bridges direkt miteinander.
 
 ### 4.2 Support und Meldungen
 
