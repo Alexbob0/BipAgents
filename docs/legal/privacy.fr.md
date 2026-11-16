@@ -16,11 +16,14 @@
   aucun contenu (section 5.12). Sur Android, les services Google intégrés à l'app (cartes, scanner de documents)
   envoient à Google leurs propres données techniques (section 7). Pas de compte avec ton propre serveur ; un compte pour
   l'offre tout compris.
-- Avec ton propre serveur, Kerfy Studio ne peut recevoir que trois choses :
+- Avec ton propre serveur, Kerfy Studio ne peut recevoir que quatre choses :
   1. de quoi acheminer tes **notifications** par son relais : un jeton d'appareil scellé, jamais le texte de tes
      messages en clair ;
   2. ce que tu choisis de nous envoyer : un **e-mail** au support, ou le **signalement** d'une réponse ou d'un message depuis l'app ;
-  3. des **rapports de plantage**, seulement si tu as activé leur partage dans les réglages de ton téléphone.
+  3. des **rapports de plantage**, seulement si tu as activé leur partage dans les réglages de ton téléphone ;
+  4. si ton installation et celle d'un foyer relié ne peuvent pas se joindre directement, leurs échanges par son
+     **relais**, chiffrés de bout en bout : le relais voit les adresses IP, qui appelle qui, quand, la taille des
+     échanges, et quand ton ordinateur est allumé (section 4.1 bis).
 - Avec l'offre tout compris, Kerfy Studio traite aussi ton compte, l'état de ton abonnement, des données techniques
   sur ta place (jamais son contenu) et tes sauvegardes, illisibles sans leur clé, qui reste sur ta place et sur tes appareils (section 5.5) ; il héberge ta place
   sans y accéder (section 5). Si tu donnes à un agent sa propre adresse e-mail, Kerfy Studio garde aussi les e-mails
@@ -339,7 +342,7 @@ l'oublie.
 
 Quand deux installations ne peuvent pas se joindre directement (par exemple deux ordinateurs à la maison, chacun
 derrière sa box), leurs ponts passent par un relais tenu par Kerfy Studio (`push.bipagents.com`, le même serveur que
-les notifications, chez Hetzner en Allemagne). Tout ce qui y passe est chiffré de bout en bout avec une clé propre à
+les notifications, chez OVHcloud en France). Tout ce qui y passe est chiffré de bout en bout avec une clé propre à
 chaque lien, que seuls les deux foyers détiennent : Kerfy Studio ne peut ni lire ni modifier les messages, nouvelles,
 partages ou données de pages échangés, ni le code d'invitation. Seuls les foyers que tu as reliés peuvent joindre ton
 pont par le relais : quand tu retires un lien, ce foyer ne peut plus le joindre, ni savoir s'il est allumé.
