@@ -649,6 +649,8 @@ pub async fn take_actions(
     let mut last = 0i64;
     // writes that couldn't be written now: kept here, tried again later (`retry_writes`), the guichet's queue taken
     let mut later: Vec<Value> = Vec::new();
+    // their place at the guichet (seq, action id): where they stay when even that list can't be kept
+    let mut later_at: Vec<(i64, String)> = Vec::new();
     for action in &actions {
         let seq = action["seq"].as_i64().unwrap_or(0);
         last = last.max(seq);
@@ -681,6 +683,7 @@ pub async fn take_actions(
                     let at = now();
                     later.push(json!({"fields": fields, "by": first_name(&s(row, "name")), "first": at, "tries": 1,
                                       "next": at + retry_wait(1)}));
+                    later_at.push((seq, action_id.clone()));
                 }
                 Err(why) => tracing::info!(share = %id, why = %why.code, "a friend's write in a page refused"),
             }
@@ -707,6 +710,22 @@ pub async fn take_actions(
             Err(why) => tracing::debug!(share = %id, why = %why, "a friend's action refused"),
         }
     }
+    // the writes to try again first: when even their list can't be kept (the place's disk refuses writes), they stay
+    // at the guichet (taken only up to the one before) and are not seen yet, so a later round reads them again (R3-1)
+    let mut through = last;
+    if !later.is_empty() {
+        let kept = update(&config, |data| {
+            let all = data.get_mut("retry").and_then(Value::as_object_mut).expect("an object");
+            if let Some(list) = all.entry(id.clone()).or_insert_with(|| json!([])).as_array_mut() {
+                list.extend(later);
+            }
+        });
+        if let Err(err) = kept {
+            tracing::warn!(error = %err, "friends' writes to try again not kept: left at the guichet");
+            through = later_at.iter().map(|(seq, _)| seq - 1).min().unwrap_or(last);
+            seen_now.retain(|a| !later_at.iter().any(|(_, held)| held == a));
+        }
+    }
     let extra = seen_now.len().saturating_sub(SEEN_MAX);
     seen_now.drain(..extra);
     if seen_now != seen {
@@ -717,23 +736,12 @@ pub async fn take_actions(
             tracing::warn!(error = %err, "friends' actions seen not kept");
         }
     }
-    if !later.is_empty() {
-        let kept = update(&config, |data| {
-            let all = data.get_mut("retry").and_then(Value::as_object_mut).expect("an object");
-            if let Some(list) = all.entry(id.clone()).or_insert_with(|| json!([])).as_array_mut() {
-                list.extend(later);
-            }
-        });
-        if let Err(err) = kept {
-            tracing::warn!(error = %err, "friends' writes to try again not kept");
-        }
-    }
     let taken = state
         .http
         .post(format!("{url}/taken"))
         .timeout(std::time::Duration::from_secs(30))
         .bearer_auth(s(share, "writer"))
-        .json(&json!({"through": last}))
+        .json(&json!({"through": through}))
         .send()
         .await;
     if let Err(e) = taken {

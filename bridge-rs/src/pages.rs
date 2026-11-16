@@ -109,18 +109,38 @@ static REMEMBERS: LazyLock<Regex> = LazyLock::new(|| {
         .expect("valid regex")
 });
 static HTML_SINK: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(?:inner|outer)HTML\b|\binsertAdjacentHTML\b|\bdocument\s*(?:\.\s*|\[\s*['\x22`])write(?:ln)?\b|\bcreateContextualFragment\b|\bsrcdoc\b|\bDOMParser\b|\bsetHTMLUnsafe\b|\bparseHTMLUnsafe\b")
+    Regex::new(r"(?i)\b(?:inner|outer)HTML\b|\binsertAdjacentHTML\b|(?:\.\s*|\[\s*['\x22`])write(?:ln)?\b|\{[^}]*\bwrite(?:ln)?\b[^}]*\}\s*=|\bcreateContextualFragment\b|\bsrcdoc\b|\bDOMParser\b|\bsetHTMLUnsafe\b|\bparseHTMLUnsafe\b")
         .expect("valid regex")
 });
+
+/// A page that remembers making a link, or a place to go, from a string (re-check of 15/11, R3-2): a friend's
+/// « javascript:… » typed in it would run when someone taps it (the policy allows inline scripts; Android's web view
+/// never asks the app about a javascript: link). The `document.write` above is any object's (`var doc = document`).
+static LINK_SINK: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\.\s*(?:href|action|formaction)\s*\+?=[^=]|\[\s*['\x22`](?:href|action|formaction)['\x22`]\s*\]\s*\+?=[^=]|\bsetAttribute(?:NS)?\s*\([^)]*?['\x22`](?:xlink:)?(?:href|action|formaction)['\x22`]|\blocation\s*=[^=]|\blocation\s*\.\s*(?:assign|replace)\s*\(")
+        .expect("valid regex")
+});
+
+pub const TYPED_AS_LINK: &str = "No page: it keeps what people type (Bip.store) and makes links or goes to addresses \
+from strings (a.href =, setAttribute('href', …), location =…): a friend's « javascript:… » would run when someone taps \
+it. Show an address that was typed as TEXT (el.textContent = text, Bip.rows); write a link only with its address in the \
+page's HTML itself (<a href=\"https://…\">); then call create_page again.";
 
 pub const TYPED_AS_HTML: &str = "No page: it keeps what people type (Bip.store) and builds HTML from strings (innerHTML, \
 outerHTML, insertAdjacentHTML, document.write…): what a friend types would run as a script in everyone's page. Draw \
 what was typed as TEXT: Bip.rows(el, items, r => [cells…]) for lines, Bip.set(el, text) or el.textContent = text for one \
 value, document.createElement for the structure; then call create_page again.";
 
-/// Why a page that remembers is refused for building HTML from strings (None: it may be kept).
+/// Why a page that remembers is refused for building HTML, or a link, from strings (None: it may be kept).
 pub fn draws_typed_html(source: &str) -> Option<&'static str> {
-    (USES_STORE.is_match(source) && REMEMBERS.is_match(source) && HTML_SINK.is_match(source)).then_some(TYPED_AS_HTML)
+    if !(USES_STORE.is_match(source) && REMEMBERS.is_match(source)) {
+        return None;
+    }
+    if HTML_SINK.is_match(source) {
+        Some(TYPED_AS_HTML)
+    } else {
+        LINK_SINK.is_match(source).then_some(TYPED_AS_LINK)
+    }
 }
 
 /// The kit as it goes in a page's head, in the colours of the agent's kind (`daily`, `wellness`…; else the app's).
