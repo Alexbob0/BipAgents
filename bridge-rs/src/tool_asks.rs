@@ -1558,15 +1558,21 @@ mod review {
             answer(&oui_state, &oui_id, &Answer { allow: true, ..Answer::default() }, "app").await.map(|a| a.state)
         });
         tokio::time::sleep(Duration::from_millis(300)).await; // the « Oui » checked the card and is switching it on
-        let non = answer(&state, &ask.id, &Answer { allow: false, ..Answer::default() }, "notification").await;
+        let (non_state, non_id) = (state.clone(), ask.id.clone());
+        let non = tokio::spawn(async move {
+            answer(&non_state, &non_id, &Answer { allow: false, ..Answer::default() }, "notification").await.map(|a| a.state)
+        });
+        tokio::time::sleep(Duration::from_millis(300)).await; // the « Non » given meanwhile, on the other device
         drop(held);
-        let oui = oui.await.unwrap();
+        let (non, oui) = tokio::time::timeout(Duration::from_secs(20), async { (non.await.unwrap(), oui.await.unwrap()) })
+            .await
+            .expect("both answers done");
         let card = get(&config, &ask.id).unwrap();
         let on = crate::weather::enabled(&state.config(), "vie");
         assert!(
             !(card.state == REFUSED && on),
             "the card says « Refusé » (non: {:?}, oui: {:?}) and Météo is on all the same",
-            non.map(|a| a.state),
+            non,
             oui
         );
     }
