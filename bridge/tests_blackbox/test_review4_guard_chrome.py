@@ -90,18 +90,23 @@ def test_a_terms_box_followed_by_its_untied_label_is_never_ticked_by_the_agent(b
 
 # --- what the fourth review's fix keeps going, and a password read back -----------------------------------------------
 
-def test_a_shop_filter_and_a_reset_e_mail_sent_by_a_script_go_on(browser):
-    # no password field, no terms box: the script runs and the site gets what it asked for
+def test_a_shop_filter_and_a_reset_e_mail_sent_by_the_agents_tools_go_on(browser):
+    # no password field, no terms box: a script that fills and clicks never runs (hotfix v2: execute_script only
+    # reads, V8 proves it), the agent's own tools get the site what it asked for
     browser.tool("navigate", url=f"{browser.api}/shop_filters.html")
     start = len(Recorder.sent)
     said = browser.tool("execute_script", script="document.querySelector('#filter-bio').checked = true; "
                                                  "document.querySelector('#apply-filters').click(); 'ok';")
-    said_reset = browser.tool("execute_script", script="document.querySelector('#forgot-password-email').value = "
-                                                       "'camille@example.org'; "
-                                                       "document.querySelector('#send-reset-link').click(); 'ok';")
+    assert said.startswith("Not done: this script changes the page"), said
+    time.sleep(0.5)
+    assert Recorder.sent[start:] == [], "nothing sent by the refused script"
+    clicked = [browser.tool("click_element", selector="#filter-bio"),
+               browser.tool("click_element", selector="#apply-filters")]
+    typed = browser.tool("type_text", selector="#forgot-password-email", text="camille@example.org")
+    sent = browser.tool("click_element", selector="#send-reset-link")
     time.sleep(1)
     got = Recorder.sent[start:]
-    assert {"filter_bio": "true"} in got and {"reset_for": "camille@example.org"} in got, (said, said_reset, got)
+    assert {"filter_bio": "true"} in got and {"reset_for": "camille@example.org"} in got, (clicked, typed, sent, got)
 
 
 def test_a_script_reading_the_forms_values_never_hands_back_a_password(browser):
@@ -116,7 +121,10 @@ def test_a_script_reading_the_forms_values_never_hands_back_a_password(browser):
     said = browser.tool("execute_script",
                         script="JSON.stringify([...document.getElementById('login').children].map((e) => e.value || ''))")
     assert password not in said and "Vx9" not in said, said
-    assert said.startswith("Not shown: that answer held what a password field holds"), said
-    # the other fields can still be read
+    # not shown, or (hotfix v2) never run: V8 won't call every field's getter a pure read
+    assert said.startswith(("Not shown: that answer held what a password field holds",
+                            "Not done: this script changes the page")), said
+    # the other fields: read when V8 proves it, never the password either way
     email = browser.tool("execute_script", script="document.getElementById('email').value")
-    assert "camille@example.org" in email, email
+    assert "camille@example.org" in email or email.startswith("Not done: this script changes the page"), email
+    assert password not in email, email

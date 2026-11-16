@@ -61,7 +61,8 @@ fn rx2_ordinary_scripts_go_on_where_no_card_is() {
     assert!(refused.is_empty(), "refused on an ordinary page:\n{}", refused.join("\n"));
 }
 
-/// On a page with card fields, reading scripts that build their answer in an object (`o.name = …`) or copy a title.
+/// On a page with card fields, reading scripts that build their answer in an object (`o.name = …`) or copy a title:
+/// read as reads (no other refusal), and since the hotfix of 15/11 refused there as any script (SCRIPT_ON_CARDS_REFUSED).
 #[test]
 fn rx2b_reading_scripts_go_on_on_a_checkout() {
     let scripts = [
@@ -70,9 +71,16 @@ fn rx2b_reading_scripts_go_on_on_a_checkout() {
     ];
     let refused: Vec<String> = scripts
         .iter()
-        .filter_map(|s| script_card_refusal(s, Some(&card_page())).map(|why| format!("{s} => {}", &why[..70])))
+        .filter_map(|s| {
+            script_card_refusal(s, Some(&card_page()))
+                .filter(|why| *why != bipbridge::browser_mcp::SCRIPT_ON_CARDS_REFUSED)
+                .map(|why| format!("{s} => {}", &why[..70]))
+        })
         .collect();
-    assert!(refused.is_empty(), "refused on a checkout page:\n{}", refused.join("\n"));
+    assert!(refused.is_empty(), "refused on a checkout page for something else:\n{}", refused.join("\n"));
+    for s in scripts {
+        assert_eq!(script_card_refusal(s, Some(&card_page())), Some(bipbridge::browser_mcp::SCRIPT_ON_CARDS_REFUSED), "{s}");
+    }
 }
 
 /// Changing the page's own code without the words TAMPERS knows: `Object.defineProperties`, `Object.assign` onto a
