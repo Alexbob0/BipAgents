@@ -623,6 +623,13 @@ impl Tickets {
         let items = self.items.lock().unwrap_or_else(|e| e.into_inner());
         items.get(ticket).filter(|v| v.1 > crate::py::time_time()).map(|v| v.0.clone())
     }
+
+    /// The ticket of a page view whose stream just ended (hidden, or cut): valid `TICKET_SECONDS` more, for that page
+    /// to come back (review R5, 16/11: the page view closes its stream while hidden, D7).
+    pub fn keep(&self, ticket: &str, agent: &str) {
+        let until = crate::py::time_time() + TICKET_SECONDS;
+        self.items.lock().unwrap_or_else(|e| e.into_inner()).insert(ticket.to_string(), (agent.to_string(), until));
+    }
 }
 
 /// The viewer page (`assets/desktop.html`, once desktop.py's `PAGE`).

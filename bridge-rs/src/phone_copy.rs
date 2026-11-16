@@ -70,12 +70,12 @@ pub fn seen(data: &Dict) -> Option<f64> {
 }
 
 /// How old the copy is, for the agents: « as the phone shared it 3 min ago », or once checked since its last change
-/// « as the phone last checked it 3 min ago (unchanged for 2 h) ». `age` words a number of seconds.
+/// « as the phone last checked it 3 min ago (still the copy it shared 2 h ago) ». `age` words a number of seconds.
 pub fn freshness(data: &Dict, now: f64, age: impl Fn(f64) -> String) -> Option<String> {
     let at = data.get("at").and_then(Value::as_f64)?;
     let seen = seen(data).unwrap_or(at);
     Some(if seen - at >= 60.0 {
-        format!("as the phone last checked it {} ago (unchanged for {})", age(now - seen), age(now - at))
+        format!("as the phone last checked it {} ago (still the copy it shared {} ago)", age(now - seen), age(now - at))
     } else {
         format!("as the phone shared it {} ago", age(now - at))
     })
@@ -106,7 +106,7 @@ mod tests {
         let d = data(json!({"at": 1000.0, "checked": 1000.0}));
         assert_eq!(freshness(&d, 1300.0, age).unwrap(), "as the phone shared it 5 min ago");
         let d = data(json!({"at": 1000.0, "checked": 4600.0}));
-        assert_eq!(freshness(&d, 4900.0, age).unwrap(), "as the phone last checked it 5 min ago (unchanged for 65 min)");
+        assert_eq!(freshness(&d, 4900.0, age).unwrap(), "as the phone last checked it 5 min ago (still the copy it shared 65 min ago)");
         assert_eq!(freshness(&data(json!({})), 4900.0, age), None);
         assert_eq!(seen(&d), Some(4600.0));
     }

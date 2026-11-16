@@ -1764,12 +1764,24 @@ async fn events(State(state): State<AppState>, q: QueryMap) -> ApiResult<Respons
     let stream = async_stream::stream! {
         let _shown = shown;   // held as long as the app reads the stream
         yield Ok::<_, std::io::Error>(bytes::Bytes::from_static(b": threads\n\n"));
+        // the keepalive 25 s after the last bytes written, whatever the stream left out meanwhile (review R3, 16/11)
+        let every = Duration::from_secs_f64(crate::app::SSE_KEEPALIVE_SECONDS);
+        let mut due = tokio::time::Instant::now() + every;
         loop {
-            match tokio::time::timeout(Duration::from_secs_f64(crate::app::SSE_KEEPALIVE_SECONDS), events.recv()).await {
-                Err(_) => yield Ok(bytes::Bytes::from_static(b": keepalive\n\n")),
-                Ok(Ok((key, kind, data))) if wanted(&key) => yield Ok(line(&kind, &data)),
+            match tokio::time::timeout_at(due, events.recv()).await {
+                Err(_) => {
+                    due = tokio::time::Instant::now() + every;
+                    yield Ok(bytes::Bytes::from_static(b": keepalive\n\n"));
+                }
+                Ok(Ok((key, kind, data))) if wanted(&key) => {
+                    due = tokio::time::Instant::now() + every;
+                    yield Ok(line(&kind, &data));
+                }
                 Ok(Ok(_)) => {}
-                Ok(Err(broadcast::error::RecvError::Lagged(_))) => yield Ok(line("lagged", &json!({}))),
+                Ok(Err(broadcast::error::RecvError::Lagged(_))) => {
+                    due = tokio::time::Instant::now() + every;
+                    yield Ok(line("lagged", &json!({})));
+                }
                 Ok(Err(broadcast::error::RecvError::Closed)) => break,
             }
         }

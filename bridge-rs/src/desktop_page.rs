@@ -692,7 +692,11 @@ pub async fn stream(
     if cdp_port(&config, &agent.name).is_none() || !has_vnc(&agent) {
         return StatusCode::FORBIDDEN.into_response();
     }
-    ws.max_message_size(1 << 20).on_upgrade(move |socket| session(state, agent.name, phone, socket))
+    ws.max_message_size(1 << 20).on_upgrade(move |socket| async move {
+        session(state.clone(), agent.name.clone(), phone, socket).await;
+        // hidden (D7) or cut: the same page may open its stream again with this ticket (review R5)
+        state.desktop_tickets.keep(&ticket, &agent.name);
+    })
 }
 
 async fn send_json(app: &mut SplitSink<WebSocket, Message>, value: Value) -> bool {
