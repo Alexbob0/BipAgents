@@ -1086,7 +1086,9 @@ async fn run_events(State(state): State<AppState>, Path(run_id): Path<String>, q
     // a shared agent's turn: its words from the owner's bridge (`thread`: her conversation, agent_shares.rs)
     if let (true, Some(cid)) = (agent.contains(crate::households::SEPARATOR), q.get("thread")) {
         let run_id = check_run_id(&run_id)?;
-        return crate::agent_shares::relay_stream(&state, &agent, cid, &format!("runs/{run_id}/events")).await;
+        // what the agent does now, reduced on the owner's side, for an app that asks for it (turn_status.rs)
+        let asked = if q.get("status").is_some_and(|v| v == "1") { "?status=1" } else { "" };
+        return crate::agent_shares::relay_stream(&state, &agent, cid, &format!("runs/{run_id}/events{asked}")).await;
     }
     let session_id = web::query_str(&q, "session_id", false, Some(200))?;
     let agent_cfg = agent_or_404(&state.config(), Some(&agent))?;
@@ -1109,6 +1111,30 @@ async fn run_events(State(state): State<AppState>, Path(run_id): Path<String>, q
     // what the agent does now (turn_status.rs): only for an app that reads it
     let status = q.get("status").is_some_and(|v| v == "1");
     Ok(listener_events_with(listener, by, status))
+}
+
+#[derive(Deserialize)]
+struct BrakeRequest {
+    action: String,
+}
+
+impl Validate for BrakeRequest {}
+
+/// « Je tourne en rond » answered (turn_status.rs `looping`, runs.rs `brake_action`): `continue` (this turn's limits
+/// raised once) or `stop` (the brake's stop at once, with its rescue turn).
+async fn run_brake(
+    State(state): State<AppState>,
+    Path(run_id): Path<String>,
+    q: QueryMap,
+    Json(body): Json<BrakeRequest>,
+) -> ApiResult<Response> {
+    let agent = web::query_required(&q, "agent")?;
+    let agent_cfg = agent_or_404(&state.config(), Some(&agent))?;
+    let run_id = check_run_id(&run_id)?;
+    match state.hub.brake_action(&agent_cfg.name, &run_id, &body.action) {
+        Ok(answer) => Ok(web::ok(answer)),
+        Err((status, code)) => Err(HttpError::new(status, code)),
+    }
 }
 
 /// A listener of the run hub as the SSE the app reads (`event: <type>`, `data: <json>`, a keepalive comment every
@@ -1596,6 +1622,7 @@ pub fn build_router() -> Router<AppState> {
         .route("/pairing", get(pairing))
         .route("/watch", post(watch_run))
         .route("/runs/{run_id}/events", get(run_events))
+        .route("/runs/{run_id}/brake", post(run_brake))
         .route("/approve", post(approve))
         .route("/approvals", get(approvals))
 }

@@ -546,6 +546,10 @@ pub struct SubscriptionState {
     pub restart_of: Option<String>,
     /// What the agent does now, for the apps that ask (turn_status.rs, `[status]`): made at the run's first event.
     pub status: Option<crate::turn_status::Tracker>,
+    /// The person said « Continuer » at the brake's two thirds: this turn's limits raised once (`brake_action`).
+    pub brake_raised: bool,
+    /// The stop the brake's last warning announced (« Arrêter » takes it at once).
+    pub loop_over: Option<crate::loop_brake::Over>,
     listeners: Vec<Slot>,
     cancel: Option<CancellationToken>,
     task: Option<JoinHandle<()>>,
@@ -612,6 +616,8 @@ impl Default for SubscriptionState {
             restarted_as: None,
             restart_of: None,
             status: None,
+            brake_raised: false,
+            loop_over: None,
             listeners: Vec::new(),
             cancel: None,
             task: None,
@@ -1448,10 +1454,9 @@ impl RunHub {
                                 failures = 0;
                                 let terminal = is_terminal(&event.r#type);
                                 let event = if terminal {
-                                    // its statuses end here, whatever turn takes over (a restart, a rescue…)
-                                    if let Some(status) = lock(&sub.state).status.as_mut() {
-                                        status.end();
-                                    }
+                                    // its statuses end here (a long turn's with its summary), whatever turn takes
+                                    // over (a restart, a rescue…)
+                                    self.status_finish(sub, &event);
                                     self.flush_media(sub);
                                     self.rescue(sub, &event).await;
                                     // a turn stopped for the person's new words: the end of the one restarted
@@ -1561,10 +1566,46 @@ impl RunHub {
         let now = crate::py::time_time();
         if st.status.is_none() {
             let lang = crate::handback::language_of(&config, &sub.agent);
-            st.status = Some(crate::turn_status::Tracker::new(now, &lang, false));
+            let local = crate::turn_status::local_model(&config, &sub.agent);
+            st.status = Some(crate::turn_status::Tracker::new(now, &lang, local));
         }
         let status = st.status.as_mut()?.on_event(&event.r#type, &event.data, now, &config.status)?;
+        self.keep_took(sub, st, &status, now);
         Some(self.status_event(sub, status))
+    }
+
+    /// A long turn's summary kept for its last reply (threads `with_took`): numbers only.
+    fn keep_took(&self, sub: &RunSubscription, st: &SubscriptionState, status: &Map<String, Value>, now: f64) {
+        let (Some(took), Some(store), Some(session)) = (status.get("took").cloned(), self.store.clone(), st.session_id.clone())
+        else {
+            return;
+        };
+        let (agent, run_id) = (sub.agent.name.clone(), sub.run_id.clone());
+        let started = status.get("started").and_then(Value::as_f64).unwrap_or(now);
+        self.spawn(async move {
+            if let Err(err) = store.save_turn_time(&agent, &run_id, &session, started, now, &took).await {
+                tracing::info!(agent = %agent, run_id = %run_id, error = %format!("{err:#}"), "turn time not kept");
+            }
+        });
+    }
+
+    /// The run's own end from Hermes (before a restart's or a rescue's take over): its last status, a long turn's
+    /// summary (`done`, `took`), then nothing more for it.
+    fn status_finish(&self, sub: &RunSubscription, terminal: &SSEEvent) {
+        let Some(config) = self.config.as_ref().map(|c| c.get()) else { return };
+        let mut st = lock(&sub.state);
+        let now = crate::py::time_time();
+        let status = st.status.as_mut().and_then(|t| {
+            let status = t.on_event(&terminal.r#type, &terminal.data, now, &config.status);
+            t.end();
+            status
+        });
+        if let Some(status) = status {
+            self.keep_took(sub, &st, &status, now);
+            let event = self.status_event(sub, status);
+            append_to_backlog(&mut st.backlog, &event);
+            st.send_all(Some(&event));
+        }
     }
 
     fn status_event(&self, sub: &RunSubscription, mut status: Map<String, Value>) -> SSEEvent {
@@ -1660,8 +1701,25 @@ impl RunHub {
         let delta = is_delta(&event.r#type);
         let mut shown = st.media.event(event);
         shown.extend(auto);
+        // each step's time, the turn's (turn_status.rs), for the apps that read them
+        if let Some(tracker) = st.status.as_mut() {
+            let now = crate::py::time_time();
+            for e in shown.iter_mut().filter(|e| e.r#type == crate::steps::EVENT) {
+                let Some(steps) = e.data.get("steps").cloned() else { continue };
+                e.data.insert("steps".into(), tracker.steps_with_times(&steps, now));
+                e.raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(e.data.clone()));
+            }
+        }
         let statuses: Vec<SSEEvent> = shown.iter().filter_map(|e| self.status_of(sub, &mut st, e)).collect();
-        shown.extend(statuses);
+        // a long turn's summary before its end (an app stops reading there), any other status after its event
+        if shown.iter().any(|e| is_terminal(&e.r#type)) {
+            for event in &statuses {
+                append_to_backlog(&mut st.backlog, event);
+                st.send_all(Some(event));
+            }
+        } else {
+            shown.extend(statuses);
+        }
         for event in &shown {
             append_to_backlog(&mut st.backlog, event);
             st.send_all(Some(event));
@@ -1885,6 +1943,9 @@ impl RunHub {
             // under Hermes' cap of 150, so a page it can't read ends on the plain line, not a silent failure)
             limits.tool_calls += limits.browser_calls;
         }
+        if st.brake_raised {
+            limits = limits.raised();
+        }
         let signature = crate::loop_brake::event_signature(&event.data);
         let noted = st.turn.note(&tool, signature.as_deref(), browser, &limits);
         // a limit getting close (about two thirds): the agent is told once, in a steer (after its current tool calls,
@@ -1899,6 +1960,16 @@ impl RunHub {
                     tracing::info!(agent = %agent.name, run_id = %run_id, error = %err, "brake_warned: steer refused");
                 }
             });
+            // and the person (turn_status.rs, « Je tourne en rond »): go on, stop, or help
+            st.loop_over = Some(crate::loop_brake::over_of(&warning));
+            let status_settings = config.as_ref().map(|c| c.status.clone()).unwrap_or_default();
+            let found = crate::turn_status::Loop::of(&warning);
+            let now = crate::py::time_time();
+            if let Some(status) = st.status.as_mut().and_then(|t| t.looping(found, now, &status_settings)) {
+                let event = self.status_event(sub, status);
+                append_to_backlog(&mut st.backlog, &event);
+                st.send_all(Some(&event));
+            }
         }
         let Some(over) = noted else { return };
         self.stop_looping(sub, st, over, rescuing, &settings);
@@ -1922,6 +1993,54 @@ impl RunHub {
             let over = crate::loop_brake::Over::SameCall(crate::loop_brake::bare(tool).to_string());
             self.stop_looping(&sub, &mut st, over, rescuing, &settings);
         }
+    }
+
+    /// The person's answer to « Je tourne en rond » (turn_status.rs `looping`, `POST /v1/runs/{id}/brake`): `continue`
+    /// raises this turn's limits once (the agent told, out of sight), `stop` takes the brake's stop at once (its plain
+    /// line, its rescue turn: what it found, what blocked it). Errors: (status, code).
+    pub fn brake_action(&self, agent: &str, run_id: &str, action: &str) -> Result<Value, (u16, &'static str)> {
+        if !matches!(action, "continue" | "stop") {
+            return Err((400, "unknown_action"));
+        }
+        let sub = lock(&self.inner).subs.get(&(agent.to_string(), run_id.to_string())).cloned().ok_or((404, "run_gone"))?;
+        let config = self.config.as_ref().map(|c| c.get());
+        let brake = config.as_ref().map(|c| c.brake.clone()).unwrap_or_default();
+        let status_settings = config.as_ref().map(|c| c.status.clone()).unwrap_or_default();
+        let mut st = lock(&sub.state);
+        if st.finished || st.terminal.is_some() {
+            return Err((404, "run_gone"));
+        }
+        if st.braked {
+            return Err((409, "not_looping"));
+        }
+        if action == "continue" && st.brake_raised {
+            return Err((409, "already_continued"));
+        }
+        let looping = st.status.as_ref().is_some_and(|t| t.is_looping());
+        let Some(over) = st.loop_over.clone().filter(|_| looping) else { return Err((409, "not_looping")) };
+        if action == "stop" {
+            let rescuing = st.rescue_of.is_some();
+            tracing::info!(agent = %agent, run_id = %run_id, "brake: the person said stop");
+            self.stop_looping(&sub, &mut st, over, rescuing, &brake);
+            return Ok(json!({"ok": true, "stopped": true}));
+        }
+        st.brake_raised = true;
+        tracing::info!(agent = %agent, run_id = %run_id, "brake: the person said go on, limits raised once");
+        let now = crate::py::time_time();
+        if let Some(status) = st.status.as_mut().and_then(|t| t.continued(now, &status_settings)) {
+            let event = self.status_event(&sub, status);
+            append_to_backlog(&mut st.backlog, &event);
+            st.send_all(Some(&event));
+        }
+        let (hermes, agent_cfg, run) = (self.hermes.clone(), sub.agent.clone(), sub.run_id.clone());
+        self.spawn(async move {
+            let text = format!("{} A note from the app, not from your person: your person says to go on; you may take \
+more steps in this turn. Don't repeat what failed: change approach.", crate::loop_brake::WARN_MARK);
+            if let Err(err) = hermes.steer_run(&agent_cfg, &run, &text).await {
+                tracing::info!(agent = %agent_cfg.name, run_id = %run, error = %err, "brake: go-on steer refused");
+            }
+        });
+        Ok(json!({"ok": true, "continued": true}))
     }
 
     /// A run going round in circles stopped: the plain line in its stream, the rescue turn planned when it is a

@@ -102,6 +102,10 @@ pub enum State {
     WaitingAgent,
     WaitingPerson,
     Unreachable,
+    /// The brake's two thirds (« Je tourne en rond »): the person may go on, stop, or help.
+    Looping,
+    /// The run's end, for a turn of `LONG_TURN_SECONDS` or more: where its time went (`took`).
+    Done,
 }
 
 impl State {
@@ -113,8 +117,86 @@ impl State {
             State::WaitingAgent => "waiting_agent",
             State::WaitingPerson => "waiting_person",
             State::Unreachable => "unreachable",
+            State::Looping => "looping",
+            State::Done => "done",
         }
     }
+}
+
+/// A turn this long or longer ends on where its time went (`took`, the apps' line under its reply).
+pub const LONG_TURN_SECONDS: f64 = 60.0;
+
+/// A loop the brake sees coming (loop_brake.rs `Warning`, about two thirds of a limit): what, how many, where it stops.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Loop {
+    /// `same_call`, `same_tool`, `too_many`, `page_reads`, `browser`, `discovery`.
+    pub over: &'static str,
+    /// The tool's kind (tool_kinds.rs) when it is one tool's.
+    pub kind: Option<&'static str>,
+    pub count: u32,
+    /// The count it is stopped at.
+    pub stop_at: u32,
+}
+
+impl Loop {
+    pub fn of(warning: &crate::loop_brake::Warning) -> Loop {
+        use crate::loop_brake::Warning;
+        let kind = |tool: &str| Some(crate::threads::layout::kind_of(tool));
+        let (over, kind, count, stop_at) = match warning {
+            Warning::SameCall(tool, n, hard) => ("same_call", kind(tool), *n, *hard),
+            Warning::SameTool(tool, n, hard) => ("same_tool", kind(tool), *n, hard + 1),
+            Warning::TooMany(n, hard) => ("too_many", None, *n, hard + 1),
+            Warning::PageReads(n, hard) => ("page_reads", Some("browser"), *n, hard + 1),
+            Warning::Browser(n, hard) => ("browser", Some("browser"), *n, hard + 1),
+            Warning::DiscoverySame(n, hard) => ("discovery", None, *n, *hard),
+            Warning::Discovery(n, hard) => ("discovery", None, *n, hard + 1),
+        };
+        Loop { over, kind, count, stop_at }
+    }
+
+    /// Counted in tries (the same thing again) or in steps (many of them).
+    fn tries(&self) -> bool {
+        matches!(self.over, "same_call" | "same_tool" | "discovery")
+    }
+}
+
+/// Whether an address of a model is this machine or the local network (a model of the person's own: slower).
+pub fn local_base(base: &str) -> bool {
+    !base.trim().is_empty() && crate::archives::records_fill::is_local(base)
+}
+
+/// Whether the agent's model is the person's own, on this machine or the network (its Hermes profile's).
+pub fn local_model(config: &crate::config::Config, agent: &crate::config::AgentConfig) -> bool {
+    crate::mail_scan::model_of(config, agent).ok().and_then(|m| m.get("base_url").cloned()).is_some_and(|b| local_base(&b))
+}
+
+/// What a family member reads of another's status (agent_shares.rs `turn_words`, D8 B): what kind of thing the agent
+/// does and since when, never a site, the agent's own step, a connector or the buttons; the bridge's words without them.
+pub fn reduced(status: &Map<String, Value>) -> Map<String, Value> {
+    let mut out: Map<String, Value> = ["event", "run_id", "v", "state", "slow", "stuck", "since", "started", "now", "kind", "limit_s", "took"]
+        .iter()
+        .filter_map(|k| status.get(*k).map(|v| (k.to_string(), v.clone())))
+        .collect();
+    out.insert("text".into(), status.get("plain").cloned().unwrap_or_else(|| json!("")));
+    out
+}
+
+/// The summary a turn's last reply carries (`took`): which of the conversation's items (segment, time, an agent's
+/// message) is the reply of each kept turn (segment, started, ended, took): its last agent message from its start to
+/// just after its end.
+pub fn place_took(items: &[(&str, f64, bool)], turns: &[(String, f64, f64, Value)]) -> Vec<(usize, Value)> {
+    let mut placed = Vec::new();
+    for (segment, started, ended, took) in turns {
+        let reply = items
+            .iter()
+            .enumerate()
+            .filter(|(_, (seg, at, agent))| *agent && seg == segment && *at >= *started && *at <= ended + 5.0)
+            .max_by(|a, b| a.1 .1.total_cmp(&b.1 .1));
+        if let Some((i, _)) = reply {
+            placed.push((i, took.clone()));
+        }
+    }
+    placed
 }
 
 /// A call running.
@@ -176,6 +258,16 @@ pub struct Tracker {
     step: Option<(u64, u64, Option<String>)>,
     /// The site the last finished browsing call was on: a call naming no page stays there.
     last_done_site: Option<String>,
+    /// The brake's two thirds, until the person goes on (`continued`), and the site it was on.
+    looping: Option<Loop>,
+    loop_site: Option<String>,
+    /// Where the time went: until `mark`, by kind of wait, by site or kind of call (`time`).
+    mark: f64,
+    spent: [f64; 4],
+    by_call: Vec<(String, String, f64)>,
+    actions: u32,
+    /// Each step of the list (its words): when it was first seen going on, and done.
+    step_times: Vec<(String, f64, Option<f64>)>,
     /// The key of the last status sent: nothing twice.
     sent: Option<String>,
     ended: bool,
@@ -198,6 +290,13 @@ impl Tracker {
             stuck: false,
             step: None,
             last_done_site: None,
+            looping: None,
+            loop_site: None,
+            mark: started,
+            spent: [0.0; 4],
+            by_call: Vec::new(),
+            actions: 0,
+            step_times: Vec::new(),
             sent: None,
             ended: false,
         }
@@ -217,6 +316,7 @@ impl Tracker {
         if self.ended {
             return None;
         }
+        self.account(now);
         match kind {
             "tool.started" | "tool.start" => {
                 let tool = crate::loop_brake::event_tool(data);
@@ -231,6 +331,7 @@ impl Tracker {
                 // a browsing call naming no page stays on the turn's last site
                 let site = site.or_else(|| (kind == "browser").then(|| self.last_site()).flatten());
                 self.open.push(Open { call_id, tool, kind, site, service, since: now });
+                self.actions += 1;
             }
             "tool.completed" | "tool.complete" | "tool.failed" => {
                 let tool = crate::loop_brake::event_tool(data);
@@ -265,7 +366,18 @@ impl Tracker {
             }
             _ if crate::hermes::is_terminal(kind) => {
                 self.ended = true;
-                return None;
+                // a long turn ends on where its time went
+                if now - self.started < LONG_TURN_SECONDS {
+                    return None;
+                }
+                let took = self.time(now);
+                self.state = State::Done;
+                self.since = now;
+                self.open.clear();
+                self.looping = None;
+                let mut status = self.status(now);
+                status.insert("took".into(), took);
+                return Some(status);
             }
             _ if crate::hermes::is_delta(kind) || kind.starts_with("reasoning") || kind.starts_with("thinking") => {
                 self.progress = now;
@@ -289,7 +401,120 @@ impl Tracker {
         if self.ended {
             return None;
         }
+        self.account(now);
         self.changed(now, settings)
+    }
+
+    /// The brake's two thirds (runs.rs `brake`): the status that says it, with its buttons.
+    pub fn looping(&mut self, found: Loop, now: f64, settings: &Settings) -> Option<Map<String, Value>> {
+        if self.ended {
+            return None;
+        }
+        self.account(now);
+        self.loop_site = self.last_site();
+        self.looping = Some(found);
+        self.settle(now);
+        self.changed(now, settings)
+    }
+
+    /// The person said « Continuer »: what it does again.
+    pub fn continued(&mut self, now: f64, settings: &Settings) -> Option<Map<String, Value>> {
+        self.account(now);
+        self.looping.take()?;
+        self.settle(now);
+        self.changed(now, settings)
+    }
+
+    pub fn is_looping(&self) -> bool {
+        self.looping.is_some() && !self.ended
+    }
+
+    /// The time since `mark`, to the wait going on: the person's, another agent's, a call's (by its site or kind), the
+    /// model's (everything else: thinking, between calls, a lost link).
+    fn account(&mut self, now: f64) {
+        let d = (now - self.mark).max(0.0);
+        self.mark = now.max(self.mark);
+        if d == 0.0 {
+            return;
+        }
+        if self.waiting_person > 0 {
+            self.spent[2] += d;
+        } else if let Some(open) = self.open.last() {
+            if open.kind == "messageAgent" {
+                self.spent[3] += d;
+                return;
+            }
+            self.spent[1] += d;
+            let (what, value) = match &open.site {
+                Some(site) => ("site", site.clone()),
+                None => ("kind", open.kind.to_string()),
+            };
+            match self.by_call.iter_mut().find(|(w, v, _)| w == what && *v == value) {
+                Some(entry) => entry.2 += d,
+                None => self.by_call.push((what.to_string(), value, d)),
+            }
+        } else {
+            self.spent[0] += d;
+        }
+    }
+
+    /// Where the turn's time went so far: whole seconds, the model's, the calls', the person's, another agent's, the
+    /// number of actions, and the one or two waits that took most of it (a fifth or more).
+    pub fn time(&self, now: f64) -> Value {
+        let mut t = self.clone();
+        t.account(now);
+        let total = (now - self.started).max(0.0);
+        let r = |x: f64| x.round() as i64;
+        let mut top: Vec<(f64, Value)> = vec![
+            (t.spent[0], json!({"what": "model"})),
+            (t.spent[2], json!({"what": "person"})),
+            (t.spent[3], json!({"what": "agent"})),
+        ];
+        for (what, value, secs) in &t.by_call {
+            let mut entry = json!({"what": what});
+            entry[if what == "site" { "site" } else { "kind" }] = json!(value);
+            top.push((*secs, entry));
+        }
+        top.retain(|(secs, _)| *secs >= 1.0 && *secs >= total * 0.2);
+        top.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let top: Vec<Value> = top
+            .into_iter()
+            .take(2)
+            .map(|(secs, mut v)| {
+                v["secs"] = json!(r(secs));
+                v
+            })
+            .collect();
+        json!({"secs": r(total), "model": r(t.spent[0]), "tools": r(t.spent[1]), "person": r(t.spent[2]),
+               "agent": r(t.spent[3]), "actions": t.actions, "top": top})
+    }
+
+    /// The turn's list (steps.rs) with each step's time (`secs`: done, from when it was first seen going on to when it
+    /// was first seen done; going on, so far) and the turn's (`time`).
+    pub fn steps_with_times(&mut self, steps: &Value, now: f64) -> Value {
+        self.account(now);
+        let mut out = steps.clone();
+        let Some(items) = out.get_mut("items").and_then(Value::as_array_mut) else { return out };
+        for item in items.iter_mut() {
+            let text = item.get("text").and_then(Value::as_str).unwrap_or("").to_string();
+            let status = item.get("status").and_then(Value::as_str).unwrap_or("");
+            let at = self.step_times.iter().position(|(t, _, _)| *t == text);
+            match (status, at) {
+                ("in_progress", None) => self.step_times.push((text.clone(), now, None)),
+                ("done", Some(i)) if self.step_times[i].2.is_none() => self.step_times[i].2 = Some(now),
+                _ => {}
+            }
+            let secs = match (status, self.step_times.iter().find(|(t, _, _)| *t == text)) {
+                ("done", Some((_, start, Some(end)))) => Some(end - start),
+                ("in_progress", Some((_, start, _))) => Some(now - start),
+                _ => None,
+            };
+            if let Some(secs) = secs {
+                item["secs"] = json!(secs.max(0.0).round() as i64);
+            }
+        }
+        out["time"] = self.time(now);
+        out
     }
 
     /// What the agent does after this event: the newest call running, a question, the model.
@@ -298,6 +523,8 @@ impl Tracker {
             State::Unreachable
         } else if self.waiting_person > 0 {
             State::WaitingPerson
+        } else if self.looping.is_some() {
+            State::Looping
         } else if let Some(open) = self.open.last() {
             if open.kind == "messageAgent" { State::WaitingAgent } else { State::Tool }
         } else {
@@ -323,7 +550,7 @@ impl Tracker {
             State::Tool if self.open.last().is_some_and(|o| o.kind == "browser") => Some((settings.page_slow, None)),
             State::Tool => Some((settings.tool_slow, None)),
             State::WaitingAgent => Some((settings.agent_slow, None)),
-            State::WaitingPerson | State::Unreachable => None,
+            State::WaitingPerson | State::Unreachable | State::Looping | State::Done => None,
         }
     }
 
@@ -375,14 +602,44 @@ impl Tracker {
             "step".into(),
             self.step.as_ref().map_or(Value::Null, |(i, n, t)| json!({"index": i, "total": n, "text": t})),
         );
-        status.insert("text".into(), json!(self.words(open, action)));
+        status.insert("loop".into(), match (&self.looping, self.state) {
+            (Some(found), State::Looping) => {
+                let mut lp = Map::new();
+                lp.insert("over".into(), json!(found.over));
+                if let Some(kind) = found.kind.filter(|k| *k != "browser") {
+                    lp.insert("kind".into(), json!(kind));
+                }
+                if let Some(site) = &self.loop_site {
+                    lp.insert("site".into(), json!(site));
+                }
+                lp.insert("count".into(), json!(found.count));
+                lp.insert("stop_at".into(), json!(found.stop_at));
+                Value::Object(lp)
+            }
+            _ => Value::Null,
+        });
+        let actions: &[&str] = if self.state == State::Looping { &["continue", "stop", "help"] } else { &[] };
+        status.insert("actions".into(), json!(actions));
+        status.insert("text".into(), json!(self.words(open, action, true)));
+        // the same without a site, a connector or the agent's step: what a family member reads (`reduced`)
+        status.insert("plain".into(), json!(self.words(open, action, false)));
         status
     }
 
     /// The bridge's words for the status (the apps word the states they know themselves).
-    fn words(&self, open: Option<&Open>, action: Option<&str>) -> String {
+    fn words(&self, open: Option<&Open>, action: Option<&str>, full: bool) -> String {
         let l = crate::steps::lang_index(&self.lang);
         match self.state {
+            State::Looping => {
+                let Some(found) = &self.looping else { return LOOPING[l].into() };
+                let place = match (&self.loop_site, full) {
+                    (Some(site), true) => LOOP_ON[l].replace("{s}", site),
+                    _ => String::new(),
+                };
+                let count = if found.tries() { TRIES[l] } else { STEPS_N[l] };
+                format!("{}{place} ({})", LOOPING[l], count.replace("{n}", &found.count.to_string()))
+            }
+            State::Done => DONE[l].into(),
             State::Thinking | State::Model if self.stuck => MODEL_STUCK[l].into(),
             State::Thinking | State::Model if self.slow => MODEL_SLOW[l].into(),
             State::Thinking | State::Model => THINKING[l].into(),
@@ -393,12 +650,13 @@ impl Tracker {
                 let Some(open) = open else { return THINKING[l].into() };
                 if open.kind == "browser" {
                     let what = if self.slow { PAGE_SLOW[l] } else { action_words(action, l) };
-                    return match &open.site {
-                        Some(site) => ON_SITE[l].replace("{s}", site).replace("{a}", what),
-                        None => IN_BROWSER[l].replace("{a}", what),
+                    return match (&open.site, full) {
+                        (Some(site), true) => ON_SITE[l].replace("{s}", site).replace("{a}", what),
+                        _ => IN_BROWSER[l].replace("{a}", what),
                     };
                 }
-                let words = crate::steps::call_words(&open.tool, open.site.as_deref(), open.service.as_deref(), &self.lang)
+                let (site, service) = if full { (open.site.as_deref(), open.service.as_deref()) } else { (None, None) };
+                let words = crate::steps::call_words(&open.tool, site, service, &self.lang)
                     .unwrap_or_else(|| WORKING[l].to_string());
                 if self.slow { TOOL_SLOW[l].replace("{w}", &words) } else { words }
             }
@@ -468,6 +726,11 @@ const UNREACHABLE: [&str; 4] = [
     "No consigo contactar con el agente, lo intento de nuevo",
 ];
 const WORKING: [&str; 4] = ["Je travaille", "Working", "Ich arbeite", "Estoy trabajando"];
+const LOOPING: [&str; 4] = ["Je tourne en rond", "I'm going round in circles", "Ich drehe mich im Kreis", "Estoy dando vueltas"];
+const LOOP_ON: [&str; 4] = [" sur {s}", " on {s}", " auf {s}", " en {s}"];
+const TRIES: [&str; 4] = ["{n} essais", "{n} tries", "{n} Versuche", "{n} intentos"];
+const STEPS_N: [&str; 4] = ["{n} étapes", "{n} steps", "{n} Schritte", "{n} pasos"];
+const DONE: [&str; 4] = ["Terminé", "Done", "Fertig", "Hecho"];
 const TOOL_SLOW: [&str; 4] = ["{w} : ça prend du temps", "{w}: taking a while", "{w}: das dauert", "{w}: tarda un poco"];
 const ON_SITE: [&str; 4] = ["Sur {s} : {a}", "On {s}: {a}", "Auf {s}: {a}", "En {s}: {a}"];
 const IN_BROWSER: [&str; 4] = ["Dans le navigateur : {a}", "In the browser: {a}", "Im Browser: {a}", "En el navegador: {a}"];

@@ -77,7 +77,7 @@ use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
 use axum::body::Bytes;
-use axum::extract::{Path as UrlPath, State};
+use axum::extract::{Path as UrlPath, Query, State};
 use axum::http::HeaderMap;
 use axum::response::Response;
 use axum::routing::{delete, get, post};
@@ -900,6 +900,7 @@ async fn served_run_events(
     State(state): State<AppState>,
     headers: HeaderMap,
     UrlPath((agent, _cid, run_id)): UrlPath<(String, String, String)>,
+    Query(q): Query<HashMap<String, String>>,
 ) -> ApiResult<Response> {
     let (household, agent) = talking_agent(&state, &headers, &agent)?;
     // anyone's turn of the family conversation: everyone sees it as it goes (family_thread.rs)
@@ -909,13 +910,16 @@ async fn served_run_events(
     // its cards say whose turn it is (only its writer answers)
     let config = state.config();
     let by = crate::family_thread::author_of(&config, &agent.name, &run_id, &state.households.name()).by_of(&household);
-    Ok(turn_words(&state, &agent, &run_id, true, Some(by)))
+    // what the agent does now, reduced (turn_status.rs `reduced`), for a member's app that asks for it
+    let status = q.get("status").is_some_and(|v| v == "1");
+    Ok(turn_words(&state, &agent, &run_id, true, Some(by), status))
 }
 
 /// A turn's words as they come, only text crossing: its deltas, its end, and (`prompts`) its approvals and questions
 /// (with `by`, whose turn it is, on the family's); no tool step. `prompts` false: a reader who answers nothing
 /// (agent_feed.rs).
-pub(crate) fn turn_words(state: &AppState, agent: &AgentConfig, run_id: &str, prompts: bool, by: Option<Value>) -> Response {
+pub(crate) fn turn_words(state: &AppState, agent: &AgentConfig, run_id: &str, prompts: bool, by: Option<Value>,
+                         status: bool) -> Response {
     let mut listener = state.hub.subscribe(agent, run_id, "shared", false);
     let stream = async_stream::stream! {
         loop {
@@ -924,6 +928,12 @@ pub(crate) fn turn_words(state: &AppState, agent: &AgentConfig, run_id: &str, pr
                 Ok(None) | Ok(Some(None)) => break,
                 Ok(Some(Some(event))) => {
                     let kind = event.r#type.as_str();
+                    // what the agent does now: a member who asks reads it reduced (no site, no step, no buttons)
+                    if status && prompts && kind == crate::turn_status::EVENT {
+                        let reduced = Value::Object(crate::turn_status::reduced(&event.data));
+                        yield Ok(event_line(kind, &reduced));
+                        continue;
+                    }
                     let crosses = crate::hermes::is_delta(kind) || crate::hermes::is_terminal(kind)
                         || (prompts && ["approval.request", "clarify.request", crate::hermes_prompts::APPROVAL_SETTLED,
                             crate::hermes_prompts::CLARIFY_SETTLED].contains(&kind));

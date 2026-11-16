@@ -167,6 +167,37 @@ impl Default for Settings {
     }
 }
 
+impl Limits {
+    /// The person said « Continuer » at the brake's two thirds (turn_status.rs, runs.rs `brake_action`): this turn's
+    /// limits half as high again, once.
+    pub fn raised(self) -> Limits {
+        let up = |n: u32| n + n.div_ceil(2);
+        Limits {
+            same_tool: up(self.same_tool),
+            tool_calls: up(self.tool_calls),
+            same_call: up(self.same_call),
+            same_lookup: up(self.same_lookup),
+            writes: up(self.writes),
+            browser_calls: up(self.browser_calls),
+            page_reads: up(self.page_reads),
+            discovery_same: up(self.discovery_same),
+            discovery_calls: up(self.discovery_calls),
+        }
+    }
+}
+
+/// The stop a warning announces (« Arrêter » at the two thirds takes it at once: runs.rs `brake_action`).
+pub fn over_of(warning: &Warning) -> Over {
+    match warning {
+        Warning::SameCall(tool, _, _) => Over::SameCall(tool.clone()),
+        Warning::SameTool(tool, _, _) => Over::SameTool(tool.clone()),
+        Warning::TooMany(..) => Over::TooMany,
+        Warning::PageReads(..) => Over::PageReads,
+        Warning::Browser(..) => Over::Browser,
+        Warning::DiscoverySame(..) | Warning::Discovery(..) => Over::Discovery,
+    }
+}
+
 impl Settings {
     pub fn from_table(table: &Value) -> Settings {
         let d = Settings::default();
