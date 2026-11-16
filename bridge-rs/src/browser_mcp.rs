@@ -1982,8 +1982,12 @@ pub fn rewrite_too_large(tool: &str, response: &mut Dict) -> bool {
 
 /// The real server's tools that read the page's recorded traffic, its console or the server's own files, or reach
 /// Chrome raw (its network-debugging, cdp-functions, dynamic-hooks, debugging, element-extraction, file-extraction
-/// and progressive-cloning sections, off in browser/mcp.sh): refused here too, should a server ever list them.
+/// and progressive-cloning sections, off in browser/mcp.sh): refused here too, should a server ever list them. And
+/// get_instance_state: every key and value of the site's localStorage and sessionStorage (a site's own copy of a
+/// password: confirmation of the vault-no-readback review, 16/11) and its cookies, as the `/state` resource; Hermes
+/// doesn't offer it either (browsers.rs `mcp_server`).
 pub const NEVER_CALLED: &[&str] = &[
+    "get_instance_state",
     "list_network_requests", "get_request_details", "get_response_details", "get_response_content",
     "search_network_requests", "export_network_data", "import_network_data", "set_network_capture_filters",
     "get_network_capture_filters", "modify_headers",
