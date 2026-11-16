@@ -988,7 +988,13 @@ turn. Answer the person now with what you already have."
             // a routine: Hermes can't stop it, so its calls of the bridge's tools are held here
             entry.calls += 1;
             let item = item_read(tool);
-            let key = if item { signature_of(tool, arguments) } else { bare(tool).to_string() };
+            let key = if item {
+                signature_of(tool, arguments)
+            } else if write_call(tool, arguments) && !write_tool(tool) {
+                format!("{}\u{1f}ops", bare(tool)) // page_data's writes apart from its readings
+            } else {
+                bare(tool).to_string()
+            };
             // a big job writes with one tool many times (40 pages corrected: the task's limit), but searching or
             // reading the same thing again and again is going round in circles whatever the job (the morning brief's
             // 35 Carnet searches): a conversation's limit for those
@@ -1035,7 +1041,7 @@ what you have, and say plainly what you couldn't find or do (no limits or tools 
         }
         // Only within a followed run: without one, the « turn » is a guess, and the person may well have asked for
         // the same thing again since (« refais le podcast »).
-        if turn.is_some() && entry.seen.contains(&signature_of(tool, arguments)) {
+        if turn.is_some() && bare(tool) != WRITES_WITH_OPS && entry.seen.contains(&signature_of(tool, arguments)) {
             let calls = entry.again.entry(signature_of(tool, arguments)).or_insert(1);
             *calls += 1;
             tracing::info!(agent = %agent, tool = %tool, calls = *calls, "the same write again in this turn: refused");
@@ -1230,9 +1236,10 @@ mod tests {
         let held = turns.check(&settings, "vie", turn.as_ref(), "page_data", &ops(99), 99.0).expect("held");
         assert_eq!(held["isError"], json!(true));
         assert!(turns.check(&settings, "vie", turn.as_ref(), "page_data", &read, 100.0).is_none());
-        // the same write again in the turn: already done
-        let again = turns.check(&settings, "vie", turn.as_ref(), "page_data", &ops(0), 101.0).expect("already done");
-        assert!(again["content"][0]["text"].as_str().unwrap().starts_with("Already done"));
+        // the same write again in the turn: no « already done » for a store (a value set back is a write), still held
+        let again = turns.check(&settings, "vie", turn.as_ref(), "page_data", &ops(0), 101.0).expect("held");
+        assert!(!again["content"][0]["text"].as_str().unwrap().starts_with("Already done"));
+        assert_eq!(again["isError"], json!(true));
     }
 
     #[test]
