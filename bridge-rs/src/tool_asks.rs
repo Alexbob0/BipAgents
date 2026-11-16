@@ -489,19 +489,21 @@ pub fn askable(config: &Config, agent: &AgentConfig) -> Vec<Item> {
             out.push(connector_item(&c));
         }
     }
-    out
+    // in the agent's language (its person's): the card's words, and the tool's description for the model
+    out.into_iter().map(|i| in_language(config, &agent.name, i)).collect()
 }
 
 /// The tool `id` for `agent`, whatever its state (None: no such tool here).
 pub fn item_of(config: &Config, agent: &AgentConfig, id: &str) -> Option<Item> {
-    if let Some(entry) = REGISTRY.iter().find(|e| e.id == id) {
-        return Some(entry.item());
-    }
-    if let Some(connector) = id.strip_prefix("connector:") {
-        return crate::connectors::of_agent(config, &agent.name).iter().find(|c| c.id == connector).map(connector_item);
-    }
-    let seen = TOOLSETS.lock().unwrap_or_else(|e| e.into_inner()).get(&agent.name).cloned().unwrap_or_default();
-    seen.get(id).map(|(label, _)| toolset_item(id, label))
+    let item = if let Some(entry) = REGISTRY.iter().find(|e| e.id == id) {
+        Some(entry.item())
+    } else if let Some(connector) = id.strip_prefix("connector:") {
+        crate::connectors::of_agent(config, &agent.name).iter().find(|c| c.id == connector).map(connector_item)
+    } else {
+        let seen = TOOLSETS.lock().unwrap_or_else(|e| e.into_inner()).get(&agent.name).cloned().unwrap_or_default();
+        seen.get(id).map(|(label, _)| toolset_item(id, label))
+    };
+    item.map(|i| in_language(config, &agent.name, i))
 }
 
 /// The tool of `ask`, whatever its state: a toolset Hermes named before a restart stays one (review R8).
@@ -799,24 +801,163 @@ async fn wait(state: &AppState, config: &Config, id: &str) -> Option<Ask> {
     outcome
 }
 
+// -- the person's language (the agent's, as its approval cards' sentences: approval_text.rs) --------------------------
+
+/// The language `agent` speaks with its person (« fr », « en », « de », « es »).
+pub fn lang_of(config: &Config, agent: &str) -> &'static str {
+    crate::names::names(&crate::names::agent_language(config, agent)).lang
+}
+
+fn pick<'a>(lang: &str, fr: &'a str, en: &'a str, de: &'a str, es: &'a str) -> &'a str {
+    crate::approval_text::pick(lang, fr, en, de, es)
+}
+
+/// The registry's names, and the lines the apps don't have (« Ce qu'il a appris »), in the apps' own words for them
+/// (App/Resources/Localizable.xcstrings): fr, en, de, es.
+const WORDS: [[&str; 4]; 37] = [
+    ["Recherche web", "Web search", "Websuche", "Búsqueda web"],
+    ["Navigateur", "Browser", "Browser", "Navegador"],
+    ["Météo", "Weather", "Wetter", "Tiempo"],
+    ["Mails", "Mail", "Mails", "Correo"],
+    ["Calendrier", "Calendar", "Kalender", "Calendario"],
+    ["Adresse e-mail", "E-mail address", "E-Mail-Adresse", "Dirección de correo"],
+    ["Rappels", "Reminders", "Erinnerungen", "Recordatorios"],
+    ["Contacts", "Contacts", "Kontakte", "Contactos"],
+    ["Santé", "Health", "Gesundheit", "Salud"],
+    ["Photos", "Photos", "Fotos", "Fotos"],
+    ["Mémoire", "Memory", "Gedächtnis", "Memoria"],
+    ["Carnet", "Notebook", "Notizbuch", "Cuaderno"],
+    ["Routines", "Routines", "Routinen", "Rutinas"],
+    ["Fichiers", "Files", "Dateien", "Archivos"],
+    ["Images", "Images", "Bilder", "Imágenes"],
+    ["Archives", "Archives", "Archive", "Archivos"],
+    ["WhatsApp (import)", "WhatsApp (import)", "WhatsApp (Import)", "WhatsApp (importar)"],
+    ["Apprendre des savoir-faire", "Learn skills", "Fähigkeiten lernen", "Aprender habilidades"],
+    ["Retrouver d'anciennes conversations", "Find past conversations", "Frühere Gespräche finden", "Encontrar conversaciones anteriores"],
+    ["Planifier ses tâches", "Plan its tasks", "Seine Aufgaben planen", "Planificar sus tareas"],
+    ["Déléguer des sous-tâches", "Delegate subtasks", "Teilaufgaben abgeben", "Delegar subtareas"],
+    ["Lancer des commandes", "Run commands", "Befehle ausführen", "Ejecutar comandos"],
+    ["Exécuter du code", "Run code", "Code ausführen", "Ejecutar código"],
+    ["Utiliser un ordinateur", "Use a computer", "Einen Computer bedienen", "Usar un ordenador"],
+    ["Payer avec Link (États-Unis, Canada)", "Pay with Link (United States, Canada)", "Mit Link bezahlen (USA, Kanada)", "Pagar con Link (Estados Unidos, Canadá)"],
+    ["Retient une façon de faire pour la refaire", "Keeps a way of doing to do it again", "Merkt sich eine Vorgehensweise, um sie zu wiederholen", "Recuerda una forma de hacer para repetirla"],
+    ["Cherche dans vos conversations passées", "Searches your past conversations", "Sucht in euren früheren Gesprächen", "Busca en vuestras conversaciones pasadas"],
+    ["Découpe un travail en étapes", "Splits a job into steps", "Teilt eine Arbeit in Schritte", "Divide un trabajo en pasos"],
+    ["Lance un assistant pour un travail long", "Starts a helper for a long job", "Startet einen Helfer für eine lange Arbeit", "Lanza un asistente para un trabajo largo"],
+    ["Dans son espace", "In its space", "In seinem Bereich", "En su espacio"],
+    ["Agit sur un écran à sa place", "Acts on a screen for you", "Bedient einen Bildschirm für dich", "Actúa en una pantalla por ti"],
+    ["Un dossier, une boîte mail", "A folder, a mailbox", "Ein Ordner, ein Postfach", "Una carpeta, un buzón"],
+    ["Importe une discussion exportée", "Imports an exported chat", "Importiert einen exportierten Chat", "Importa un chat exportado"],
+    ["Lumières, chauffage, prises", "Lights, heating, plugs", "Licht, Heizung, Steckdosen", "Luces, calefacción, enchufes"],
+    ["Tes dépôts de code", "Your code repositories", "Deine Code-Repositorys", "Tus repositorios de código"],
+    ["Tes pages et bases Notion", "Your Notion pages and databases", "Deine Notion-Seiten und -Datenbanken", "Tus páginas y bases de Notion"],
+    ["Ton patrimoine, en lecture seule", "Your wealth, read only", "Dein Vermögen, nur lesen", "Tu patrimonio, solo lectura"],
+];
+
+/// `fr` (a registry's word) in `lang`; what the table doesn't hold stays as it is (a brand, a toolset's own label).
+fn word_in(lang: &str, fr: &str) -> String {
+    WORDS.iter().find(|w| w[0] == fr).map(|w| pick(lang, w[0], w[1], w[2], w[3]).to_string()).unwrap_or_else(|| fr.to_string())
+}
+
+/// `item` in `agent`'s language (its name and line, a connector's words).
+fn in_language(config: &Config, agent: &str, mut item: Item) -> Item {
+    let lang = lang_of(config, agent);
+    if let Switch::Connector(_) = item.switch {
+        let name = item.label.trim_start_matches("Connecteur « ").trim_end_matches(" »").to_string();
+        item.label = match lang {
+            "en" => format!("Connector “{name}”"),
+            "de" => format!("Connector „{name}“"),
+            "es" => format!("Conector «{name}»"),
+            _ => format!("Connecteur « {name} »"),
+        };
+        item.line = pick(lang, "Un connecteur qu'il a fait, approuvé avant", "A connector it made, approved before",
+                         "Ein Connector, den es gebaut hat, schon freigegeben", "Un conector que hizo, aprobado antes").to_string();
+        return item;
+    }
+    item.label = word_in(lang, &item.label);
+    item.line = word_in(lang, &item.line);
+    item
+}
+
+/// « Vie demande l'outil Rappels » (an older app's top line).
+fn summary_in(lang: &str, shown: &str, label: &str) -> String {
+    match lang {
+        "en" => format!("{shown} asks for the {label} tool"),
+        "de" => format!("{shown} bittet um das Werkzeug {label}"),
+        "es" => format!("{shown} pide la herramienta {label}"),
+        _ => format!("{shown} demande l'outil {label}"),
+    }
+}
+
+/// « Vie demande Rappels » (the push).
+fn push_line_in(lang: &str, shown: &str, label: &str) -> String {
+    match lang {
+        "en" => format!("{shown} asks for {label}"),
+        "de" => format!("{shown} bittet um {label}"),
+        "es" => format!("{shown} pide {label}"),
+        _ => format!("{shown} demande {label}"),
+    }
+}
+
+/// « Vie demande Rappels : « … » » and, for a tool the bridge can't turn on alone, where an older app turns it on.
+fn description_in(lang: &str, shown: &str, label: &str, reason: &str, where_too: bool) -> String {
+    let asks = match lang {
+        "en" => format!("{shown} asks for {label}: “{reason}”"),
+        "de" => format!("{shown} bittet um {label}: „{reason}“"),
+        "es" => format!("{shown} pide {label}: «{reason}»"),
+        _ => format!("{shown} demande {label} : « {reason} »"),
+    };
+    if !where_too {
+        return asks;
+    }
+    let or = match lang {
+        "en" => format!(" Or turn on “{label}” in Apps and tools."),
+        "de" => format!(" Oder schalte „{label}“ in Apps und Werkzeuge ein."),
+        "es" => format!(" O activa «{label}» en Apps y herramientas."),
+        _ => format!(" Ou active « {label} » dans Applis et outils."),
+    };
+    asks + &or
+}
+
+/// An older app's 409: where the person turns it on.
+fn turn_on_words_in(lang: &str, label: &str) -> String {
+    match lang {
+        "en" => format!("Turn on “{label}” in Apps and tools, or update the app."),
+        "de" => format!("Schalte „{label}“ in Apps und Werkzeuge ein oder aktualisiere die App."),
+        "es" => format!("Activa «{label}» en Apps y herramientas, o actualiza la app."),
+        _ => format!("Active « {label} » dans Applis et outils, ou mets l'app à jour."),
+    }
+}
+
 fn shown_name(config: &Config, agent: &str) -> String {
     config.agent(Some(agent)).map(|a| a.display_name.clone()).filter(|n| !n.is_empty()).unwrap_or(agent.to_string())
 }
 
-/// « Rappels activé pour Vie et Paul ».
-fn names_line(config: &Config, agents: &[String]) -> String {
+/// « Vie et Paul ».
+fn names_line(config: &Config, lang: &str, agents: &[String]) -> String {
     let names: Vec<String> = agents.iter().map(|a| shown_name(config, a)).collect();
+    let and = pick(lang, "et", "and", "und", "y");
     match names.len() {
         0 => String::new(),
         1 => names[0].clone(),
-        n => format!("{} et {}", names[..n - 1].join(", "), names[n - 1]),
+        n => format!("{} {and} {}", names[..n - 1].join(", "), names[n - 1]),
     }
 }
 
-/// The answered line's words (the decision's `description`: the apps' row, older ones' too).
+/// The answered line's words (the decision's `description`: the apps' row, older ones' too), in the agent's language:
+/// « Rappels activé pour Vie et Paul », « Reminders on for Vie and Paul »; refused: the tool's name.
 fn answered_line(config: &Config, ask: &Ask) -> String {
+    let lang = lang_of(config, &ask.agent);
     match ask.state.as_str() {
-        ON => format!("{} activé pour {}", ask.label, names_line(config, &ask.agents)),
+        ON => {
+            let names = names_line(config, lang, &ask.agents);
+            match lang {
+                "en" => format!("{} on for {names}", ask.label),
+                "de" => format!("{} eingeschaltet für {names}", ask.label),
+                "es" => format!("{} activado para {names}", ask.label),
+                _ => format!("{} activé pour {names}", ask.label),
+            }
+        }
         _ => ask.label.clone(),
     }
 }
@@ -856,18 +997,17 @@ fn card_of(config: &Config, ask: &Ask) -> Dict {
             .is_some_and(|s| s.connections.get(&ask.tool).is_some_and(|c| c.state == "connected")),
         _ => true,
     };
-    let old_words = match kind {
-        Server => String::new(),
-        _ => format!(" Ou active « {} » dans Applis et outils.", ask.label),
-    };
+    // an older app's words for what the bridge can't turn on alone: where to turn it on
+    let lang = lang_of(config, &ask.agent);
+    let where_too = kind != Server;
     let item_json = item.as_ref().map(|i| serde_json::to_value(i).unwrap_or(Value::Null)).unwrap_or(Value::Null);
     let card = json!({
         "agent": ask.agent,
         "run_id": ask.run_id(),
         "request_id": ask.id,
         "command": ask.tool,
-        "description": format!("{shown} demande {} : « {} »{old_words}", ask.label, ask.reason),
-        "bip_summary": format!("{shown} demande l'outil {}", ask.label),
+        "description": description_in(lang, &shown, &ask.label, &ask.reason, where_too),
+        "bip_summary": summary_in(lang, &shown, &ask.label),
         "choices": ["once", "deny"],
         "created_at": ask.at,
         "session_id": null,
@@ -1014,7 +1154,7 @@ pub async fn call(state: &AppState, agent: &AgentConfig, arguments: &Dict, run: 
     tracing::info!(target: "bipbridge::tool_asks", agent = %agent.name, tool = %item.id, card = %ask.id, "tool asked");
     let run_id = ask.run_id();
     crate::card_place::place_made(state, agent, &run_id, TOOL_NAME).await;
-    let line = format!("{} demande {}", shown_name(&config, &agent.name), item.label);
+    let line = push_line_in(lang_of(&config, &agent.name), &shown_name(&config, &agent.name), &item.label);
     state.push.notify_bridge_card(&agent.name, &line, PUSH_KEY, &run_id).await;
     let answered = wait(state, &config, &ask.id).await;
     match answered {
@@ -1084,7 +1224,7 @@ pub enum Refusal {
 
 impl Refusal {
     /// The HTTP answer; `words`: an older app's plain sentence (it shows `detail`).
-    fn http(&self, label: &str, words: bool) -> HttpError {
+    fn http(&self, label: &str, words: Option<&str>) -> HttpError {
         let code = match self {
             Refusal::NotFound => return HttpError::new(404, "no such request (answered already?)"),
             Refusal::BadAlso => return HttpError::new(400, "also: only agents the card offered"),
@@ -1093,8 +1233,8 @@ impl Refusal {
             Refusal::NeedsConnection => "needs_connection",
             Refusal::ScreenOnly => "screen_only",
         };
-        if words {
-            HttpError::new(409, format!("Active « {label} » dans Applis et outils, ou mets l'app à jour."))
+        if let Some(lang) = words {
+            HttpError::new(409, turn_on_words_in(lang, label))
         } else {
             HttpError::json(409, json!({"code": code}))
         }
@@ -1246,11 +1386,12 @@ fn record(config: &Config, ask: &Ask, choice: &str) {
 /// An older app's (or a notification's) answer through `/v1/approve`: allowed words turn on what the bridge can alone.
 pub async fn approve(state: &AppState, id: &str, choice: &str) -> ApiResult<Response> {
     let allow = crate::card_place::allowed(choice); // an unknown word: refused
-    let label = get(&state.config(), id).map(|a| a.label).unwrap_or_default();
+    let config = state.config();
+    let (label, lang) = get(&config, id).map(|a| (a.label, lang_of(&config, &a.agent))).unwrap_or_default();
     let given = Answer { allow, ..Answer::default() };
     match answer(state, id, &given, if allow { "app" } else { "notification" }).await {
         Ok(_) => Ok(web::ok(json!({"ok": true, "choice": if allow { "once" } else { "deny" }}))),
-        Err(refusal) => Err(refusal.http(&label, true)),
+        Err(refusal) => Err(refusal.http(&label, Some(lang))),
     }
 }
 
@@ -1258,7 +1399,7 @@ async fn answer_route(State(state): State<AppState>, UrlPath(id): UrlPath<String
     let given: Answer = serde_json::from_slice(&body).map_err(|_| HttpError::new(400, "invalid JSON"))?;
     let config = state.config();
     let label = get(&config, &id).map(|a| a.label).unwrap_or_default();
-    let ask = answer(&state, &id, &given, "app").await.map_err(|r| r.http(&label, false))?;
+    let ask = answer(&state, &id, &given, "app").await.map_err(|r| r.http(&label, None))?;
     if let Some(agent) = config.agent(Some(&ask.agent)).cloned() {
         crate::card_place::answered(&state, &agent, &ask.run_id(), if ask.state == ON { "once" } else { "deny" }).await;
     }
@@ -1493,16 +1634,19 @@ mod tests {
         let card = &items[0];
         assert_eq!(card["run_id"], json!(format!("{RUN_PREFIX}{}", ask.id)));
         assert_eq!(card["choices"], json!(["once", "deny"]), "an older app draws Oui, vas-y / Non");
-        assert_eq!(card["bip_summary"], json!("Vie demande l'outil Rappels"));
+        // the tool's name as asked (askable() gives it in the person's language), the sentence in that language
+        assert_eq!(card["bip_summary"], json!(summary_in(lang_of(&config, "vie"), "Vie", &ask.label)));
         let tool = &card["bip_tool"];
         assert_eq!(tool["tool"], json!("reminders"));
         assert_eq!(tool["kind"], json!("phone"));
-        assert_eq!(tool["label"], json!("Rappels"));
+        assert_eq!(tool["label"], json!(ask.label));
         assert_eq!(tool["risk"], json!("check"));
         assert_eq!(tool["after_reading"], json!("mail"));
         assert_eq!(tool["also"][0]["agent"], json!("paul"));
         assert_eq!(tool["state"], json!("waiting"));
-        assert!(card["description"].as_str().unwrap().contains("Applis et outils"), "an older app's way");
+        let lang = lang_of(&config, "vie");
+        let hub = pick(lang, "Applis et outils", "Apps and tools", "Apps und Werkzeuge", "Apps y herramientas");
+        assert!(card["description"].as_str().unwrap().contains(hub), "an older app's way");
         assert!(pending_items(&config, Some("paul")).is_empty());
         // the person's level never answers it for them (approval_level.rs: critical)
         assert!(!crate::approval_level::auto_card(&config, "vie", card));
@@ -1525,10 +1669,36 @@ mod tests {
         let config = config_in(&dir, true);
         let ask = open(&config, "vie", &reminders(), "Pour le pain", None, None, None, vec![]).unwrap();
         let on = close(&config, &ask.id, ON, vec!["vie".into(), "paul".into()], "app").unwrap();
-        assert_eq!(answered_line(&config, &on), "Rappels activé pour Vie et Paul");
+        let line = answered_line(&config, &on);
+        assert!(line.ends_with(&format!("Vie {} Paul", pick(lang_of(&config, "vie"), "et", "and", "und", "y"))), "{line}");
         let three = Ask { agents: vec!["vie".into(), "paul".into(), "maison".into()], ..on.clone() };
-        assert_eq!(answered_line(&config, &three), "Rappels activé pour Vie, Paul et Maison");
+        assert!(answered_line(&config, &three).contains("Vie, Paul "), "{}", answered_line(&config, &three));
         assert!(close(&config, &ask.id, REFUSED, vec![], "app").is_none(), "answered once");
+    }
+
+    /// Since the card ships to everyone (16/11), what the bridge writes for the apps to show as it is follows the
+    /// person's language (the agent's, as its approval cards'): never French to someone who doesn't read it.
+    #[test]
+    fn the_cards_words_speak_the_persons_language() {
+        assert_eq!(summary_in("en", "Vie", &word_in("en", "Rappels")), "Vie asks for the Reminders tool");
+        assert_eq!(push_line_in("en", "Vie", &word_in("en", "Santé")), "Vie asks for Health");
+        assert_eq!(turn_on_words_in("en", "Calendar"), "Turn on “Calendar” in Apps and tools, or update the app.");
+        assert_eq!(turn_on_words_in("fr", "Rappels"), "Active « Rappels » dans Applis et outils, ou mets l'app à jour.");
+        assert!(description_in("de", "Vie", "Erinnerungen", "Für das Brot", true).contains("Apps und Werkzeuge"));
+        assert_eq!(description_in("es", "Vie", "Tiempo", "Para la lluvia", false), "Vie pide Tiempo: «Para la lluvia»");
+        for entry in REGISTRY {
+            for lang in ["en", "de", "es"] {
+                let shown = word_in(lang, entry.label);
+                let brand = ["Notion", "Finary", "Link", "GitHub", "Home Assistant", "Contacts", "Photos", "Images", "Routines", "Archives", "WhatsApp (import)"];
+                assert!(shown != entry.label || brand.contains(&entry.label) || lang != "en", "{}: no {lang} word", entry.label);
+            }
+        }
+        let connector = crate::connectors::Connector { id: "c1".into(), name: "Garmin".into(), ..Default::default() };
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = config_in(&dir, true);
+        config.agents.get_mut("vie").unwrap().display_name = "Vie".into();
+        let item = in_language(&config, "vie", connector_item(&connector));
+        assert!(item.label.contains("Garmin") && !item.line.is_empty());
     }
 
     #[test]

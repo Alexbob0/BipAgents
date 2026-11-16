@@ -115,7 +115,9 @@ async fn a_card_waits_then_oui_turns_the_phone_tool_on_for_the_agent_and_paul() 
     let body = done.json();
     assert_eq!(body["state"], "on");
     assert_eq!(body["agents"], json!(["wellness", "paul"]));
-    assert_eq!(body["line"], "Rappels activé pour Wellness et Paul");
+    // in the agent's language (Wellness speaks English here: « Reminders on for Wellness and Paul »)
+    let line = body["line"].as_str().unwrap();
+    assert!(line.contains("Wellness") && line.contains("Paul") && (line.contains("Rappels") || line.contains("Reminders")), "{line}");
     let config = app.app.state.config();
     assert!(bipbridge::reminders::allowed(&config, "wellness") && bipbridge::reminders::allowed(&config, "paul"));
     assert!(cards(&app).await.is_empty(), "answered: gone");
@@ -183,7 +185,8 @@ async fn an_older_app_turns_on_what_the_bridge_can_alone_and_is_told_where_to_go
     let run = cards(&app).await[0]["run_id"].as_str().unwrap().to_string();
     let no = app.send_json("POST", "/v1/approve", &[(k, v.as_str())], &json!({"agent": "wellness", "run_id": run, "choice": "once"})).await;
     assert_eq!(no.status, 409);
-    assert!(no.text().contains("Applis et outils"), "{}", no.text());
+    // the older app shows `detail` as it is: in the agent's language (« Turn on “Calendar” in Apps and tools… »)
+    assert!(no.text().contains("Applis et outils") || no.text().contains("Apps and tools"), "{}", no.text());
     assert_eq!(cards(&app).await.len(), 1);
     // its notification's « Refuser » (or the card's « Non »)
     let deny = app.send_json("POST", "/v1/approve", &[(k, v.as_str())], &json!({"agent": "wellness", "run_id": run, "choice": "deny"})).await;
