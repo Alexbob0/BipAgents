@@ -1744,7 +1744,7 @@ pub async fn relay_stream(state: &AppState, id: &str, cid: &str, path: &str) -> 
         use futures::StreamExt;
         state.presence.touch(&id, &cid);
         while let Some(chunk) = chunks.next().await {
-            state.presence.touch(&id, &cid); // their keepalive every 10 s: still on screen
+            state.presence.touch(&id, &cid); // their keepalive every 25 s (10 s before 16/11): still on screen
             match chunk {
                 Ok(bytes) => {
                     // her turn's end: passed on once the owner's side keeps it over (its reply stored), so the page
