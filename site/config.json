@@ -35,7 +35,7 @@
   "beta": {
     "_readme": "The public beta (the site's « Join the beta » page, /beta/). testflight: the TestFlight public link (https://testflight.apple.com/join/…); play: the Google Play testing link (https://play.google.com/apps/testing/…). Empty: the badge reads « coming soon » and the page says the beta opens in a few days. cap: the places, as the page shows them after « Places: » (e.g. « 500 », « 120 left »), one text for every language or {\"en\": …, \"fr\": …, \"de\": …, \"es\": …}; empty: no line.",
     "testflight": "https://testflight.apple.com/join/nqbPNHDd",
-    "play": "https://play.google.com/apps/testing/com.kerfystudio.bipagents",
+    "play": "",
     "cap": "100"
   },
   "checkout": {
