@@ -968,6 +968,7 @@ pub(crate) async fn family_accept(State(state): State<AppState>, request: Reques
                 // the pass we gave them, accepted until the link is removed (their pass for our calls comes next:
                 // `POST /family/relay-pass`, once they know our mailbox)
                 state.households.mark(&household, "given_pass", json!(id))?;
+                state.households.mark(&household, "given_pass_at", json!(crate::py::time_time()))?;
                 crate::family_rendezvous::announce_passes(&state).await;
             }
             if through.is_some() {
@@ -1497,35 +1498,133 @@ async fn join(State(state): State<AppState>, request: Request) -> ApiResult<Resp
 /// After a link made through the relay where they call us through it too: a pass to our mailbox, for theirs only,
 /// accepted from now on, and given to them through the link (sealed, with their key: `POST /family/relay-pass`).
 async fn give_pass(state: &AppState, household: &str) {
-    let Some(entry) = state.households.get(household) else { return };
-    let Some(their_box) = entry.get("mailbox").and_then(Value::as_str).map(str::to_string) else { return };
-    let (pass, id, expires) = match crate::family_rendezvous::new_pass(state, &their_box).await {
-        Ok(made) => made,
-        Err(e) => {
-            tracing::warn!(error = %e, household, "family link: no pass for them (they can't call us through the relay)");
-            return;
-        }
-    };
-    if state.households.mark(household, "given_pass", json!(id)).is_err() {
+    if !make_pass(state, household, true).await {
         return;
     }
     crate::family_rendezvous::announce_passes(state).await;
+    if !hand_pass(state, household, 3).await {
+        tracing::warn!(household, "family link: our pass not given to them yet (given again later)");
+    }
+}
+
+/// A household's pass is made again this often (passes sealed with a key the relay retires keep working).
+const PASS_RENEW_SECS: f64 = 30.0 * 86400.0;
+
+/// A pass to our mailbox, for this household's mailbox only, made now at the relay (of a newer generation than any
+/// before): kept to be given to it (`pass_to_give`, until it has it) and, when `now`, at once the one we take from it
+/// (`given_pass`; otherwise once it has it). False when the relay gave none.
+async fn make_pass(state: &AppState, household: &str, now: bool) -> bool {
+    let Some(entry) = state.households.get(household) else { return false };
+    let Some(their_box) = entry.get("mailbox").and_then(Value::as_str).map(str::to_string) else { return false };
+    let (pass, id, expires) = match crate::family_rendezvous::new_pass(state, &their_box).await {
+        Ok(made) => made,
+        Err(e) => {
+            tracing::warn!(error = %e, household, "family link: no pass for them from the relay (made again later)");
+            return false;
+        }
+    };
+    let made = json!({"pass": pass, "id": id, "expires": expires});
+    if state.households.mark(household, "pass_to_give", made).is_err() {
+        return false;
+    }
+    if now {
+        let marked = state.households.mark(household, "given_pass", json!(id)).is_ok()
+            && state.households.mark(household, "given_pass_at", json!(crate::py::time_time())).is_ok()
+            && state.households.mark(household, "renew_pass", Value::Null).is_ok();
+        return marked;
+    }
+    true
+}
+
+/// Gives this household the pass made for it (`pass_to_give`) through the link (sealed, with their key:
+/// `POST /family/relay-pass`), up to `tries` times; once it has it, that is the one we take from it. True when it
+/// has it (or there was nothing to give).
+async fn hand_pass(state: &AppState, household: &str, tries: usize) -> bool {
+    let Some(entry) = state.households.get(household) else { return true };
+    let Some(made) = entry.get("pass_to_give").and_then(Value::as_object).cloned() else { return true };
+    let field = |k: &str| made.get(k).cloned().unwrap_or(Value::Null);
     let url = format!("{}/family/relay-pass", crate::family_relay::reach_url(&entry));
     let key = entry.get("key_out").and_then(Value::as_str).unwrap_or_default().to_string();
-    for _ in 0..3 {
+    for attempt in 0..tries {
+        if attempt > 0 {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
         let sent = crate::door_tls::household_client(&state.http, &entry)
             .post(&url)
             .timeout(std::time::Duration::from_secs(30))
             .bearer_auth(&key)
-            .json(&json!({"pass": pass, "expires": expires}))
+            .json(&json!({"pass": field("pass"), "expires": field("expires")}))
             .send()
             .await;
         if sent.is_ok_and(|r| r.status().is_success()) {
-            return;
+            let newer = entry.get("given_pass") != made.get("id");
+            let _ = state.households.mark(household, "given_pass", field("id"));
+            let _ = state.households.mark(household, "given_pass_at", json!(crate::py::time_time()));
+            let _ = state.households.mark(household, "pass_to_give", Value::Null);
+            if newer {
+                crate::family_rendezvous::announce_passes(state).await;
+            }
+            return true;
         }
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     }
-    tracing::warn!(household, "family link: our pass not given to them (they can't call us through the relay)");
+    false
+}
+
+/// The households we gave a pass to call us through the relay.
+fn given_passes(state: &AppState) -> Vec<String> {
+    let data = state.households.load();
+    let Some(households) = data.get("households").and_then(Value::as_object) else { return Vec::new() };
+    households
+        .iter()
+        .filter(|(_, v)| v.get("given_pass").and_then(Value::as_str).is_some())
+        .map(|(id, _)| id.clone())
+        .collect()
+}
+
+/// A link removed whose household could call us through the relay: every household that still can gets a pass of a
+/// newer generation, and the relay is told at once to take none older, the one withdrawn included (whatever it
+/// remembers: after a restart our first poll says it again). Their new passes go through their links; until they
+/// have them their calls wait, never the other way round.
+async fn renew_after_unlink(state: &AppState) {
+    let kept = given_passes(state);
+    for household in &kept {
+        // not said any more until its new pass is made (its old one may be older than the one withdrawn)
+        let _ = state.households.mark(household, "renew_pass", json!(true));
+    }
+    for household in &kept {
+        make_pass(state, household, true).await;
+    }
+    crate::family_rendezvous::announce_passes(state).await;
+    let later = state.clone();
+    state.spawn(async move {
+        for household in kept {
+            hand_pass(&later, &household, 3).await;
+        }
+    });
+}
+
+/// Every minute (family_rendezvous.rs): the passes still to make (a link removed while the relay was out of
+/// reach) or to give (a household that didn't answer), and every 30 days a fresh one for each household that calls us
+/// through the relay (given first, then the one taken: a key the relay retires never cuts a link).
+pub(crate) async fn renew_passes(state: &AppState) {
+    let now = crate::py::time_time();
+    let mut made = false;
+    for household in given_passes(state) {
+        let Some(entry) = state.households.get(&household) else { continue };
+        if entry.get("renew_pass").and_then(Value::as_bool) == Some(true) {
+            made |= make_pass(state, &household, true).await;
+        } else if entry.get("pass_to_give").and_then(Value::as_object).is_none()
+            && entry.get("given_pass_at").and_then(Value::as_f64).is_none_or(|at| now - at > PASS_RENEW_SECS)
+        {
+            make_pass(state, &household, false).await;
+        }
+    }
+    if made {
+        crate::family_rendezvous::announce_passes(state).await;
+    }
+    for household in given_passes(state) {
+        hand_pass(state, &household, 1).await;
+    }
 }
 
 async fn unlink(state: &AppState, household: &str) -> ApiResult<Response> {
@@ -1537,7 +1636,7 @@ async fn unlink(state: &AppState, household: &str) -> ApiResult<Response> {
     crate::family_relay::forget(household);
     // the pass we gave it, withdrawn at the relay at once: it can't reach our mailbox any more, nor tell we're on
     if entry.as_ref().is_some_and(|e| e.get("given_pass").is_some()) {
-        crate::family_rendezvous::announce_passes(state).await;
+        renew_after_unlink(state).await;
     }
     // the family's agent held here: that member gets what is the family's (family_agent.rs)
     crate::family_agent::after_unlink(state, household, entry);

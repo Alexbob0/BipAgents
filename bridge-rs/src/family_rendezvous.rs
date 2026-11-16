@@ -10,8 +10,12 @@
 //!   a pass to its own mailbox, for the other household's mailbox only ([`new_pass`]), and gives it to the other,
 //!   sealed in their exchange (the joiner's goes once it knows the inviter's mailbox: peers.rs `give_pass`); the other
 //!   presents it with each call (`pass` in its entry). The bridge says which of the passes it gave it still accepts
-//!   (`given_pass`: with each poll, and at once when a link is removed, [`announce_passes`]): a household unlinked, or
-//!   whoever holds a copy of a pass, can't call it, use up its quotas, or tell whether the home's computer is on.
+//!   (`given_pass`: with each poll, and at once when a link is removed, [`announce_passes`]); the relay keeps the
+//!   oldest generation among them (a pass's id carries when it was made). Removing a link, the bridge first gives the
+//!   households it keeps passes of a newer generation (peers.rs `unlink`), so the one withdrawn, older, is refused
+//!   whatever the relay remembers: a household unlinked, or whoever holds a copy of a pass, can't call it, use up its
+//!   quotas, or tell whether the home's computer is on. Every 30 days each household gets a fresh pass (peers.rs
+//!   `renew_passes`): passes sealed with a key the relay retires keep working.
 //! - **An invitation** has a mailbox of its own, ending with it ([`invite_mailbox`]): the QR code carries its id
 //!   (`relay`), never the household's. The scanning bridge introduces itself there, sealed with the invitation's code
 //!   ([`accept`]) — or first at the inviter's address, sealed the same way (peers.rs `join`): only a bridge holding the
@@ -225,11 +229,17 @@ pub async fn new_pass(state: &AppState, holder: &str) -> anyhow::Result<(String,
     Ok((made, id, pass.get("expires").and_then(Value::as_f64).unwrap_or(0.0)))
 }
 
-/// The passes this bridge gave and still accepts: one per household linked through the relay (`given_pass`).
+/// The passes this bridge gave and still accepts: one per household linked through the relay (`given_pass`), but
+/// for a household whose pass must be made again (`renew_pass`: a link removed while the relay was out of reach; its
+/// old pass may be older than the one withdrawn).
 fn accepted_passes(state: &AppState) -> Vec<String> {
     let data = state.households.load();
     let Some(households) = data.get("households").and_then(Value::as_object) else { return Vec::new() };
-    households.values().filter_map(|v| v.get("given_pass").and_then(Value::as_str).map(str::to_string)).collect()
+    households
+        .values()
+        .filter(|v| v.get("renew_pass").and_then(Value::as_bool) != Some(true))
+        .filter_map(|v| v.get("given_pass").and_then(Value::as_str).map(str::to_string))
+        .collect()
 }
 
 /// What goes in `x-bip-passes` with each poll of our mailbox (`-`: none).
@@ -634,27 +644,41 @@ static POLLING: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::defaul
 static HANDLERS: LazyLock<std::sync::Arc<tokio::sync::Semaphore>> =
     LazyLock::new(|| std::sync::Arc::new(tokio::sync::Semaphore::new(HANDLING)));
 
+/// Whether the passes are being looked at ([`crate::peers::renew_passes`]).
+static RENEWING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// How often.
+const RENEW_EVERY: Duration = Duration::from_secs(60);
+
 /// Keeps one long poll per mailbox this bridge needs (ours while a household calls us through the relay, each
-/// invitation's while it waits).
+/// invitation's while it waits); every minute, the passes it gives (made again, given, renewed when due).
 pub async fn poll_forever(state: AppState) {
+    let mut renewed: Option<std::time::Instant> = None;
     loop {
-        for (id, token, invitation) in mailboxes_to_poll(&state) {
+        if renewed.is_none_or(|at| at.elapsed() >= RENEW_EVERY) && base(&state.config()).is_some() {
+            renewed = Some(std::time::Instant::now());
+            if !RENEWING.swap(true, std::sync::atomic::Ordering::AcqRel) {
+                let state = state.clone();
+                tokio::spawn(async move {
+                    crate::peers::renew_passes(&state).await;
+                    RENEWING.store(false, std::sync::atomic::Ordering::Release);
+                });
+            }
+        }
+        for (id, _, invitation) in mailboxes_to_poll(&state) {
             let fresh = POLLING.lock().unwrap_or_else(|e| e.into_inner()).insert(id.clone());
             if fresh {
-                tokio::spawn(poll_one(state.clone(), id, token, invitation));
+                tokio::spawn(poll_one(state.clone(), id, invitation));
             }
         }
         let _ = tokio::time::timeout(Duration::from_secs(3), WAKE.notified()).await;
     }
 }
 
-/// One mailbox's long poll, as long as it is needed.
-async fn poll_one(state: AppState, id: String, token: String, invitation: bool) {
+/// One mailbox's long poll, as long as it is needed (with its token as kept now: renewed, sealed with the relay's
+/// newest key).
+async fn poll_one(state: AppState, id: String, invitation: bool) {
     let mut pause = Duration::from_secs(1);
-    loop {
-        if !mailboxes_to_poll(&state).iter().any(|(m, _, _)| *m == id) {
-            break;
-        }
+    while let Some((_, token, _)) = mailboxes_to_poll(&state).into_iter().find(|(m, _, _)| *m == id) {
         let Some(base) = base(&state.config()) else { break };
         let mut ask = state.http.get(format!("{base}/v1/family/next")).timeout(POLL_TIMEOUT).bearer_auth(&token);
         if !invitation {
