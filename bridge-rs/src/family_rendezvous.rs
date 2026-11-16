@@ -218,15 +218,74 @@ pub async fn invite_mailbox(state: &AppState, until: f64) -> anyhow::Result<(Str
 pub async fn new_pass(state: &AppState, holder: &str) -> anyhow::Result<(String, String, f64)> {
     let base = base(&state.config()).ok_or_else(|| anyhow::anyhow!("no family relay set up"))?;
     let (_, token) = mailbox(state).await?;
+    let config = state.config();
+    let after = withdrawn(&config);
     let resp = state.http.post(format!("{base}/v1/family/pass")).timeout(Duration::from_secs(10)).bearer_auth(token);
-    let resp = resp.json(&json!({"for": holder})).send().await?;
+    let resp = resp.json(&json!({"for": holder, "after": after})).send().await?;
     if !resp.status().is_success() {
         anyhow::bail!("the relay gave no pass ({})", resp.status().as_u16());
     }
     let pass: Value = resp.json().await?;
     let field = |k: &str| pass.get(k).and_then(Value::as_str).map(str::to_string);
     let (Some(made), Some(id)) = (field("pass"), field("id")) else { anyhow::bail!("no pass") };
+    made_after(&config, &after, &id)?;
     Ok((made, id, pass.get("expires").and_then(Value::as_f64).unwrap_or(0.0)))
+}
+
+/// The passes withdrawn that every pass made from now on must be newer than (`after`, R7: the relay's clock set back
+/// never makes a pass older than one withdrawn): the last withdrawn, or the last pass made since (newer than them).
+fn withdrawn(config: &Config) -> Vec<String> {
+    let data = load(config);
+    let ids = data.get("withdrawn").and_then(Value::as_array).cloned().unwrap_or_default();
+    ids.into_iter().filter_map(|v| v.as_str().map(str::to_string)).collect()
+}
+
+/// A link removed: its pass goes with those every pass made from now on is newer than. Written before the link is
+/// removed (an error: the link stays).
+pub fn withdraw_pass(config: &Config, id: &str) -> anyhow::Result<()> {
+    edit(config, |data| {
+        let mut ids: Vec<Value> = data.get("withdrawn").and_then(Value::as_array).cloned().unwrap_or_default();
+        if !ids.iter().any(|v| v.as_str() == Some(id)) {
+            ids.push(json!(id));
+        }
+        data.insert("withdrawn".into(), Value::Array(ids));
+    })
+}
+
+/// A pass made newer than `after` (those sent): it stands for them from now on (newer than every pass withdrawn).
+fn made_after(config: &Config, after: &[String], id: &str) -> anyhow::Result<()> {
+    if after.is_empty() {
+        return Ok(());
+    }
+    edit(config, |data| {
+        let mut ids: Vec<Value> = data.get("withdrawn").and_then(Value::as_array).cloned().unwrap_or_default();
+        ids.retain(|v| v.as_str().is_none_or(|kept| !after.iter().any(|sent| sent == kept)));
+        ids.push(json!(id));
+        data.insert("withdrawn".into(), Value::Array(ids));
+    })
+}
+
+/// The number of what this bridge says now of the passes it accepts (R6: `x-bip-passes-seq`, `seq`), taken before
+/// reading them: the relay keeps the highest, so a statement made before a withdrawal and come after it never undoes
+/// it. Counted up for as long as the bridge runs, from a number kept in `family-relay.json` and raised at each start.
+pub fn statement_number(config: &Config) -> u64 {
+    static NEXT: OnceLock<std::sync::atomic::AtomicU64> = OnceLock::new();
+    let next = NEXT.get_or_init(|| std::sync::atomic::AtomicU64::new(started(config) << 32));
+    next.fetch_add(1, std::sync::atomic::Ordering::AcqRel) + 1
+}
+
+/// This start's number (one more than the last, kept): statement numbers of a later start are always higher.
+fn started(config: &Config) -> u64 {
+    let mut number = 0;
+    let _ = edit(config, |data| {
+        number = data.get("starts").and_then(Value::as_u64).unwrap_or(0) + 1;
+        data.insert("starts".into(), json!(number));
+    });
+    if number == 0 {
+        // not kept (a disk that can't be written): the time stands for it, still growing from one start to the next
+        number = (crate::py::time_time() as u64) & 0xffff_ffff;
+    }
+    number
 }
 
 /// The passes this bridge gave and still accepts: one per household linked through the relay (`given_pass`), but
@@ -264,12 +323,15 @@ pub async fn announce_passes(state: &AppState) {
     else {
         return;
     };
+    // its number first, then what it says (R6: a statement numbered before a change says what came before it)
+    let seq = statement_number(&state.config());
+    let accept = accepted_passes(state);
     let sent = state
         .http
         .post(format!("{base}/v1/family/passes"))
         .timeout(Duration::from_secs(10))
         .bearer_auth(token)
-        .json(&json!({"accept": accepted_passes(state)}))
+        .json(&json!({"seq": seq, "accept": accept}))
         .send()
         .await;
     match sent {
@@ -683,7 +745,8 @@ async fn poll_one(state: AppState, id: String, invitation: bool) {
         let mut ask = state.http.get(format!("{base}/v1/family/next")).timeout(POLL_TIMEOUT).bearer_auth(&token);
         if !invitation {
             // the passes our mailbox accepts, said again with each poll (a relay restarted knows them at once)
-            ask = ask.header("x-bip-passes", passes_header(&state));
+            let seq = statement_number(&state.config());
+            ask = ask.header("x-bip-passes-seq", seq.to_string()).header("x-bip-passes", passes_header(&state));
         }
         let answer = ask.send().await;
         match answer {
@@ -953,6 +1016,30 @@ mod tests {
         assert_eq!(route_of(&entry), Some("r".repeat(32).as_str()));
         assert!(valid_mailbox("AAAAAAAAAAAAAAAAAAAAAA") && !valid_mailbox("AAA") && !valid_mailbox(&"/".repeat(22)));
         assert!(valid_call("abcdefgh12345678") && !valid_call("../x") && !valid_call("a/b/c/d/e/f") && !valid_call(""));
+    }
+
+    /// R7 (review of R5): once a pass is withdrawn, every pass asked for says it (`after`), and the first one made
+    /// then stands for it (newer than every pass withdrawn); a pass withdrawn meanwhile is kept until a pass made after
+    /// it. R6: the statements' numbers grow, from one start to the next too.
+    #[test]
+    fn passes_are_asked_newer_than_those_withdrawn_and_statements_grow() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k".repeat(40));
+        config.outbox.db_path = dir.path().join("bridge.db").to_string_lossy().into_owned();
+        assert!(withdrawn(&config).is_empty(), "nothing withdrawn: no `after`");
+        made_after(&config, &[], "p0").unwrap();
+        assert!(withdrawn(&config).is_empty());
+        withdraw_pass(&config, "alex").unwrap();
+        withdraw_pass(&config, "alex").unwrap();
+        assert_eq!(withdrawn(&config), vec!["alex"]);
+        let sent = withdrawn(&config);
+        withdraw_pass(&config, "zoe").unwrap(); // withdrawn while that pass was being made
+        made_after(&config, &sent, "paul-new").unwrap();
+        assert_eq!(withdrawn(&config), vec!["zoe", "paul-new"]);
+        let (first, second) = (started(&config), started(&config));
+        assert!(second > first, "a later start counts from higher");
+        let (a, b) = (statement_number(&config), statement_number(&config));
+        assert!(b > a);
     }
 
     #[test]

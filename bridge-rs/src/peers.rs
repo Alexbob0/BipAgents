@@ -1524,16 +1524,21 @@ async fn make_pass(state: &AppState, household: &str, now: bool) -> bool {
         }
     };
     let made = json!({"pass": pass, "id": id, "expires": expires});
-    if state.households.mark(household, "pass_to_give", made).is_err() {
-        return false;
-    }
+    let mut fields = vec![("pass_to_give", made)];
     if now {
-        let marked = state.households.mark(household, "given_pass", json!(id)).is_ok()
-            && state.households.mark(household, "given_pass_at", json!(crate::py::time_time())).is_ok()
-            && state.households.mark(household, "renew_pass", Value::Null).is_ok();
-        return marked;
+        fields.extend([
+            ("given_pass", json!(id)),
+            ("given_pass_at", json!(crate::py::time_time())),
+            ("renew_pass", Value::Null),
+        ]);
     }
-    true
+    match state.households.mark_all(household, &fields) {
+        Ok(marked) => marked,
+        Err(e) => {
+            tracing::warn!(error = %e, household, "family link: its new pass not written down (made again later)");
+            false
+        }
+    }
 }
 
 /// Gives this household the pass made for it (`pass_to_give`) through the link (sealed, with their key:
@@ -1558,9 +1563,15 @@ async fn hand_pass(state: &AppState, household: &str, tries: usize) -> bool {
             .await;
         if sent.is_ok_and(|r| r.status().is_success()) {
             let newer = entry.get("given_pass") != made.get("id");
-            let _ = state.households.mark(household, "given_pass", field("id"));
-            let _ = state.households.mark(household, "given_pass_at", json!(crate::py::time_time()));
-            let _ = state.households.mark(household, "pass_to_give", Value::Null);
+            let fields = [
+                ("given_pass", field("id")),
+                ("given_pass_at", json!(crate::py::time_time())),
+                ("pass_to_give", Value::Null),
+            ];
+            if let Err(e) = state.households.mark_all(household, &fields) {
+                tracing::warn!(error = %e, household, "family link: its pass given, not written down (given again later)");
+                return false;
+            }
             if newer {
                 crate::family_rendezvous::announce_passes(state).await;
             }
@@ -1586,11 +1597,8 @@ fn given_passes(state: &AppState) -> Vec<String> {
 /// remembers: after a restart our first poll says it again). Their new passes go through their links; until they
 /// have them their calls wait, never the other way round.
 async fn renew_after_unlink(state: &AppState) {
+    // marked `renew_pass` with the removal itself (Households::withdraw): not said until their new passes are made
     let kept = given_passes(state);
-    for household in &kept {
-        // not said any more until its new pass is made (its old one may be older than the one withdrawn)
-        let _ = state.households.mark(household, "renew_pass", json!(true));
-    }
     for household in &kept {
         make_pass(state, household, true).await;
     }
@@ -1628,10 +1636,25 @@ pub(crate) async fn renew_passes(state: &AppState) {
 }
 
 async fn unlink(state: &AppState, household: &str) -> ApiResult<Response> {
-    let entry = state.households.get(household);
-    if state.households.remove(household).is_err() {
+    let Some(before) = state.households.get(household) else {
         return Err(HttpError::new(404, "no such household"));
+    };
+    // its pass goes with those every pass made from now on is newer than (R7), before anything else
+    if let Some(given) = before.get("given_pass").and_then(Value::as_str) {
+        if let Err(e) = crate::family_rendezvous::withdraw_pass(&state.config(), given) {
+            tracing::warn!(error = %e, household, "family link not removed: the pass withdrawn can't be written down");
+            return Err(HttpError::new(500, "the link can't be removed right now (this computer's disk?)"));
+        }
     }
+    // the link removed and the others marked to renew their passes, in one write (R8)
+    let entry = match state.households.withdraw(household) {
+        Ok(Some(entry)) => Some(entry),
+        Ok(None) => return Err(HttpError::new(404, "no such household")),
+        Err(e) => {
+            tracing::warn!(error = %e, household, "family link not removed: households.json can't be written");
+            return Err(HttpError::new(500, "the link can't be removed right now (this computer's disk?)"));
+        }
+    };
     // the calls kept for it (a home that fetched them, family_relay.rs) fail at once
     crate::family_relay::forget(household);
     // the pass we gave it, withdrawn at the relay at once: it can't reach our mailbox any more, nor tell we're on
