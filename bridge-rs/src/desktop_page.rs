@@ -1023,6 +1023,19 @@ fn page_info(tab: &Tab) -> Value {
 
 #[cfg(test)]
 mod tests {
+
+    /// 16/11 (battery, D7): hidden (the app in the background, Android's WebView paused: it still runs its script), the
+    /// page view closes its socket — the bridge stops its pictures — and opens it again once shown; a drop while hidden
+    /// is not reconnected. (A real browser's check needs Chromium, absent from the build server: by hand on a phone.)
+    #[test]
+    fn the_page_view_lets_its_pictures_go_while_hidden() {
+        let page = PAGE.as_str();
+        assert!(page.contains(r#"document.addEventListener("visibilitychange""#));
+        assert!(page.contains("if (socket) { socket.onclose = null; socket.close(); socket = null;"));
+        assert!(page.contains("} else if (!socket) connect();"));
+        assert!(page.contains("setTimeout(() => { if (!hidden()) connect(); }, 1500)"));
+    }
+
     use super::*;
 
     #[test]
