@@ -2277,6 +2277,43 @@ impl Proxy {
         }
     }
 
+    /// The page's protected fields out of sight in every frame of the agent's tab, other sites' frames included, each in
+    /// a world of its own (`conceal_script`), through DevTools: the agent's script never reaches another site's frame,
+    /// but its screenshot shows it (review of vault-no-readback, V7: a partner's code shown by its eye). What each frame
+    /// held as a password field is remembered too (`Secrets`), so a field its eye turns into text later stays one.
+    /// Frames in other processes through auto-attach (card_fill.rs `frames`): Chrome 157 keeps another site's frame in
+    /// one, the production flags (`--disable-features=IsolateOrigins,site-per-process`) notwithstanding (checked on
+    /// 16/11). False when DevTools can't be reached.
+    async fn conceal_frames(&self, instance: &str) -> bool {
+        let Some(port) = self.config.get("cdp_port").and_then(Value::as_u64).filter(|p| (1..65536).contains(p)) else {
+            return false;
+        };
+        let secret = self
+            .config
+            .get("cdp_secret_file")
+            .and_then(Value::as_str)
+            .filter(|p| !p.is_empty())
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let connecting = crate::card_fill::Cdp::connect_with(port as u16, secret, None);
+        let Ok(Ok(cdp)) = tokio::time::timeout(Duration::from_secs(5), connecting).await else { return false };
+        let Some(tab) = self.active_tab(instance).await else { return false };
+        let Ok(mut page) = crate::card_fill::Page::attach_with(cdp, &tab).await else { return false };
+        let Ok(frames) = page.frames_waiting(Duration::ZERO).await else { return false };
+        let script = conceal_script(&self.secrets_now());
+        for frame in frames {
+            let world = isolated_world(&mut page.cdp, &frame.session, &frame.id, "bipagents-guard").await;
+            let Some(context) = world else { continue };
+            if let Ok(Value::String(text)) = page.cdp.evaluate(&frame.session, context, &script).await {
+                if let Ok(look) = serde_json::from_str::<Value>(&text) {
+                    self.learn(&look);
+                }
+            }
+        }
+        true
+    }
+
     /// Before a page read without `guard_before` (`PAGE_READERS`, get_page_content's real tool): the page's protected
     /// fields out of sight (`conceal_script`).
     async fn conceal(&self, instance: &str) {
@@ -2692,6 +2729,11 @@ impl Proxy {
             log(&format!("{tool}: a selector testing part of a value attribute refused"));
             return Ok(refused(SELECTOR_VALUE_REFUSED));
         }
+        // a tool acting on the page (a key that copies, a click): every frame's protected fields out of sight first
+        // (V7), the page's own frames by `guard_before` too; a script sets them aside instead (`read_only`)
+        if GUARDED.contains(&tool) && tool != "execute_script" && !instance.is_empty() {
+            self.conceal_frames(&instance).await;
+        }
         // what the page holds before a script or a list's choice (a card's field holding text emptied first), for the
         // check before (`guard`) and after (`undone`)
         let (early, own_world) = match matches!(tool, "execute_script" | "select_option") && !instance.is_empty() {
@@ -2744,7 +2786,10 @@ impl Proxy {
         }
         // a page read the guard doesn't look before (`PAGE_READERS`, get_page_content's real tool): the page's password
         // fields out of sight first (vault-no-readback, 16/11)
-        if (PAGE_READERS.contains(&tool) || tool == "get_page_content") && !instance.is_empty() {
+        if (PAGE_READERS.contains(&tool) || tool == "get_page_content")
+            && !instance.is_empty()
+            && !self.conceal_frames(&instance).await
+        {
             self.conceal(&instance).await;
         }
         if tool == "take_screenshot" {
@@ -2820,6 +2865,9 @@ impl Proxy {
                 || response.get("result").and_then(|r| r.get("isError")).and_then(Value::as_bool) == Some(true);
             if !failed {
                 self.settle(&instance, tool != "navigate").await;
+                // the page loaded, its frames too: their password fields seen (and remembered) while they still are
+                // ones, before the person may type and click an eye (V7)
+                self.conceal_frames(&instance).await;
             }
         }
         if let Some(before) = &before {

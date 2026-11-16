@@ -104,10 +104,11 @@ and keys. A flag older than 15 minutes (the app closed without handing it back) 
   while every password field, every copy of what one holds and its usual codings (reversed, base64, hex) are emptied,
   then put back as they were; before each page tool, a field the site's eye shows in clear is masked again and a copy in
   its attributes is emptied (screenshots and the accessibility tree show dots); a selector testing part of a field's
-  value is refused; an answer still holding one is not passed on. What it does not cover: what the site itself derives
-  and shows (a strength meter's word), a field nothing marks as a password (no type, name or mask, never seen as one),
-  closed shadow roots and other sites' frames (out of the agent's scripts' reach too). The site still gets the password,
-  as with any password manager.
+  value is refused; an answer still holding one is not passed on. Other sites' frames are masked the same way before
+  each page tool (the agent's scripts never reach them). What it does not cover: what the site itself derives and shows
+  (a strength meter's word, a copy in its storage), a field nothing marks as a password (no type, name or mask, never
+  seen as one), closed shadow roots (out of the agent's scripts' reach too). The site still gets the password, as with
+  any password manager.
 - The DevTools port asks for a secret of its own (`cdp.token` next to `vnc.pass`, mounted read-only in the container;
   the bridge shows it as `X-Bip-Cdp`, Hermes' `browser.cdp_url` as `/t/<secret>/`), and refuses any request carrying
   an `Origin` (a web page's): another account of a shared machine, or a page in the browser, can't drive it. The VNC

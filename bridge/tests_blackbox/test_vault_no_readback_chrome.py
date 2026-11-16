@@ -115,7 +115,9 @@ class Cdp:
 class Session:
     """A Chromium, the fake site, and the proxy over the stand-in server, as Hermes talks to it."""
 
-    def __init__(self):
+    def __init__(self, isolation="--site-per-process"):
+        """`isolation`: how Chrome keeps sites apart; production turns it off (browser/open_browser.sh:
+        `--disable-features=IsolateOrigins,site-per-process`: another site's frame in the page's process)."""
         self.dir = Path(tempfile.mkdtemp(prefix="bip-vault-readback-"))
         site = self.dir / "site"
         shutil.copytree(FIXTURES, site)
@@ -128,7 +130,7 @@ class Session:
         profile.mkdir()
         self.chrome = subprocess.Popen([CHROME, "--headless=new", f"--remote-debugging-port={self.port}",
                                         f"--user-data-dir={profile}", "--no-first-run", "--disable-gpu",
-                                        "--site-per-process", "--window-size=1000,900", "about:blank"],
+                                        isolation, "--window-size=1000,900", "about:blank"],
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         deadline, page = time.time() + 30, None
         while time.time() < deadline and page is None:
@@ -325,8 +327,14 @@ def test_a_script_never_puts_it_where_the_agent_reads(filled):
 
 
 def test_the_sites_eye_shows_it_to_nobody_but_the_person(filled):
+    # the agent clicking the site's eye: dots again as soon as the page has answered the click (the look after a page
+    # tool, review V7)
     filled.tool("click_element", selector="#eye")
-    assert filled.page("document.querySelector('#mdp').type") == "text"   # the site showed it (the live view)
+    assert filled.page("document.querySelector('#mdp').type") == "password"
+    # the person (or the page) clicking it: in clear on the live view until the agent's next call
+    with Cdp(filled.page_ws) as person:
+        person.value("document.querySelector('#eye').click()")
+    assert filled.page("document.querySelector('#mdp').type") == "text"
     said = filled.tool("execute_script", script=VALUE + ".split('').reverse().join('')")
     assert not leaks(said), said[:200]
     # read again as dots before the agent looks: the screenshot, the accessibility tree
@@ -341,7 +349,8 @@ def test_the_sites_eye_shows_it_to_nobody_but_the_person(filled):
         cdp.value("document.querySelector('#mdp').type = 'password'")
     assert shot == masked and shot != clear, "the agent's screenshot is not the masked page"
     # the eye again, then the page's readers
-    filled.tool("click_element", selector="#eye")
+    with Cdp(filled.page_ws) as person:
+        person.value("document.querySelector('#eye').click()")
     for tool, args in [("query_elements", {"selector": "input"}), ("get_element_state", {"selector": "#mdp"}),
                        ("get_page_content", {}), ("get_page_content", {"include_frames": True})]:
         said = filled.tool(tool, **args)
@@ -470,6 +479,64 @@ def test_fields_that_only_speak_of_passwords_read_as_typed(browser):
     said = browser.tool("execute_script", script="document.querySelector('#ident').value")
     assert IDENT in said, said[:200]
     assert browser.page("document.querySelector('#ident').type") == "text"
+
+
+@pytest.fixture(scope="module")
+def production():
+    """A Chromium as production runs it: sites not kept in processes of their own."""
+    session = Session(isolation="--disable-features=IsolateOrigins,site-per-process")
+    yield session
+    session.close()
+
+
+class PartnerFrame:
+    """The partner's frame (another site's): its own DevTools target when Chrome keeps it in another process (Chrome
+    157 does here, the production flags given or not), else a world of it in the page's session. The person's hand."""
+
+    def __init__(self, session, url):
+        frame = next((t for t in httpx.get(f"http://127.0.0.1:{session.port}/json/list").json()
+                      if t["type"] == "iframe" and t["url"] == url), None)
+        self.cdp = Cdp(frame["webSocketDebuggerUrl"] if frame else session.page_ws)
+        print("\npartner frame:", "a process of its own" if frame else "in the page's process")
+        self.context = None
+        if not frame:
+            child = self.cdp.call("Page.getFrameTree")["frameTree"]["childFrames"][0]["frame"]["id"]
+            self.context = self.cdp.call("Page.createIsolatedWorld", {"frameId": child, "worldName": "person"})[
+                "executionContextId"]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.cdp.ws.close()
+
+    def value(self, expression):
+        return self.cdp.value(expression, self.context)
+
+
+def test_another_sites_frame_is_dots_in_the_agents_screenshot_with_productions_flags(production):
+    """Review V7, Chrome started as production starts it: a partner's code page in a frame of another site (pin.html
+    served as http://localhost), the person typed the code and clicked its eye; the agent's screenshot shows dots."""
+    port = production.site.server_address[1]
+    url = f"http://localhost:{port}/pin.html"
+    (production.dir / "site" / "xframe.html").write_text(
+        "<!doctype html><html lang=fr><head><meta charset=utf-8><title>Partenaire | Essai</title></head><body>"
+        f"<h1>Accès partenaire</h1><iframe src=\"{url}\" width=700 height=400></iframe></body></html>")
+    production.open("/xframe.html")
+    with PartnerFrame(production, url) as person:
+        person.value(f"document.querySelector('#code').value = {json.dumps(PIN)}; "
+                     "document.querySelector('#voir').click(); true")
+        assert person.value("document.querySelector('#code').type") == "text"
+    shot = production.image("take_screenshot")
+    with PartnerFrame(production, url) as person, Cdp(production.page_ws) as eyes:
+        assert person.value("document.querySelector('#code').type") == "password"
+        assert person.value("document.querySelector('#code').value") == PIN   # the person's code kept
+        masked = eyes.call("Page.captureScreenshot", {"format": "jpeg"})["data"]
+        person.value("document.querySelector('#code').type = 'text'")
+        clear = eyes.call("Page.captureScreenshot", {"format": "jpeg"})["data"]
+        person.value("document.querySelector('#code').type = 'password'")
+    assert masked != clear
+    assert shot == masked, "the agent's screenshot shows the partner's code in clear"
 
 
 def direct(cdp, script):
