@@ -14,6 +14,7 @@
 //!
 //!     GET  /v1/reminders                 {agents, rights: {agent: {read, write}}, at, lists: n, items: n}
 //!     PUT  /v1/reminders                 {lists: [{id, title}], items: [{id, list, title, notes, due, completed}]}
+//!     POST /v1/reminders/verified        {hash}: the phone's copy unchanged (phone_copy.rs; 409: send it whole)
 //!     PUT  /v1/reminders/agents          {agents}
 //!     PUT  /v1/reminders/rights          {agent, rights: {read?, write?}}: what that agent may do (phone_rights.rs)
 //!     PUT  /v1/reminders/android         {calendar, items: [{id, title, due}]}: the Android app's reminders at a time,
@@ -285,8 +286,9 @@ pub fn call_from(
                 return Ok(tool_text(in_calendar.trim_start(), false));
             }
             if rows.is_empty() {
+                // when the phone last vouched for its copy (checked unchanged, or sent: phone_copy.rs)
                 let since = if py::truthy(&at) {
-                    format!(" (as of {} ago)", age(now - py::py_float(&at).unwrap_or(now)))
+                    format!(" (as of {} ago)", age(now - crate::phone_copy::seen(&data).unwrap_or(now)))
                 } else {
                     String::new()
                 };
@@ -314,7 +316,7 @@ pub fn call_from(
             if rows.len() > LIST_MAX {
                 lines.push(format!("… and {} more: narrow with words.", rows.len() - LIST_MAX));
             }
-            let shared = if py::truthy(&at) { py::py_float(&at).unwrap_or(now) } else { now };
+            let shared = if py::truthy(&at) { crate::phone_copy::seen(&data).unwrap_or(now) } else { now };
             return Ok(tool_text(
                 &format!("As the iPhone shared them {} ago:\n{}{asked}{in_calendar}", age(now - shared), lines.join("\n")),
                 false,
@@ -525,7 +527,7 @@ pub const IPHONE_DAYS: f64 = 30.0;
 /// Whether an iPhone shares its Reminders here (its copy, `PUT /v1/reminders`, less than `IPHONE_DAYS` old): the only
 /// phone that does a reminder at a time or on a day.
 pub fn iphone_syncs(data: &Dict, now: f64) -> bool {
-    data.get("at").and_then(Value::as_f64).is_some_and(|at| now - at < IPHONE_DAYS * 86400.0)
+    crate::phone_copy::seen(data).is_some_and(|at| now - at < IPHONE_DAYS * 86400.0)
 }
 
 /// `due` as an agent wrote it, checked and written as the phones read it: a day (2026-11-07), a local time
@@ -753,10 +755,14 @@ pub struct Snapshot {
     pub lists: Vec<ReminderList>,
     #[serde(default)]
     pub items: Vec<Item>,
+    /// Its fingerprint (the phone's, phone_copy.rs): the next time it is unchanged, the phone only says so.
+    #[serde(default)]
+    pub hash: Option<String>,
 }
 
 impl Validate for Snapshot {
     fn validate(&self, errors: &mut Vec<FieldError>) {
+        web::check_max_len(errors, "hash", self.hash.as_deref(), 128);
         check_max_items(errors, "lists", Some(&self.lists), 200);
         check_max_items(errors, "items", Some(&self.items), 5000);
         for (n, l) in self.lists.iter().enumerate() {
@@ -847,6 +853,7 @@ async fn status(State(state): State<AppState>) -> ApiResult<Response> {
         .count();
     Ok(web::ok(json!({
         "agents": data.get("agents").cloned().unwrap_or(json!([])), "at": data.get("at").cloned().unwrap_or(Value::Null),
+        "checked": data.get("checked").cloned().unwrap_or(Value::Null),
         "rights": crate::phone_rights::listed(&data, &crate::phone_rights::REMINDERS),
         "lists": count("lists"), "items": count("items"), "pending": pending,
     })))
@@ -864,7 +871,7 @@ async fn snapshot(State(state): State<AppState>, Json(body): Json<Snapshot>) -> 
         let lists: Vec<Value> = body.lists.iter().map(|l| serde_json::to_value(l).unwrap_or(Value::Null)).collect();
         data.insert("lists".into(), Value::Array(lists));
         data.insert("items".into(), Value::Array(kept));
-        data.insert("at".into(), json!(py::time_time()));
+        crate::phone_copy::sent(&mut data, body.hash.as_deref());
         let cutoff = py::time_time() - (QUEUE_DAYS * 86400) as f64;
         let queue: Vec<Value> = list_of(&data, "queue")
             .into_iter()
@@ -912,6 +919,7 @@ fn set_agents_in(data: &mut Dict, names: &[String]) {
         for key in ["lists", "items", "at", ANDROID] {
             data.remove(key);
         }
+        crate::phone_copy::forget(data);
     }
 }
 
@@ -1049,9 +1057,29 @@ async fn done(State(state): State<AppState>, Path(op_id): Path<String>, Json(bod
 }
 
 /// `reminders_router()` (mounted under /v1 with the bridge key).
+/// `POST /v1/{kind}/verified {hash}`: the phone's copy unchanged (phone_copy.rs); 409 when the one here is another.
+async fn verified(State(state): State<AppState>, Json(body): Json<crate::phone_copy::Verified>) -> ApiResult<Response> {
+    let config = state.config();
+    let checked = blocking(move || {
+        let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let mut data = read(&config);
+        if !crate::phone_copy::verify(&mut data, &body.hash) {
+            return Ok(None);
+        }
+        write(&config, &data)?;
+        Ok(data.get("checked").cloned())
+    })
+    .await?;
+    match checked {
+        Some(checked) => Ok(web::ok(json!({"checked": checked}))),
+        None => Err(HttpError::new(409, "not the copy here: send it whole")),
+    }
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/reminders", get(status).put(snapshot))
+        .route("/reminders/verified", post(verified))
         .route("/reminders/agents", put(set_agents))
         .route("/reminders/rights", put(set_rights))
         .route("/reminders/android", put(android_copy))

@@ -63,6 +63,7 @@ pub mod media;
 pub mod spoken;
 pub mod outbox;
 pub mod live_activities;
+pub mod phone_copy;
 pub mod push;
 pub mod relay;
 pub mod runs;

@@ -50,7 +50,7 @@ def test_old_uploads_audio_and_messages_are_purged(bridges):
 
 
 @pytest.mark.slow
-def test_the_apps_event_stream_keeps_alive_every_ten_seconds(bridge, fakes):
+def test_the_apps_event_stream_keeps_alive_every_twenty_five_seconds(bridge, fakes):
     import threading
     gate = threading.Event()
     fakes.hermes.runs["run_k"] = [gate, sse("run.completed", output="Fini.")]
@@ -64,7 +64,7 @@ def test_the_apps_event_stream_keeps_alive_every_ten_seconds(bridge, fakes):
     text = b"".join(chunks).decode()
     assert text.startswith(": keepalive\n\n") and text.endswith("event: run.completed\n" + 'data: {"event": "run.completed", '
                                                                  '"output": "Fini."}\n\n')
-    assert time.monotonic() - started >= 9.5
+    assert time.monotonic() - started >= 24.5   # 10 s before 16/11 (battery, D1)
 
 
 @pytest.mark.slow

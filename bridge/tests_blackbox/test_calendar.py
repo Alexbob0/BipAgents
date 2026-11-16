@@ -118,6 +118,39 @@ def test_the_phones_copies_go_with_the_last_agent_deleted(bridges, fakes):
         assert "Dentiste" not in kept and "Lait" not in kept and "Hélène" not in kept
 
 
+def test_an_unchanged_copy_is_only_checked_and_the_agents_say_when(bridges, fakes):
+    """16/11 (battery, D3): the apps send a copy whole only when it changed (its fingerprint, `hash`), else they say it
+    is unchanged (`POST /v1/<copy>/verified`); the copy here must be that one (409: send it whole). The agents read
+    when the phone last checked it, never « up to date » on an old copy."""
+    bridge = coach(bridges, fakes)
+    copies = {"calendar": {**COPY, "hash": "h-cal"},
+              "reminders": {"lists": [{"id": "L1", "title": "Courses"}], "items": [{"id": "r1", "list": "L1", "title": "Lait"}],
+                            "hash": "h-rem"},
+              "contacts": {"contacts": [{"id": "c1", "name": "Hélène Martin"}], "hash": "h-con"}}
+    for share, copy in copies.items():
+        assert bridge.put(f"/v1/{share}/agents", json={"agents": ["coach"]}, headers=AUTH).status_code == 200
+        assert bridge.post(f"/v1/{share}/verified", json={"hash": copy["hash"]}, headers=AUTH).status_code == 409, \
+            f"{share}: no copy yet, checked"
+        assert bridge.put(f"/v1/{share}", json=copy, headers=AUTH).status_code == 200
+        sent = bridge.get(f"/v1/{share}", headers=AUTH).json()
+        assert sent["checked"] == sent["at"], share
+        checked = bridge.post(f"/v1/{share}/verified", json={"hash": copy["hash"]}, headers=AUTH)
+        assert checked.status_code == 200 and checked.json()["checked"] >= sent["at"], share
+        assert bridge.post(f"/v1/{share}/verified", json={"hash": "other"}, headers=AUTH).status_code == 409, share
+        assert bridge.get(f"/v1/{share}", headers=AUTH).json()["at"] == sent["at"], f"{share}: checked is not changed"
+    # an app from before 16/11 (no fingerprint): never « unchanged », sent whole each time
+    assert bridge.put("/v1/calendar", json=COPY, headers=AUTH).status_code == 200
+    assert bridge.post("/v1/calendar/verified", json={"hash": "h-cal"}, headers=AUTH).status_code == 409
+    # the agents' words: as the phone shared it a moment ago (a copy checked a minute or more after it changed says both)
+    give_token(bridge, "coach", TOKEN)   # its tools' entry was written again when its copies were shared
+    listed = text_of(call(bridge, "calendar_list", {"from": "2026-10-21", "to": "2026-10-24"}, token=TOKEN))
+    assert "as the phone shared it 0 min ago" in listed, listed
+    # the copy dropped (no agent any more): its fingerprint goes with it
+    assert bridge.put("/v1/contacts/agents", json={"agents": []}, headers=AUTH).status_code == 200
+    assert bridge.put("/v1/contacts/agents", json={"agents": ["coach"]}, headers=AUTH).status_code == 200
+    assert bridge.post("/v1/contacts/verified", json={"hash": "h-con"}, headers=AUTH).status_code == 409
+
+
 def test_what_the_agent_asked_shows_until_the_phone_shares_again(bridges, fakes):
     """2026-10-27, token lab: an agent added an event, listed the calendar to check, didn't find it (the phone hadn't
     synced) and added it again, 255 times in one turn. Its own adds are listed now, marked; the same one isn't asked

@@ -58,7 +58,10 @@ pub static RUN_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Za-z0-9_.
 pub static DEVICE_TOKEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[0-9a-fA-F]{32,512}$").expect("valid regex"));
 pub static SESSION_ID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z0-9_.:-]{1,200}$").expect("valid regex"));
-pub const SSE_KEEPALIVE_SECONDS: f64 = 10.0;
+/// The apps' event streams' keepalive comment (thread events, a run's events, a shared agent's relayed streams). 25 s
+/// since 16/11 (10 s before: on 4G/5G the radio never slept while a conversation was open, Alex's battery, D1); under
+/// the presence's 45 s, the apps' read timeouts (Android 45 s, iOS 60 s) and the relayed streams' touch.
+pub const SSE_KEEPALIVE_SECONDS: f64 = 25.0;
 pub const MESSAGE_MAX_CHARS: usize = 8000;
 
 /// Everything that needs a running event loop (created in the lifespan).
