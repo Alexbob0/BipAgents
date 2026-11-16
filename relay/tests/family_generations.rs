@@ -105,7 +105,10 @@ async fn a_pass_made_after_a_withdrawal_is_newer_than_the_one_withdrawn_whatever
     assert!(generation(&plain) < generation(&withdrawn), "the relay's clock is a day behind the pass withdrawn");
     // Léa says which pass was withdrawn: Paul's new pass is newer than it
     let after = pass(json!({"for": paul, "after": [withdrawn]})).await;
-    assert!(generation(&after) > generation(&withdrawn), "a pass made after the withdrawal is older than the one withdrawn");
+    assert!(
+        generation(&after) > generation(&withdrawn),
+        "a pass made after the withdrawal is older than the one withdrawn"
+    );
     // another mailbox's pass, or a made-up id, counts for nothing (and is no error)
     let theirs = made_at(&key, &paul, now_ms() + 3 * 86_400_000);
     let ignored = pass(json!({"for": paul, "after": [theirs, "AAAA"]})).await;
