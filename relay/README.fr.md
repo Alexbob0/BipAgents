@@ -76,8 +76,12 @@ côté pont : `bridge-rs/src/family_rendezvous.rs`).
 
 **Seuls les foyers reliés appellent une boîte.** Au moment du lien, chaque pont donne à l'autre un laissez-passer pour
 sa propre boîte, valable pour la boîte de l'autre seulement, scellé dans leur échange ; il redit à chaque requête en
-attente les laissez-passer qu'il accepte encore, et en retire un tout de suite quand le lien est retiré. Seule la boîte
-qu'il ouvre peut le renouveler. La boîte d'un foyer n'est jamais dans un QR code : une invitation a sa
+attente les laissez-passer qu'il accepte encore. L'identifiant d'un laissez-passer porte sa génération (le moment où
+il a été créé, signé par le relais pour cette boîte) : pour une boîte qui interroge, le relais ne garde que la plus
+ancienne génération parmi ceux qu'elle dit, un nombre. Quand un lien est retiré, le pont donne d'abord aux foyers
+qu'il garde un laissez-passer d'une génération plus récente (par leur lien, `POST /family/relay-pass`) : celui qui est
+retiré, plus ancien, est refusé tout de suite, quoi que le relais se rappelle (après un redémarrage, rien n'arrive à
+une boîte avant que sa première requête le redise). Seule la boîte qu'il ouvre peut le renouveler. La boîte d'un foyer n'est jamais dans un QR code : une invitation a sa
 propre boîte, qui finit avec elle et ne prend qu'une présentation (`invite`). Un inconnu qui apprend l'identifiant
 d'une boîte ne peut ni l'appeler, ni épuiser ses quotas, ni savoir si son pont est allumé.
 
@@ -87,8 +91,7 @@ ChaCha20‑Poly1305, une clé par appel, par sens et par réponse, les rejeux re
 adresses des ponts, quelle boîte appelle quelle boîte, quand, combien d'octets, et, tant qu'un pont garde sa requête
 ouverte, qu'il est allumé et depuis quelle adresse. Il **ne garde** rien sur disque et ne journalise aucun appel
 réussi (pas de trace de qui parle à qui) : seulement certains refus (quota, boîte bloquée, réponse coupée), avec une empreinte d'une boîte calculée avec une clé du relais (HMAC-SHA256, pas recalculable depuis
-l'identifiant seul), un total par heure, et, si la place des listes de laissez-passer vient à manquer, une ligne par
-minute qui le dit (un nombre, sans aucune boîte). En mémoire : les identifiants des boîtes qui interrogent (jusqu'à une
+l'identifiant seul), et un total par heure. En mémoire : les identifiants des boîtes qui interrogent (jusqu'à une
 heure après), les compteurs des quotas sous des empreintes SHA-256 sans clé (oubliés dans l'heure), les appels le
 temps qu'ils passent. `/health` dit s'il est en marche, rien de son activité.
 
@@ -97,15 +100,15 @@ tout, tous appels confondus ; 32 Mio par appelant, par lien vers un appelé et p
 est coupé, de même qu'un corps plus lent que 16 Kio/s en moyenne après sa première seconde (un appelant qui
 n'envoie presque rien ne tient aucune place ; un envoi lent garde les 30 s), et tout doit arriver en 30 s ; le corps
 d'un appel refusé n'est jamais gardé. Les petites routes (`mailbox`, `pass`, `passes`) lisent 64 Kio au plus, en
-10 s. Les listes de laissez-passer qu'une boîte accepte ne sont gardées que tant qu'elle interroge (et une minute
-après), avec seulement les identifiants des laissez-passer que le relais a donnés pour cette boîte (un identifiant
-est signé pour elle, et chaque laissez-passer créé compte dans le quota par adresse), 250 000 identifiants en tout :
-au-delà, une liste ne peut que rétrécir (un laissez-passer retiré part toujours ; un nouveau attend de la place), et
-une boîte qui n'en a jamais dit reste ainsi (elle accepte ses laissez-passer : la borne ne coupe jamais un foyer). Quotas : appels et octets par appelant, et par laissez-passer (ce qu'un foyer peut envoyer
+10 s. Ce qu'une boîte accepte tient en un nombre, gardé avec ses requêtes (rien à borner). Quotas : appels et octets par appelant, et par laissez-passer (ce qu'un foyer peut envoyer
 à un autre) ; boîtes et laissez-passer créés par adresse. Une boîte ou un laissez-passer peut être refusé par son
 empreinte dans `RELAY_BLOCKED`. **Un seul** exemplaire pour les familles (le rendez-vous est en mémoire). Déploiement :
 `RELAY_TRUST_FORWARDED_FOR=1` derrière un proxy, une limite de fichiers ouverts large (une requête en attente par
 foyer relié par le relais), `flush_interval -1` dans Caddy, journaux gardés 14 jours.
+**Retirer une clé de scellement** (`RELAY_SEAL_KEYS`, la première scelle) : garder l'ancienne dans la liste, pas en
+premier, 210 jours au moins. Les ponts redonnent des laissez-passer neufs à leurs foyers tous les 30 jours et
+renouvellent le jeton de leur boîte quand il lui reste 200 jours sur 400 ; un pont éteint plus longtemps, ou un lien
+dont l'autre pont est resté éteint au-delà, se refait.
 
 ## Réglages (environnement seulement)
 

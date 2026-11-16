@@ -9,8 +9,9 @@
 //!   own mailbox, for the other household's mailbox (`POST /v1/family/pass {for}`, `fp1.`, sealed too: the mailbox it
 //!   opens, the one it was given to, an id of its own) and gives it to the other one, sealed in their exchange. A call
 //!   (`POST /v1/family/call/<id>`, `x-bip-pass`) is taken only with a pass for that very mailbox, given to that very
-//!   caller, and one the mailbox still accepts: its bridge says which (`x-bip-passes` with each poll, and
-//!   `POST /v1/family/passes` when a link is removed). Anything else is refused exactly as a mailbox whose bridge is off
+//!   caller, and not older than the mailbox still takes: its bridge says the passes it accepts (`x-bip-passes` with
+//!   each poll, and `POST /v1/family/passes` when a link is removed), and the relay keeps only the oldest generation
+//!   among them ([`Rendezvous::takes_from`]). Anything else is refused exactly as a mailbox whose bridge is off
 //!   is (503 `away`): a stranger, a household unlinked, or whoever holds a copy of a pass learns nothing, not even
 //!   whether the home's computer is on, and can't use up what the household may receive (quotas per pass).
 //! - An **invitation** has a mailbox of its own (`{"invite_until": …}`), ending with it: its id is what the QR code
@@ -23,24 +24,27 @@
 //! What passes is sealed end to end by the two bridges (bridge-rs family_seal.rs). What the relay sees: the bridges'
 //! addresses, which mailbox calls which, when, how many bytes, and, while a bridge polls, that it is on and from where.
 //! What it keeps: nothing on disk; quotas in memory on hashes, forgotten within the hour; no log line for a call that
-//! went through, only for some refusals (with a keyed fingerprint of one mailbox, [`Rendezvous::fingerprint`]), one
-//! count an hour, and, should the room for the lists of passes run out, one line a minute saying so (a number, no
-//! mailbox).
+//! went through, only for some refusals (with a keyed fingerprint of one mailbox, [`Rendezvous::fingerprint`]), and
+//! one count an hour.
 //!
 //! Memory: a call's bytes are reserved as they are read ([`Budget`]: every call together, and each caller, each link
 //! to the callee and each address its share), never on the length it says; a body that stops coming for
 //! [`BODY_IDLE`] is cut, so is one slower than [`FamilyConfig::body_rate`] past its first second, and all of it comes
 //! within [`FamilyConfig::body_timeout`]. A refused call's body is never kept (read and dropped while it keeps
 //! coming). The small routes (mailbox, pass, passes) read [`SMALL_BODY_BYTES`] at most, within [`SMALL_BODY_TIME`].
-//! The lists of passes accepted are kept only for a mailbox that polls (and a moment after), with only the ids the relay
-//! gave for that mailbox (signed for it: making one costs the quota of passes per address), [`ACCEPTED_MAX`] ids in
-//! all. One copy of the relay holds the rendezvous (it is in memory): run one, or share mailboxes out by their id.
+//! Passes withdrawn: a pass's id carries its **generation** (when it was made, signed for its mailbox), and a mailbox
+//! that polls says the passes it accepts; the relay keeps one number of it, the oldest generation among them, with
+//! what it knows of its polls. Removing a link, the bridge first gives the households it keeps passes of a newer
+//! generation (through their links), so the pass withdrawn, older, is refused whatever the relay remembers: nothing
+//! to bound, nothing to fall back on (after a restart, nothing reaches a mailbox before its first poll says it again).
+//! One copy of the relay holds the rendezvous (it is in memory): run one, or share mailboxes out by their id.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::body::{Body, Bytes};
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Request, State};
@@ -184,10 +188,6 @@ pub const SMALL_BODY_BYTES: usize = 64 * 1024;
 /// And the time it may take to come.
 pub const SMALL_BODY_TIME: Duration = Duration::from_secs(10);
 
-/// The ids of the passes accepted, every mailbox's list together (about 20 MiB): past that, a list may only shrink,
-/// and a mailbox that never said one stays so.
-pub const ACCEPTED_MAX: usize = 250_000;
-
 /// A call waiting for its mailbox's poll.
 struct Call {
     id: String,
@@ -206,8 +206,6 @@ struct Counts {
     answered: AtomicU64,
     refused: AtomicU64,
     bytes: AtomicU64,
-    /// Lists of passes not kept whole (the room for lists full), said once a minute.
-    lists_cut: AtomicU64,
 }
 
 /// The bytes of the calls held, reserved before they are read: every call together, and each caller, callee and
@@ -289,12 +287,8 @@ pub struct Rendezvous {
     bells: Mutex<HashMap<String, Arc<Notify>>>,
     /// Calls taken, waiting for their answer: call id → (the mailbox that took it, where the answer goes).
     waiting: Mutex<HashMap<String, (String, oneshot::Sender<Body>)>>,
-    /// Each mailbox's polls: how many are open, when one last began or ended, whether it is an invitation's.
-    seen: Mutex<HashMap<String, (usize, Instant, bool)>>,
-    /// The passes each mailbox says it still accepts (their ids), as its bridge last said, kept while it polls (and a
-    /// moment after: its calls fail at once past that): a mailbox that never said accepts every pass it gave. Locked
-    /// after `seen` when both are.
-    accepted: Mutex<Lists>,
+    /// What the relay knows of each mailbox that polls (forgotten an hour after its last poll).
+    seen: Mutex<HashMap<String, Seen>>,
     budget: Arc<Budget>,
     calls_out: Quota,
     calls_in: Quota,
@@ -309,44 +303,22 @@ pub struct Rendezvous {
     pass_keys: Vec<[u8; 32]>,
 }
 
-/// The lists of passes accepted, and how many ids they hold together.
-#[derive(Default)]
-struct Lists {
-    by_mailbox: HashMap<String, HashSet<String>>,
-    ids: usize,
+/// What the relay knows of a mailbox that polls.
+struct Seen {
+    /// Its polls open now.
+    open: usize,
+    /// When one last began or ended.
+    last: Instant,
+    /// Whether it is an invitation's.
+    invitation: bool,
+    /// The oldest generation of pass it takes, as its bridge last said ([`Rendezvous::takes_from`]); None: it never
+    /// said (a bridge from before passes could be withdrawn: every pass it gave).
+    from: Option<u64>,
 }
 
-impl Lists {
-    /// This mailbox accepts these passes from now on. Past [`ACCEPTED_MAX`] in all: a mailbox with a list keeps those
-    /// of it that it still accepts (a pass withdrawn goes at once; a new one waits for room), and one without a list
-    /// stays without (it accepts every pass it gave, as before it ever said: never cut off by the bound). False when
-    /// not kept whole.
-    fn set(&mut self, mailbox: &str, ids: HashSet<String>) -> bool {
-        let old = self.by_mailbox.get(mailbox);
-        let others = self.ids - old.map_or(0, HashSet::len);
-        if others + ids.len() <= ACCEPTED_MAX {
-            self.ids = others + ids.len();
-            self.by_mailbox.insert(mailbox.to_string(), ids);
-            return true;
-        }
-        if let Some(old) = old {
-            let kept: HashSet<String> = ids.into_iter().filter(|i| old.contains(i)).collect();
-            self.ids = others + kept.len();
-            self.by_mailbox.insert(mailbox.to_string(), kept);
-        }
-        false
-    }
-
-    fn remove(&mut self, mailbox: &str) {
-        if let Some(ids) = self.by_mailbox.remove(mailbox) {
-            self.ids -= ids.len();
-        }
-    }
-}
-
-/// Whether a mailbox polls now, or did a moment ago (`away`): its calls may be taken.
-fn polling(seen: &HashMap<String, (usize, Instant, bool)>, mailbox: &str, away: Duration) -> bool {
-    seen.get(mailbox).is_some_and(|(open, last, _)| *open > 0 || last.elapsed() < away)
+/// Whether this mailbox takes a pass of this generation (not older than it said, or it never said).
+fn takes(seen: &HashMap<String, Seen>, mailbox: &str, generation: u64) -> bool {
+    seen.get(mailbox).and_then(|s| s.from).is_none_or(|from| generation >= from)
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -393,18 +365,37 @@ fn pass_id_keys(seal_keys: &str) -> Vec<[u8; 32]> {
     }
 }
 
-/// A pass id: random bytes, then a tag that binds them to the mailbox the pass opens (base64url, 28 characters).
-const PASS_ID_RANDOM: usize = 12;
+/// A pass id: its generation (when it was made, in milliseconds: a pass made later has a higher one), random bytes,
+/// then a tag that binds both to the mailbox the pass opens (base64url, 34 characters).
+const PASS_ID_GENERATION: usize = 8;
+const PASS_ID_RANDOM: usize = 8;
 const PASS_ID_TAG: usize = 9;
+const PASS_ID_SIGNED: usize = PASS_ID_GENERATION + PASS_ID_RANDOM;
 
-fn pass_tag(key: &[u8; 32], mailbox: &str, random: &[u8]) -> [u8; PASS_ID_TAG] {
-    let mut message = Vec::with_capacity(mailbox.len() + 1 + random.len());
+fn pass_tag(key: &[u8; 32], mailbox: &str, signed: &[u8]) -> [u8; PASS_ID_TAG] {
+    let mut message = Vec::with_capacity(mailbox.len() + 1 + signed.len());
     message.extend_from_slice(mailbox.as_bytes());
     message.push(b':');
-    message.extend_from_slice(random);
+    message.extend_from_slice(signed);
     let mut tag = [0u8; PASS_ID_TAG];
     tag.copy_from_slice(&hmac(key, &message)[..PASS_ID_TAG]);
     tag
+}
+
+/// The last generation given here.
+static LAST_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+/// The generation of a pass made now: the time in milliseconds, always above the last one given here.
+fn next_generation() -> u64 {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(0));
+    let mut last = LAST_GENERATION.load(Ordering::Relaxed);
+    loop {
+        let next = now.max(last + 1);
+        match LAST_GENERATION.compare_exchange_weak(last, next, Ordering::AcqRel, Ordering::Relaxed) {
+            Ok(_) => return next,
+            Err(other) => last = other,
+        }
+    }
 }
 
 /// Equal, in a time that does not depend on where they differ.
@@ -431,7 +422,6 @@ impl Rendezvous {
             bells: Mutex::default(),
             waiting: Mutex::default(),
             seen: Mutex::default(),
-            accepted: Mutex::default(),
             counts: Counts::default(),
             last_report: Mutex::new(Instant::now()),
             fingerprint_key: fingerprint_key(seal_keys),
@@ -439,29 +429,36 @@ impl Rendezvous {
         }
     }
 
-    /// A new pass id for a pass that opens this mailbox: random, signed for it.
+    /// A new pass id for a pass that opens this mailbox: of a new generation, signed for it.
     fn new_pass_id(&self, mailbox: &str) -> String {
-        let mut raw = [0u8; PASS_ID_RANDOM + PASS_ID_TAG];
-        rand::rngs::OsRng.fill_bytes(&mut raw[..PASS_ID_RANDOM]);
-        let tag = pass_tag(&self.pass_keys[0], mailbox, &raw[..PASS_ID_RANDOM]);
-        raw[PASS_ID_RANDOM..].copy_from_slice(&tag);
+        let mut raw = [0u8; PASS_ID_SIGNED + PASS_ID_TAG];
+        raw[..PASS_ID_GENERATION].copy_from_slice(&next_generation().to_be_bytes());
+        rand::rngs::OsRng.fill_bytes(&mut raw[PASS_ID_GENERATION..PASS_ID_SIGNED]);
+        let tag = pass_tag(&self.pass_keys[0], mailbox, &raw[..PASS_ID_SIGNED]);
+        raw[PASS_ID_SIGNED..].copy_from_slice(&tag);
         URL_SAFE_NO_PAD.encode(raw)
     }
 
-    /// Whether this is the id of a pass the relay gave to open this mailbox.
-    fn pass_id_for(&self, mailbox: &str, id: &str) -> bool {
-        let Ok(raw) = URL_SAFE_NO_PAD.decode(id) else { return false };
-        if raw.len() != PASS_ID_RANDOM + PASS_ID_TAG {
-            return false;
+    /// The generation of a pass the relay gave to open this mailbox, from its id (None: not one, made up or another
+    /// mailbox's).
+    fn generation_for(&self, mailbox: &str, id: &str) -> Option<u64> {
+        let raw = URL_SAFE_NO_PAD.decode(id).ok()?;
+        if raw.len() != PASS_ID_SIGNED + PASS_ID_TAG {
+            return None;
         }
-        let (random, tag) = raw.split_at(PASS_ID_RANDOM);
-        self.pass_keys.iter().any(|key| same(&pass_tag(key, mailbox, random), tag))
+        let (signed, tag) = raw.split_at(PASS_ID_SIGNED);
+        if !self.pass_keys.iter().any(|key| same(&pass_tag(key, mailbox, signed), tag)) {
+            return None;
+        }
+        let mut generation = [0u8; PASS_ID_GENERATION];
+        generation.copy_from_slice(&signed[..PASS_ID_GENERATION]);
+        Some(u64::from_be_bytes(generation))
     }
 
-    /// Of the ids a mailbox says it accepts, those of passes the relay gave to open it (made-up ids, or another
-    /// mailbox's, are dropped: a list holds no more ids than its mailbox's passes, each made under the quota).
-    fn verified<'s>(&self, mailbox: &str, ids: impl Iterator<Item = &'s str>) -> HashSet<String> {
-        ids.filter(|id| self.pass_id_for(mailbox, id)).map(str::to_string).collect()
+    /// From the passes a mailbox says it accepts: the oldest generation it takes, the oldest among the passes the
+    /// relay gave for it (made-up ids, or another mailbox's, count for nothing; none at all: it takes no pass).
+    pub fn takes_from<'s>(&self, mailbox: &str, ids: impl Iterator<Item = &'s str>) -> u64 {
+        ids.filter_map(|id| self.generation_for(mailbox, id)).min().unwrap_or(u64::MAX)
     }
 
     /// The keyed fingerprint of a mailbox or pass id, for the logs (not computable from the id alone).
@@ -475,47 +472,46 @@ impl Rendezvous {
 
     /// How long a call may wait for this mailbox's bridge: `pickup` while a poll is open, what is left of `away`
     /// just after one ended, None when it does not poll (the call fails at once).
-    fn pickup_in(&self, seen: &HashMap<String, (usize, Instant, bool)>, mailbox: &str) -> Option<Duration> {
-        let (open, last, _) = seen.get(mailbox)?;
-        if *open > 0 {
+    fn pickup_in(&self, seen: &HashMap<String, Seen>, mailbox: &str) -> Option<Duration> {
+        let known = seen.get(mailbox)?;
+        if known.open > 0 {
             return Some(self.config.pickup);
         }
-        self.config.away.checked_sub(last.elapsed()).filter(|left| !left.is_zero())
+        self.config.away.checked_sub(known.last.elapsed()).filter(|left| !left.is_zero())
     }
 
-    /// [`Self::pickup_in`], for a call with this pass: None too when the mailbox no longer accepts it (both looked
-    /// at together: a poll saying its list can't come between them).
-    fn pickup(&self, mailbox: &str, pass: Option<&str>) -> Option<Duration> {
+    /// [`Self::pickup_in`], for a call with a pass of this generation: None too when the mailbox no longer takes it
+    /// (both looked at together: a poll saying what it takes can't come between them).
+    fn pickup(&self, mailbox: &str, generation: Option<u64>) -> Option<Duration> {
         let seen = lock(&self.seen);
-        if pass.is_some_and(|p| !self.accepts(mailbox, p)) {
+        if generation.is_some_and(|g| !takes(&seen, mailbox, g)) {
             return None;
         }
         self.pickup_in(&seen, mailbox)
     }
 
-    /// Whether this mailbox still accepts this pass (it said which, or never said).
-    fn accepts(&self, mailbox: &str, pass: &str) -> bool {
-        lock(&self.accepted).by_mailbox.get(mailbox).is_none_or(|ids| ids.contains(pass))
+    /// Whether this mailbox still takes a pass of this generation.
+    fn still_takes(&self, mailbox: &str, generation: u64) -> bool {
+        takes(&lock(&self.seen), mailbox, generation)
     }
 
-    /// The passes this mailbox accepts from now on (`POST /v1/family/passes`): kept only if it polls now or did a
-    /// moment ago; otherwise its next poll says them (and its calls fail until then).
-    fn accept_only(&self, mailbox: &str, ids: HashSet<String>) {
-        let seen = lock(&self.seen);
-        if polling(&seen, mailbox, self.config.away) && !lock(&self.accepted).set(mailbox, ids) {
-            self.counts.lists_cut.fetch_add(1, Ordering::Relaxed);
+    /// The oldest generation this mailbox takes from now on (`POST /v1/family/passes`, a link removed), kept with
+    /// what the relay knows of its polls; a mailbox that never polled takes no call anyway, and its next poll says it.
+    fn take_from(&self, mailbox: &str, from: u64) {
+        if let Some(known) = lock(&self.seen).get_mut(mailbox) {
+            known.from = Some(from);
         }
     }
 
     /// Whether this mailbox is an invitation's, polled now (or a moment ago).
     fn invitation_polled(&self, mailbox: &str) -> bool {
         let seen = lock(&self.seen);
-        seen.get(mailbox).is_some_and(|(_, _, invitation)| *invitation) && self.pickup_in(&seen, mailbox).is_some()
+        seen.get(mailbox).is_some_and(|known| known.invitation) && self.pickup_in(&seen, mailbox).is_some()
     }
 
     /// Mailboxes with a poll open now.
     pub fn online(&self) -> usize {
-        lock(&self.seen).values().filter(|(open, _, _)| *open > 0).count()
+        lock(&self.seen).values().filter(|known| known.open > 0).count()
     }
 
     /// Bytes of the calls held now.
@@ -533,11 +529,10 @@ impl Rendezvous {
         self.registrations.sweep();
         let hour = Duration::from_secs(3600);
         {
-            // under `seen` all along: a poll that comes meanwhile says its list after this, never before
             let mut seen = lock(&self.seen);
             let gone: Vec<String> = seen
                 .iter()
-                .filter(|(_, (open, last, _))| *open == 0 && last.elapsed() > hour)
+                .filter(|(_, known)| known.open == 0 && known.last.elapsed() > hour)
                 .map(|(id, _)| id.clone())
                 .collect();
             let mut bells = lock(&self.bells);
@@ -549,17 +544,6 @@ impl Rendezvous {
             }
             bells.retain(|id, _| seen.contains_key(id) || queues.contains_key(id));
             queues.retain(|_, q| !q.is_empty());
-            // the lists of the mailboxes that no longer poll: their calls fail at once, their next poll says it again
-            let mut lists = lock(&self.accepted);
-            let stale: Vec<String> =
-                lists.by_mailbox.keys().filter(|id| !polling(&seen, id, self.config.away)).cloned().collect();
-            for id in &stale {
-                lists.remove(id);
-            }
-        }
-        let cut = self.counts.lists_cut.swap(0, Ordering::Relaxed);
-        if cut > 0 {
-            tracing::warn!(lists = cut, "family relay: the room for lists of passes is full: lists not kept whole");
         }
         let mut last = lock(&self.last_report);
         if last.elapsed() >= hour {
@@ -584,23 +568,19 @@ struct Polling<'a> {
 }
 
 impl<'a> Polling<'a> {
-    /// A poll opened, with the passes its mailbox says it accepts (`said`), kept with it under the same lock.
-    fn open(
-        rendezvous: &'a Rendezvous,
-        mailbox: &str,
-        invitation: bool,
-        said: Option<HashSet<String>>,
-    ) -> Option<Self> {
+    /// A poll opened, with the oldest generation its mailbox says it takes (`from`), kept under the same lock.
+    fn open(rendezvous: &'a Rendezvous, mailbox: &str, invitation: bool, from: Option<u64>) -> Option<Self> {
         let mut seen = lock(&rendezvous.seen);
-        let entry = seen.entry(mailbox.to_string()).or_insert((0, Instant::now(), invitation));
-        if entry.0 >= rendezvous.config.polls_per_mailbox {
+        let known =
+            seen.entry(mailbox.to_string()).or_insert(Seen { open: 0, last: Instant::now(), invitation, from: None });
+        if known.open >= rendezvous.config.polls_per_mailbox {
             return None;
         }
-        *entry = (entry.0 + 1, Instant::now(), invitation);
-        if let Some(ids) = said {
-            if !lock(&rendezvous.accepted).set(mailbox, ids) {
-                rendezvous.counts.lists_cut.fetch_add(1, Ordering::Relaxed);
-            }
+        known.open += 1;
+        known.last = Instant::now();
+        known.invitation = invitation;
+        if from.is_some() {
+            known.from = from;
         }
         Some(Polling { rendezvous, mailbox: mailbox.to_string() })
     }
@@ -608,8 +588,9 @@ impl<'a> Polling<'a> {
 
 impl Drop for Polling<'_> {
     fn drop(&mut self) {
-        if let Some(entry) = lock(&self.rendezvous.seen).get_mut(&self.mailbox) {
-            *entry = (entry.0.saturating_sub(1), Instant::now(), entry.2);
+        if let Some(known) = lock(&self.rendezvous.seen).get_mut(&self.mailbox) {
+            known.open = known.open.saturating_sub(1);
+            known.last = Instant::now();
         }
     }
 }
@@ -883,8 +864,8 @@ async fn passes(State(relay): State<Arc<Relay>>, headers: HeaderMap, request: Re
     if asked.accept.len() > 1000 {
         return refuse(StatusCode::BAD_REQUEST, "invalid", "too many passes");
     }
-    let ids = relay.family.verified(&claims.id, asked.accept.iter().map(String::as_str));
-    relay.family.accept_only(&claims.id, ids);
+    let from = relay.family.takes_from(&claims.id, asked.accept.iter().map(String::as_str));
+    relay.family.take_from(&claims.id, from);
     StatusCode::NO_CONTENT.into_response()
 }
 
@@ -896,13 +877,12 @@ async fn next(State(relay): State<Arc<Relay>>, headers: HeaderMap) -> Response {
     };
     let (mailbox, invitation) = (claims.id.clone(), claims.invitation());
     let family = &relay.family;
-    // the passes it accepts, said with each poll (`-`: none), kept as the poll opens
-    let said: Option<HashSet<String>> =
-        headers.get("x-bip-passes").and_then(|v| v.to_str().ok()).filter(|_| !invitation).map(|said| {
-            let ids = said.split(',').map(str::trim).filter(|i| !i.is_empty() && *i != "-");
-            family.verified(&mailbox, ids.take(1000))
-        });
-    let Some(_open) = Polling::open(family, &mailbox, invitation, said) else {
+    // the passes it accepts, said with each poll (`-`: none): the oldest generation among them, kept as the poll opens
+    let from = headers.get("x-bip-passes").and_then(|v| v.to_str().ok()).filter(|_| !invitation).map(|said| {
+        let ids = said.split(',').map(str::trim).filter(|i| !i.is_empty() && *i != "-");
+        family.takes_from(&mailbox, ids.take(1000))
+    });
+    let Some(_open) = Polling::open(family, &mailbox, invitation, from) else {
         return refuse(StatusCode::TOO_MANY_REQUESTS, "polls", "too many polls open on this mailbox");
     };
     let bell = family.bell(&mailbox);
@@ -980,21 +960,21 @@ async fn call(
     }
     // Whether this mailbox takes calls from this caller: a pass it gave for itself, or an invitation's mailbox being
     // polled. Anything else reads exactly as a mailbox whose bridge is off.
-    let mut pass_id = None;
+    let mut generation = None;
     let pair = if kind == "call" {
         let pass = headers.get("x-bip-pass").and_then(|v| v.to_str().ok()).and_then(|p| open_pass(&relay, p));
-        // for this mailbox, given to this caller, still accepted by the mailbox, not ended nor blocked
+        // for this mailbox, given to this caller, not older than the mailbox takes, not ended nor blocked
+        let of = |p: &PassClaims| family.generation_for(&target, &p.id).unwrap_or(0);
         match pass {
             Some(p)
                 if p.to == target
                     && p.holder == from
                     && now() < p.exp
-                    && family.accepts(&target, &p.id)
+                    && family.still_takes(&target, of(&p))
                     && !relay.is_blocked_id(&family.fingerprint(&p.id)) =>
             {
-                let pair = format!("pass:{}", p.id);
-                pass_id = Some(p.id);
-                pair
+                generation = Some(of(&p));
+                format!("pass:{}", p.id)
             }
             _ => return refused_after(away(), body, declared, family).await,
         }
@@ -1012,7 +992,7 @@ async fn call(
         let quota = refuse(StatusCode::TOO_MANY_REQUESTS, "quota", "too many calls this hour");
         return refused_after(quota, body, declared, family).await;
     }
-    let Some(wait) = family.pickup(&target, pass_id.as_deref()) else {
+    let Some(wait) = family.pickup(&target, generation) else {
         return refused_after(away(), body, declared, family).await;
     };
     let limit = if kind == "invite" { INVITE_REQUEST_BYTES } else { family.config.request_bytes };
@@ -1227,58 +1207,49 @@ mod tests {
         drop(invite);
     }
 
-    #[tokio::test]
-    async fn a_list_of_passes_is_kept_only_for_a_mailbox_that_polls() {
-        let quick = FamilyConfig { away: Duration::from_millis(50), ..FamilyConfig::default() };
-        let family = Rendezvous::new(quick, "test-key");
-        let only = |id: &str| HashSet::from([id.to_string()]);
-        family.accept_only("m", only("p1"));
-        assert!(family.accepts("m", "p2"), "never polled: no list kept");
-        let open = Polling::open(&family, "m", false, Some(only("p1"))).unwrap();
-        assert!(family.accepts("m", "p1") && !family.accepts("m", "p2"));
-        assert_eq!(family.pickup("m", Some("p2")), None, "a pass it no longer accepts reads as away");
-        family.accept_only("m", HashSet::new());
-        assert!(!family.accepts("m", "p1"), "withdrawn at once while it polls");
+    #[test]
+    fn the_oldest_generation_a_mailbox_takes_is_said_with_its_polls() {
+        let family = Rendezvous::new(FamilyConfig::default(), "test-key");
+        family.take_from("m", 10);
+        assert!(lock(&family.seen).get("m").is_none(), "never polled: nothing kept");
+        assert_eq!(family.pickup("m", Some(10)), None, "never polled: away");
+        let open = Polling::open(&family, "m", false, Some(10)).unwrap();
+        assert_eq!(family.pickup("m", Some(9)), None, "older than it takes: read as away");
+        assert_eq!(family.pickup("m", Some(10)), Some(family.config.pickup));
+        assert!(family.still_takes("m", 11) && !family.still_takes("m", 9));
+        family.take_from("m", u64::MAX);
+        assert_eq!(family.pickup("m", Some(10)), None, "no pass at all from now on, at once");
         drop(open);
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        family.sweep();
-        assert!(lock(&family.accepted).by_mailbox.is_empty(), "no longer polling: its list forgotten");
-        assert_eq!(lock(&family.accepted).ids, 0);
+        // a poll that says nothing (a bridge from before) changes nothing of what it said
+        let again = Polling::open(&family, "m", false, None).unwrap();
+        assert!(!family.still_takes("m", 10));
+        drop(again);
+        // a mailbox that never said takes every pass it gave
+        let other = Polling::open(&family, "n", false, None).unwrap();
+        assert_eq!(family.pickup("n", Some(0)), Some(family.config.pickup));
+        drop(other);
     }
 
     #[test]
-    fn a_pass_id_is_signed_for_its_mailbox_and_checked_with_any_sealing_key() {
+    fn a_pass_id_carries_its_generation_signed_for_its_mailbox_with_any_sealing_key() {
         let relay = Rendezvous::new(FamilyConfig::default(), "key-a");
-        let id = relay.new_pass_id("mailbox-a");
-        assert_eq!(id.len(), 28);
-        assert!(relay.pass_id_for("mailbox-a", &id));
-        assert!(!relay.pass_id_for("mailbox-b", &id), "another mailbox's");
-        assert!(!relay.pass_id_for("mailbox-a", &"0".repeat(28)), "made up");
-        assert!(!relay.pass_id_for("mailbox-a", "not base64!"));
-        let said = [id.as_str(), "0000000000000000000000000000"];
-        assert_eq!(relay.verified("mailbox-a", said.into_iter()), HashSet::from([id.clone()]));
+        let (first, second) = (relay.new_pass_id("mailbox-a"), relay.new_pass_id("mailbox-a"));
+        assert_eq!(first.len(), 34);
+        let (g1, g2) = (relay.generation_for("mailbox-a", &first).unwrap(), relay.generation_for("mailbox-a", &second));
+        assert!(g2.is_some_and(|g2| g2 > g1), "a pass made later has a newer generation");
+        assert_eq!(relay.generation_for("mailbox-b", &first), None, "another mailbox's");
+        assert_eq!(relay.generation_for("mailbox-a", &"A".repeat(34)), None, "made up");
+        assert_eq!(relay.generation_for("mailbox-a", "not base64!"), None);
+        // the oldest of those it says, made-up ids counting for nothing; none at all: no pass
+        let said = [second.as_str(), first.as_str(), "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"];
+        assert_eq!(relay.takes_from("mailbox-a", said.into_iter()), g1);
+        assert_eq!(relay.takes_from("mailbox-a", ["AAAA"].into_iter()), u64::MAX);
+        assert_eq!(relay.takes_from("mailbox-a", std::iter::empty()), u64::MAX);
         // the sealing keys rotated: a new first key, the old one still listed
-        assert!(Rendezvous::new(FamilyConfig::default(), "key-new, key-a").pass_id_for("mailbox-a", &id));
-        assert!(!Rendezvous::new(FamilyConfig::default(), "key-b").pass_id_for("mailbox-a", &id));
-    }
-
-    #[test]
-    fn the_lists_of_passes_are_bounded_in_all_and_only_shrink_when_full() {
-        let ids = |r: std::ops::Range<usize>| r.map(|i| i.to_string()).collect::<HashSet<String>>();
-        let mut lists = Lists::default();
-        assert!(lists.set("a", ids(0..ACCEPTED_MAX - 10)));
-        assert!(lists.set("b", ids(0..10)));
-        // full: b's new passes wait for room, those it withdraws go at once
-        assert!(!lists.set("b", ids(5..20)));
-        assert_eq!(lists.by_mailbox["b"], ids(5..10));
-        assert_eq!(lists.ids, ACCEPTED_MAX - 5);
-        // a mailbox that never said one stays so (it accepts its passes): never an empty list for it
-        assert!(!lists.set("c", ids(100..120)));
-        assert!(!lists.by_mailbox.contains_key("c"));
-        assert_eq!(lists.ids, ACCEPTED_MAX - 5);
-        lists.remove("a");
-        assert!(lists.set("b", ids(5..20)));
-        assert_eq!(lists.ids, 15);
+        let rotated = Rendezvous::new(FamilyConfig::default(), "key-new, key-a");
+        assert_eq!(rotated.generation_for("mailbox-a", &first), Some(g1));
+        assert!(rotated.generation_for("mailbox-a", &rotated.new_pass_id("mailbox-a")).is_some_and(|g| g > g1));
+        assert_eq!(Rendezvous::new(FamilyConfig::default(), "key-b").generation_for("mailbox-a", &first), None);
     }
 
     #[test]

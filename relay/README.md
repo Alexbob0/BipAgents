@@ -71,8 +71,12 @@ rendezvous is in memory (`src/family.rs`, the bridge's side: `bridge-rs/src/fami
 | `POST /v1/family/answer/<call>` | the token of the mailbox that took the call | 204; streamed on to the caller (≤ 64 MiB) |
 
 **Only linked households call a mailbox.** At the link each bridge gives the other a pass to its own mailbox, for the
-other's mailbox only, sealed in their exchange; it says with each poll which passes it still accepts, and withdraws
-one at once when the link is removed. A pass works for the mailbox it was given to only, and only the mailbox it opens
+other's mailbox only, sealed in their exchange; it says with each poll which passes it still accepts. A pass's id
+carries its generation (when it was made, signed by the relay for that mailbox): the relay keeps, for a mailbox that
+polls, only the oldest generation among the passes it says, one number. Removing a link, the bridge first gives the
+households it keeps a pass of a newer generation (through their links, `POST /family/relay-pass`), so the pass
+withdrawn, older, is refused at once and whatever the relay remembers (after a restart, nothing reaches a mailbox
+before its first poll says it again). A pass works for the mailbox it was given to only, and only the mailbox it opens
 renews it. A household's mailbox id is never in a QR code: an invitation has a mailbox of its own, ending with
 it, that takes only an introduction (`invite`). A stranger who learns a mailbox id can't call it, use up its quotas,
 nor tell whether its bridge is on.
@@ -83,8 +87,7 @@ direction and answer, replays refused by the bridge). The relay **sees** the bri
 which, when, how many bytes, and, while a bridge keeps its poll open, that it is on and from which address. It
 **keeps** nothing on disk and logs no call that went through (no record of who talks to whom): only some refusals
 (quota, blocked mailbox, answer cut), with a fingerprint of one mailbox keyed by the relay (HMAC-SHA256,
-not computable from the id alone), one count an hour, and, should the room for the lists of passes run out, one line a
-minute saying so (a number, no mailbox). In memory: the ids of the mailboxes polling (until an hour
+not computable from the id alone), and one count an hour. In memory: the ids of the mailboxes polling (until an hour
 after), the quotas' counts under unkeyed SHA-256 hashes (forgotten within the hour), the calls while they pass.
 `/health` says whether it is on, nothing of its activity.
 
@@ -92,14 +95,14 @@ after), the quotas' counts under unkeyed SHA-256 hashes (forgotten within the ho
 call together; 32 MiB per caller, per link to a callee and per address); a body that stops for 5 s is cut, so is one
 slower than 16 KiB/s on average past its first second (a caller sending next to nothing holds no room; a slow upload
 still has the 30 s), and all of it comes within 30 s; a refused call's body is never kept. The small routes
-(`mailbox`, `pass`, `passes`) read 64 KiB at most, within 10 s. The lists of passes a mailbox accepts are kept only
-while it polls (and a minute after), with only the ids of passes the relay gave for that mailbox (a pass id is signed
-for it, and each pass made counts in the quota per address), 250,000 ids in all: past that, a list only shrinks (a
-pass withdrawn always goes; one newly accepted waits for room) and a mailbox that never said one stays so (it accepts
-its passes: the bound never cuts a household off). Quotas: calls and bytes per caller, and per pass (what one household may send another); mailboxes
+(`mailbox`, `pass`, `passes`) read 64 KiB at most, within 10 s. What a mailbox takes is one number kept with its
+polls (nothing to bound). Quotas: calls and bytes per caller, and per pass (what one household may send another); mailboxes
 and passes made per address. A mailbox or a pass can be refused by its fingerprint in `RELAY_BLOCKED`. Run **one** copy
 for the families (the rendezvous is in memory). Deploy: `RELAY_TRUST_FORWARDED_FOR=1` behind a proxy, a high open-files
 limit (one waiting request per household linked through the relay), `flush_interval -1` in Caddy, logs kept 14 days.
+**Retiring a sealing key** (`RELAY_SEAL_KEYS`, the first seals): keep the old key listed, not first, for 210 days at
+least. Bridges give their households fresh passes every 30 days and renew their mailbox's token when 200 days are left
+of its 400; a bridge off for longer than that, or a link whose other bridge stayed off past it, is made again.
 
 ## Settings (environment only)
 
