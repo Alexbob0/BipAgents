@@ -831,6 +831,10 @@ async fn login(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> anyho
     crate::browsers::busy(&config, &agent.name);
     let unreachable = |e: FillError| match e {
         FillError::NoPage => refusal("No web page is open in your browser: open the site's login page first."),
+        FillError::Unreachable => refusal(
+            "Your browser can't be reached right now (stopped, or the person is using it in the app). Open the \
+             site's login page in your browser first; if the person has the browser, wait until they hand it back.",
+        ),
         other => refusal(&unreachable_text(&other)),
     };
     let mut page = match Page::open(port, None).await {
