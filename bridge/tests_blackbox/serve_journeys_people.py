@@ -128,7 +128,7 @@ def test_serve_people(bridges, fakes, tmp_path):
     from bbkit.kerfy_relay import KerfyRelay
     relay = KerfyRelay(tmp_path).start()
     journey = journey_bridge(bridges, fakes, word_gap=float(os.environ.get("JOURNEYS_WORD_GAP", "0.12")),
-                             name="journeys-people", family_relay=relay.url)
+                             name="journeys-people", family_relay=relay.url, tool_asks=True)
     journey.model = PeopleModel.upgrade(journey.model)
     bridge = journey.bridge
     assert bridge.patch("/v1/notebook/settings", headers=AUTH, json={"language": "fr"}).status_code == 200
@@ -140,6 +140,12 @@ def test_serve_people(bridges, fakes, tmp_path):
     journey.model.calls["task"] = lambda run: mcp_as(bridge, journey.token, "/v1/agent-tools/mcp", "propose_task", {
         "title": "Dossier location", "prompt": f"Prépare le dossier de location {journey_tag(run)} #lent",
         "budget": "small"})
+    # J59–J62, a tool asked on a card (tool_asks.rs): Vie's call waits for the app's answer
+    from bbkit.model import tool_asked
+    why = {"reminders": "Pour te rappeler le pain demain à 18 h", "mail": "Pour chercher la facture de mars",
+           "weather": "Pour savoir s'il pleut demain"}
+    journey.model.calls["tool_ask"] = lambda run: mcp_as(bridge, journey.token, "/v1/agent-tools/mcp", "ask_for_tool", {
+        "tool": tool_asked(run.words.lower()), "why": why[tool_asked(run.words.lower())]}, timeout=400)
     # J47, the Carnet: Léa's page, the question of the day at any hour (quiet hours of one minute), Vie's calls
     assert bridge.patch("/v1/notebook/settings", headers=AUTH,
                         json={"quiet": {"from": "03:00", "to": "03:01"}}).status_code == 200
