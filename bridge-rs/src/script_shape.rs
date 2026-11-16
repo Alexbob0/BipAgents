@@ -19,7 +19,8 @@ use oxc_ast::ast::*;
 use oxc_ast_visit::{walk, Visit};
 use oxc_parser::{ParseOptions, Parser};
 use oxc_span::{GetSpan, SourceType};
-use oxc_syntax::operator::UnaryOperator;
+use base64::Engine;
+use oxc_syntax::operator::{BinaryOperator, UnaryOperator};
 use oxc_syntax::scope::ScopeFlags;
 
 /// What a script does (`shape`).
@@ -49,6 +50,18 @@ pub struct Shape {
     pub code_from_text: bool,
     /// Too long or too deeply nested to be read safely (`MAX_SCRIPT_BYTES`, `MAX_NESTING`): never parsed.
     pub too_big: bool,
+    /// A way out of the page, or into its code by an address (hotfix of 15/11, the seventh review on production: a
+    /// `javascript:` address given to `(location).replace` ran an observer that filled the card form drawn later):
+    /// the page's `location` reached any way but to read one of its parts (`location.href`), under another name, in
+    /// brackets, through the window or the document, destructured; a `javascript:` address, written or decoded from
+    /// what the script holds; a window opened, the document written, a link's, a form's, a frame's or an object's
+    /// address written, an attribute node changed; the window taken as a value or by a name made at run time;
+    /// `replace` on what isn't known to be a string, `assign` on anything but `Object`.
+    pub makes_way: bool,
+    /// It writes what outlives the page and the page's own code may put back at its next load (the same review: a
+    /// shop's stored cart fragment brought a reader back after a reload): localStorage, sessionStorage, IndexedDB, the
+    /// caches, cookies, the window's name, the history's state.
+    pub stores: bool,
 }
 
 /// The longest script read (an agent's are a few kilobytes; fourth review of 15/11: a parser recursing as deep as a
@@ -107,6 +120,56 @@ const TIMERS: &[&str] = &["setTimeout", "setInterval", "setImmediate", "execScri
 /// Objects whose methods act when called (`Reflect.set`), or whose `assign` / `define…` change what they're given.
 const META: &[&str] = &["Reflect", "Object"];
 
+/// The window by its names (`makes_way` when taken as a value: `const w = window`).
+const WINDOWS: &[&str] = &["window", "self", "globalThis", "top", "parent", "frames", "opener", "content"];
+/// Properties that give a window.
+const WINDOW_PROPS: &[&str] =
+    &["window", "self", "globalThis", "top", "parent", "frames", "opener", "defaultView", "contentWindow"];
+/// Properties that give a document.
+const DOCUMENT_PROPS: &[&str] = &["document", "ownerDocument", "contentDocument"];
+/// The parts of the page's address a script may read (strings).
+const LOCATION_PARTS: &[&str] = &["href", "origin", "protocol", "host", "hostname", "port", "pathname", "search", "hash"];
+/// Names that open a way out of the page or write its document, whatever has them, called or taken as a value.
+const WAY_NAMES: &[&str] = &[
+    "location", "open", "write", "writeln", "navigate", "navigation", "reload", "insertAdjacentHTML", "setHTMLUnsafe",
+    "createContextualFragment", "parseFromString", "createAttribute", "createAttributeNS", "getAttributeNode",
+    "getAttributeNodeNS", "setAttributeNode", "setAttributeNodeNS", "getNamedItem", "getNamedItemNS", "setNamedItem",
+    "setNamedItemNS", "createObjectURL",
+];
+/// Properties whose writing gives a link, a form, a frame, an object or the page an address, or HTML.
+const WAY_PROPS: &[&str] =
+    &["href", "src", "srcdoc", "data", "action", "formAction", "baseVal", "innerHTML", "outerHTML", "location"];
+/// The page's storages written item by item (read with `getItem`, `key`, `length`).
+const STORAGES: &[&str] = &["localStorage", "sessionStorage"];
+/// What stores beyond the page, however used.
+const STORE_NAMES: &[&str] = &["indexedDB", "caches", "cookieStore", "pushState", "replaceState"];
+/// Functions that give a string (`replace` read on what they give is a string's).
+const STRING_FUNCTIONS: &[&str] =
+    &["String", "encodeURIComponent", "encodeURI", "decodeURIComponent", "decodeURI", "escape", "unescape", "atob", "btoa"];
+/// Methods that give a string.
+const STRING_METHODS: &[&str] = &[
+    "trim", "trimStart", "trimEnd", "toLowerCase", "toUpperCase", "toLocaleLowerCase", "toLocaleUpperCase",
+    "substring", "substr", "slice", "padStart", "padEnd", "normalize", "repeat", "replace", "replaceAll", "join",
+    "concat", "charAt", "toFixed", "toPrecision", "toISOString", "toDateString", "toTimeString", "toLocaleString",
+    "toLocaleDateString", "toLocaleTimeString", "toUTCString", "stringify", "getAttribute", "getPropertyValue",
+    "fromCharCode", "fromCodePoint",
+];
+/// Properties that hold a string.
+const STRING_PROPS: &[&str] = &[
+    "textContent", "innerText", "outerText", "innerHTML", "outerHTML", "value", "defaultValue", "href", "src", "id",
+    "className", "title", "name", "placeholder", "alt", "label", "text", "nodeName", "tagName", "localName",
+    "nodeValue", "data", "type", "URL", "documentURI", "baseURI", "origin", "protocol", "host", "hostname", "port",
+    "pathname", "search", "hash", "referrer", "cookie", "domain", "lang", "dir", "action", "method", "target",
+    "rel", "characterSet", "contentType", "readyState", "visibilityState", "autocomplete", "htmlFor", "cssText",
+    "userAgent", "language", "source",
+];
+/// The form fields' prototypes whose `value` setter a script may name (a framework's own setter, fix-signup-hold):
+/// any other property's descriptor taken is a way to what it guards (the seventh review on the hotfix: the document's
+/// location, the cookie's setter).
+const FIELD_PROTOTYPES: &[&str] = &["HTMLInputElement", "HTMLTextAreaElement", "HTMLSelectElement"];
+/// The longest text put together from what a script holds to look for a `javascript:` address in.
+const FOLD_MAX: usize = 4096;
+
 /// How a function is used: called at once (`Now`), or maybe later (`Later`).
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Use {
@@ -133,9 +196,15 @@ struct Names {
     called: HashSet<u32>,
     passed_at_once: HashSet<u32>,
     escaping: HashSet<String>,
+    /// How many times each name is bound by the script (declared, a parameter, a caught error…).
+    bindings: HashMap<String, usize>,
 }
 
 impl<'a> Visit<'a> for Names {
+    fn visit_binding_identifier(&mut self, it: &BindingIdentifier<'a>) {
+        *self.bindings.entry(it.name.to_string()).or_default() += 1;
+    }
+
     fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
         if let BindingPattern::BindingIdentifier(id) = &it.id {
             self.declared.insert(id.name.to_string());
@@ -201,9 +270,306 @@ struct Reader<'s> {
     frames: Vec<Frame>,
     blank: Vec<(u32, u32)>,
     shape: Shape,
+    /// `location` (or `x.location`) read only for one of its parts (`location.href`): these spans.
+    location_reads: HashSet<(u32, u32)>,
+    /// localStorage / sessionStorage only read (`getItem`, `key`, `length`): these spans.
+    storage_reads: HashSet<(u32, u32)>,
+    /// What a member is read on, what `typeof` looks at, `this` given to `call` / `apply` / `bind`: these spans (the
+    /// window under these is not taken as a value).
+    window_reads: HashSet<(u32, u32)>,
+    /// The script's own constants that hold a string (`const t = el.textContent`, bound once).
+    strings: HashSet<String>,
+    /// Sums already read with the one they are part of: these spans.
+    summed: HashSet<(u32, u32)>,
+    /// `x.replace(…)` given a regular expression or a plain text first: these callees' spans.
+    plain_replaces: HashSet<(u32, u32)>,
+}
+
+/// The names a binding pattern binds (`var {a, b: [c]} = …`).
+#[derive(Default)]
+struct Bound(Vec<String>);
+
+impl<'a> Visit<'a> for Bound {
+    fn visit_binding_identifier(&mut self, it: &BindingIdentifier<'a>) {
+        self.0.push(it.name.to_string());
+    }
 }
 
 impl Reader<'_> {
+    /// A name the script binds itself (declared, a parameter…): not the page's.
+    fn bound(&self, name: &str) -> bool {
+        self.names.bindings.contains_key(name)
+    }
+
+    /// The window (`window`, `self`, `top`…, `this`, `x.defaultView`…), or with `documents` a document too.
+    fn window_like(&self, expression: &Expression, documents: bool) -> bool {
+        match resolved(expression) {
+            Expression::Identifier(id) => {
+                let name = id.name.as_str();
+                !self.bound(name) && (WINDOWS.contains(&name) || documents && name == "document")
+            }
+            Expression::ThisExpression(_) => true,
+            other => other.as_member_expression().is_some_and(|m| {
+                let name = m.static_property_name().and_then(|n| n.as_str()).unwrap_or("");
+                self.gives_window(m.object(), name) || documents && DOCUMENT_PROPS.contains(&name)
+            }),
+        }
+    }
+
+    /// `object.name` is a window: `x.defaultView`, `x.contentWindow`, `x.opener`, or `top`, `parent`… of a window or
+    /// a document (`rect.top` is a number).
+    fn gives_window(&self, object: &Expression, name: &str) -> bool {
+        matches!(name, "defaultView" | "contentWindow" | "opener")
+            || WINDOW_PROPS.contains(&name) && self.window_like(object, true)
+    }
+
+    /// Known to be a string: a string or a template, a sum with one, a string's method's or a string property's
+    /// value, or the script's own constant holding one.
+    fn known_string(&self, expression: &Expression) -> bool {
+        match resolved(expression) {
+            Expression::StringLiteral(_) | Expression::TemplateLiteral(_) => true,
+            Expression::BinaryExpression(b) => {
+                b.operator == BinaryOperator::Addition && (self.known_string(&b.left) || self.known_string(&b.right))
+            }
+            Expression::LogicalExpression(l) => self.known_string(&l.left) && self.known_string(&l.right),
+            Expression::ConditionalExpression(c) => self.known_string(&c.consequent) && self.known_string(&c.alternate),
+            Expression::Identifier(id) => self.strings.contains(id.name.as_str()),
+            Expression::CallExpression(call) => match resolved(&call.callee) {
+                Expression::Identifier(id) => {
+                    STRING_FUNCTIONS.contains(&id.name.as_str()) && !self.bound(id.name.as_str())
+                }
+                callee => callee
+                    .as_member_expression()
+                    .and_then(|m| m.static_property_name())
+                    .and_then(|n| n.as_str())
+                    .is_some_and(|n| STRING_METHODS.contains(&n)),
+            },
+            other => other
+                .as_member_expression()
+                .and_then(|m| m.static_property_name())
+                .and_then(|n| n.as_str())
+                .is_some_and(|n| STRING_PROPS.contains(&n)),
+        }
+    }
+
+    /// A member named `name` on `object` (`span`: the member's), whether read, called or written (hotfix of 15/11).
+    fn member_named(&mut self, object: &Expression, name: &str, span: (u32, u32)) {
+        let object = resolved(object);
+        let invoked = self.invoked.contains(&span);
+        // what a member is read on is not taken as a value
+        self.window_reads.insert(span_of(object));
+        // the page's address: one of its parts read, nothing else (its methods, the object itself)
+        if is_location(object) {
+            if LOCATION_PARTS.contains(&name) && !invoked {
+                self.location_reads.insert(span_of(object));
+            } else {
+                self.shape.makes_way = true;
+            }
+        }
+        // (`indexedDB.open`, `caches.open`: storages, `stores`)
+        let storage_opened = name == "open" && method_name(object).is_some_and(|n| STORE_NAMES.contains(&n.as_str()));
+        if WAY_NAMES.contains(&name) && !(name == "location" && self.location_reads.contains(&span)) && !storage_opened {
+            self.shape.makes_way = true;
+        }
+        match name {
+            // the window taken as a value (`const w = document.defaultView`)
+            _ if self.gives_window(object, name) && !self.window_reads.contains(&span) => self.shape.makes_way = true,
+            // `location.assign`, `location.replace` under any name: only `Object.assign` and a string's `replace`
+            "assign" if !matches!(object, Expression::Identifier(id) if id.name == "Object" && !self.bound("Object")) => {
+                self.shape.makes_way = true
+            }
+            "replace" if !self.known_string(object) && !self.plain_replaces.contains(&span) => self.shape.makes_way = true,
+            _ => {}
+        }
+        if is_storage(object) && matches!(name, "getItem" | "key" | "length") {
+            self.storage_reads.insert(span_of(object));
+        }
+        if STORAGES.contains(&name) && !self.storage_reads.contains(&span) || STORE_NAMES.contains(&name) {
+            self.shape.stores = true;
+        }
+    }
+
+    /// A member written, assigned in a pattern, updated (hotfix of 15/11): an address, HTML, an attribute node, the
+    /// page's location, a storage's item, a cookie, the window's name.
+    fn way_written(&mut self, member: &MemberExpression) {
+        if self.own(member.object()) {
+            return;
+        }
+        let object = resolved(member.object());
+        let name = member.static_property_name().and_then(|n| n.as_str()).map(str::to_string);
+        match name.as_deref() {
+            Some(name) => {
+                if WAY_PROPS.contains(&name) {
+                    self.shape.makes_way = true;
+                }
+                if name == "cookie" || matches!(name, "name" | "status" | "defaultStatus") && self.window_like(object, false) {
+                    self.shape.stores = true;
+                }
+            }
+            // `window[k] = …`: a name made at run time on the window or a document
+            None if self.window_like(object, true) => self.shape.makes_way = true,
+            None => {}
+        }
+        if is_location(object) || self.window_like(object, true) && name.as_deref().is_some_and(|n| WAY_NAMES.contains(&n)) {
+            self.shape.makes_way = true;
+        }
+        if is_storage(object) {
+            self.shape.stores = true;
+        }
+        // an attribute node's value (`el.attributes.href.value = …`, `el.attributes[0].nodeValue = …`)
+        if chain_has(object, "attributes") {
+            self.shape.makes_way = true;
+        }
+    }
+
+    /// A `javascript:` address (or the name `location`) in a text the script puts together.
+    fn looks_at_text(&mut self, text: Option<String>) {
+        if let Some(text) = text {
+            if names_javascript(&text) || text.trim() == "location" {
+                self.shape.makes_way = true;
+            }
+        }
+    }
+
+    /// Pieces of text in a row (a sum's, a template's), those the script holds put together and looked at; one it
+    /// doesn't (None) ends a run (`x + 'java' + 'script:'`).
+    fn looks_at_runs(&mut self, pieces: Vec<Option<String>>) {
+        let mut run = String::new();
+        for piece in pieces {
+            match piece {
+                Some(text) => {
+                    run.push_str(&text);
+                    if run.len() > 4 * FOLD_MAX {
+                        let kept: String = run.chars().rev().take(16).collect::<Vec<_>>().into_iter().rev().collect();
+                        self.looks_at_text(Some(std::mem::replace(&mut run, kept)));
+                    }
+                }
+                None => self.looks_at_text(Some(std::mem::take(&mut run))),
+            }
+        }
+        self.looks_at_text(Some(run));
+    }
+
+    /// A sum's pieces, its inner sums with it (each read once).
+    fn sum_pieces(&mut self, it: &BinaryExpression, pieces: &mut Vec<Option<String>>) {
+        self.summed.insert((it.span.start, it.span.end));
+        for side in [&it.left, &it.right] {
+            match resolved(side) {
+                Expression::BinaryExpression(inner) if inner.operator == BinaryOperator::Addition => {
+                    self.sum_pieces(inner, pieces)
+                }
+                other => pieces.push(fold(other, 0)),
+            }
+        }
+    }
+
+    /// A key taken out of something (`const {location: l} = window`, `({open: o} = window)`).
+    fn key_taken(&mut self, key: &PropertyKey) {
+        match literal_name_key(key) {
+            Some(name) => {
+                let name = name.as_str();
+                if WAY_NAMES.contains(&name)
+                    || matches!(name, "window" | "self" | "globalThis" | "frames" | "parent" | "defaultView" | "contentWindow")
+                {
+                    self.shape.makes_way = true;
+                }
+                if STORAGES.contains(&name) || STORE_NAMES.contains(&name) {
+                    self.shape.stores = true;
+                }
+            }
+            None => self.shape.makes_way = true,
+        }
+    }
+
+    /// What a call opens, writes or stores (hotfix of 15/11): a `javascript:` address decoded from what the script
+    /// holds (`atob('…')`, `String.fromCharCode(…)`); `Object.assign` onto the page's objects with an address, HTML or
+    /// a handler, or from what isn't read; `Object.values(document)` (its location among them); `this` given to
+    /// `call` / `apply` / `bind` (an IIFE's) is not taken as a value.
+    fn ways_called(&mut self, it: &CallExpression, callee: &Expression) {
+        self.looks_at_text(fold_call(it, 0));
+        let Some(member) = callee.as_member_expression() else { return };
+        let method = member.static_property_name().and_then(|n| n.as_str()).unwrap_or("");
+        let first = it.arguments.first().and_then(|a| a.as_expression()).map(resolved);
+        // `s.replace(/\s+/g, ' ')`: a location's `replace` given a regular expression or a plain text goes nowhere but a
+        // path of the same site (a `javascript:` text is refused as such)
+        let plain = |e: &Expression| match e {
+            Expression::RegExpLiteral(_) | Expression::StringLiteral(_) => true,
+            Expression::TemplateLiteral(t) => t.expressions.is_empty(),
+            _ => false,
+        };
+        if method == "replace" && first.is_some_and(plain) {
+            self.plain_replaces.insert(span_of(callee));
+        }
+        if matches!(method, "call" | "apply" | "bind") {
+            if let Some(Expression::ThisExpression(this)) = first {
+                self.window_reads.insert((this.span.start, this.span.end));
+            }
+            // a property's own getter or setter called by hand (`….find((x) => x.set).set.call(L, …)`, hotfix v2)
+            if matches!(resolved(member.object()).as_member_expression().and_then(|m| m.static_property_name()).and_then(|n| n.as_str()),
+                Some("get" | "set"))
+            {
+                self.shape.makes_way = true;
+            }
+        }
+        let on_object =
+            matches!(resolved(member.object()), Expression::Identifier(id) if id.name == "Object" && !self.bound("Object"));
+        if !on_object {
+            return;
+        }
+        match method {
+            "values" | "entries" => {
+                if first.is_some_and(|e| self.window_like(e, true)) {
+                    self.shape.makes_way = true;
+                }
+            }
+            // a descriptor: only a form field's own `value` (a framework's setter, read), never another's (hotfix v2:
+            // the document's location, Document.prototype's cookie)
+            "getOwnPropertyDescriptor" | "getOwnPropertyDescriptors" => {
+                let field = first.and_then(|e| e.as_member_expression()).is_some_and(|m| {
+                    m.static_property_name().and_then(|n| n.as_str()) == Some("prototype")
+                        && matches!(resolved(m.object()), Expression::Identifier(id) if FIELD_PROTOTYPES.contains(&id.name.as_str()))
+                });
+                let key = it.arguments.get(1).and_then(|a| a.as_expression()).and_then(literal_name);
+                if !(field && method == "getOwnPropertyDescriptor" && matches!(key.as_deref(), Some("value" | "checked"))) {
+                    self.shape.makes_way = true;
+                }
+            }
+            "assign" => {
+                let own = first_is_own(&it.arguments, &self.names.own);
+                if first.is_some_and(|e| self.window_like(e, true) || is_storage(e)) {
+                    self.shape.makes_way = true;
+                }
+                for source in it.arguments.iter().skip(1) {
+                    match source.as_expression().map(resolved) {
+                        Some(Expression::ObjectExpression(object)) => {
+                            for property in &object.properties {
+                                let key = match property {
+                                    ObjectPropertyKind::ObjectProperty(p) => literal_name_key(&p.key),
+                                    ObjectPropertyKind::SpreadProperty(_) => None,
+                                };
+                                match key {
+                                    _ if own => {}
+                                    Some(key) => {
+                                        if WAY_PROPS.contains(&key.as_str()) || key.len() > 2 && key.starts_with("on") {
+                                            self.shape.makes_way = true;
+                                        }
+                                        if key == "cookie" {
+                                            self.shape.stores = true;
+                                        }
+                                    }
+                                    None => self.shape.makes_way = true,
+                                }
+                            }
+                        }
+                        Some(e) if !own || self.window_like(e, true) => self.shape.makes_way = true,
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// A timer's first argument that isn't a function: a string, a template, a sum, a call's result, a name the script
     /// gives something else (a page's own name, undeclared here, is left: what it holds is unknown).
     fn timer_runs_text(&self, arguments: &[Argument]) -> bool {
@@ -303,6 +669,7 @@ impl<'a> Visit<'a> for Reader<'_> {
         if !named && it.arguments.iter().any(text_like) {
             self.shape.code_from_text = true;
         }
+        self.ways_called(it, callee);
         // the functions given: at once (an IIFE, the array's methods…) or maybe later
         if let Some(start) = function_start(callee) {
             self.uses.insert(start, Use::Now);
@@ -410,6 +777,10 @@ impl<'a> Visit<'a> for Reader<'_> {
                                 if named.is_none() {
                                     self.shape.hidden_names = true;
                                 }
+                                // a script element: its text runs as code once added (hotfix of 15/11)
+                                if named.is_some_and(|n| n.trim().eq_ignore_ascii_case("script")) {
+                                    self.shape.code_from_text = true;
+                                }
                             }
                         }
                         None => {
@@ -507,9 +878,114 @@ impl<'a> Visit<'a> for Reader<'_> {
         if it.operator == UnaryOperator::Delete {
             if let Some(member) = it.argument.without_parentheses().as_member_expression() {
                 self.written(member);
+                self.way_written(member);
             }
         }
+        if it.operator == UnaryOperator::Typeof {
+            self.window_reads.insert(span_of(resolved(&it.argument)));
+        }
         walk::walk_unary_expression(self, it);
+    }
+
+    fn visit_simple_assignment_target(&mut self, it: &SimpleAssignmentTarget<'a>) {
+        match it {
+            // `name = …`, `status = …`: the window's own, when the script never bound them
+            SimpleAssignmentTarget::AssignmentTargetIdentifier(id) => {
+                let name = id.name.as_str();
+                if !self.bound(name) && matches!(name, "name" | "status" | "defaultStatus" | "cookie") {
+                    self.shape.stores = true;
+                }
+            }
+            other => {
+                if let Some(member) = other.as_member_expression() {
+                    self.way_written(member);
+                }
+            }
+        }
+        walk::walk_simple_assignment_target(self, it);
+    }
+
+    fn visit_binding_identifier(&mut self, it: &BindingIdentifier<'a>) {
+        // `var location = …` at a script's top level is the window's location set
+        if it.name == "location" {
+            self.shape.makes_way = true;
+        }
+    }
+
+    fn visit_variable_declaration(&mut self, it: &VariableDeclaration<'a>) {
+        for declarator in &it.declarations {
+            let mut bound = Bound::default();
+            bound.visit_binding_pattern(&declarator.id);
+            // `var name = …` at a script's top level is the window's name set
+            if it.kind == VariableDeclarationKind::Var
+                && self.frames.len() == 1
+                && bound.0.iter().any(|n| matches!(n.as_str(), "name" | "status" | "defaultStatus"))
+            {
+                self.shape.stores = true;
+            }
+            if let (VariableDeclarationKind::Const, BindingPattern::BindingIdentifier(id), Some(init)) =
+                (it.kind, &declarator.id, &declarator.init)
+            {
+                if self.names.bindings.get(id.name.as_str()) == Some(&1) && self.known_string(init) {
+                    self.strings.insert(id.name.to_string());
+                }
+            }
+            self.visit_variable_declarator(declarator);
+        }
+    }
+
+    fn visit_binding_property(&mut self, it: &BindingProperty<'a>) {
+        // `const {location: l} = window`, `const {defaultView: w} = document`
+        self.key_taken(&it.key);
+        walk::walk_binding_property(self, it);
+    }
+
+    fn visit_assignment_target_property_property(&mut self, it: &AssignmentTargetPropertyProperty<'a>) {
+        self.key_taken(&it.name);
+        walk::walk_assignment_target_property_property(self, it);
+    }
+
+    fn visit_this_expression(&mut self, it: &ThisExpression) {
+        // `this` as a value: the window at a script's top level (`const w = this`)
+        if !self.window_reads.contains(&(it.span.start, it.span.end)) {
+            self.shape.makes_way = true;
+        }
+    }
+
+    fn visit_spread_element(&mut self, it: &SpreadElement<'a>) {
+        // `{...document}`: its location among its properties
+        if self.window_like(&it.argument, true) {
+            self.shape.makes_way = true;
+        }
+        walk::walk_spread_element(self, it);
+    }
+
+    fn visit_with_statement(&mut self, it: &WithStatement<'a>) {
+        // names resolved on an object at run time
+        self.shape.hidden_names = true;
+        walk::walk_with_statement(self, it);
+    }
+
+    fn visit_binary_expression(&mut self, it: &BinaryExpression<'a>) {
+        // `'java' + 'script:'`: a sum read once, from its top
+        if it.operator == BinaryOperator::Addition && !self.summed.contains(&(it.span.start, it.span.end)) {
+            let mut pieces = Vec::new();
+            self.sum_pieces(it, &mut pieces);
+            self.looks_at_runs(pieces);
+        }
+        walk::walk_binary_expression(self, it);
+    }
+
+    fn visit_template_literal(&mut self, it: &TemplateLiteral<'a>) {
+        let mut pieces = Vec::new();
+        for (i, quasi) in it.quasis.iter().enumerate() {
+            pieces.push(Some(quasi.value.cooked.as_ref().and_then(|c| c.as_str()).unwrap_or(quasi.value.raw.as_str()).to_string()));
+            if let Some(expression) = it.expressions.get(i) {
+                pieces.push(fold(expression, 0));
+            }
+        }
+        self.looks_at_runs(pieces);
+        walk::walk_template_literal(self, it);
     }
 
     fn visit_tagged_template_expression(&mut self, it: &TaggedTemplateExpression<'a>) {
@@ -535,6 +1011,25 @@ impl<'a> Visit<'a> for Reader<'_> {
         if SINKS.contains(&it.name.as_str()) && !self.invoked.contains(&(it.span.start, it.span.end)) {
             self.shape.code_from_text = true;
         }
+        let name = it.name.as_str();
+        let span = (it.span.start, it.span.end);
+        // `location` any way but to read one of its parts (`(location).replace`, `const l = location`)
+        if name == "location" && !self.location_reads.contains(&span) {
+            self.shape.makes_way = true;
+        }
+        if !self.bound(name) {
+            // `open(…)`, `navigation.navigate(…)`: the window's (`location`: above, its parts read)
+            if WAY_NAMES.contains(&name) && name != "location" {
+                self.shape.makes_way = true;
+            }
+            // the window taken as a value (`const w = window`, `f(self)`)
+            if WINDOWS.contains(&name) && !self.window_reads.contains(&span) {
+                self.shape.makes_way = true;
+            }
+            if STORAGES.contains(&name) && !self.storage_reads.contains(&span) || STORE_NAMES.contains(&name) {
+                self.shape.stores = true;
+            }
+        }
     }
 
     fn visit_computed_member_expression(&mut self, it: &ComputedMemberExpression<'a>) {
@@ -543,11 +1038,22 @@ impl<'a> Visit<'a> for Reader<'_> {
         {
             self.shape.code_from_text = true;
         }
+        match literal_name(&it.expression) {
+            Some(name) => self.member_named(&it.object, &name, (it.span.start, it.span.end)),
+            // `window['loc' + 'ation']`, `document[k]`: a name made at run time on the window or a document
+            None => {
+                if self.window_like(&it.object, true) || is_storage(resolved(&it.object)) {
+                    self.shape.makes_way = true;
+                }
+                self.window_reads.insert(span_of(resolved(&it.object)));
+            }
+        }
         walk::walk_computed_member_expression(self, it);
     }
 
     fn visit_static_member_expression(&mut self, it: &StaticMemberExpression<'a>) {
         let name = it.property.name.as_str();
+        self.member_named(&it.object, name, (it.span.start, it.span.end));
         // `window.setTimeout` taken as a value; `x.constructor.constructor`, `(() => {}).constructor`: Function
         if SINKS.contains(&name) && !self.invoked.contains(&(it.span.start, it.span.end)) {
             self.shape.code_from_text = true;
@@ -575,16 +1081,154 @@ impl<'a> Visit<'a> for Reader<'_> {
     }
 
     fn visit_string_literal(&mut self, it: &StringLiteral<'a>) {
+        self.looks_at_text(it.value.as_str().map(str::to_string));
         self.blank.push((it.span.start + 1, it.span.end.saturating_sub(1)));
     }
 
     fn visit_template_element(&mut self, it: &TemplateElement<'a>) {
+        self.looks_at_text(Some(it.value.raw.as_str().to_string()));
+        self.looks_at_text(it.value.cooked.as_ref().and_then(|c| c.as_str()).map(str::to_string));
         self.blank.push((it.span.start, it.span.end));
     }
 
     fn visit_reg_exp_literal(&mut self, it: &RegExpLiteral<'a>) {
         self.blank.push((it.span.start + 1, it.span.end.saturating_sub(1)));
     }
+}
+
+/// The page's `location`: the bare name, `x.location`, `x['location']`.
+fn is_location(expression: &Expression) -> bool {
+    match expression.without_parentheses() {
+        Expression::Identifier(id) => id.name == "location",
+        other => other.as_member_expression().and_then(|m| m.static_property_name()).and_then(|n| n.as_str()) == Some("location"),
+    }
+}
+
+/// localStorage, sessionStorage (bare, or a window's).
+fn is_storage(expression: &Expression) -> bool {
+    match expression.without_parentheses() {
+        Expression::Identifier(id) => STORAGES.contains(&id.name.as_str()),
+        other => other
+            .as_member_expression()
+            .and_then(|m| m.static_property_name())
+            .and_then(|n| n.as_str())
+            .is_some_and(|n| STORAGES.contains(&n)),
+    }
+}
+
+/// `….name…` somewhere along a chain of members (`el.attributes.href`, `el.attributes[0]`).
+fn chain_has(expression: &Expression, name: &str) -> bool {
+    let mut current = expression.without_parentheses();
+    while let Some(member) = current.as_member_expression() {
+        if member.static_property_name().and_then(|n| n.as_str()) == Some(name) {
+            return true;
+        }
+        current = member.object().without_parentheses();
+    }
+    false
+}
+
+/// A text holding a `javascript:` address (spaces and controls the browser drops ignored, any case).
+fn names_javascript(text: &str) -> bool {
+    let plain: String = text.chars().filter(|c| !c.is_whitespace() && !c.is_control()).collect::<String>().to_ascii_lowercase();
+    plain.contains("javascript:")
+}
+
+/// A property key's name when written plainly (`{a: …}`, `{'a': …}`, `{['a']: …}`).
+fn literal_name_key(key: &PropertyKey) -> Option<String> {
+    match key {
+        PropertyKey::StaticIdentifier(id) => Some(id.name.to_string()),
+        other => other.as_expression().and_then(literal_name),
+    }
+}
+
+/// A method's (or a global's) name as written: `x.m(…)`, `x['m'](…)`, `m(…)`.
+fn method_name(callee: &Expression) -> Option<String> {
+    match callee.without_parentheses() {
+        Expression::Identifier(id) => Some(id.name.to_string()),
+        other => other.as_member_expression().and_then(|m| m.static_property_name()).and_then(|n| n.as_str()).map(str::to_string),
+    }
+}
+
+/// The text an expression gives when the script holds all of it (strings, numbers, sums, templates, `atob`,
+/// `decodeURIComponent`, `unescape`, `String.fromCharCode`, `[…].join`, `concat`, `replace` with strings), up to
+/// `FOLD_MAX` characters: a `javascript:` address decoded (hotfix of 15/11: `atob` in the review's attack).
+fn fold(expression: &Expression, depth: usize) -> Option<String> {
+    if depth > 64 {
+        return None;
+    }
+    let text = match resolved(expression) {
+        Expression::StringLiteral(s) => s.value.as_str()?.to_string(),
+        Expression::NumericLiteral(n) => n.value.to_string(),
+        Expression::TemplateLiteral(t) => {
+            let mut text = String::new();
+            for (i, quasi) in t.quasis.iter().enumerate() {
+                text.push_str(quasi.value.cooked.as_ref().and_then(|c| c.as_str()).unwrap_or(quasi.value.raw.as_str()));
+                if let Some(expression) = t.expressions.get(i) {
+                    text.push_str(&fold(expression, depth + 1)?);
+                }
+                if text.len() > FOLD_MAX {
+                    return None;
+                }
+            }
+            text
+        }
+        Expression::BinaryExpression(b) if b.operator == BinaryOperator::Addition => {
+            fold(&b.left, depth + 1)? + &fold(&b.right, depth + 1)?
+        }
+        Expression::CallExpression(c) => fold_call(c, depth)?,
+        _ => return None,
+    };
+    (text.len() <= FOLD_MAX).then_some(text)
+}
+
+/// `fold` for a call: the decoders, `join`, `concat`, `replace`.
+fn fold_call(it: &CallExpression, depth: usize) -> Option<String> {
+    if depth > 64 {
+        return None;
+    }
+    let callee = resolved(&it.callee);
+    let argument = |i: usize| it.arguments.get(i).and_then(|a| a.as_expression()).and_then(|e| fold(e, depth + 1));
+    let text = match method_name(callee)?.as_str() {
+        "atob" => {
+            let given: String = argument(0)?.chars().filter(|c| !c.is_whitespace() && *c != '=').collect();
+            let bytes = base64::engine::general_purpose::STANDARD_NO_PAD.decode(given).ok()?;
+            bytes.into_iter().map(char::from).collect::<String>()
+        }
+        "decodeURIComponent" | "decodeURI" | "unescape" => {
+            percent_encoding::percent_decode_str(&argument(0)?).decode_utf8_lossy().into_owned()
+        }
+        "fromCharCode" | "fromCodePoint" => {
+            let mut text = String::new();
+            for given in &it.arguments {
+                let Some(Expression::NumericLiteral(n)) = given.as_expression().map(resolved) else { return None };
+                text.push(char::from_u32(n.value as u32)?);
+            }
+            text
+        }
+        "join" => {
+            let Expression::ArrayExpression(array) = resolved(callee.as_member_expression()?.object()) else { return None };
+            let separator = if it.arguments.is_empty() { ",".to_string() } else { argument(0)? };
+            let mut parts = Vec::new();
+            for element in &array.elements {
+                parts.push(fold(element.as_expression()?, depth + 1)?);
+            }
+            parts.join(&separator)
+        }
+        "concat" => {
+            let mut text = fold(callee.as_member_expression()?.object(), depth + 1)?;
+            for i in 0..it.arguments.len() {
+                text.push_str(&argument(i)?);
+            }
+            text
+        }
+        "replace" | "replaceAll" => {
+            let text = fold(callee.as_member_expression()?.object(), depth + 1)?;
+            text.replace(&argument(0)?, &argument(1)?)
+        }
+        _ => return None,
+    };
+    (text.len() <= FOLD_MAX).then_some(text)
 }
 
 /// `[…]`, `{…}`, `new Map()`… : the script's own object, whose properties aren't the page's.
@@ -797,6 +1441,12 @@ fn read(script: &str) -> Shape {
             frames: vec![Frame { later: false, awaited: false }],
             blank: Vec::new(),
             shape: Shape { parsed: true, ..Shape::default() },
+            location_reads: HashSet::new(),
+            storage_reads: HashSet::new(),
+            window_reads: HashSet::new(),
+            strings: HashSet::new(),
+            summed: HashSet::new(),
+            plain_replaces: HashSet::new(),
         };
         reader.visit_program(&program);
         let mut code = script.as_bytes().to_vec();

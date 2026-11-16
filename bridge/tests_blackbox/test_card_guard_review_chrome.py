@@ -83,9 +83,13 @@ def test_rv5_an_iban_and_a_social_security_number_are_typed_and_read_as_they_are
     kept = browser.page("document.getElementById('nir').value")
     if kept != NIR:
         problems.append(f"NIR field holds {kept!r}; the agent read {said!r}")
-    said = browser.tool("execute_script", script="document.getElementById('rib').innerText")
+    # (hotfix v2: a script runs only as a read V8 proves, and it won't call getElementById one: querySelector)
+    said = browser.tool("execute_script", script="document.querySelector('#rib').innerText")
     if IBAN not in said:
         problems.append(f"the page's IBAN read as {said!r}")
+    said = browser.tool("execute_script", script="document.getElementById('rib').innerText")
+    if not said.startswith("Not done: this script changes the page") or "querySelector" not in said:
+        problems.append(f"getElementById not refused with its way out: {said!r}")
     assert not problems, "\n".join(problems)
 
 

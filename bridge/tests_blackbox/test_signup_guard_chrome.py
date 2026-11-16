@@ -68,7 +68,10 @@ class Session:
         config = {"start": ["true"], "ready": ["true"], "active": ["true"], "stop": ["true"],
                   "server": [sys.executable, str(site / "stealth_cdp.py"), self.page_ws],
                   "cache": str(self.dir / "cache.json"), "busy": str(self.dir / "busy"),
-                  "credit": str(self.dir / "credit.json"), "cdp_port": free_port(), "idle": 600}
+                  "credit": str(self.dir / "credit.json"), "idle": 600,
+                  # Chrome's DevTools, as in production: the guard's own look, and an agent's script run only by V8's
+                  # side-effect-free evaluation (hotfix v2 of 15/11)
+                  "cdp_port": port}
         (self.dir / "config.json").write_text(json.dumps(config))
         self.proxy = subprocess.Popen([PROXY, str(self.dir / "config.json")], stdin=subprocess.PIPE,
                                       stdout=subprocess.PIPE, stderr=open(self.dir / "proxy.log", "wb"))
