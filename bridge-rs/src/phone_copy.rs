@@ -110,4 +110,23 @@ mod tests {
         assert_eq!(freshness(&data(json!({})), 4900.0, age), None);
         assert_eq!(seen(&d), Some(4600.0));
     }
+
+    /// Review of 16/11 (R2): « unchanged for » was counted up to now, past the phone's last check. Checked 3 days ago
+    /// (Calendrier turned off on the phone since, the app not opened, the phone lost) and shared 5 days ago, the
+    /// agents read « unchanged for 5 days » although nobody looked at the last 3. What the phone vouched for stops at
+    /// its check: « still the copy it shared … ago » is said of that moment.
+    #[test]
+    fn nothing_is_claimed_of_the_time_since_the_last_check() {
+        let age = |s: f64| format!("{} min", (s / 60.0).floor() as i64);
+        let d = data(json!({"at": 1000.0, "checked": 4600.0}));
+        assert_eq!(
+            freshness(&d, 4900.0, age).unwrap(),
+            "as the phone last checked it 5 min ago (still the copy it shared 65 min ago)"
+        );
+        let days = |s: f64| format!("{} days", (s / 86400.0).floor() as i64);
+        let d = data(json!({"at": 0.0, "checked": 2.0 * 86400.0}));
+        let said = freshness(&d, 5.0 * 86400.0, days).unwrap();
+        assert!(!said.contains("unchanged for 5 days"), "claimed unchanged up to now, checked 3 days ago: {said}");
+        assert_eq!(said, "as the phone last checked it 3 days ago (still the copy it shared 5 days ago)");
+    }
 }

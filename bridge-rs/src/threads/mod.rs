@@ -1988,3 +1988,83 @@ mod send_whole_tests {
         assert!(!is_send(&Method::POST, "/v1/messages"));
     }
 }
+
+/// Review of battery-settings (16/11, R3): the keepalive comment is written after `SSE_KEEPALIVE_SECONDS` without an
+/// event *received*, any event, even one the stream leaves out (another agent's, another thread's). While other events
+/// flow, a stream can stay silent for minutes. At 25 s (D1) one such event in the 20 s before a keepalive is enough
+/// to pass the 45 s after which a relative's bridge no longer counts a shared conversation as on screen (presence,
+/// touched on each relayed chunk: a push for a reply she is reading), and the Android app's 45 s / the iPhone's 60 s
+/// read timeouts cut the stream. The keepalive must come 25 s after the last bytes *written*.
+#[cfg(test)]
+mod keepalive_review_tests {
+    use super::*;
+    use http_body_util::BodyExt;
+
+    fn app(dir: &std::path::Path) -> crate::app::App {
+        let config = crate::config::parse_config(
+            &json!({"bridge_key": "k".repeat(32), "data_dir": dir.to_string_lossy(),
+                    "agents": {"Wellness": {"hermes_url": "http://127.0.0.1:9", "hermes_key": "w".repeat(32)}}}),
+            None,
+        )
+        .expect("config");
+        crate::app::create_app(config, crate::app::AppOptions { start_background: false }).expect("app")
+    }
+
+    /// Whether a keepalive comment comes on `body` within `within` (what came before it aside).
+    async fn keepalive_within(body: Body, within: Duration) -> Result<(), String> {
+        let mut body = body;
+        let deadline = tokio::time::Instant::now() + within;
+        let mut seen = String::new();
+        loop {
+            let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+            match tokio::time::timeout(left, body.frame()).await {
+                Ok(Some(Ok(frame))) => {
+                    if let Some(data) = frame.data_ref() {
+                        seen.push_str(&String::from_utf8_lossy(data));
+                    }
+                    if seen.contains(": keepalive") {
+                        return Ok(());
+                    }
+                }
+                Ok(other) => return Err(format!("the stream ended ({:?}) after {seen:?}", other.map(|r| r.is_ok()))),
+                Err(_) => return Err(format!("nothing but {seen:?} in {} s", within.as_secs())),
+            }
+        }
+    }
+
+    /// Events the stream leaves out, every 5 s (another agent at work: its steps, its notifications, reads elsewhere).
+    fn others(threads: Arc<Threads>, agent: &'static str) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                threads.publish(agent, "read", json!({"agent": agent, "notifications": []}));
+            }
+        })
+    }
+
+    #[tokio::test]
+    async fn a_conversations_stream_keeps_alive_while_another_agents_events_flow() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = app(dir.path());
+        let state = app.state.clone();
+        // Wellness's conversation on screen (the app's `?agent=wellness&thread=…`; the thread aside: no store here)
+        let response = events(State(state.clone()), QueryMap::parse(Some("agent=wellness"))).await.expect("its stream");
+        let others = others(threads_of(&state), "budget");
+        let alive = keepalive_within(response.into_body(), Duration::from_secs(32)).await;
+        others.abort();
+        assert!(alive.is_ok(), "no keepalive in 32 s while another agent's events came every 5 s: {alive:?}");
+    }
+
+    #[tokio::test]
+    async fn a_shared_conversations_hints_keep_alive_while_the_owners_other_events_flow() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = app(dir.path());
+        let state = app.state.clone();
+        // a relative's bridge relays this stream to her phone; its presence is touched by each chunk (45 s)
+        let response = crate::agent_shares::thread_hints(&state, "t_shared".into(), "c_hers".into());
+        let others = others(threads_of(&state), "wellness");
+        let alive = keepalive_within(response.into_body(), Duration::from_secs(32)).await;
+        others.abort();
+        assert!(alive.is_ok(), "no keepalive in 32 s while the owner's other events came every 5 s: {alive:?}");
+    }
+}
