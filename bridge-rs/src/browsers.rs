@@ -375,10 +375,26 @@ pub fn vault_typed(config: &Config, agent: &str, origin: &str, identifier: &str)
     rows.push(json!({"o": origin, "h": crate::browser_mcp::guard_hash(identifier), "t": now}));
     let rows = &rows[rows.len().saturating_sub(20)..];
     let partial = path.with_file_name(format!("{}.part", crate::browser_mcp::VAULT_TYPED_FILE));
-    let written = std::fs::write(&partial, Value::Array(rows.to_vec()).to_string()).and_then(|()| std::fs::rename(&partial, &path));
+    let body = Value::Array(rows.to_vec()).to_string();
+    let written = crate::py::write_with_mode(&partial.to_string_lossy(), body.as_bytes(), 0o600)
+        .and_then(|()| crate::py::chmod(&partial.to_string_lossy(), 0o600))
+        .and_then(|()| std::fs::rename(&partial, &path));
     if let Err(exc) = written {
         tracing::warn!(agent = %agent, error = %exc, "vault login: the browser's card checks not told of the identifier typed");
     }
+}
+
+/// Each agent's `vault_typed` file once its 30 minutes are over: removed (review R6), at the bridge's start and with
+/// each sweep of leftover holds (card_pay.rs `end_stale_holds_forever`). How many.
+pub fn tidy_vault_typed(config: &Config) -> usize {
+    let now = crate::py::time_time();
+    config
+        .agents
+        .values()
+        .filter(|a| {
+            crate::browser_mcp::drop_stale_vault_typed(&folder(config, &a.name).join(crate::browser_mcp::VAULT_TYPED_FILE), now)
+        })
+        .count()
 }
 
 /// Someone uses the agent's browser (the person watching its desktop): not stopped for `idle_minutes` from now.

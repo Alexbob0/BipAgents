@@ -8,7 +8,9 @@ The page mirrors the extranet Alex could not log in to (« page de connexion pro
 type="password">`, two hidden `groupe`, a submit. Fake entries only."""
 import asyncio
 import json
+import os
 import re
+import stat
 import threading
 
 from websockets.asyncio.server import serve
@@ -362,6 +364,7 @@ def test_a_numeric_client_code_typed_by_the_vault_is_left_alone_by_the_card_chec
         assert result["isError"] is False and chrome.frames[0].values["login"] == code
         [row] = json.loads(typed_file.read_text())
         assert row["o"] == SITE and code not in typed_file.read_text()
+        assert stat.S_IMODE(os.stat(typed_file).st_mode) == 0o600      # review R6
         assert re.fullmatch(r"[0-9a-f]{1,8}", row["h"])
         nowhere_but_the_page(bridge, [result], code, PASSWORD_A)
         # an e-mail identifier: nothing written down

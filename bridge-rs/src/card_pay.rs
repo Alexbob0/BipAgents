@@ -827,6 +827,7 @@ pub async fn end_stale_holds_forever(config: crate::config::SharedConfig) {
     let every = stale_sweep();
     loop {
         end_stale_holds(config.get()).await;
+        crate::browsers::tidy_vault_typed(&config.get());
         tokio::time::sleep(every).await;
     }
 }
