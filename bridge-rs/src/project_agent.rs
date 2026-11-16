@@ -55,7 +55,8 @@ pub const TOOLS: [&str; 10] = [
     crate::routes::TOOL_NAME,
     crate::maps::TOOL_NAME,
     crate::agent_tools::CREATE_PAGE,
-    // what the friends typed in its pages that remember (15/11, page_store.rs: read only, as untrusted data)
+    // what the friends typed in its pages that remember (15/11, page_store.rs: read as untrusted data), and the
+    // data it keeps there itself (`ops`, 16/11: a live project page kept up to date)
     crate::page_store::TOOL_NAME,
     crate::friends_cards::TOOL_NAME,
     crate::shared_expenses::TOOL_NAME,
