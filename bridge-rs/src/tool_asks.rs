@@ -1572,14 +1572,12 @@ mod review {
     }
 
     /// R9: a toolset Hermes lists and this file doesn't name (`messaging`: Hermes' send_message, `connections`:
-    /// manage_connections, `tts`, `search`…) is offered as harmless — no « · À vérifier » — and to every other agent
-    /// under « Aussi pour ». What the bridge doesn't know can't be called harmless.
+    /// manage_connections, `tts`, `search`…) is offered as harmless: no « · À vérifier » on its card. What the bridge
+    /// doesn't know can't be called harmless. (« Aussi pour » for them: Alex's call, a follow-up of the review.)
     #[test]
-    fn review_r9_a_toolset_this_file_does_not_name_is_never_shown_harmless_nor_offered_to_others() {
-        for (name, label) in [("messaging", "📨 Cross-platform Messaging"), ("connections", "🔗 Connections")] {
-            let item = toolset_item(name, label);
-            assert_eq!(item.risk, Check, "{name}: « · À vérifier » for what the bridge doesn't know");
-            assert!(!item.also, "{name}: never « Aussi pour » for what the bridge doesn't know");
+    fn review_r9_a_toolset_this_file_does_not_name_is_never_shown_harmless() {
+        for (name, label) in [("messaging", "📨 Cross-platform Messaging"), ("connections", "🔗 Connections"), ("tts", "🔊 Text-to-Speech")] {
+            assert_eq!(toolset_item(name, label).risk, Check, "{name}: « · À vérifier » for what the bridge doesn't know");
         }
     }
 
