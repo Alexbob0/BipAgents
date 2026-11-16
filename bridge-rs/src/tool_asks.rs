@@ -1517,3 +1517,104 @@ mod tests {
         assert_eq!(names(r#"{}"#), None);
     }
 }
+
+/// The independent review of 16/11 (passation-pro/briefs/review-tool-asks.md): one red test per finding that needs the
+/// crate's insides (the admin lock, the toolsets Hermes named, the registry's defaults). No fix here.
+#[cfg(test)]
+mod review {
+    use super::*;
+
+    fn config_in(dir: &tempfile::TempDir) -> Config {
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.path().join("bridge.db").to_string_lossy().into_owned();
+        config.tool_asks = Settings { ask_in_conversation: true, ..Settings::default() };
+        for name in ["vie", "paul", "revue"] {
+            config.agents.insert(
+                name.to_string(),
+                AgentConfig { name: name.into(), display_name: name[..1].to_uppercase() + &name[1..], ..AgentConfig::default() },
+            );
+        }
+        config
+    }
+
+    fn entry(id: &str) -> Item {
+        REGISTRY.iter().find(|e| e.id == id).unwrap().item()
+    }
+
+    /// R6: two devices. « Oui » on the phone is turning Météo on (its switch waits for the admin lock, or Hermes'
+    /// `tools enable`, seconds, the browser's first setup a minute); meanwhile « Non » on the iPad (or the push's
+    /// « Refuser ») closes the card refused. The « Oui » then turns the tool on anyway and gets a 404: the card says
+    /// « Refusé », the agent is told « they said no », and Météo is on.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn review_r6_a_non_given_while_a_oui_turns_the_tool_on_never_leaves_it_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(&dir);
+        let app = crate::app::create_app(config.clone(), crate::app::AppOptions { start_background: false }).unwrap();
+        let state = app.state.clone();
+        let ask = open(&config, "vie", &entry("weather"), "Pour la pluie", Some("s1"), None, None, vec![]).unwrap();
+        let held = crate::agents_admin::LOCK.lock().await;
+        let (oui_state, oui_id) = (state.clone(), ask.id.clone());
+        let oui = tokio::spawn(async move {
+            answer(&oui_state, &oui_id, &Answer { allow: true, ..Answer::default() }, "app").await.map(|a| a.state)
+        });
+        tokio::time::sleep(Duration::from_millis(300)).await; // the « Oui » checked the card and is switching it on
+        let non = answer(&state, &ask.id, &Answer { allow: false, ..Answer::default() }, "notification").await;
+        drop(held);
+        let oui = oui.await.unwrap();
+        let card = get(&config, &ask.id).unwrap();
+        let on = crate::weather::enabled(&state.config(), "vie");
+        assert!(
+            !(card.state == REFUSED && on),
+            "the card says « Refusé » (non: {:?}, oui: {:?}) and Météo is on all the same",
+            non.map(|a| a.state),
+            oui
+        );
+    }
+
+    /// R9: a toolset Hermes lists and this file doesn't name (`messaging`: Hermes' send_message, `connections`:
+    /// manage_connections, `tts`, `search`…) is offered as harmless — no « · À vérifier » — and to every other agent
+    /// under « Aussi pour ». What the bridge doesn't know can't be called harmless.
+    #[test]
+    fn review_r9_a_toolset_this_file_does_not_name_is_never_shown_harmless_nor_offered_to_others() {
+        for (name, label) in [("messaging", "📨 Cross-platform Messaging"), ("connections", "🔗 Connections")] {
+            let item = toolset_item(name, label);
+            assert_eq!(item.risk, Check, "{name}: « · À vérifier » for what the bridge doesn't know");
+            assert!(!item.also, "{name}: never « Aussi pour » for what the bridge doesn't know");
+        }
+    }
+
+    /// R8: a card for a toolset Hermes named (`tts`) after a bridge restart: the toolsets Hermes said are in memory
+    /// only, so the card turns into a `screen` card (« Ouvrir les réglages ») and its « Oui » answers 404 while it is
+    /// still listed.
+    #[tokio::test]
+    async fn review_r8_a_card_for_a_toolset_keeps_what_it_is_across_a_bridge_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(&dir);
+        note_toolsets("revue", &[json!({"name": "tts", "label": "🔊 Text-to-Speech", "enabled": false})]);
+        let item = item_of(&config, &config.agents["revue"], "tts").expect("named by Hermes");
+        let ask = open(&config, "revue", &item, "Pour te lire la recette", Some("s1"), None, None, vec![]).unwrap();
+        assert_eq!(pending_items(&config, Some("revue"))[0]["bip_tool"]["kind"], json!("server"));
+        // the bridge restarts: what Hermes said is gone until the app reads the agent's settings again
+        TOOLSETS.lock().unwrap_or_else(|e| e.into_inner()).remove("revue");
+        let shown = pending_items(&config, Some("revue"));
+        assert_eq!(shown.len(), 1, "still waiting");
+        assert_eq!(shown[0]["bip_tool"]["kind"], json!("server"), "the same card as before the restart");
+        assert_eq!(shown[0]["request_id"], json!(ask.id));
+    }
+
+    /// R4 (the list): reads that bring outside words into the turn and leave no amber line — another agent's answer
+    /// (it may have read anything), a sub-agent's report, old mails and chats found in the Archives, files' contents
+    /// found by a search.
+    #[test]
+    fn review_r4_every_read_that_brings_outside_words_is_named() {
+        for tool in [
+            "mcp_bipagents_message_agent",
+            "mcp__bipagents__ask_agent",
+            "delegate_task",
+            "mcp_bipagents_archive_search",
+            "search_files",
+        ] {
+            assert!(reading_kind(tool).is_some(), "{tool}: outside words, no amber line");
+        }
+    }
+}
