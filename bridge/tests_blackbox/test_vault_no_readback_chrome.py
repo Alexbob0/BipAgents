@@ -454,6 +454,24 @@ def test_what_the_person_types_while_holding_the_browser(browser):
     assert Site.posted == [("/acces", {"code": [PIN]})]
 
 
+def test_fields_that_only_speak_of_passwords_read_as_typed(browser):
+    """A « mot de passe oublié » e-mail, a hint, an address saying autocomplete="new-password" (sites do, to keep the
+    browser's suggestions off): typed and read back as before, never masked; the same e-mail on the login page after."""
+    browser.open("/forgot.html")
+    for selector, text in [("#forgot-password-email", IDENT), ("#password-hint", "le nom du chat"),
+                           ("#adresse", "1 rue de l'Essai")]:
+        browser.tool("type_text", selector=selector, text=text)
+        said = browser.tool("execute_script", script=f"document.querySelector({json.dumps(selector)}).value")
+        assert text in said, (selector, said[:200])
+    browser.image("take_screenshot")
+    assert browser.page("[...document.querySelectorAll('input')].map((e) => e.type).join(',')") == "email,text,text"
+    browser.open("/login.html")
+    browser.person_types("#ident", IDENT)
+    said = browser.tool("execute_script", script="document.querySelector('#ident').value")
+    assert IDENT in said, said[:200]
+    assert browser.page("document.querySelector('#ident').type") == "text"
+
+
 def direct(cdp, script):
     """The script as V8 runs it in the page's own world with no side effect allowed (what read_only did before)."""
     got = cdp.call("Runtime.evaluate", {"expression": script, "throwOnSideEffect": True, "returnByValue": True,

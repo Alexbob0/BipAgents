@@ -835,8 +835,17 @@ pub fn own_refusal(response: &Dict) -> bool {
     [PASSWORD_REFUSED, SCRIPT_PASSWORD_REFUSED, SCRIPT_SENDS_REFUSED, PASSWORD_SHOWN, TERMS_REFUSED, RESCUE_REFUSED,
      crate::credit::BROWSER_REFUSED, CARD_REFUSED, SCRIPT_CARD_REFUSED, PROVIDER_SCRIPT_REFUSED,
      // the hotfix's (15/11): what a script may do, said to the agent, not a step the page failed
-     SCRIPT_CHANGES_PAGE_REFUSED, SCRIPT_UNCHECKED_REFUSED, SCRIPT_STORAGE_REFUSED, SCRIPT_ON_CARDS_REFUSED]
+     SCRIPT_CHANGES_PAGE_REFUSED, SCRIPT_UNCHECKED_REFUSED, SCRIPT_STORAGE_REFUSED, SCRIPT_ON_CARDS_REFUSED,
+     // vault-no-readback (16/11)
+     SELECTOR_VALUE_REFUSED]
         .contains(&text)
+}
+
+/// A new isolated world of `frame` in an attached tab (`read_only`): its execution context, None when it can't be had.
+async fn isolated_world(cdp: &mut crate::card_fill::Cdp, session: &str, frame: &str, name: &str) -> Option<i64> {
+    let params = json!({"frameId": frame, "worldName": name, "grantUniveralAccess": false});
+    let created = cdp.call("Page.createIsolatedWorld", params, Some(session)).await.ok()?;
+    created.get("executionContextId").and_then(Value::as_i64)
 }
 
 /// The browser could not be started (or its server stopped): what the agent reads.
@@ -1068,14 +1077,22 @@ form's button. Nothing was run.";
 /// After a script or a page read: the script that tells whether its answer (`answer`, as the agent would read it) holds
 /// what a password field of the page holds (fifth review 13/11: put in the page's title, then read) (the vault typed it, or the person: a script reading the form's values would hand it to the
 /// model). The answer is checked in the page, as is and JSON-escaped up to three times (the script's own JSON, the
-/// server's, the answer's); the values never leave it.
+/// server's, the answer's); the values never leave it. Since vault-no-readback (16/11): what any protected field holds
+/// (`SECRET_JS`: a password field, one the site shows in clear, a copy), and its usual codings (`secForms`: reversed,
+/// base64, hex, URL-encoded: a site's own copy in a hidden field).
 pub fn shows_password(answer: &str) -> String {
+    shows_password_with(answer, &json!({}))
+}
+
+/// `shows_password` with what the proxy remembers of the page's password fields (`Secrets::all`).
+pub fn shows_password_with(answer: &str, secrets: &Value) -> String {
     let answer = serde_json::to_string(answer).unwrap_or_else(|_| "\"\"".into());
+    let secrets = serde_json::to_string(secrets).unwrap_or_else(|_| "{}".into());
     format!(
-        "/* bipagents guard: shown */ (() => {{ const A = {answer}; {GUARD_JS}\
+        "/* bipagents guard: shown */ (() => {{ const A = {answer}; const secMM = {secrets}; {GUARD_JS}{SECRET_JS}\
 const esc = (v) => JSON.stringify(v).slice(1, -1); const forms = (v) => [v, esc(v), esc(esc(v)), esc(esc(esc(v)))]; \
-return inputs.some(({{e}}) => kind(e) === 'password' && e.value.length >= 4 && new Set(e.value).size > 1 \
-&& forms(e.value).some((f) => A.includes(f))); }})()"
+const told = [...secS].filter((v) => v.length >= 4 && new Set(v).size > 1).concat(secF.filter((f) => new Set(f).size > 1)); \
+return told.some((v) => forms(v).some((f) => A.includes(f))); }})()"
     )
 }
 
@@ -1219,10 +1236,18 @@ pub fn guard_before() -> String {
 
 /// `guard_before`, leaving alone the identifiers `vault_login` typed (`vault_typed`).
 pub fn guard_before_with(typed: &Value) -> String {
+    guard_before_in(typed, &json!({}))
+}
+
+/// `guard_before_with`, first keeping the page's protected fields out of sight (`CONCEAL_JS`, vault-no-readback 16/11)
+/// with what the proxy remembers of them (`Secrets::all`); what it saw of them comes back too (`sk`, `sh`).
+pub fn guard_before_in(typed: &Value, secrets: &Value) -> String {
     let cards = card_js();
     let typed = serde_json::to_string(typed).unwrap_or_else(|_| "[]".into());
+    let secrets = serde_json::to_string(secrets).unwrap_or_else(|_| "{}".into());
     format!(
-        "{GUARD_BEFORE}{LABEL_JS}{GUARD_JS}{cards}{CARD_FIELDS_JS}const VT = {typed}; {VAULT_TYPED_JS}const pw = {{}}, known = [], boxes = []; \
+        "{GUARD_BEFORE}{LABEL_JS}{GUARD_JS}{cards}{CARD_FIELDS_JS}const secMM = {secrets}; {SECRET_JS}{CONCEAL_JS}\
+const VT = {typed}; {VAULT_TYPED_JS}const pw = {{}}, known = [], boxes = []; \
 inputs.forEach(({{e, k}}) => {{ if (kind(e) === 'password') {{ pw[k] = e.value ? h(e.value) : ''; if (e.value) known.push(h(e.value)); }} \
 else if (kind(e) === 'checkbox' && !e.checked && isTerms(label(e))) boxes.push(k); }}); \
 const cards = {{}}; let cardtext = false, cleared = 0, frames = 0; \
@@ -1232,7 +1257,7 @@ const number = !select && holdsCard(v) && !isOther(e) && !vaultTyped(e, v); \
 if (!select && v && (c || number)) {{ setv(e, ''); v = ''; cleared++; }} \
 if (c || number) {{ cards[k] = select ? v : h(v); }} }}); \
 return JSON.stringify({{pw: pw, known: known, boxes: boxes, cards: cards, cardtext: cardtext, cleared: cleared, frames: frames, \
-origin: location.origin}}); }})()"
+origin: location.origin, masks: secMasks, stripped: secStripped, sk: secSeen().sk, sh: secSeen().sh}}); }})()"
     )
 }
 
@@ -1282,6 +1307,248 @@ the password.";
 pub const TERMS_UNDONE: &str = "Not done: that ticked the site's terms (or a consent), and you never tick it \
 yourself: it was unticked. Call accept_terms with the site and the box's label (and the terms' link if the page has \
 one): a card asks your person « Oui / Non », and on « Oui » the box is ticked for you.";
+
+// --- what a password field holds, out of the agent's reach (vault-no-readback, Alex 16/11) ---------------------------
+//
+// The vault types a saved password into the page (vault_login, Hermes' browser_vault), the person types one while
+// holding the browser. A script only reads (V8, 15/11), but a read is enough: the field's value, reversed or coded, got
+// past Hermes' mask of the exact bytes; so did the page's own copies (a React page's props, state and « value »
+// attribute, a « shown » twin, base64 in a hidden field), another frame's getter, a selector testing the attribute one
+// character at a time, and the site's eye (a screenshot in clear). Now (briefs/design-vault-no-readback.md):
+// - the agent's script runs in a world of its own (`read_only`): none of the page's own variables;
+// - while it runs, every protected field and every copy of what one holds (values, attributes, coded forms) is empty,
+//   then put back as it was (`hide_script`, `RESTORE_SCRIPT`, one DevTools session): any frame, any API reads '';
+// - before every tool that reads or acts on the page, a protected field the site shows in clear is a password field
+//   again, and a copy of its value in its own attributes is emptied (`CONCEAL_JS`): screenshots, the accessibility
+//   tree and copying show dots;
+// - a selector testing part of the « value » attribute is refused in every tool (`selector_tests_value`);
+// - an answer still holding one, as is or coded, is not passed on (`shows_password_with`).
+// A protected field: a text input whose type is password, masked by CSS, a plain text input whose name or id says
+// password (a password field the site's eye turned into text; not an e-mail, an identifier, a hint, nor a « mot de passe
+// oublié » field), or one the guard saw as a password field on that origin before (`Secrets`, kept in the proxy, never
+// in the page); and any input or text area holding what one of them holds. Not an autocomplete token: sites put
+// « new-password » on an address field to keep Chrome's suggestions off (review 13/11).
+
+/// What a page's protected fields are (`secMM`: what the proxy remembers, `Secrets::all`): `secS` what they hold,
+/// `secGuarded` the fields (copies included), `secF` what they hold (4 characters at least) and, from 6, its usual
+/// codings (a short code's reversed form would turn up in ordinary text),
+/// `secSeen()` the keys and fingerprints for the proxy (`Secrets::learn`). After `GUARD_JS`.
+const SECRET_JS: &str = "const secM = secMM[location.origin] || {k: [], h: []}; \
+const secTexty = ['password', 'text', 'email', 'tel', 'number', 'search', 'url']; \
+const secNamed = /password|passwd|passwort|mot.?de.?passe|motdepasse|\\bmdp\\b|\\bpwd\\b|kennwort|contrase/i; \
+const secNotNamed = /mail|user|login|ident|hint|indice|question|forgot|oubli|reset|lost|perdu/i; \
+const secMasked = (e) => { try { return (e.ownerDocument.defaultView.getComputedStyle(e).webkitTextSecurity || 'none') !== 'none'; } catch (x) { return false; } }; \
+const secKey = new Map(inputs.map(({e, k}) => [e, k])); \
+const secNameOf = (e) => (e.getAttribute('name') || '') + ' ' + (e.id || ''); \
+const secField = (e) => e.tagName === 'INPUT' && secTexty.includes(e.type) && (e.type === 'password' || secMasked(e) \
+|| e.type === 'text' && secNamed.test(secNameOf(e)) && !secNotNamed.test(secNameOf(e)) \
+|| (secM.k || []).includes(secKey.get(e))); \
+const secTexts = []; roots.forEach((r) => secTexts.push(...r.querySelectorAll('input, textarea'))); \
+const secS = new Set(); secTexts.forEach((e) => { const v = e.value; if (v && (secField(e) || (secM.h || []).includes(h(v)))) secS.add(v); }); \
+const secGuarded = new Set(secTexts.filter((e) => (e.tagName === 'TEXTAREA' || secTexty.includes(e.type)) && (secField(e) || (e.value && secS.has(e.value))))); \
+const secForms = (s) => { const f = [s, [...s].reverse().join('')]; try { f.push(btoa(unescape(encodeURIComponent(s)))); } catch (x) {} \
+f.push(encodeURIComponent(s)); f.push([...s].map((c) => c.charCodeAt(0).toString(16).padStart(2, '0')).join('')); return f; }; \
+const secF = []; secS.forEach((s) => { if (s.length >= 4) (s.length >= 6 ? secForms(s) : [s]).forEach((f) => { if (f.length >= 4 && !secF.includes(f)) secF.push(f); }); }); \
+const secHolds = (t) => !!t && secF.some((f) => t.includes(f)); \
+const secSeen = () => ({sk: inputs.filter(({e, k}) => secField(e) && !k.includes('@')).map(({k}) => k), sh: [...secS].map(h)}); \
+const secQuiet = (e, v) => Object.getOwnPropertyDescriptor(e.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value').set.call(e, v); ";
+
+/// Before a tool that reads or acts on the page (in `guard_before`, or alone: `conceal_script`): a protected field
+/// holding text that the site shows in clear (its eye, or a « shown » twin it reveals) is a password field again, and its
+/// own attributes holding what it holds (a React page's « value ») are emptied, its live value kept. No event: the
+/// page's code is not told.
+const CONCEAL_JS: &str = "let secMasks = 0, secStripped = 0; \
+secGuarded.forEach((e) => { const v = e.value; if (!v) return; \
+if (e.tagName === 'INPUT' && e.type !== 'password' && !secMasked(e) && e.getClientRects().length) { e.type = 'password'; secMasks++; } \
+for (const a of [...e.attributes]) { if (['type', 'id', 'name', 'form'].includes(a.name) || !a.value) continue; \
+if (a.value === v || secHolds(a.value)) { e.setAttribute(a.name, ''); secStripped++; } } \
+if (e.value !== v) secQuiet(e, v); }); ";
+
+/// `CONCEAL_JS` alone, before a page read that `guard_before` doesn't precede (take_screenshot, query_elements…): what
+/// it did, and what it saw for the proxy.
+pub fn conceal_script(secrets: &Value) -> String {
+    let secrets = serde_json::to_string(secrets).unwrap_or_else(|_| "{}".into());
+    format!(
+        "/* bipagents guard: conceal */ (() => {{ const secMM = {secrets}; {GUARD_JS}{SECRET_JS}{CONCEAL_JS}\
+return JSON.stringify(Object.assign({{origin: location.origin, masks: secMasks, stripped: secStripped}}, secSeen())); }})()"
+    )
+}
+
+/// Right before the agent's script, in the guard's world of the same DevTools session (`read_only`): every protected
+/// field's value, every input or text area holding one or a coding of one (a site's base64 in a hidden field), then
+/// every attribute of the page holding one, emptied, without events; what was there kept in that world only
+/// (`RESTORE_SCRIPT` puts it back). Its answer: how many, and what it saw for the proxy.
+pub fn hide_script(secrets: &Value) -> String {
+    let secrets = serde_json::to_string(secrets).unwrap_or_else(|_| "{}".into());
+    format!(
+        "/* bipagents guard: hide */ (() => {{ const st = (globalThis.__bipHidden = []); const secMM = {secrets}; {GUARD_JS}{SECRET_JS}\
+if (secS.size) {{ \
+secTexts.forEach((e) => {{ const v = e.value; if (v && (secGuarded.has(e) || secHolds(v))) {{ st.push([e, 0, '', v]); secQuiet(e, ''); }} }}); \
+roots.forEach((r) => {{ for (const el of r.querySelectorAll('*')) for (const a of [...el.attributes]) {{ \
+if (a.value && (secHolds(a.value) || secGuarded.has(el) && secS.has(a.value))) {{ st.push([el, 1, a.name, a.value]); el.setAttribute(a.name, ''); }} }} }}); }} \
+return JSON.stringify(Object.assign({{origin: location.origin, hidden: st.length}}, secSeen())); }})()"
+    )
+}
+
+/// After the agent's script, in the same world as `hide_script`: what it emptied put back, attributes first, each only
+/// if still empty (the page may have set it again meanwhile). How many.
+pub const RESTORE_SCRIPT: &str = "/* bipagents guard: restore */ (() => { const st = globalThis.__bipHidden || []; \
+delete globalThis.__bipHidden; let n = 0; \
+const quiet = (e, v) => Object.getOwnPropertyDescriptor(e.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value').set.call(e, v); \
+for (let i = st.length - 1; i >= 0; i--) { const [e, w, a, v] = st[i]; try { \
+if (w === 1) { if (e.getAttribute(a) === '') { e.setAttribute(a, v); n++; } } else if (e.value === '') { quiet(e, v); n++; } \
+} catch (x) {} } return n; })()";
+
+/// Tools that read the page without `guard_before` before them: `CONCEAL_JS` runs first (`conceal_script`), and their
+/// answer is checked (`shows_password_with`). get_page_content's own reading (`readable_script`) shows no field's value
+/// nor attribute: only the real tool's (with frames) is concealed first.
+pub const PAGE_READERS: [&str; 4] = ["take_screenshot", "query_elements", "get_element_state", "wait_for_element"];
+
+/// How long the proxy remembers a page's password fields (`Secrets`): a login, a take-over, and the steps after.
+pub const SECRETS_SECONDS: f64 = 7200.0;
+/// How many keys and fingerprints it keeps for an origin, and how many origins.
+pub const SECRETS_KEPT: usize = 64;
+pub const SECRETS_ORIGINS: usize = 16;
+
+/// What the guard saw of a page's password fields, by origin (`SECRET_JS` `secSeen`): the keys of fields that were
+/// password fields (`GUARD_JS` keys, by id or name only), and fingerprints of what protected fields held (`h`, FNV-1a).
+/// So a field the site's eye (or the person) turned into text stays protected, and a copy of a value that left its field.
+/// In this process only: nothing is left in the page.
+#[derive(Debug, Default, Clone)]
+pub struct Secrets {
+    origins: Vec<(String, f64, Vec<String>, Vec<String>)>,
+}
+
+impl Secrets {
+    /// A look's answer (`guard_before_in`, `conceal_script`, `hide_script`): its `origin`, `sk` and `sh`.
+    pub fn learn(&mut self, look: &Value, now: f64) {
+        let Some(origin) = look.get("origin").and_then(Value::as_str).filter(|o| !o.is_empty() && *o != "null") else {
+            return;
+        };
+        let strings = |k: &str| -> Vec<String> {
+            look.get(k)
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string).collect())
+                .unwrap_or_default()
+        };
+        let (keys, hashes) = (strings("sk"), strings("sh"));
+        let at = match self.origins.iter().position(|(o, ..)| o == origin) {
+            Some(at) => at,
+            None if keys.is_empty() && hashes.is_empty() => return,
+            None => {
+                self.origins.push((origin.to_string(), now, Vec::new(), Vec::new()));
+                self.origins.len() - 1
+            }
+        };
+        let entry = &mut self.origins[at];
+        entry.1 = now;
+        for (list, new) in [(&mut entry.2, keys), (&mut entry.3, hashes)] {
+            for item in new {
+                if !list.contains(&item) {
+                    list.push(item);
+                }
+            }
+            let over = list.len().saturating_sub(SECRETS_KEPT);
+            list.drain(..over);
+        }
+        self.origins.retain(|(_, t, ..)| now - t < SECRETS_SECONDS);
+        while self.origins.len() > SECRETS_ORIGINS {
+            let oldest =
+                self.origins.iter().enumerate().min_by(|a, b| a.1 .1.total_cmp(&b.1 .1)).map(|(i, _)| i).unwrap_or(0);
+            self.origins.remove(oldest);
+        }
+    }
+
+    /// What it remembers of `origin` (`{k, h}`), as the scripts take it.
+    pub fn memory(&self, origin: &str, now: f64) -> Value {
+        match self.origins.iter().find(|(o, t, ..)| o == origin && now - t < SECRETS_SECONDS) {
+            Some((_, _, keys, hashes)) => json!({"k": keys, "h": hashes}),
+            None => json!({"k": [], "h": []}),
+        }
+    }
+
+    /// Every origin's (`{origin: {k, h}}`): a script picks its page's own (`secMM[location.origin]`).
+    pub fn all(&self, now: f64) -> Value {
+        Value::Object(
+            self.origins
+                .iter()
+                .filter(|(_, t, ..)| now - t < SECRETS_SECONDS)
+                .map(|(o, ..)| (o.clone(), self.memory(o, now)))
+                .collect(),
+        )
+    }
+}
+
+/// A selector testing part of a field's « value » attribute (vault-no-readback, 16/11): a React page mirrors the
+/// password there, and `input[value^="a"]` found or not, a character at a time, would give it all. Refused in every
+/// tool: CSS's `^= $= *= ~= |=` on `value` (escapes and comments undone, any case, any namespace); an XPath naming
+/// `@value` (or any attribute, `@*`) with a function or a comparison (starts-with, contains, substring, <, >…). The whole
+/// value named (`[value="Rechercher"]`, a radio's `[value="2"]`) goes on.
+pub const SELECTOR_VALUE_REFUSED: &str = "Not done: a selector never tests part of a field's value (value^=, value*=, \
+value$=, or starts-with, contains, substring on @value): find the field by its id, name, type or label. Nothing was \
+done.";
+
+static CSS_VALUE_PART: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[\s*(?:[^\]|\s]*\|)?\s*value\s*[~|^$*]\s*=").expect("valid regex"));
+static XPATH_ATTRIBUTE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"@value\b|attribute::value\b|@\*|attribute::\*|attribute::node\(").expect("valid regex")
+});
+static XPATH_TEST: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(starts-with|ends-with|contains|substring|substring-before|substring-after|string-length|translate|normalize-space|matches|number|string|sum|concat|lower-case|upper-case|tokenize|replace|codepoints-to-string|string-to-codepoints|compare)\(|[<>]|!=",
+    )
+    .expect("valid regex")
+});
+static CSS_COMMENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)/\*.*?\*/").expect("valid regex"));
+
+/// A CSS selector with its escapes undone (`\76 ` → `v`, `\v` → `v`).
+fn css_unescaped(selector: &str) -> String {
+    let chars: Vec<char> = selector.chars().collect();
+    let mut out = String::with_capacity(selector.len());
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] != '\\' || i + 1 >= chars.len() {
+            out.push(chars[i]);
+            i += 1;
+            continue;
+        }
+        let mut j = i + 1;
+        while j < chars.len() && j - i <= 6 && chars[j].is_ascii_hexdigit() {
+            j += 1;
+        }
+        if j > i + 1 {
+            let code: String = chars[i + 1..j].iter().collect();
+            out.push(u32::from_str_radix(&code, 16).ok().and_then(char::from_u32).unwrap_or('\u{fffd}'));
+            if j < chars.len() && chars[j].is_whitespace() {
+                j += 1;
+            }
+            i = j;
+        } else {
+            out.push(chars[i + 1]);
+            i += 2;
+        }
+    }
+    out
+}
+
+/// Whether a tool's selector tests part of the « value » attribute (`SELECTOR_VALUE_REFUSED`).
+pub fn selector_tests_value(selector: &str) -> bool {
+    let start = selector.trim_start().trim_start_matches('(').trim_start();
+    if start.starts_with('/') {
+        let flat: String = selector.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_lowercase();
+        return XPATH_ATTRIBUTE.is_match(&flat) && XPATH_TEST.is_match(&flat);
+    }
+    let plain = css_unescaped(&CSS_COMMENT.replace_all(selector, "")).to_lowercase();
+    CSS_VALUE_PART.is_match(&plain)
+}
+
+/// Every selector a call carries (`selector`, and any argument named so), for `selector_tests_value`.
+pub fn call_selectors(args: &Dict) -> Vec<String> {
+    args.iter()
+        .filter(|(k, _)| k.as_str() == "selector" || k.ends_with("_selector") || k.as_str() == "xpath")
+        .filter_map(|(_, v)| v.as_str().map(str::to_string))
+        .collect()
+}
 
 /// The `structuredContent` of an answer given under another tool's name (`script_meant`): Hermes' MCP client checks it
 /// against the schema of the tool it called (« Invalid structured content returned by tool take_screenshot », review
@@ -1899,6 +2166,8 @@ pub struct Proxy {
     pub failures: AtomicU32,
     /// Whether the guard's look had to run in the page's own world (`look`): said once in the log while it lasts.
     blind: AtomicBool,
+    /// What the guard saw of the pages' password fields (vault-no-readback, 16/11).
+    secrets: Mutex<Secrets>,
 }
 
 impl Proxy {
@@ -1943,7 +2212,35 @@ impl Proxy {
             last_url: Mutex::new(String::new()),
             failures: AtomicU32::new(0),
             blind: AtomicBool::new(false),
+            secrets: Mutex::new(Secrets::default()),
         })
+    }
+
+    /// What the guard remembers of the pages' password fields, for its scripts (`Secrets::all`).
+    fn secrets_now(&self) -> Value {
+        self.secrets.lock().unwrap_or_else(|e| e.into_inner()).all(crate::py::time_time())
+    }
+
+    /// A look's answer (`guard_before_in`, `conceal_script`, `hide_script`) remembered (`Secrets::learn`).
+    fn learn(&self, look: &Value) {
+        self.secrets.lock().unwrap_or_else(|e| e.into_inner()).learn(look, crate::py::time_time());
+        let count = |k: &str| look.get(k).and_then(Value::as_u64).unwrap_or(0);
+        if count("masks") > 0 {
+            log(&format!("{} field(s) holding a password shown in clear by the page: masked again", count("masks")));
+        }
+        if count("stripped") > 0 {
+            log(&format!("{} attribute(s) holding a password field's value: emptied", count("stripped")));
+        }
+    }
+
+    /// Before a page read without `guard_before` (`PAGE_READERS`, get_page_content's real tool): the page's protected
+    /// fields out of sight (`conceal_script`).
+    async fn conceal(&self, instance: &str) {
+        if let Some(Value::String(text)) = self.look(instance, &conceal_script(&self.secrets_now())).await {
+            if let Ok(look) = serde_json::from_str::<Value>(&text) {
+                self.learn(&look);
+            }
+        }
     }
 
     fn command(&self, name: &str) -> Vec<String> {
@@ -2347,6 +2644,10 @@ impl Proxy {
             log(&format!("{tool}: a card's number in an address refused"));
             return Ok(refused(CARD_REFUSED));
         }
+        if call_selectors(&args).iter().any(|s| selector_tests_value(s)) {
+            log(&format!("{tool}: a selector testing part of a value attribute refused"));
+            return Ok(refused(SELECTOR_VALUE_REFUSED));
+        }
         // what the page holds before a script or a list's choice (a card's field holding text emptied first), for the
         // check before (`guard`) and after (`undone`)
         let (early, own_world) = match matches!(tool, "execute_script" | "select_option") && !instance.is_empty() {
@@ -2396,6 +2697,11 @@ impl Proxy {
                     return Ok(self.unless_shown(&instance, readable).await);
                 }
             }
+        }
+        // a page read the guard doesn't look before (`PAGE_READERS`, get_page_content's real tool): the page's password
+        // fields out of sight first (vault-no-readback, 16/11)
+        if (PAGE_READERS.contains(&tool) || tool == "get_page_content") && !instance.is_empty() {
+            self.conceal(&instance).await;
         }
         if tool == "take_screenshot" {
             let mut args = args.clone();
@@ -2472,16 +2778,16 @@ impl Proxy {
         if tool == "execute_script" && !instance.is_empty() && script_result(&response).is_some() {
             return Ok(self.unless_shown(&instance, response).await);
         }
-        if tool == "get_page_content" && !instance.is_empty() {
+        if matches!(tool, "get_page_content" | "query_elements" | "get_element_state") && !instance.is_empty() {
             return Ok(self.unless_shown(&instance, response).await);
         }
         Ok(response)
     }
 
-    /// An answer that holds what a password field of the page holds (`shows_password`) is not passed on.
+    /// An answer that holds what a password field of the page holds (`shows_password_with`) is not passed on.
     async fn unless_shown(&self, instance: &str, response: Dict) -> Dict {
         let answer = serde_json::to_string(&response).unwrap_or_default();
-        let shown = self.look(instance, &shows_password(&answer)).await;
+        let shown = self.look(instance, &shows_password_with(&answer, &self.secrets_now())).await;
         if matches!(&shown, Some(Value::Bool(true))) || matches!(&shown, Some(Value::String(t)) if t == "true") {
             log("an answer held a password: not passed on");
             return refused(PASSWORD_SHOWN);
@@ -2500,11 +2806,14 @@ impl Proxy {
             Some(busy) => vault_typed(&Path::new(busy).with_file_name(VAULT_TYPED_FILE), crate::py::time_time()),
             None => json!([]),
         };
-        let (read, own) = self.look_in(instance, &guard_before_with(&typed)).await;
+        let (read, own) = self.look_in(instance, &guard_before_in(&typed, &self.secrets_now())).await;
         let mut before = match read {
             Some(Value::String(text)) => serde_json::from_str::<Value>(&text).ok(),
             _ => None,
         };
+        if let Some(before) = &before {
+            self.learn(before);
+        }
         // the same identifiers left alone after the call (`guard_after` reads `B.vt`), from here, not from the page
         if let Some(Value::Object(map)) = before.as_mut() {
             map.insert("vt".into(), typed);
@@ -2610,11 +2919,12 @@ impl Proxy {
     }
 
     /// An agent's script run by V8 with no side effect allowed (Runtime.evaluate `throwOnSideEffect`, DevTools' eager
-    /// evaluation) in the page's own world of the tab the real server drives (hotfix v2 of 15/11, Alex's option A; the
-    /// seventh review found a `javascript:` address and a cookie reached past every list of names): what passes only
-    /// read — a getter, a coercion (`toString`), a page's function, a Proxy's trap that would write are refused by the
-    /// engine —, its answer given as the real server's; anything else is never run. The tab's document (its loader id)
-    /// with it.
+    /// evaluation) in the tab the real server drives (hotfix v2 of 15/11, Alex's option A; the seventh review found a
+    /// `javascript:` address and a cookie reached past every list of names): what passes only read — a getter, a
+    /// coercion (`toString`), a page's function, a Proxy's trap that would write are refused by the engine —, its answer
+    /// given as the real server's; anything else is never run. Since vault-no-readback (16/11), in a world of its own of
+    /// the tab (the same document, none of the page's variables), while the page's password fields and their copies are
+    /// set aside (`hide_script`, `RESTORE_SCRIPT`). The tab's document (its loader id) with it.
     async fn read_only(&self, instance: &str, expression: &str) -> Ran {
         let Some(port) = self.config.get("cdp_port").and_then(Value::as_u64).filter(|p| (1..65536).contains(p)) else {
             return Ran::Unchecked;
@@ -2641,9 +2951,42 @@ impl Proxy {
         };
         let tree = cdp.call("Page.getFrameTree", json!({}), Some(&session)).await.unwrap_or_default();
         let loader = tree.pointer("/frameTree/frame/loaderId").and_then(Value::as_str).unwrap_or("").to_string();
-        let params = json!({"expression": expression, "throwOnSideEffect": true, "returnByValue": true, "silent": true,
-                            "timeout": READ_ONLY_MS, "awaitPromise": false, "userGesture": false});
-        let Ok(evaluated) = cdp.call("Runtime.evaluate", params, Some(&session)).await else { return Ran::Unchecked };
+        let Some(frame) = tree.pointer("/frameTree/frame/id").and_then(Value::as_str).map(str::to_string) else {
+            return Ran::Unchecked;
+        };
+        // vault-no-readback (16/11): the guard's world empties what the page's protected fields hold (`hide_script`),
+        // the script runs in a world of its own (none of the page's variables: a framework's copy of a password), then
+        // the guard's world puts it all back (`RESTORE_SCRIPT`), in this one session
+        let Some(guard) = isolated_world(&mut cdp, &session, &frame, "bipagents-guard").await else {
+            return Ran::Unchecked;
+        };
+        let Some(agent) = isolated_world(&mut cdp, &session, &frame, "bipagents-agent").await else {
+            return Ran::Unchecked;
+        };
+        let hidden = match cdp.evaluate(&session, guard, &hide_script(&self.secrets_now())).await {
+            Ok(Value::String(text)) => serde_json::from_str::<Value>(&text).ok(),
+            _ => None,
+        };
+        let Some(hidden) = hidden else {
+            // what was emptied before it failed is put back; the script never runs with a password in the page
+            let _ = cdp.evaluate(&session, guard, RESTORE_SCRIPT).await;
+            log("execute_script: not run (the page's password fields could not be set aside)");
+            return Ran::Unchecked;
+        };
+        self.learn(&hidden);
+        let params = json!({"expression": expression, "contextId": agent, "throwOnSideEffect": true,
+                            "returnByValue": true, "silent": true, "timeout": READ_ONLY_MS, "awaitPromise": false,
+                            "userGesture": false});
+        let evaluated = cdp.call("Runtime.evaluate", params, Some(&session)).await;
+        let restored = cdp.evaluate(&session, guard, RESTORE_SCRIPT).await;
+        let count = hidden.get("hidden").and_then(Value::as_u64).unwrap_or(0);
+        if count > 0 {
+            match restored {
+                Ok(_) => log(&format!("execute_script: {count} password value(s) or copies set aside while it ran")),
+                Err(_) => log("WARNING: execute_script: a password field set aside could not be put back (left empty)"),
+            }
+        }
+        let Ok(evaluated) = evaluated else { return Ran::Unchecked };
         ran_from(&evaluated, loader)
     }
 

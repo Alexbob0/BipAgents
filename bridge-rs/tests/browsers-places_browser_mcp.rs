@@ -727,7 +727,9 @@ characters of this page. To read on, run execute_script with: "
     assert_eq!(content[0]["type"], "image");
     assert_eq!(content[0]["mimeType"], "image/jpeg");
     assert!(content[1]["text"].as_str().unwrap().contains("not written to /root/shot.png"));
-    assert_eq!(calls(tmp)[0]["arguments"], json!({"instance_id": "319ceedb", "format": "jpeg"}));
+    // the page's password fields out of sight first (vault-no-readback, 16/11: the site's eye shows one in clear)
+    assert!(calls(tmp)[0]["arguments"]["script"].as_str().unwrap().starts_with("/* bipagents guard: conceal */"));
+    assert_eq!(calls(tmp)[1]["arguments"], json!({"instance_id": "319ceedb", "format": "jpeg"}));
     // too large for the real server: saved in its container, fetched from it and removed there
     std::fs::create_dir_all(tmp.join("clones")).unwrap();
     std::fs::write(tmp.join("clones").join("screenshot_1.jpeg"), [0xFF, 0xD8, 0xFF, 0xE0]).unwrap();
