@@ -6,7 +6,8 @@
   "producers": [
     "connectors.rs:595 (connector_request)",
     "connectors.rs:1236 (secret_request)",
-    "agent_tools.rs:1428 (mail_request) -> notify_bridge_card"
+    "agent_tools.rs:1428 (mail_request) -> notify_bridge_card",
+    "tool_asks.rs (tool_request) -> notify_bridge_card"
   ],
   "policy": {
     "per_agent_switch": false
@@ -166,6 +167,55 @@
         "push_type": "alert",
         "priority": 10,
         "collapse_id": "mail_card:card_3"
+      }
+    },
+    {
+      "name": "tool",
+      "about": "A tool the agent asks for in the conversation (tool_asks.rs): « Une demande attend ton accord », « Refuser » through /v1/approve as a mail card's.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_bridge_card",
+          "args": {
+            "line": "Vie demande Rappels",
+            "key": "tool_request",
+            "id": "bip-tool-card_4"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.mail_card",
+            "body": "notif.mail_card"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "BRIDGE_CARD",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "mail_card",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "bip-tool-card_4"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "mail_card:bip-tool-card_4"
       }
     }
   ]
