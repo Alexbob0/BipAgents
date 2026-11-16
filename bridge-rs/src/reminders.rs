@@ -112,6 +112,34 @@ pub fn write(config: &Config, data: &Dict) -> std::io::Result<()> {
     std::fs::rename(&temporary, &path)
 }
 
+/// Whether `agent` may use the reminders (its tools are listed for every agent: they say when it may not).
+pub fn allowed(config: &Config, agent: &str) -> bool {
+    tk::py_in(agent, read(config).get("agents").unwrap_or(&json!([])))
+}
+
+/// Whether a phone sent its copy here (some phone shares it already).
+pub fn copied(config: &Config) -> bool {
+    let data = read(config);
+    data.contains_key("at") || data.contains_key("android")
+}
+
+/// `names` allowed too (a « Oui » on a tool card, tool_asks.rs), the agents allowed before kept.
+pub fn allow(config: &Config, names: &[String]) -> std::io::Result<()> {
+    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut data = read(config);
+    let mut agents: Vec<String> = match data.get("agents") {
+        Some(Value::Array(v)) => v.iter().filter_map(|n| n.as_str().map(str::to_string)).collect(),
+        _ => Vec::new(),
+    };
+    for name in names {
+        if !agents.contains(name) {
+            agents.push(name.clone());
+        }
+    }
+    set_agents_in(&mut data, &agents);
+    write(config, &data)
+}
+
 /// `_age(seconds)`: « 12 min », « 3 h », « 2 days ».
 fn age(seconds: f64) -> String {
     let minutes = (seconds / 60.0).floor() as i64;
@@ -171,6 +199,10 @@ pub fn call_from(
             // Something to remember with no phone to remind it: a Carnet task (with its date, `important` when they
             // insisted: the Carnet's follow-up, decision 14 of internal/notes/carnet-v2/spec.md; bench U1, 10/11)
             let task = name == "reminders_add" && crate::notebook::enabled(config, agent);
+            if let Some(ask) = crate::tool_asks::ask_hint(config, agent, "reminders") {
+                // a « Non » then says to do without: the Carnet task comes then, not twice
+                return Ok(tool_text(&format!("The person hasn't shared their reminders with you, so nothing was done. {ask}"), true));
+            }
             return Ok(tool_text(
                 &format!(
                     "The person hasn't shared their reminders with you, so nothing was done. {}They can turn on the \

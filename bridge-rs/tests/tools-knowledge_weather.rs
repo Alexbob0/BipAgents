@@ -246,7 +246,9 @@ async fn weather_is_listed_only_once_switched_on() {
 
     assert!(weather::set_enabled(&config, "wellness", true).unwrap());
     assert!(!weather::set_enabled(&config, "wellness", true).unwrap());
-    assert_eq!(tool_names(&app).await.last().unwrap(), "weather");
+    // listed after the others (ask_for_tool, a tool it has off asked on a card, comes last: tool_asks.rs)
+    let names = tool_names(&app).await;
+    assert_eq!(names.iter().rfind(|n| *n != "ask_for_tool").unwrap(), "weather", "{names:?}");
     use std::os::unix::fs::PermissionsExt;
     let file = dir.path().join("data/weather/agents.json");
     assert_eq!(std::fs::metadata(file).unwrap().permissions().mode() & 0o777, 0o600);

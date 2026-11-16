@@ -474,6 +474,11 @@ fn own_tools(config: &Config, agent: &AgentConfig, offer: bool) -> Vec<Value> {
     if !crate::routines::enabled(config, &agent.name) {
         tools.retain(|t| t["name"] != crate::routines::TOOL_NAME);
     }
+    // a tool it has off, asked for on a card in the conversation (tool_asks.rs): its list closed to what it lacks, and
+    // not listed at all when it lacks nothing or the place doesn't offer it
+    if let Some(ask) = crate::tool_asks::tool(config, agent) {
+        tools.push(ask);
+    }
     tools
 }
 
@@ -2247,6 +2252,10 @@ async fn mcp(
             Some(mark) if name == CREATE_PAGE => {
                 let (c, a, n, args) = (note_config.clone(), agent.clone(), name.clone(), arguments.clone());
                 blocking(move || page_tool_marked(&c, &a, &n, &args, Some(&mark))).await
+            }
+            // a tool it has off: a card for the person, the answer waited for (tool_asks.rs)
+            _ if name == crate::tool_asks::TOOL_NAME => {
+                Ok(crate::tool_asks::call(&card_state, &agent, &arguments, turn_run.as_deref()).await)
             }
             _ => call_tool(&maker, &agent, &name, &arguments, Some(push), Some(jobs), asking, carnet).await,
         };

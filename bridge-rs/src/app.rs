@@ -369,6 +369,8 @@ impl AppState {
             self.spawn(crate::sandbox_sites::watch(self.clone()));
             // a card made while a tool call runs, in its turn's conversation; one answered elsewhere, gone (card_place.rs)
             self.spawn(crate::card_place::watch(self.clone()));
+            // a tool card whose tool got turned on some other way closes by itself; one past its time expires
+            self.spawn(crate::tool_asks::sweep(self.clone()));
             self.spawn(crate::send_guard::watch(self.clone()));
             // « what my agents know about me » common to the person's own agents (shared_memory.rs)
             self.spawn(crate::shared_memory::run_forever(self.clone()));
@@ -1196,6 +1198,10 @@ async fn bridge_card(
             Err(HttpError::new(404, "no such request (answered already?)"))
         }?));
     }
+    // a tool asked in the conversation (tool_asks.rs): an older app's « Oui, vas-y » turns on what the bridge can alone
+    if let Some(id) = run_id.strip_prefix(crate::tool_asks::RUN_PREFIX) {
+        return Ok(Some(crate::tool_asks::approve(state, id, &body.choice).await?));
+    }
     // a secret card (secrets.rs): refused here; the value only comes through the app's secure field
     if let Some(id) = run_id.strip_prefix(crate::secrets::RUN_PREFIX) {
         if body.choice.trim().to_lowercase() != "deny" {
@@ -1791,6 +1797,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::vault_logins::app_router())
         .merge(crate::secrets::app_router())
         .merge(crate::connectors::app_router())
+        .merge(crate::tool_asks::app_router())
         .merge(crate::templates::router())
         .merge(crate::autonomous::router())
         .merge(crate::triggers::router())

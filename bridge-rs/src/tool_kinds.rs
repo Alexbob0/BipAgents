@@ -63,6 +63,7 @@ pub const KINDS: &[Kind] = &[
     Kind { id: "vision", names: &["vision_analyze"], prefixes: &[], step: Some("vision") },
     Kind { id: "home", names: &[], prefixes: &["ha_"], step: Some("home") },
     Kind { id: "askSecret", names: &["ask_secret"], prefixes: &[], step: Some("askSecret") },
+    Kind { id: "askTool", names: &["ask_for_tool"], prefixes: &[], step: Some("askTool") },
     Kind { id: "connector", names: &["connector_register", "connector_update", "connector_remove", "connector_list"], prefixes: &[], step: Some("connector") },
     Kind { id: "sendMessage", names: &["send_message"], prefixes: &[], step: Some("sendMessage") },
     Kind { id: "clarify", names: &["clarify"], prefixes: &[], step: None },
@@ -400,6 +401,12 @@ pub const STEPS: &[Step] = &[
         id: "home",
         one: ["Piloter la maison connectée", "Control the smart home", "Das Smart Home steuern", "Controlar la casa conectada"],
         many: ["Piloter la maison connectée", "Control the smart home", "Das Smart Home steuern", "Controlar la casa conectada"],
+        backstage: false,
+    },
+    Step {
+        id: "askTool",
+        one: ["Te demander un outil", "Ask you for a tool", "Dich um ein Werkzeug bitten", "Pedirte una herramienta"],
+        many: ["Te demander un outil", "Ask you for a tool", "Dich um ein Werkzeug bitten", "Pedirte una herramienta"],
         backstage: false,
     },
     Step {

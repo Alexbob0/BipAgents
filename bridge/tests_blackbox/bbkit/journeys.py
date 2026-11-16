@@ -102,7 +102,7 @@ def photo(seed: int = 1) -> bytes:
 
 
 def journey_bridge(bridges, fakes, word_gap: float = 0.06, name: str = "journeys",
-                   family_relay: Optional[str] = None) -> Journey:
+                   family_relay: Optional[str] = None, tool_asks: bool = False) -> Journey:
     from test_connectors import IMAGE, SERVER
     from test_sandbox import TOKENS, isolated, started
     from conftest import profile
@@ -130,6 +130,8 @@ def journey_bridge(bridges, fakes, word_gap: float = 0.06, name: str = "journeys
     agent["public_url"] = f"https://127.0.0.1:{door}/hermes/{AGENT}"   # an agent without one is not listed to a phone
     if family_relay:   # J58: Kerfy Studio's relay, for a home's invitation (bbkit/kerfy_relay.py)
         bridge.config["family"] = {"relay_url": family_relay}
+    if tool_asks:   # J59–J63: the agent asks for a tool it has off, on a card (tool_asks.rs)
+        bridge.config["tools"] = {"ask_in_conversation": True}
     started(bridge, hub, [AGENT])
     token = TOKENS[AGENT]
     path = bridge.state_dir / "agent-tools.json"

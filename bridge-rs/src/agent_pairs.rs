@@ -205,6 +205,12 @@ pub fn of_agent(config: &Config, agent: &str) -> Vec<Pair> {
     pairs
 }
 
+/// Whether `session` is one of `agent`'s pair conversations, where it answers another agent (this household's or
+/// another's): a turn the person didn't ask (tool_asks.rs, review R1).
+pub fn is_pair_session(config: &Config, agent: &str, session: &str) -> bool {
+    of_agent(config, agent).iter().any(|p| p.sessions.get(agent).is_some_and(|s| s == session))
+}
+
 /// Adds a message to the pair of `from` and `to` (made the first time) at `at`: its id and its exchange's.
 pub fn record(config: &Config, from: &str, to: &str, kind: &str, text: &str, at: f64) -> anyhow::Result<(u64, u64)> {
     let id = pair_id(from, to);
