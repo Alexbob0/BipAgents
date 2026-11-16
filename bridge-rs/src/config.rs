@@ -773,7 +773,7 @@ pub struct Config {
     /// `[phone_exit]` (phone_exit.rs): the prototype phone exit, off unless switched on. Not serialized either.
     #[serde(skip)]
     pub phone_exit: crate::phone_exit::Settings,
-    /// `[tools]` (tool_asks.rs): agents asking for a tool in the conversation, off by default. Not serialized either.
+    /// `[tools]` (tool_asks.rs): agents asking for a tool in the conversation, on by default. Not serialized either.
     #[serde(skip)]
     pub tool_asks: crate::tool_asks::Settings,
     /// `[family]` (family_rendezvous.rs): Kerfy Studio's relay for two households that can't reach each other (the

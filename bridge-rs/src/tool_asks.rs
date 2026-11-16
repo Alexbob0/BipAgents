@@ -5,7 +5,7 @@
 //! all A); the apps' contract: internal/next/tool-asks-api.md.
 //!
 //! - **One tool**, `ask_for_tool {tool, why}`, listed only when this place offers it (`[tools] ask_in_conversation`,
-//!   off by default) and the agent has at least one tool to ask for. Its `tool` is a closed list: the tools of
+//!   on by default since Alex's « même pour tous », 16/11; `false` turns it off) and the agent has at least one tool to ask for. Its `tool` is a closed list: the tools of
 //!   [`REGISTRY`] (every tile of « Applis et outils » and « Ce qu'il a appris », both apps), plus Hermes' toolsets this
 //!   file doesn't name and the connectors the agent made, each only while it is off for this agent and could be turned
 //!   on here. Kept out of the tool search (tool_diet.rs), so a model sees it without a discovery round-trip.
@@ -75,7 +75,7 @@ const SWEEP_EVERY: Duration = Duration::from_secs(2);
 /// `[tools]` in the bridge's config.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Settings {
-    /// Whether agents may ask for a tool in the conversation (off until both apps show the card).
+    /// Whether agents may ask for a tool in the conversation (on by default; `false` turns it off for the place).
     pub ask_in_conversation: bool,
     /// Seconds the agent's call waits for the answer.
     pub wait_seconds: f64,
@@ -87,7 +87,8 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Settings {
-        Settings { ask_in_conversation: false, wait_seconds: 330.0, keep_seconds: 86400.0, per_day: 3 }
+        // on by default (Alex, 16/11: « on peut release cette fonctionnalité même pour tous »); a place can turn it off
+        Settings { ask_in_conversation: true, wait_seconds: 330.0, keep_seconds: 86400.0, per_day: 3 }
     }
 }
 
@@ -1351,8 +1352,10 @@ mod tests {
     }
 
     #[test]
-    fn the_settings_are_off_by_default_and_read_from_their_table() {
-        assert!(!Settings::default().ask_in_conversation, "off until both apps show the card");
+    fn the_settings_are_on_by_default_and_read_from_their_table() {
+        assert!(Settings::default().ask_in_conversation, "on by default (Alex, 16/11)");
+        assert!(Settings::from_table(&json!({})).ask_in_conversation, "no [tools]: on");
+        assert!(!Settings::from_table(&json!({"ask_in_conversation": false})).ask_in_conversation, "a place turns it off");
         let s = Settings::from_table(&json!({"ask_in_conversation": true, "wait_seconds": 0.5, "per_day": 2}));
         assert!(s.ask_in_conversation && s.wait_seconds == 0.5 && s.per_day == 2 && s.keep_seconds == 86400.0);
         assert_eq!(Settings::from_table(&json!({"wait_seconds": 99999})).wait_seconds, 1500.0);
