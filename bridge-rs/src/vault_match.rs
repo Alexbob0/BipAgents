@@ -82,7 +82,8 @@ fn same_site(kept: &Site, here: &Site) -> bool {
     if !scheme_ok {
         return false;
     }
-    if kept.port.is_some() || here.port.is_some() {
+    // a port, or a login kept for plain http (review R5): exactly that host
+    if kept.port.is_some() || here.port.is_some() || kept.scheme == "http" {
         return kept.host == here.host && kept.port == here.port;
     }
     match (&kept.domain, &here.domain) {
@@ -277,7 +278,9 @@ mod tests {
     fn https_never_falls_back_to_http_and_http_moves_up_to_https() {
         assert!(!fills_on("https://www.amazon.fr", "http://www.amazon.fr/ap/signin"));
         assert!(fills_on("http://old.example.com", "http://old.example.com/login"));
-        assert!(fills_on("http://old.example.com", "https://www.example.com/login"));
+        assert!(fills_on("http://old.example.com", "https://old.example.com/login"));
+        // review R5: an http login, exactly its host
+        assert!(!fills_on("http://old.example.com", "https://www.example.com/login"));
         assert!(!fills_on("http://old.example.com", "ftp://old.example.com/"));
     }
 

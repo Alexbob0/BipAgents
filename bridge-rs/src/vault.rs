@@ -1362,8 +1362,20 @@ impl Vault {
     }
 
     /// The logins given to `agent` (metadata), for `vault_login` to choose from (vault_match.rs).
-    pub fn logins_of(&self, agent: &str) -> anyhow::Result<Vec<Item>> {
-        Ok(self.try_items()?.into_iter().filter(|i| i.kind == "login" && i.agents.contains_key(agent)).collect())
+    /// An agent other people talk to: only the logins the person confirmed for it (`confirmed_for`, review R4), as
+    /// for « Coordonnées » (vault_contacts.rs `readable_by`).
+    pub fn logins_of(&self, config: &Config, agent: &str) -> anyhow::Result<Vec<Item>> {
+        let facing = others_facing(config, agent);
+        let confirmed = |r: &Dict| {
+            matches!(r.get("confirmed_for"), Some(Value::Array(a)) if a.iter().any(|v| v.as_str() == Some(agent)))
+        };
+        Ok(self
+            .read()?
+            .iter()
+            .filter(|r| !facing || confirmed(r))
+            .map(Self::item)
+            .filter(|i| i.kind == "login" && i.agents.contains_key(agent))
+            .collect())
     }
 
     /// The password of a login given to `agent`, for `vault_login` to type it into the agent's page: it stays in the

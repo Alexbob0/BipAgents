@@ -101,7 +101,13 @@ pub async fn find_login(page: &mut Page, kept: &str) -> Result<Option<LoginField
     let mut focused = Vec::new();
     let mut with_password = Vec::new();
     let mut identifier_only = Vec::new();
-    for crate::card_fill::FrameSeen { session, id: frame_id, url: frame_url, .. } in page.frames().await? {
+    let frames = page.frames().await?;
+    // review R3: the page itself still on the login's site (it may have left it since its address was read)
+    let top = frames.iter().find(|f| f.parent.is_none() && f.session == page.session).map(|f| f.url.as_str());
+    if !top.is_some_and(|url| crate::vault_match::fills_on(kept, url)) {
+        return Ok(None);
+    }
+    for crate::card_fill::FrameSeen { session, id: frame_id, url: frame_url, .. } in frames {
         if !(frame_url.starts_with("http") && crate::vault_match::fills_on(kept, &frame_url)) {
             continue; // another site's frame (or none of its own): never looked at, never typed into
         }

@@ -709,6 +709,11 @@ async fn create(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> anyh
     if username.is_empty() {
         return Ok(refusal("Give the identifier you sign up with (username): the e-mail address or user name."));
     }
+    // review R2: a card's number is never an account's identifier (vault_login would type it)
+    if crate::card_details::holds_card_number(&username) {
+        return Ok(refusal("Refused: a payment card's number is never an account's identifier, and you never type or \
+            give one. Payments go only through pay_with_card. Nothing was asked or typed."));
+    }
     let reason = crate::cards::quoted(&arg(arguments, "reason"), 300);
     if reason.is_empty() {
         return Ok(refusal("Say why you create this account (reason), in a few words the person understands."));
@@ -846,7 +851,7 @@ async fn login(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> anyho
         Err(e) => return Ok(unreachable(e)),
     };
     let host = host_of(&url);
-    let logins = state.vault.logins_of(&agent.name)?;
+    let logins = state.vault.logins_of(&config, &agent.name)?;
     let id = arg(arguments, "id");
     let item = match crate::vault_match::choose(&logins, &url, Some(id.as_str()).filter(|s| !s.is_empty())) {
         crate::vault_match::Choice::One(item) => item.clone(),
@@ -885,6 +890,13 @@ async fn login(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> anyho
         )));
     };
     let identifier = item.identifier.clone().unwrap_or_default();
+    // review R2: a card-like identifier is typed (and spared by the card checks) only when the person typed it
+    if item.created_by.is_some() && crate::card_details::holds_card_number(&identifier) {
+        return Ok(refusal(&format!(
+            "The identifier of « {label} » looks like a payment card's number and was not typed by the person: the \
+             vault never types it. Nothing was typed; tell the person."
+        )));
+    }
     let typed_identifier = match crate::login_fill::fill_identifier(&mut page, &form, &identifier).await {
         Ok(done) => done,
         Err(e) => return Ok(unreachable(e)),
