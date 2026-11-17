@@ -18,7 +18,7 @@ from bbkit.servers import free_port
 from conftest import wait_registered
 from test_connectors import IMAGE, TOKEN, cards, text, tool, wait_card
 from test_sandbox import isolated
-from test_vault_reassure import LOGIN, NOT_BACK, answer, no_login_kept
+from test_vault_reassure import LOGIN, NOT_TAKEN, answer, no_login_kept
 
 
 def shared_setup(bridges, fakes, hand_wait=2):
@@ -62,11 +62,12 @@ def test_r1_typing_it_myself_on_an_agent_others_talk_to_needs_the_same_confirmat
             assert chosen.status_code == 409, f"way: self taken without confirmed_others: {chosen.status_code} {chosen.text}"
             assert chosen.json()["detail"]["code"] == "confirm_others", chosen.text
             assert cards(bridge, "bip-secret-"), "the card still waits"
-            # confirmed: taken, nothing kept; the hand never taken, the agent stops (NOT_BACK)
+            # confirmed: taken, nothing kept; the hand never taken, the agent stops (NOT_TAKEN since the 3rd pass,
+            # 17/11: the answer is closed, its words no longer promise to go on once handed back)
             confirmed = answer(bridge, card, {"allow": False, "way": "self", "confirmed_others": True})
             assert confirmed.status_code == 200 and confirmed.json() == {"ok": True, "choice": "self"}, confirmed.text
             result = asked.result(timeout=60)
-            assert result["isError"] is False and text(result) == NOT_BACK, result
+            assert result["isError"] is False and text(result) == NOT_TAKEN, result
         else:
             assert chosen.status_code == 400, chosen.text
             assert cards(bridge, "bip-secret-"), "the card still waits"

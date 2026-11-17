@@ -161,6 +161,17 @@ pub fn calls_the_vault(name: &str) -> bool {
 
 // --- Hermes' own fill ---------------------------------------------------------------------------------------------------
 
+/// A turn's last tool, as the hub keeps it (`loop_brake::bare`), is the bridge vault's `tool`.
+pub fn names_vault_tool(_name: &str, _tool: &str) -> bool {
+    false
+}
+
+/// The run and session of the call, from the agent's turns inside a call of the vault's tool now: one, its own; none
+/// or several, unknown (no conversation, so no line: never a guess).
+pub fn turn_of_call(_calling: &[(String, Option<String>)]) -> (Option<String>, Option<String>) {
+    (None, None)
+}
+
 /// The bridge's vault tool `tool` as Hermes names it (`mcp__bipagents_vault__vault_login`, `mcp_bipagents_vault_…`).
 fn is_vault_tool(name: &str, tool: &str) -> bool {
     let entry = |open: &str, between: &str| {
@@ -393,6 +404,26 @@ mod tests {
         assert_eq!(fill_of("tool_call", call, FORGED), None);
         assert!(calls_the_vault("mcp_bipagents_vault_vault_login") && calls_the_vault("mcp__bipagents_vault__vault_create_login"));
         assert!(!calls_the_vault("vault_login") && !calls_the_vault("mcp__bipconn_x__vault_login") && !calls_the_vault("browser_vault"));
+    }
+
+    /// Review R3 (17/11): a fill belongs to the one turn of the agent inside the vault tool's call; none, or several
+    /// (a relative's turn on a shared agent logging in at the same time): no conversation, never a guess.
+    #[test]
+    fn a_fill_belongs_to_the_one_turn_inside_the_call() {
+        for name in ["vault_vault_login", "mcp__bipagents_vault__vault_login", "mcp_bipagents_vault_vault_login"] {
+            assert!(names_vault_tool(name, LOGIN), "{name}");
+        }
+        assert!(names_vault_tool("vault_vault_create_login", CREATE));
+        for name in ["vault_login", "web_search", "mcp__bipconn_x__vault_login", "connectors_vault_login",
+                     "vault_vault_create_login", "mcp_bipagents_pay_vault_login"]
+        {
+            assert!(!names_vault_tool(name, LOGIN), "{name}");
+        }
+        let one = vec![("run_login".to_string(), Some("api_login".to_string()))];
+        assert_eq!(turn_of_call(&one), (Some("run_login".into()), Some("api_login".into())));
+        assert_eq!(turn_of_call(&[]), (None, None));
+        let two = vec![one[0].clone(), ("run_lea".to_string(), Some("api_lea".to_string()))];
+        assert_eq!(turn_of_call(&two), (None, None));
     }
 
     #[test]

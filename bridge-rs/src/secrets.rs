@@ -308,8 +308,11 @@ pub const HAND_WAIT: Duration = Duration::from_secs(600);
 pub const HANDED_BACK: &str = "The person signed in themselves in your browser and handed it back. Read the page: signed \
 in, go on; the sign-in page still there, tell them in one sentence what you see. Nothing was kept in the vault: don't \
 ask for this site again in this conversation.";
-/// What it reads when they still hold it after `HAND_WAIT`, or never took it: it goes on in a later turn once they
-/// hand it back (card_place.rs `settle`, `resume_words`).
+/// What it reads when nobody took its browser while it waited: the answer is closed, nothing tells it later (review,
+/// 17/11).
+pub const NOT_TAKEN: &str = "";
+/// What it reads when they still hold it after `HAND_WAIT`: it goes on in a later turn once they hand it back
+/// (card_place.rs `settle`, `resume_words`).
 pub const NOT_BACK: &str = "The person chose to sign in themselves in your browser and hasn't handed it back yet. Don't \
 use your browser: say you'll go on once they hand it back, then stop.";
 
@@ -1144,6 +1147,19 @@ mod tests {
         assert_eq!(hand_after(true, true, kept), Hand::Closed);
         assert_eq!(hand_after(false, true, kept), Hand::Closed);
         assert!(SELF_KEEP > HAND_WAIT && SELF_KEEP.as_secs() <= 6 * 3600);
+    }
+
+    /// Review (3rd pass, 17/11): nobody took the browser while the agent waited — the answer is closed, so its words
+    /// never promise to go on by themselves.
+    #[test]
+    fn never_taken_the_agent_never_promises_to_go_on_by_itself() {
+        assert_eq!(
+            NOT_TAKEN,
+            "The person chose to sign in themselves in your browser but didn't take it over: nothing was kept in the \
+             vault, and you won't be told if they do it later. Don't use your browser for this site now: tell them in one \
+             sentence to sign in from your desktop in the app and to tell you once it's done, then stop."
+        );
+        assert!(!NOT_TAKEN.contains("once they hand it back") && NOT_BACK.contains("once they hand it back"));
     }
 
     /// A take and a hand-back between two looks of a wait (a second apart) still count.

@@ -2706,6 +2706,13 @@ impl RunHub {
         runs
     }
 
+    /// The agent's runs going on that are inside a call whose tool `is` says, right now (their last `tool.started`, not
+    /// completed yet), with their Hermes session: whose call it is, from the call's own turn (vault_line.rs `note`),
+    /// never « the run that called a tool last ».
+    pub fn runs_in_call(&self, _agent: &str, _is: impl Fn(&str) -> bool) -> Vec<(String, Option<String>)> {
+        Vec::new()
+    }
+
     /// The turn a call of the bridge's tool `tool` by `agent` belongs to (loop_brake.rs, its MCP counts): the agent's
     /// run going on that the hub follows; with several, the one whose last call was this tool, else the one that
     /// called a tool last. None: no run of the agent followed (a routine, Hermes' cron).
@@ -3575,6 +3582,45 @@ mod tests {
         assert_eq!(raw["event"], "steps.updated");
         assert_eq!(raw["steps"]["done"], 1);
         assert_eq!(st.steps.as_ref().unwrap()["total"], 2, "kept for a background task's card");
+    }
+
+    /// Le coffre rassure, review R3 (17/11): whose call of the vault it is — the turns of the agent inside a call of
+    /// that very tool now (its last `tool.started`, not completed), by Hermes' own names, never « the turn that called a
+    /// tool last ».
+    #[tokio::test]
+    async fn the_turns_inside_a_call_of_a_tool_are_found_by_its_hermes_names() {
+        let hub = RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None);
+        let event = |kind: &str, data: Value| SSEEvent::new(kind, data.as_object().cloned().unwrap(), "{}");
+        let turn = |agent: &str, run: &str, session: &str| {
+            let sub = Arc::new(RunSubscription::new(AgentConfig { name: agent.into(), ..Default::default() }, run));
+            lock(&sub.state).session_id = Some(session.into());
+            lock(&hub.inner).subs.insert(sub.key(), sub.clone());
+            sub
+        };
+        let started = |sub: &Arc<RunSubscription>, tool: &str, id: &str| {
+            hub.dispatch(sub, event("tool.started", json!({"tool": tool, "tool_call_id": id})));
+        };
+        let vault = |name: &str| crate::vault_line::names_vault_tool(name, crate::vault_logins::LOGIN);
+        let login = turn("vie", "run_login", "api_login");
+        started(&login, "mcp_bipagents_vault_vault_login", "a");
+        assert_eq!(hub.runs_in_call("vie", vault), [("run_login".to_string(), Some("api_login".to_string()))]);
+        // another conversation's turn of Vie, a tool used after it: still the login's alone
+        let other = turn("vie", "run_other", "api_other");
+        started(&other, "web_search", "b");
+        // another agent logging in, a connector's tool of that name: never Vie's
+        started(&turn("paul", "run_paul", "api_paul"), "mcp_bipagents_vault_vault_login", "c");
+        started(&turn("vie", "run_conn", "api_conn"), "mcp__bipconn_x__vault_login", "d");
+        assert_eq!(hub.runs_in_call("vie", vault), [("run_login".to_string(), Some("api_login".to_string()))]);
+        // a relative's conversation with the shared agent logging in too: two turns inside it
+        let lea = turn("vie", "run_lea", "api_lea");
+        started(&lea, "mcp__bipagents_vault__vault_login", "e");
+        let mut both: Vec<String> = hub.runs_in_call("vie", vault).into_iter().map(|(run, _)| run).collect();
+        both.sort();
+        assert_eq!(both, ["run_lea", "run_login"]);
+        // its call completed; the login's turn ended (stopped) before its fill was recorded: none left
+        hub.dispatch(&lea, event("tool.completed", json!({"tool": "mcp__bipagents_vault__vault_login", "tool_call_id": "e"})));
+        lock(&login.state).finished = true;
+        assert!(hub.runs_in_call("vie", vault).is_empty());
     }
 
     #[tokio::test]

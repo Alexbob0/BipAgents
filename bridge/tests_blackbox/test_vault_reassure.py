@@ -35,6 +35,10 @@ HANDED_BACK = ("The person signed in themselves in your browser and handed it ba
                "don't ask for this site again in this conversation.")
 NOT_BACK = ("The person chose to sign in themselves in your browser and hasn't handed it back yet. Don't use your "
             "browser: say you'll go on once they hand it back, then stop.")
+# nobody took the browser while the agent waited: closed, no promise to go on by itself (review, 3rd pass, 17/11)
+NOT_TAKEN = ("The person chose to sign in themselves in your browser but didn't take it over: nothing was kept in the "
+             "vault, and you won't be told if they do it later. Don't use your browser for this site now: tell them in "
+             "one sentence to sign in from your desktop in the app and to tell you once it's done, then stop.")
 LOGIN = {"name": "fournisseur", "site": "www.fournisseur.example", "kind": "password", "use": "browser",
          "identifier_label": "Identifiant", "reason": "Pour passer ta commande"}
 CONNECTOR = {"name": "garmin", "site": "connect.garmin.com", "kind": "password", "reason": "Garmin"}
@@ -182,7 +186,7 @@ def test_never_taken_while_the_agent_waited_a_take_afterwards_resumes_nothing(br
         card = wait_card(bridge, "bip-secret-")
         assert answer(bridge, card, {"allow": False, "way": "self"}).status_code == 200
         result = asked.result(timeout=30)
-    assert result["isError"] is False and text(result) == NOT_BACK, result
+    assert result["isError"] is False and text(result) == NOT_TAKEN, result
     gate.set()
     time.sleep(2)
     take(bridge, True)
@@ -337,3 +341,51 @@ def test_no_vault_line_from_words_an_agent_or_a_page_can_write(bridges, fakes):
     assert "bip:filled" not in json.dumps(items)
 
 
+
+
+def test_a_fill_whose_turn_is_unsure_is_recorded_with_no_conversation(bridges, fakes):
+    """Review R3 (17/11): a fill belongs to the turn inside the vault tool's call. Two of the agent's turns inside it at
+    once (a relative's conversation with a shared agent logging in too), or the turn ended before the fill was
+    recorded: no conversation in the record, so no line anywhere (never a guess)."""
+    from test_vault_login import ANSWER, FakeChrome, IDENTIFIER_A, PAGE_A, PASSWORD_A, TOKEN as VAULT_TOKEN, keep, vault_login
+    chrome = FakeChrome(PAGE_A)
+    gates = [threading.Event() for _ in range(3)]
+    try:
+        bridge, _, _ = isolated(bridges, fakes, agents=("vie",))
+        bridge.config["agents"]["vie"].update({"isolated": True, "hermes_home": "/home/hermes/.hermes",
+                                               "python": f"{bridge.fakebin}/podman exec -i hermes-vie python"})
+        bridge.config["hermes"]["isolated"] = True
+        bridge.commands.rule("podman", ["exec", "-i", "hermes-vie"], stdout=ANSWER)
+        folder = bridge.data / "browsers" / "vie"
+        folder.mkdir(parents=True)
+        (folder / "ports.json").write_text(json.dumps({"cdp": chrome.port, "vnc": chrome.port + 1}))
+        bridge.start()
+        wait_registered(bridge, ["vie"])
+        give_token(bridge, "vie", VAULT_TOKEN)
+        keep(bridge, "Extranet agence A", PAGE_A, IDENTIFIER_A, PASSWORD_A)
+        fills = bridge.data / "vault-fills.jsonl"
+
+        def last_fill():
+            return [json.loads(line) for line in fills.read_text().splitlines()][-1]
+
+        # two turns of Vie inside a call of vault_login at once (its own, a relative's): which one typed is unknown
+        for n, (run, session, name) in enumerate([("run_mine", "api_mine", "mcp_bipagents_vault_vault_login"),
+                                                  ("run_lea", "api_lea", "mcp__bipagents_vault__vault_login")]):
+            follow(bridge, fakes, run, session, "vie", [sse("tool.started", run_id=run, tool=name, preview="{}"),
+                                                        gates[n], sse("run.completed", run_id=run, output="Connecté.")])
+        assert vault_login(bridge)["isError"] is False
+        assert (last_fill()["session"], last_fill()["run"]) == (None, None), last_fill()
+        # both ended; a turn inside the call stopped before the fill came: no turn inside the call any more
+        gates[0].set()
+        gates[1].set()
+        follow(bridge, fakes, "run_stop", "api_stop", "vie",
+               [sse("tool.started", run_id="run_stop", tool="mcp_bipagents_vault_vault_login", preview="{}"), gates[2],
+                sse("run.cancelled", run_id="run_stop")])
+        gates[2].set()
+        time.sleep(2)
+        assert vault_login(bridge)["isError"] is False
+        assert (last_fill()["session"], last_fill()["run"]) == (None, None), last_fill()
+    finally:
+        for gate in gates:
+            gate.set()
+        chrome.stop()
