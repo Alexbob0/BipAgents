@@ -300,6 +300,8 @@ pub fn change<T>(config: &Config, f: impl FnOnce(&mut Store) -> T) -> std::io::R
     let body = serde_json::to_vec_pretty(&store).map_err(std::io::Error::other)?;
     write_private(&store_path(config), &body, 0o600)?;
     write_policy(config, &store)?;
+    // what the agents' browsers may send forms to (form_send.rs, audit 1.2)
+    crate::form_send::refresh_all(config, &store);
     Ok(out)
 }
 
@@ -379,13 +381,25 @@ fn covered(sites: &[String], host: &str) -> bool {
 /// Whether the agent may send to `host` without a card: a registry, one of its validated sites, a site of one of its
 /// approved connectors.
 pub fn validated(config: &Config, agent: &str, host: &str) -> bool {
-    if registries(config).iter().any(|r| r == host) {
-        return true;
+    covered(&send_hosts(config, agent), host)
+}
+
+/// What the agent may send to without a card: the registries, its validated sites, its approved connectors' sites
+/// (also what its browser may send forms to, form_send.rs).
+pub fn send_hosts(config: &Config, agent: &str) -> Vec<String> {
+    send_hosts_in(config, &load(config), agent)
+}
+
+/// `send_hosts`, from `store`.
+pub fn send_hosts_in(config: &Config, store: &Store, agent: &str) -> Vec<String> {
+    let mut sites = registries(config);
+    sites.extend(store.agents.get(agent).map(|a| a.sites.iter().map(|s| s.host.clone()).collect::<Vec<_>>()).unwrap_or_default());
+    for site in connector_sites(config, agent) {
+        if !sites.contains(&site) {
+            sites.push(site);
+        }
     }
-    let mut sites: Vec<String> =
-        load(config).agents.get(agent).map(|a| a.sites.iter().map(|s| s.host.clone()).collect()).unwrap_or_default();
-    sites.extend(connector_sites(config, agent));
-    covered(&sites, host)
+    sites
 }
 
 /// « environ 2 Mo », « environ 300 Ko ».
@@ -444,7 +458,9 @@ pub fn proxy_url(config: &Config, agent: &str, base: &str) -> std::io::Result<St
 /// The proxy's file in step with the store (at each start, before the proxy).
 pub fn ensure_policy(config: &Config) -> std::io::Result<()> {
     let _held = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    write_policy(config, &load(config))
+    let store = load(config);
+    crate::form_send::refresh_all(config, &store);
+    write_policy(config, &store)
 }
 
 /// A browser that goes through the proxy needs an entry for its agent (the proxy knows the browser by its address,

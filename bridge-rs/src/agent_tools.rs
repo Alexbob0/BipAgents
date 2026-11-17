@@ -1462,6 +1462,47 @@ fn carnet_turn(state: &AppState, agent: &str, turn: Option<&crate::loop_brake::T
     reads::Turn { run: Some(turn.run_id.clone()), session, cap, busy }
 }
 
+/// Before `calendar_delete` (audit 1.3, Alex 17/11: critical, as `mail_trash`): the person's card « Oui / Non » for
+/// an event that would be deleted now (the phone's copy, a mailbox's calendar: deleted at once there, no trash). None:
+/// go on (« Oui », or nothing to delete: the tool says why). A family agent never deletes one (its members' calendars
+/// are theirs: no card of theirs reaches here).
+async fn delete_card(state: &AppState, agent: &AgentConfig, arguments: &Dict, family: bool) -> Option<Dict> {
+    if family {
+        return Some(tool_text(
+            "A family agent never deletes an event: tell the person whose calendar it is to delete it in their calendar \
+             app (or the phone's).",
+            true,
+        ));
+    }
+    let config = state.config();
+    let id = tk::strip(&tk::str_or_empty(arguments.get("id"))).to_string();
+    let found = if id.starts_with("mail:") {
+        let (c, a) = (config.clone(), agent.name.clone());
+        let sources = tokio::task::spawn_blocking(move || crate::caldav::sources(&c, &a)).await.ok()?;
+        crate::caldav::deletable(&id, &sources).await.map(|(title, start, label)| (title, format!("{start} ({label})")))
+    } else {
+        let (c, a, i) = (config.clone(), agent.name.clone(), id.clone());
+        tokio::task::spawn_blocking(move || crate::calendar::deletable(&c, &a, &i)).await.ok().flatten()
+    };
+    let (title, when) = found?;
+    let lang = crate::mail_tidy::language(&config, &agent.name);
+    let shown = crate::mail_tidy::shown_agent(&config, &agent.name);
+    let card = crate::person_ok::Card {
+        kind: crate::person_ok::CALENDAR_DELETE,
+        tool: "calendar_delete",
+        command: format!("calendar_delete {id}"),
+        summary: crate::calendar::delete_sentence(&lang, &shown, &title),
+        detail: format!("{when}\n{}", crate::cards::quoted(&title, 300)),
+        always: None,
+    };
+    match crate::person_ok::ask(state, agent, card).await {
+        crate::person_ok::Answer::Once | crate::person_ok::Answer::Always => None,
+        crate::person_ok::Answer::Deny => Some(tool_text(crate::calendar::DELETE_REFUSED, true)),
+        crate::person_ok::Answer::NoAnswer => Some(tool_text(crate::calendar::DELETE_NO_ANSWER, true)),
+        crate::person_ok::Answer::Held => Some(tool_text(crate::calendar::DELETE_HELD, false)),
+    }
+}
+
 /// One tool call. Err: what Python lets through (a store that cannot be read or written): a 500.
 #[allow(clippy::too_many_arguments)]
 pub async fn call_tool(
@@ -2235,6 +2276,12 @@ async fn mcp(
         }
         wrote(&agent.name, &name, &arguments, &mut result);
         return Ok(answer(result));
+    }
+    if name == "calendar_delete" {
+        // critical (audit 1.3, Alex 17/11: as mail_trash): a card before each event deleted (person_ok.rs)
+        if let Some(refused) = delete_card(&state, &agent, &arguments, family).await {
+            return Ok(answer(refused));
+        }
     }
     if family && crate::calendar::TOOL_NAMES.contains(&name.as_str()) {
         // the calendars its members chose to share with it, each asked on her own place (family_calendar.rs); `who`

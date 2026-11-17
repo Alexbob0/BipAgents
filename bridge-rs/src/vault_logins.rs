@@ -137,6 +137,7 @@ pub fn tools() -> Vec<Value> {
     .into_iter()
     .chain(crate::vault_contacts::tools()) // « Coordonnées » (vault_contacts.rs)
     .chain(std::iter::once(crate::terms_consent::tool())) // a site's terms, with the person's « Oui » (terms_consent.rs)
+    .chain(std::iter::once(crate::form_send::tool())) // the first form sent to a site, with the person's « Oui » (audit 1.2)
     // logging in with a saved login: identifier and password (16/11)
     .chain(std::iter::once(json!({
         "name": LOGIN,
@@ -792,6 +793,8 @@ async fn create(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> anyh
     crate::vault_contacts::note_mark(state, &agent.name, CREATE, &crate::vault_contacts::mark(&item.id, &item.label));
     crate::vault_used::note(&state.vault.folder, &item.id, &agent.name);
     crate::vault_line::note(state, &agent.name, CREATE, &item.id, &host, crate::vault_line::How::Created);
+    // the sign-up form the person approved may be sent once with no other card (form_send.rs, audit 1.2)
+    crate::form_send::after_vault_fill(&config, &agent.name, &host);
     let fields = if filled > 1 { "the password field and its confirmation" } else { "the password field" };
     Ok(text(&format!(
         "Filled {fields} and saved as « {} » in the vault (waiting for confirmation). You never see the password: \
@@ -968,6 +971,8 @@ async fn login(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> anyho
             )))
         }
     };
+    // the login form the vault filled may be sent once with no other card (form_send.rs, audit 1.2)
+    crate::form_send::after_vault_fill(&state.config(), &agent.name, &host);
     // the password typed: recorded for the conversation's vault line (vault_line.rs) and the vault list's « Récents »
     // (vault_used.rs), le coffre rassure 17/11
     if typed_password {
@@ -1016,6 +1021,7 @@ pub async fn call(
             Ok(crate::vault_contacts::call(state, agent, name, arguments).await)
         }
         crate::terms_consent::TOOL => Ok(crate::terms_consent::call(state, agent, arguments).await),
+        crate::form_send::TOOL => Ok(crate::form_send::call(state, agent, arguments).await),
         other => Ok(refusal(&format!("unknown tool: {other}"))),
     }
 }

@@ -223,3 +223,24 @@ pub async fn boite_items(app: &TestApp) -> Vec<Value> {
         })
         .collect()
 }
+
+/// The person's answer `choice` to the first card of the bridge's own whose run id starts with `prefix` (person_ok.rs
+/// `bip-ok-`…), once it shows in `/v1/approvals` (within 10 s): the card, as listed.
+pub async fn answer_card(app: &TestApp, prefix: &str, choice: &str) -> Value {
+    let (k, v) = auth();
+    let h = [(k, v.as_str())];
+    for _ in 0..200 {
+        let items = app.get("/v1/approvals", &h).await.json()["items"].clone();
+        let card = items
+            .as_array()
+            .and_then(|a| a.iter().find(|i| i["run_id"].as_str().is_some_and(|r| r.starts_with(prefix))).cloned());
+        if let Some(card) = card {
+            let body = serde_json::json!({"agent": card["agent"], "run_id": card["run_id"], "choice": choice});
+            let said = app.send_json("POST", "/v1/approve", &h, &body).await;
+            assert_eq!(said.status, 200, "{}", said.text());
+            return card;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    panic!("no card {prefix}…");
+}

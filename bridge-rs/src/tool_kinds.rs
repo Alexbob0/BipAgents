@@ -99,7 +99,7 @@ pub const KINDS: &[Kind] = &[
     Kind { id: "contactDetailsSave", names: &["vault_save_contact_details"], prefixes: &[], step: Some("contactDetailsSave") },
     Kind { id: "phoneExit", names: &["ask_phone_exit"], prefixes: &[], step: Some("phoneExit") },
     Kind { id: "sitesList", names: &["sandbox_sites"], prefixes: &[], step: Some("sitesList") },
-    Kind { id: "sitesRequest", names: &["sandbox_sites_request"], prefixes: &[], step: Some("sitesRequest") },
+    Kind { id: "sitesRequest", names: &["sandbox_sites_request", "ask_to_send"], prefixes: &[], step: Some("sitesRequest") },
     Kind { id: "sendToService", names: &["send_file_to_service"], prefixes: &[], step: Some("sendToService") },
     Kind { id: "spaceEstimate", names: &["space_estimate"], prefixes: &[], step: Some("spaceEstimate") },
     Kind { id: "heavyWork", names: &["heavy_work"], prefixes: &[], step: Some("heavyWork") },

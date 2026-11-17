@@ -865,6 +865,27 @@ fn split_id(id: &str) -> Option<(&str, &str)> {
     rest.split_once(':')
 }
 
+/// The event `id` of a mailbox's calendar that `calendar_delete` would delete now (its title, its start, the
+/// mailbox's label): one of its calendars, there, not repeating. None: not one (`handle` says why, with no card).
+pub async fn deletable(id: &str, sources: &[Source]) -> Option<(String, String, String)> {
+    let (account, href) = split_id(id)?;
+    let source = sources.iter().find(|s| s.account == account)?;
+    if !source.calendars.iter().any(|c| href.starts_with(c.href.as_str())) {
+        return None;
+    }
+    let got = dav("GET", href, &source.username, &source.password, None, None, &[]).await.ok()?;
+    if got.status != 200 {
+        return None;
+    }
+    let events = read_ics(&got.body);
+    if events.iter().any(|e| e.get("recurring").map(py::truthy).unwrap_or(false)) {
+        return None;
+    }
+    let event = events.first()?;
+    let field = |k: &str| event.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+    Some((field("title"), field("start"), source.label.clone()))
+}
+
 /// The tools' work on the mailboxes' calendars: an event added to one of them (its calendar named, or no phone copy
 /// to ask), or one of their events deleted. None: not theirs (the phone's queue takes it).
 pub async fn handle(name: &str, arguments: &Dict, sources: &[Source], phone: bool) -> Option<Dict> {

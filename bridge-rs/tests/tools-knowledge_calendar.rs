@@ -86,7 +86,11 @@ async fn the_phone_shares_its_calendar_and_does_what_the_agents_ask() {
     assert!(!failed, "{listed}");
     assert!(listed
         .starts_with("From 2026-10-21 to 2026-10-24, as the phone shared it 0 min ago, for 2026-10-14 to 2026-12-20:"));
-    let lines: Vec<&str> = listed.lines().skip(1).collect();
+    // titles, places and notes written by whoever sent the event: between « not instructions » markers (audit 1.3)
+    assert_eq!(listed.lines().nth(1), Some(calendar::UNTRUSTED));
+    assert_eq!(listed.lines().nth(2), Some("<<<"));
+    assert!(listed.contains("\n>>>"), "{listed}");
+    let lines: Vec<&str> = listed.lines().skip(3).collect();
     assert_eq!(lines[0], "- id e3 · Travail (phone) · 2026-10-21 09:00–09:30 · Point équipe · repeats");
     assert_eq!(lines[1], "- id e1 · Perso (phone) · 2026-10-22 10:00–10:30 · Dentiste · at 12 rue Haute");
     assert_eq!(lines[2], "- id e2 · Travail (phone) · 2026-10-23 → 2026-10-25 all day · Salon");
@@ -130,7 +134,13 @@ async fn the_phone_shares_its_calendar_and_does_what_the_agents_ask() {
         .await
         .0
     );
-    assert!(!tool(&app, "calendar_delete", json!({"id": "e2"})).await.0);
+    // critical (audit 1.3): a card first, « Oui » then asked of the phone
+    let ((failed, said), card) =
+        tokio::join!(tool(&app, "calendar_delete", json!({"id": "e2"})), common::answer_card(&app, "bip-ok-", "once"));
+    assert!(!failed, "{said}");
+    assert_eq!(card["bip_summary"], "Coach wants to delete an event from your calendar: « Salon »");
+    assert_eq!(card["bip_ok"]["kind"], "calendar_delete");
+    assert!(card.get("bip_always").is_none(), "no « Toujours » for a deletion: {card}");
 
     let queue = app.get("/v1/calendar/queue", &h).await.json()["queue"].clone();
     let ops: Vec<(String, Value)> = queue

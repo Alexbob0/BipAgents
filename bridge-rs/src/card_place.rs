@@ -160,6 +160,7 @@ pub fn bridge_cards(state: &AppState, config: &Config, agent: Option<&str>) -> V
     items.extend(crate::sandbox_sites::pending_items(config, agent));
     items.extend(crate::vault_logins::pending_items(config, agent));
     items.extend(crate::terms_consent::pending_items(config, agent));
+    items.extend(crate::person_ok::pending_items(config, agent));
     items.extend(crate::secrets::pending_items(config, agent));
     items.extend(crate::connectors::pending_items(state, config, agent));
     items.extend(crate::storage_watch::pending_items(config, agent));

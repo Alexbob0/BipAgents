@@ -147,6 +147,8 @@ class Session:
                   "cache": str(self.dir / "cache.json"), "busy": str(self.dir / "busy"),
                   "credit": str(self.dir / "credit.json"), "idle": 600, "cdp_port": self.port}
         (self.dir / "config.json").write_text(json.dumps(config))
+        # these pages' own site may get the forms (form_send.rs, audit 1.2: its own test asks otherwise)
+        (self.dir / "send-sites.json").write_text(json.dumps({"always": ["127.0.0.1", "localhost"], "once": []}))
         self.log = self.dir / "proxy.log"
         self.proxy = subprocess.Popen([PROXY, str(self.dir / "config.json")], stdin=subprocess.PIPE,
                                       stdout=subprocess.PIPE, stderr=open(self.log, "wb"))
