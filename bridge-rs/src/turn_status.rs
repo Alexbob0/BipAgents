@@ -1133,28 +1133,28 @@ mod tests {
     /// `HOLDING` reads every one of them. Each tool held reads as the person's wait, never a slow tool.
     #[test]
     fn every_card_that_holds_the_call_says_which_tools_and_each_is_the_persons_wait() {
-        fn scan(dir: &std::path::Path, root: &std::path::Path, found: &mut Vec<String>) {
+        fn scan(dir: &std::path::Path, root: &std::path::Path, card: &regex::Regex, found: &mut Vec<String>) {
             for entry in std::fs::read_dir(dir).expect("src").flatten() {
                 let path = entry.path();
                 if path.is_dir() {
-                    scan(&path, root, found);
+                    scan(&path, root, card, found);
                     continue;
                 }
                 if path.extension().and_then(|e| e.to_str()) != Some("rs") {
                     continue;
                 }
                 let text = std::fs::read_to_string(&path).unwrap_or_default();
-                let card = regex::Regex::new(r#":\s*&str\s*=\s*"bip-"#).unwrap().is_match(&text);
                 let waits = ["Notify", "oneshot", "watch::channel", "Condvar"].iter().any(|w| text.contains(w));
-                if card && waits {
+                if card.is_match(&text) && waits {
                     let module = path.strip_prefix(root).unwrap().with_extension("").to_string_lossy().replace('/', "::");
                     found.push(module);
                 }
             }
         }
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let card = regex::Regex::new(r#":\s*&str\s*=\s*"bip-"#).unwrap();
         let mut found = Vec::new();
-        scan(&root, &root, &mut found);
+        scan(&root, &root, &card, &mut found);
         found.sort();
         let mut known: Vec<String> = HOLDING.iter().map(|(m, _)| m.to_string()).collect();
         known.sort();
