@@ -350,8 +350,9 @@ pub async fn call(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> Di
     }
     let key = command(&origin, &label);
     let held_grant = {
+        let sha = crate::held_approvals::args_sha(&held_data(&config, &agent.name, &host, &label, &terms_url, &key));
         let (c, name, k) = (config.clone(), agent.name.clone(), key.clone());
-        tokio::task::spawn_blocking(move || crate::held_approvals::take_grant(&c, &name, &k)).await.ok().flatten()
+        tokio::task::spawn_blocking(move || crate::held_approvals::take_grant(&c, &name, &k, &sha)).await.ok().flatten()
     };
     if held_grant.is_none() {
         let turn = state.hub.turn_of(&agent.name, TOOL).map(|t| t.run_id);
@@ -389,6 +390,13 @@ pub async fn call(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> Di
     )
 }
 
+/// What a held card for this box shows (held_approvals.rs): its grant answers the same box on the same site only.
+fn held_data(config: &Config, agent: &str, host: &str, label: &str, terms_url: &str, key: &str) -> Dict {
+    let summary = sentence(&shown_name(config, agent), host, label);
+    let data = json!({"command": key, "description": summary, "bip_summary": summary, "bip_detail": terms_url});
+    data.as_object().cloned().unwrap_or_default()
+}
+
 /// The card held for a turn nobody follows (held_approvals.rs), placed in that turn's conversation and pushed once.
 #[allow(clippy::too_many_arguments)]
 async fn hold(
@@ -402,9 +410,7 @@ async fn hold(
     key: &str,
 ) {
     let config = state.config();
-    let summary = sentence(&shown_name(&config, &agent.name), host, label);
-    let data = json!({"command": key, "description": summary, "bip_summary": summary, "bip_detail": terms_url});
-    let Some(data) = data.as_object().cloned() else { return };
+    let data = held_data(&config, &agent.name, host, label, terms_url, key);
     let routine = match session.as_deref() {
         Some(s) => crate::routines::of_session(state, agent, s).await,
         None => None,
@@ -461,30 +467,24 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut config = Config::with_key("k");
         config.outbox.db_path = dir.path().join("bridge.db").to_string_lossy().into_owned();
-        let key = command("https://shop.example", "J'accepte les conditions générales de vente");
-        let summary = sentence("Vie", "shop.example", "J'accepte les conditions générales de vente");
-        let data = json!({"command": key, "description": summary, "bip_summary": summary});
+        let label = "J'accepte les conditions générales de vente";
+        let key = command("https://shop.example", label);
+        let data = held_data(&config, "vie", "shop.example", label, "", &key);
+        let sha = crate::held_approvals::args_sha(&data);
         let now = py::time_time();
-        let (card, _) = crate::held_approvals::hold(
-            &config,
-            "vie",
-            "run_1",
-            Some("s1"),
-            data.as_object().unwrap(),
-            None,
-            now + 60.0,
-        );
+        let (card, _) = crate::held_approvals::hold(&config, "vie", "run_1", Some("s1"), &data, None, now + 60.0);
         // no « Toujours » for a consent
         let item = crate::approval_level::with_always(&config, crate::held_approvals::item_of(&card));
         assert!(item.get("bip_always").is_none(), "{item:?}");
-        assert!(crate::held_approvals::take_grant(&config, "vie", &key).is_none(), "nothing before the « Oui »");
+        let take = |agent: &str, key: &str| crate::held_approvals::take_grant(&config, agent, key, &sha);
+        assert!(take("vie", &key).is_none(), "nothing before the « Oui »");
         crate::held_approvals::answer(&config, "vie", &card.id, true).unwrap();
         let other_box = command("https://shop.example", "J'accepte de recevoir la newsletter");
-        let other_site = command("https://other.example", "J'accepte les conditions générales de vente");
-        assert!(crate::held_approvals::take_grant(&config, "vie", &other_box).is_none());
-        assert!(crate::held_approvals::take_grant(&config, "vie", &other_site).is_none());
-        assert!(crate::held_approvals::take_grant(&config, "coach", &key).is_none());
-        assert!(crate::held_approvals::take_grant(&config, "vie", &key).is_some());
-        assert!(crate::held_approvals::take_grant(&config, "vie", &key).is_none(), "once");
+        let other_site = command("https://other.example", label);
+        assert!(take("vie", &other_box).is_none());
+        assert!(take("vie", &other_site).is_none());
+        assert!(take("coach", &key).is_none());
+        assert!(take("vie", &key).is_some());
+        assert!(take("vie", &key).is_none(), "once");
     }
 }
