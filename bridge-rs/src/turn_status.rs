@@ -178,6 +178,35 @@ pub fn reduced(status: &Map<String, Value>) -> Map<String, Value> {
         .filter_map(|k| status.get(*k).map(|v| (k.to_string(), v.clone())))
         .collect();
     out.insert("text".into(), status.get("plain").cloned().unwrap_or_else(|| json!("")));
+    if let Some(took) = out.get_mut("took") {
+        *took = for_others(took);
+    }
+    out
+}
+
+/// A long turn's summary (`took`) as a family member reads it, live and on her page (family_thread.rs
+/// `member_timeline`): never a site (review B1, 17/11). The time spent on sites is browsing time, one entry, the
+/// entries the longest first. A reader gets no summary at all (agent_feed.rs `PRIVATE_FIELDS`).
+pub fn for_others(took: &Value) -> Value {
+    let mut out = took.clone();
+    let Some(top) = took.get("top").and_then(Value::as_array) else { return out };
+    let mut merged: Vec<Value> = Vec::new();
+    for entry in top {
+        let mut entry = entry.clone();
+        if entry.get("what").and_then(Value::as_str) == Some("site") {
+            entry = json!({"what": "kind", "kind": "browser", "secs": entry.get("secs").cloned().unwrap_or(json!(0))});
+        }
+        let same = |e: &Value| e.get("what") == entry.get("what") && e.get("kind") == entry.get("kind");
+        match merged.iter_mut().find(|e| same(e)) {
+            Some(e) => {
+                let secs = e["secs"].as_i64().unwrap_or(0) + entry["secs"].as_i64().unwrap_or(0);
+                e["secs"] = json!(secs);
+            }
+            None => merged.push(entry),
+        }
+    }
+    merged.sort_by_key(|e| std::cmp::Reverse(e["secs"].as_i64().unwrap_or(0)));
+    out["top"] = Value::Array(merged);
     out
 }
 
@@ -239,10 +268,24 @@ fn bookkeeping(kind: &str) -> bool {
     crate::tool_kinds::BOOKKEEPING.contains(&kind)
 }
 
-/// A call that waits on a card for the person (`ask_secret`, `ask_for_tool`: up to 330 s): the person's wait, never a
-/// slow tool (the line steps aside for the card).
-fn asks_person(kind: &str) -> bool {
-    matches!(kind, "askSecret" | "askTool")
+/// The bridge's cards that hold the agent's call until the person answers (`ask_secret`, `ask_for_tool`, an account,
+/// the terms, a connector, a card payment: up to 330 s), by module: each says its tools (`HOLDS_THE_CALL`). A test
+/// finds every module that makes a card and waits on it, and checks it is here (review B3, 17/11).
+pub const HOLDING: &[(&str, &[&str])] = &[
+    ("secrets", crate::secrets::HOLDS_THE_CALL),
+    ("tool_asks", crate::tool_asks::HOLDS_THE_CALL),
+    ("vault_logins", crate::vault_logins::HOLDS_THE_CALL),
+    ("terms_consent", crate::terms_consent::HOLDS_THE_CALL),
+    ("connectors", crate::connectors::HOLDS_THE_CALL),
+    ("card_pay", crate::card_pay::HOLDS_THE_CALL),
+];
+
+/// A call that waits on a card for the person: the person's wait, never a slow tool (the line steps aside for the
+/// card). By the tool's own name, whatever its server's prefix (`mcp__bipagents_vault__vault_create_login`).
+fn asks_person(tool: &str) -> bool {
+    HOLDING.iter().flat_map(|(_, tools)| tools.iter()).any(|name| {
+        tool == *name || tool.strip_suffix(name).is_some_and(|head| head.ends_with('_'))
+    })
 }
 
 /// One run's status, as its events come (the hub's run state keeps it: `SubscriptionState::status`).
@@ -443,7 +486,7 @@ impl Tracker {
         if d == 0.0 {
             return;
         }
-        if self.waiting_person > 0 || self.open.last().is_some_and(|o| asks_person(o.kind)) {
+        if self.waiting_person > 0 || self.open.last().is_some_and(|o| asks_person(&o.tool)) {
             self.spent[2] += d;
         } else if let Some(open) = self.open.last() {
             if open.kind == "messageAgent" {
@@ -527,7 +570,7 @@ impl Tracker {
     fn settle(&mut self, now: f64) {
         let state = if self.unreachable {
             State::Unreachable
-        } else if self.waiting_person > 0 || self.open.last().is_some_and(|o| asks_person(o.kind)) {
+        } else if self.waiting_person > 0 || self.open.last().is_some_and(|o| asks_person(&o.tool)) {
             State::WaitingPerson
         } else if self.looping.is_some() {
             State::Looping

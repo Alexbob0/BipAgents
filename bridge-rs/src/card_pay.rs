@@ -84,6 +84,9 @@ pub const LIST: &str = "list_cards";
 pub const PAY: &str = "pay_with_card";
 pub const CONFIRM: &str = "confirm_payment";
 pub const CANCEL: &str = "cancel_payment";
+/// The tools whose call waits for the person's answer (its approval, its urgent card; turn_status.rs `HOLDING`: the
+/// person's wait).
+pub const HOLDS_THE_CALL: &[&str] = &[PAY];
 /// Seconds Hermes waits for a call: the person may take a while to answer (a watcher's payment: `URGENT_WINDOW`,
 /// then the fill and the bank).
 pub const TOOL_TIMEOUT: u32 = 900;

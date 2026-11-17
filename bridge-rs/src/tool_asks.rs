@@ -59,6 +59,8 @@ use crate::web::{self, ApiResult, HttpError};
 use crate::{py, Dict};
 
 pub const TOOL_NAME: &str = "ask_for_tool";
+/// The tools whose call waits for the person's answer on this card (turn_status.rs `HOLDING`: the person's wait).
+pub const HOLDS_THE_CALL: &[&str] = &[TOOL_NAME];
 pub const RUN_PREFIX: &str = "bip-tool-";
 /// The push's key (notifications.rs `Kind::of_card`: a card, « Refuser » only).
 pub const PUSH_KEY: &str = "tool_request";

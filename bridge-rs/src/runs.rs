@@ -1385,8 +1385,10 @@ impl RunHub {
 
     async fn upstream(self: Arc<Self>, sub: Arc<RunSubscription>, cancel: CancellationToken) {
         let limit = Duration::from_secs(self.watch_max_seconds);
-        // what the agent does now: a wait grown abnormal is said without an event of the run's (turn_status.rs)
-        let ticker = {
+        // what the agent does now: a wait grown abnormal is said without an event of the run's (turn_status.rs). Only
+        // with `[status] enabled`: off, nothing runs (review B4, 17/11)
+        let on = self.config.as_ref().is_some_and(|c| c.get().status.enabled);
+        let ticker = on.then(|| {
             let (hub, sub) = (self.clone(), sub.clone());
             tokio::spawn(async move {
                 let every = Duration::from_secs_f64(crate::turn_status::TICK_SECONDS);
@@ -1397,7 +1399,7 @@ impl RunHub {
                     }
                 }
             })
-        };
+        });
         let outcome = tokio::select! {
             _ = cancel.cancelled() => Outcome::Cancelled,
             result = tokio::time::timeout(limit, self.upstream_loop(&sub)) => match result {
@@ -1416,7 +1418,9 @@ impl RunHub {
             }
             Outcome::Done | Outcome::Cancelled => {}
         }
-        ticker.abort();
+        if let Some(ticker) = ticker {
+            ticker.abort();
+        }
         {
             let mut st = lock(&sub.state);
             st.finished = true;
@@ -1617,6 +1621,9 @@ impl RunHub {
     /// The hub's clock for one run (`upstream`'s ticker): a wait grown abnormal said now. false once the run is over.
     pub fn status_tick(&self, sub: &RunSubscription) -> bool {
         let Some(config) = self.config.as_ref().map(|c| c.get()) else { return false };
+        if !config.status.enabled {
+            return false; // switched off meanwhile: the clock stops
+        }
         let mut st = lock(&sub.state);
         if st.finished {
             return false;
@@ -3859,7 +3866,7 @@ mod tests {
             hub.dispatch(&sub, event("message.delta", json!({"delta": "…"})));
             if !enabled {
                 assert!(statuses(&sub).is_empty(), "off by default");
-                assert!(hub.status_tick(&sub), "the clock goes on, saying nothing");
+                assert!(!hub.status_tick(&sub), "off: no clock (review B4)");
                 continue;
             }
             let first = statuses(&sub);

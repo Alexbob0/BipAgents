@@ -57,6 +57,8 @@ pub const SERVER_NAME: &str = "bipagents_vault";
 pub const PATH: &str = "/v1/agent-tools/vault";
 pub const CREATE: &str = "vault_create_login";
 pub const CONFIRM: &str = "vault_confirm_login";
+/// The tools whose call waits for the person's answer on this card (turn_status.rs `HOLDING`: the person's wait).
+pub const HOLDS_THE_CALL: &[&str] = &[CREATE, CONFIRM];
 /// Seconds Hermes waits for a call: the person may take a while to answer.
 pub const TOOL_TIMEOUT: u32 = 600;
 /// The run id of a card (the apps tell them from Hermes' approvals by it).

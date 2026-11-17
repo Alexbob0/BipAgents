@@ -1153,14 +1153,20 @@ pub fn listener_events(listener: crate::runs::Listener) -> Response {
 /// takes an unknown event for « not words » and drops its working line during a pause in the reply.
 pub fn listener_events_with(mut listener: crate::runs::Listener, by: Option<Value>, status: bool) -> Response {
     let events = async_stream::stream! {
+        // the keepalive 25 s after the last bytes written, whatever the stream left out meanwhile (a status for an app
+        // that doesn't read them: review B2, 17/11; R3 of 16/11)
+        let every = Duration::from_secs_f64(SSE_KEEPALIVE_SECONDS);
+        let mut due = tokio::time::Instant::now() + every;
         loop {
-            match tokio::time::timeout(Duration::from_secs_f64(SSE_KEEPALIVE_SECONDS), listener.queue.recv()).await {
+            match tokio::time::timeout_at(due, listener.queue.recv()).await {
                 Err(_) => {
+                    due = tokio::time::Instant::now() + every;
                     yield Ok::<_, std::io::Error>(bytes::Bytes::from_static(b": keepalive\n\n"));
                 }
                 Ok(None) | Ok(Some(None)) => break,
                 Ok(Some(Some(event))) if !crate::turn_status::crosses(&event.r#type, status) => {}
                 Ok(Some(Some(event))) => {
+                    due = tokio::time::Instant::now() + every;
                     let card = ["approval.request", "clarify.request"].contains(&event.r#type.as_str());
                     let data = match (&by, card) {
                         (Some(by), true) => {

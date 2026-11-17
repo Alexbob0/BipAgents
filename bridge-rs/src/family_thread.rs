@@ -355,6 +355,10 @@ pub async fn member_timeline(state: &AppState, agent: &AgentConfig, household: &
             item.body.insert("attachments".into(), Value::Array(files));
         }
         item.body.remove("media"); // a call's made files stay the creator's
+        // a long turn's summary without its sites (review B1, 17/11)
+        if let Some(took) = item.body.get_mut("took") {
+            *took = crate::turn_status::for_others(took);
+        }
     }
     let page = crate::threads::timeline::page(items, &want);
     let tip = segments.last().map(|s| s.session_id.clone());

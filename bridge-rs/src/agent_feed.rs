@@ -45,7 +45,8 @@ use crate::tools_knowledge as tk;
 use crate::web::{self, ApiResult, HttpError, QueryMap};
 
 /// An item's fields the owner's app keeps to itself.
-const PRIVATE_FIELDS: [&str; 6] = ["reasoning", "client_id", "renamed", "tool", "steps", "steered"];
+/// `took`: where a long turn's time went names its sites (review B1, 17/11): nothing new for a reader.
+const PRIVATE_FIELDS: [&str; 7] = ["reasoning", "client_id", "renamed", "tool", "steps", "steered", "took"];
 /// An attachment's fields a relative gets (no `path`: she opens it by its `url`).
 const ATTACHMENT_FIELDS: [&str; 6] = ["id", "kind", "name", "mime", "size", "offset"];
 /// The owner's list kept this long on her bridge for « Nouveau » (`has_new`).

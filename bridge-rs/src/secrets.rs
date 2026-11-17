@@ -44,6 +44,9 @@ pub const VAULT_KIND: &str = "secret";
 pub const KINDS: [&str; 3] = ["password", "token", "code"];
 /// The run id of a card (the apps tell them from Hermes' approvals by it).
 pub const RUN_PREFIX: &str = "bip-secret-";
+/// The tools whose call waits for the person's answer on this card (turn_status.rs `HOLDING`: the person's wait):
+/// `ask_secret`, on the connectors' entry.
+pub const HOLDS_THE_CALL: &[&str] = &[crate::connectors::ASK_SECRET];
 /// How long the agent's call waits for the person.
 pub const ASK_TIMEOUT: Duration = Duration::from_secs(330);
 /// A card the person opened from the app (« Modifier le mot de passe »): gone after so long unanswered.
