@@ -330,9 +330,17 @@ fn help(api: &str, folder: &str, code: &str, reply_to: &str, body: &str) -> Mail
 /// The support box after Alex's set-up: Support and its three sub-folders, Admin, the system folders.
 fn proton() -> Shared {
     let mut p = Proton { hide_in_reply_to: true, ..Proton::default() };
-    for f in ["INBOX", "Drafts", "Archive", "Trash", "Support", "Support/En attente", "Support/Traité",
-        "Support/Suspect", "Admin"]
-    {
+    for f in [
+        "INBOX",
+        "Drafts",
+        "Archive",
+        "Trash",
+        "Support",
+        "Support/En attente",
+        "Support/Traité",
+        "Support/Suspect",
+        "Admin",
+    ] {
         p.folders.push(f.into());
     }
     p.put(Mail {
@@ -463,7 +471,10 @@ fn an_unknown_or_doubtful_folder_is_an_error_naming_the_folders() {
     assert!(said.contains("« Support/Traité »") && said.contains("« Factures/Traité »"), "{said}");
     let (error, said) = call(&config, &open, "mail_search", json!({"folder": "Nowhere", "query": "K7Q-4XN"}));
     assert!(error, "{said}");
-    assert!(said.contains("Nowhere") && said.contains("« Support/En attente »") && said.contains("« Admin »"), "{said}");
+    assert!(
+        said.contains("Nowhere") && said.contains("« Support/En attente »") && said.contains("« Admin »"),
+        "{said}"
+    );
     // never searched elsewhere instead
     let log = server.lock().unwrap().log.clone();
     assert!(!log.iter().any(|l| l.starts_with("UID SEARCH")), "{log:?}");
@@ -587,9 +598,13 @@ fn no_second_draft_for_the_same_mail() {
         in_reply_to: "<d1@example.net>".into(),
         ..Mail::default()
     });
-    let (error, said) = call(&config, &open, "mail_draft",
+    let (error, said) = call(
+        &config,
+        &open,
+        "mail_draft",
         json!({"to": "tom@example.net", "subject": "Re: Question abonnement", "body": "Bonjour Tom,",
-            "reply_to_id": listed["Question abonnement"]}));
+            "reply_to_id": listed["Question abonnement"]}),
+    );
     assert!(error && said.contains("already"), "{said}");
 }
 
@@ -599,17 +614,25 @@ fn a_filed_mail_is_found_in_its_sub_folder() {
     let config = setup(dir.path(), "s9");
     let server = proton();
     let open = opener(&server);
-    let called = mail_tidy::call(&config, "coach", "mail_bulk", &args(json!({"action": "move:Support/Traité",
-        "folder": "Support", "from": "no-reply@bipagents.com", "subject_contains": "K7Q-4XN"})), &open)
+    let called = mail_tidy::call(
+        &config,
+        "coach",
+        "mail_bulk",
+        &args(json!({"action": "move:Support/Traité",
+        "folder": "Support", "from": "no-reply@bipagents.com", "subject_contains": "K7Q-4XN"})),
+        &open,
+    )
     .unwrap();
     let card = called.card.expect("a card");
     let job = mail_tidy::answer(&config, "coach", &card.id, true, "app").unwrap().unwrap();
     mail_tidy::run_job(&config, &job.id, &open).unwrap();
     assert!(server.lock().unwrap().subjects("Support/Traité").contains(&"Message d'aide K7Q-4XN".to_string()));
     // a new conversation: « Traité », with its code or without words
-    for a in [json!({"folder": "Traité", "query": "K7Q-4XN"}), json!({"folder": "Traité"}),
-        json!({"folder": "Support/Traité", "query": "K7Q-4XN"})]
-    {
+    for a in [
+        json!({"folder": "Traité", "query": "K7Q-4XN"}),
+        json!({"folder": "Traité"}),
+        json!({"folder": "Support/Traité", "query": "K7Q-4XN"}),
+    ] {
         let (error, found) = call(&config, &open, "mail_search", a.clone());
         assert!(!error && ids(&found).contains_key("Message d'aide K7Q-4XN"), "{a}: {found}");
     }
@@ -621,8 +644,14 @@ fn a_job_files_the_mails_of_its_card_after_hydroxide_numbers_them_again() {
     let config = setup(dir.path(), "s10");
     let server = proton();
     let open = opener(&server);
-    let called = mail_tidy::call(&config, "coach", "mail_bulk", &args(json!({"action": "move:Support/Traité",
-        "folder": "Support", "from": "no-reply@bipagents.com", "subject_contains": "K7Q-4XN"})), &open)
+    let called = mail_tidy::call(
+        &config,
+        "coach",
+        "mail_bulk",
+        &args(json!({"action": "move:Support/Traité",
+        "folder": "Support", "from": "no-reply@bipagents.com", "subject_contains": "K7Q-4XN"})),
+        &open,
+    )
     .unwrap();
     let card = called.card.expect("a card");
     {
@@ -656,8 +685,8 @@ fn a_mail_id_reads_its_mail_after_hydroxide_numbers_them_again() {
         }
         s.renumber();
     }
-    for (subject, text) in [("Message d'aide K7Q-4XN", "comment connecter Gmail"),
-        ("Message d'aide P2R-8ZT", "L'appli ne démarre plus.")]
+    for (subject, text) in
+        [("Message d'aide K7Q-4XN", "comment connecter Gmail"), ("Message d'aide P2R-8ZT", "L'appli ne démarre plus.")]
     {
         let (error, read) = call(&config, &open, "mail_read", json!({"id": listed[subject]}));
         assert!(!error && read.contains(subject) && read.contains(text), "{subject}: {read}");

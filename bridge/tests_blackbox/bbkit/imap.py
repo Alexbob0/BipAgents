@@ -370,6 +370,13 @@ class FakeImap:
                 elif word == "SUBJECT":
                     ok &= value.lower() in str(header.get("Subject") or "").lower()
                     i += 2
+                elif word == "TO":
+                    ok &= value.lower() in str(header.get("To") or "").lower()
+                    i += 2
+                elif word == "HEADER":  # HEADER In-Reply-To <id> (mail_draft: one draft per mail answered)
+                    wanted = words[i + 2] if i + 2 < len(words) else ""
+                    ok &= bool(wanted) and wanted.lower() in str(header.get(value) or "").lower()
+                    i += 3
                 else:
                     i += 1
             if ok:

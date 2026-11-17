@@ -74,7 +74,8 @@ def test_a_word_search_hydroxide_cannot_answer_finds_the_words_in_the_subject(br
     assert any("TEXT" in c for c in fakes.imap.commands) and any("SUBJECT" in c for c in fakes.imap.commands)
     # words in no subject: the sender's name is tried too, then nothing
     assert f"{account}|INBOX|103" in text_of(call(bridge, "mail_search", {"query": "shop"}, token=TOKEN))
-    assert text_of(call(bridge, "mail_search", {"query": "introuvable"}, token=TOKEN)) == "No e-mail found."
+    nothing = text_of(call(bridge, "mail_search", {"query": "introuvable"}, token=TOKEN))
+    assert nothing.startswith("No e-mail found in « INBOX » for « introuvable ».") and "subject" in nothing, nothing
 
 
 def test_a_rule_call_for_several_senders_makes_a_card_each_never_an_error(bridges, fakes):

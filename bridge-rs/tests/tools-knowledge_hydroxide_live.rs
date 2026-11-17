@@ -111,7 +111,8 @@ fn the_support_routine_through_hydroxide() {
     mailbox::of(&config).write(&[account]).unwrap();
     let open: Connect = Arc::new(move |_: &Dict| -> Result<Connection, MailError> { Ok(connect(port)) });
     let call = |name: &str, a: Value| {
-        let result = Value::Object(mailbox::call(&config, "coach", name, &serde_json::from_value(a).unwrap(), &open).unwrap());
+        let result =
+            Value::Object(mailbox::call(&config, "coach", name, &serde_json::from_value(a).unwrap(), &open).unwrap());
         (result["isError"] == true, result["content"][0]["text"].as_str().unwrap().to_string())
     };
     let ids = |listed: &str| -> HashMap<String, String> {
@@ -122,7 +123,8 @@ fn the_support_routine_through_hydroxide() {
             .collect()
     };
     let bulk = |a: Value| {
-        let called = mail_tidy::call(&config, "coach", "mail_bulk", &serde_json::from_value(a).unwrap(), &open).unwrap();
+        let called =
+            mail_tidy::call(&config, "coach", "mail_bulk", &serde_json::from_value(a).unwrap(), &open).unwrap();
         let card = called.card.expect("a card");
         let job = mail_tidy::answer(&config, "coach", &card.id, true, "test").unwrap().unwrap();
         mail_tidy::run_job(&config, &job.id, &open).unwrap();
@@ -161,8 +163,15 @@ fn the_support_routine_through_hydroxide() {
         assert!(!error && read.contains(subject) && read.contains(text), "{subject}: {read}");
     }
     // a card, then a new help message filed into Support by Proton (its id sorts first) before the job runs
-    let called = mail_tidy::call(&config, "coach", "mail_bulk", &serde_json::from_value(json!({
-        "action": "move:Support/En attente", "folder": "Support", "from": "tom@example.net"})).unwrap(), &open)
+    let called = mail_tidy::call(
+        &config,
+        "coach",
+        "mail_bulk",
+        &serde_json::from_value(json!({
+        "action": "move:Support/En attente", "folder": "Support", "from": "tom@example.net"}))
+        .unwrap(),
+        &open,
+    )
     .unwrap();
     let card = called.card.expect("a card");
     let _ = std::process::Command::new("curl")
