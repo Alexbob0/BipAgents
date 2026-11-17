@@ -695,3 +695,162 @@ fn a_mail_id_reads_its_mail_after_hydroxide_numbers_them_again() {
     let (error, read) = call(&config, &open, "mail_read", json!({"id": listed["Question abonnement"]}));
     assert!(error && read.contains("no longer in « Support »"), "{read}");
 }
+
+// -- review (17/11): failing tests for the blocking findings (briefs/review-support-mail-fixes.md) ---------------------
+
+fn text_of(result: &Dict) -> String {
+    Value::Object(result.clone())["content"][0]["text"].as_str().unwrap_or_default().to_string()
+}
+
+fn bulk(config: &Config, open: &Connect, a: Value) -> mail_tidy::Called {
+    mail_tidy::call(config, "coach", "mail_bulk", &args(a), open).unwrap()
+}
+
+/// R1 (B1): a move to a folder two could be is refused with both names, as mail_search does. Today the card goes to
+/// « Traité » as said, a folder that does not exist: on « Oui » (or « Toujours ») the job CREATEs a new top-level
+/// « Traité » and files the mails there — the silent fallback the branch says never happens.
+#[test]
+fn review_a_move_to_a_folder_two_could_be_is_refused_naming_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = setup(dir.path(), "r1");
+    let server = proton();
+    server.lock().unwrap().folders.push("Factures/Traité".into());
+    let open = opener(&server);
+    let called = bulk(
+        &config,
+        &open,
+        json!({"action": "move:Traité", "folder": "Support", "from": "no-reply@bipagents.com",
+            "subject_contains": "K7Q-4XN"}),
+    );
+    let said = text_of(&called.result);
+    assert!(
+        called.card.is_none(),
+        "a card was made to « {} » (make it: {}): {said}",
+        called.card.as_ref().map(|c| c.dest.clone()).unwrap_or_default(),
+        called.card.as_ref().map(|c| c.make_dest).unwrap_or_default()
+    );
+    assert!(said.contains("« Support/Traité »") && said.contains("« Factures/Traité »"), "{said}");
+}
+
+/// R2a (B2): the undo of a mark_read job marks unread the mail it marked read. The job now acts where the mail is
+/// (found by its Message-ID) but keeps the card's uid in `acted`; the undo marks that stale uid unread: another mail.
+#[test]
+fn review_the_undo_of_mark_read_reaches_the_mail_it_marked() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = setup(dir.path(), "r2a");
+    let server = proton();
+    let open = opener(&server);
+    let called = bulk(
+        &config,
+        &open,
+        json!({"action": "mark_read", "folder": "Support", "from": "no-reply@bipagents.com",
+            "subject_contains": "K7Q-4XN"}),
+    );
+    let card = called.card.expect("a card");
+    {
+        // a new help message and a new login before the job: Support numbered again
+        let mut s = server.lock().unwrap();
+        let mut new = help("c0", "Support", "NEW-000", "c0@example.org", "Nouveau.");
+        new.uid = 0;
+        s.mails.push(new);
+        s.renumber();
+    }
+    let job = mail_tidy::answer(&config, "coach", &card.id, true, "app").unwrap().unwrap();
+    mail_tidy::run_job(&config, &job.id, &open).unwrap();
+    let back = mail_tidy::undo(&config, "coach", &job.id).unwrap();
+    server.lock().unwrap().log.clear();
+    mail_tidy::run_job(&config, &back.id, &open).unwrap();
+    let s = server.lock().unwrap();
+    let k7q = s.in_folder("Support").into_iter().find(|m| m.api == "h1").map(|m| m.uid).unwrap();
+    let unread: Vec<&String> = s.log.iter().filter(|l| l.contains("-FLAGS.SILENT (\\Seen)")).collect();
+    assert_eq!(unread, [&format!("UID STORE {k7q} -FLAGS.SILENT (\\Seen)")], "{:?}", s.log);
+}
+
+/// A connection that drops at its LIST (hydroxide or the network failing mid-job): the job stops, still running.
+struct DropsAtList(Fake);
+
+impl Imap for DropsAtList {
+    fn select(&mut self, folder: &str, readonly: bool) -> Result<Reply, ImapError> {
+        self.0.select(folder, readonly)
+    }
+    fn uid(&mut self, command: &str, args: &[&str]) -> Result<Reply, ImapError> {
+        self.0.uid(command, args)
+    }
+    fn list(&mut self) -> Result<Reply, ImapError> {
+        Err(ImapError::Os { name: "ConnectionResetError", message: "connection reset by peer".into() })
+    }
+    fn append(&mut self, folder: &str, flags: &str, date: &str, message: &[u8]) -> Result<Reply, ImapError> {
+        self.0.append(folder, flags, date, message)
+    }
+    fn logout(&mut self) -> Result<(), ImapError> {
+        Ok(())
+    }
+}
+
+/// R2b (B2): an undo resumed in a new session (a dropped connection, a restart, its 30-minute time box) moves back the
+/// mails it found, not the ones hydroxide numbered with their old uids since. Today the uids found at its first run
+/// are kept and used as they are (`undoing`: no Message-ID check): another mail goes back to Support.
+#[test]
+fn review_a_resumed_undo_moves_back_its_own_mails() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = setup(dir.path(), "r2b");
+    let server = proton();
+    let open = opener(&server);
+    let called = bulk(
+        &config,
+        &open,
+        json!({"action": "move:Support/Traité", "folder": "Support", "from": "no-reply@bipagents.com",
+            "subject_contains": "K7Q-4XN"}),
+    );
+    let job = mail_tidy::answer(&config, "coach", &called.card.expect("a card").id, true, "app").unwrap().unwrap();
+    mail_tidy::run_job(&config, &job.id, &open).unwrap();
+    let back = mail_tidy::undo(&config, "coach", &job.id).unwrap();
+    // its first run finds the mail in Support/Traité, then the connection drops
+    let shared = server.clone();
+    let dropping: Connect = Arc::new(move |_: &Dict| -> Result<Connection, MailError> {
+        Ok(Box::new(DropsAtList(Fake { server: shared.clone(), selected: String::new() })))
+    });
+    assert!(mail_tidy::run_job(&config, &back.id, &dropping).is_err());
+    // a new login: Support/Traité numbered again from 1
+    server.lock().unwrap().renumber();
+    mail_tidy::run_job(&config, &back.id, &open).unwrap();
+    let s = server.lock().unwrap();
+    assert_eq!(s.subjects("Support/Traité"), ["Message d'aide AAA-111"], "AAA-111 was handled: it stays filed");
+    assert!(s.subjects("Support").contains(&"Message d'aide K7Q-4XN".to_string()), "{:?}", s.subjects("Support"));
+}
+
+/// R3 (B3): a reply that goes to a Reply-To other than the sender says both to the agent, so that the person sees
+/// them before sending (a Reply-To is written by whoever sent the mail: phishing). Today: « to <Reply-To> » only.
+#[test]
+fn review_a_draft_to_a_reply_to_names_the_sender_too() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = setup(dir.path(), "r3");
+    let server = proton();
+    server.lock().unwrap().put(Mail {
+        api: "p1".into(),
+        folder: "Support".into(),
+        from: "Service client <service@banque.example>".into(),
+        reply_to: "Service client <contact@banque-support.example>".into(),
+        to: "support@bipagents.com".into(),
+        subject: "Votre compte".into(),
+        body: "Merci de répondre à ce message.".into(),
+        message_id: "<p1@banque.example>".into(),
+        ..Mail::default()
+    });
+    let open = opener(&server);
+    let (_, found) = call(&config, &open, "mail_search", json!({"folder": "Support", "limit": 20}));
+    let listed = ids(&found);
+    for (subject, reply_to, sender) in [
+        ("Message d'aide K7Q-4XN", "lea@example.org", "no-reply@bipagents.com"),
+        ("Votre compte", "contact@banque-support.example", "service@banque.example"),
+    ] {
+        let (error, said) = call(
+            &config,
+            &open,
+            "mail_draft",
+            json!({"subject": format!("Re: {subject}"), "body": "Bonjour,", "reply_to_id": listed[subject]}),
+        );
+        assert!(!error, "{subject}: {said}");
+        assert!(said.contains(reply_to) && said.contains(sender), "{subject}: both addresses expected: {said}");
+    }
+}
