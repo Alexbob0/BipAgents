@@ -34,7 +34,8 @@
 //! The routes (bridge key):
 //!
 //!     GET   /v1/storage            {used, allowance, percent, measured_at, by_agent, other, kept_rules, rule_kinds,
-//!                                   files_kept_days, paused}
+//!                                   files_kept_days, paused}: the last measure at once, however old (an old one is
+//!                                   measured again in the background); measured in the request only before the first
 //!     POST  /v1/storage/measure    the same, measured now (and the thresholds checked)
 //!     PATCH /v1/storage/rules      {agent, kind, keep_last} (null/0 removes it) → the same
 //!     data_dir/storage.json        rules, thresholds told, cards, notes, pauses, history
@@ -328,6 +329,24 @@ pub fn measure(config: &Config) -> Usage {
         measured_at: py::time_time(),
         agents,
         other: used - sum,
+    }
+}
+
+/// The last measure, however old (None before the first one); nothing measured.
+pub fn last_usage(config: &Config) -> Option<Usage> {
+    CACHE.lock().unwrap_or_else(|e| e.into_inner()).get(&config.data_dir()).cloned()
+}
+
+/// What a request answers with (17/11: no folder walk inside a request, a full self-install took longer than the app
+/// waits): the last measure as it is, and whether it is old (then the caller asks the background loop for a new one,
+/// `mark_dirty`). Measured here only when there is none yet (the first minute after a start).
+pub fn usage_for_request(config: &Config) -> (Usage, bool) {
+    match last_usage(config) {
+        Some(found) => {
+            let stale = py::time_time() - found.measured_at >= MEASURE_EVERY;
+            (found, stale)
+        }
+        None => (usage(config, true), false),
     }
 }
 
@@ -1392,11 +1411,19 @@ pub async fn approve(state: &AppState, agent: &AgentConfig, id: &str, choice: &s
     Ok(web::ok(done.json()))
 }
 
+/// The last measure at once, however old; an old one is measured again by the background loop (`run_forever`, within
+/// a minute). « Mesurer maintenant » is `POST /v1/storage/measure`.
 async fn get_storage(State(state): State<AppState>) -> ApiResult<Response> {
     let config = state.config();
-    let out = tokio::task::spawn_blocking(move || body(&config, &usage(&config, false)))
-        .await
-        .map_err(anyhow::Error::from)?;
+    let out = tokio::task::spawn_blocking(move || {
+        let (usage, stale) = usage_for_request(&config);
+        if stale {
+            mark_dirty();
+        }
+        body(&config, &usage)
+    })
+    .await
+    .map_err(anyhow::Error::from)?;
     Ok(web::ok(out))
 }
 
