@@ -3883,6 +3883,65 @@ mod tests {
         }
     }
 
+    /// Review (17/11, blocking): `[status]` off (the default), nothing new runs. Today each followed run gets a clock
+    /// waking every 2 s for its whole life (`upstream`'s ticker), taking the run's lock to say nothing. Off: no clock
+    /// (not spawned, and `status_tick` says it is over at once).
+    #[tokio::test]
+    async fn review_statuses_off_no_clock_ticks_for_a_run() {
+        let data = json!({"bridge_key": "k".repeat(40)});
+        let config = SharedConfig::new(crate::config::parse_config(&data, None).unwrap());
+        let hub = RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None).with_config(config);
+        let sub = Arc::new(RunSubscription::new(AgentConfig { name: "vie".into(), ..Default::default() }, "run_off"));
+        lock(&hub.inner).subs.insert(sub.key(), sub.clone());
+        assert!(!hub.status_tick(&sub), "off by default: no clock every 2 s for each run");
+    }
+
+    /// Review (17/11, blocking): R3 (review-battery-settings, 16/11) again. `listener_events_with` used to write every
+    /// event, so its keepalive per `recv` was « 25 s after the last bytes ». It now leaves `turn.status` out for an app
+    /// that doesn't ask (an app from before, the door's relay): each status left out starts the 25 s again, writing
+    /// nothing. A status 20 s after the last bytes (the model slow at 20 s) puts the next bytes at 45 s: Android reads
+    /// with 45 s, the iPhone 60 s.
+    #[tokio::test]
+    async fn review_an_app_that_reads_no_status_keeps_alive_while_statuses_are_left_out() {
+        use http_body_util::BodyExt;
+        let hub = Arc::new(RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None));
+        let agent = AgentConfig { name: "vie".into(), ..Default::default() };
+        let sub = Arc::new(RunSubscription::new(agent.clone(), "run_k"));
+        lock(&hub.inner).subs.insert(sub.key(), sub.clone());
+        let listener = hub.subscribe(&agent, "run_k", "app", false);
+        let mut body = crate::app::listener_events_with(listener, None, false).into_body();
+        let feeder = {
+            let sub = sub.clone();
+            tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(Duration::from_secs(20)).await;
+                    let data = json!({"event": crate::turn_status::EVENT, "state": "model", "slow": true});
+                    let event = SSEEvent::new(crate::turn_status::EVENT, data.as_object().cloned().unwrap(), "{}");
+                    lock(&sub.state).send_all(Some(&event));
+                }
+            })
+        };
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(28);
+        let mut seen = String::new();
+        let alive = loop {
+            let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+            match tokio::time::timeout(left, body.frame()).await {
+                Ok(Some(Ok(frame))) => {
+                    if let Some(data) = frame.data_ref() {
+                        seen.push_str(&String::from_utf8_lossy(data));
+                    }
+                    if seen.contains(": keepalive") {
+                        break true;
+                    }
+                }
+                _ => break false,
+            }
+        };
+        feeder.abort();
+        assert!(!seen.contains("turn.status"), "a status for an app that didn't ask: {seen:?}");
+        assert!(alive, "no keepalive in 28 s (a status left out at 20 s): {seen:?}");
+    }
+
     /// The brake's two thirds told to the person too (« Je tourne en rond », 16/11): « Continuer » raises this turn's
     /// limits once, « Arrêter » takes the brake's own stop (its plain line, its rescue turn) at once.
     #[tokio::test]

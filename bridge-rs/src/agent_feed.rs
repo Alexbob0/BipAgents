@@ -406,6 +406,17 @@ mod tests {
         }
     }
 
+    /// Review (17/11, blocking): a long turn's reply carries where its time went (`took`, threads `with_took`), with
+    /// the site it went to. A reader (« Friends and feeds: none », §6.5b) must never read it.
+    #[test]
+    fn review_a_reader_never_reads_a_site_in_a_long_turns_summary() {
+        let item = json!({"id": "m_1", "kind": "message", "role": "agent", "text": "Voilà.",
+                          "took": {"secs": 75, "tools": 60, "model": 15, "actions": 3,
+                                   "top": [{"what": "site", "site": "pharmacie-exemple.fr", "secs": 60}]}});
+        let raw = for_relative(item).to_string();
+        assert!(!raw.contains("pharmacie"), "{raw}");
+    }
+
     #[test]
     fn she_reads_the_messages_from_the_share_on_or_all_of_them() {
         assert!(readable(&item("message", 200.0), 100.0));

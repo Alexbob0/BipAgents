@@ -1051,6 +1051,39 @@ mod tests {
         assert_eq!(reduced_text(&lp), "Je tourne en rond (27 étapes)");
     }
 
+    /// Review (17/11, blocking): a long turn's summary (`took`) names the site its time went to (« surtout sur
+    /// pharmacie-exemple.fr »). Fine for the owner; a family member reads the reduced status, which must never name a
+    /// site (design D8 B, §6.5b « never … a site »): `reduced` passes `took` whole.
+    #[test]
+    fn review_a_family_member_never_reads_a_site_in_a_long_turns_summary() {
+        let mut t = Tracker::new(0.0, "fr", false);
+        started(&mut t, "mcp__stealth__navigate", "a", "https://www.pharmacie-exemple.fr/ordonnance", 1.0);
+        completed(&mut t, "mcp__stealth__navigate", "a", 61.0);
+        let done = t.on_event("run.completed", &data(json!({})), 70.0, &on()).expect("a long turn's summary");
+        let full = Value::Object(done.clone()).to_string();
+        assert!(full.contains("pharmacie-exemple.fr"), "the owner reads where its time went: {full}");
+        let raw = Value::Object(reduced(&done)).to_string();
+        assert!(!raw.contains("pharmacie"), "a site in a family member's status: {raw}");
+    }
+
+    /// Review (17/11, blocking): the merge fix made `ask_for_tool` and `ask_secret` the person's wait; the bridge's
+    /// other cards hold the agent's call just as long for the person (vault_logins.rs, terms_consent.rs, connectors.rs:
+    /// 330 s): « Créer un compte : ça prend du temps » in amber, with « Arrêter », beside the card, and the person's time
+    /// counted as the tool's in `took`.
+    #[test]
+    fn review_every_card_the_call_waits_on_is_the_persons_wait() {
+        for tool in ["mcp__bipagents_vault__vault_create_login", "mcp__bipagents_vault__vault_confirm_login",
+                     "mcp__bipagents_vault__accept_terms", "mcp__bipagents_connectors__connector_register",
+                     "mcp__bipagents_connectors__connector_update"] {
+            let mut t = Tracker::new(0.0, "fr", false);
+            let asked = started(&mut t, tool, "c", "", 1.0).unwrap();
+            assert_eq!(s(&asked, "state"), "waiting_person", "{tool}");
+            assert_eq!(t.tick(200.0, &on()), None, "{tool}: the person's time is never « slow »");
+            completed(&mut t, tool, "c", 201.0);
+            assert_eq!(t.time(201.0)["person"], 200, "{tool}");
+        }
+    }
+
     #[test]
     fn a_model_on_this_machine_or_the_network_is_local() {
         assert!(local_base("http://127.0.0.1:8080/v1") && local_base("http://192.168.1.4:8000/v1"));
