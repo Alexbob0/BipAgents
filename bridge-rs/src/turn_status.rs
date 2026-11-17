@@ -876,6 +876,24 @@ mod tests {
         assert_eq!(s(&answered, "since"), 402.0);
     }
 
+    /// A card the agent's call waits on (`ask_for_tool`, `ask_secret`: up to 330 s for the person) is the person's
+    /// wait, never a slow tool: the line steps aside for the card (design §5, « Avec design-outils-dans-conversation »).
+    #[test]
+    fn a_card_the_call_waits_on_is_the_persons_wait() {
+        for tool in ["mcp__bipagents__ask_for_tool", "mcp__bipagents_connectors__ask_secret"] {
+            let mut t = Tracker::new(0.0, "fr", false);
+            let asked = started(&mut t, tool, "c", "", 1.0).unwrap();
+            assert_eq!(s(&asked, "state"), "waiting_person", "{tool}");
+            assert_eq!(s(&asked, "kind"), &Value::Null, "{tool}");
+            assert_eq!(t.tick(200.0, &on()), None, "{tool}: the person's time is never « slow »");
+            let done = completed(&mut t, tool, "c", 201.0).unwrap();
+            assert_eq!(s(&done, "state"), "model", "{tool}");
+            let time = t.time(201.0);
+            assert_eq!(time["person"], 200, "{tool}: {time}");
+            assert_eq!(time["tools"], 0, "{tool}: {time}");
+        }
+    }
+
     #[test]
     fn the_agents_own_step_goes_with_the_status() {
         let mut t = Tracker::new(0.0, "fr", false);
