@@ -730,16 +730,29 @@ impl Threads {
     }
 
     /// Under each turn in which the vault typed a password, its line « Rempli par le coffre sur … » (vault_line.rs),
-    /// before the Carnet's: from the turn's tool items, the item of a fill of Hermes' found by its handle.
+    /// before the Carnet's: from the bridge's record of its fills, and Hermes' own fills of one of this agent's logins
+    /// kept for that host. Read only when a turn called the vault or Hermes filled.
     fn with_vault_lines(&self, agent: &AgentConfig, items: &mut Vec<Item>) {
-        if !items.iter().any(|i| i.body.contains_key(crate::vault_line::STASH)) {
+        let vault_call = |i: &Item| {
+            i.body.contains_key(crate::vault_line::STASH)
+                || (i.kind() == "tool"
+                    && i.body.get("tool").and_then(|t| t.get("name")).and_then(Value::as_str).is_some_and(|n| {
+                        crate::vault_line::calls_the_vault(n) || n == "tool_call"
+                    }))
+        };
+        if !items.iter().any(vault_call) {
             return;
         }
-        let lang = crate::handback::language_of(&self.config.get(), agent);
+        let config = self.config.get();
+        let lang = crate::handback::language_of(&config, agent);
+        let recorded = crate::vault_line::recorded_for(&config, &agent.name);
         let mut known: Option<Vec<crate::vault::Item>> = None;
-        crate::vault_line::with_vault_lines(items, &lang, |handle| {
+        crate::vault_line::with_vault_lines(items, &lang, &recorded, |handle, host| {
             let all = known.get_or_insert_with(|| self.vault.as_ref().and_then(|v| v.try_items().ok()).unwrap_or_default());
-            all.iter().find(|i| i.agents.get(&agent.name).is_some_and(|h| h == handle)).map(|i| i.id.clone())
+            all.iter()
+                .filter(|i| i.kind == "login" && i.agents.get(&agent.name).is_some_and(|h| h == handle))
+                .find(|i| i.origin.as_deref().and_then(crate::vault_match::site_of).is_some_and(|s| s.host == host))
+                .map(|i| i.id.clone())
         });
     }
 

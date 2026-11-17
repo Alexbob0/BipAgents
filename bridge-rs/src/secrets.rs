@@ -682,10 +682,15 @@ pub fn item(config: &Config, id: &str) -> Option<Dict> {
 }
 
 fn record(config: &Config, agent: &str, id: &str, request: &Request, choice: &str, via: &str) {
-    // the conversation the card showed in (card_place.rs): its answered line there (« ✋ Tapé par toi dans le
-    // Bureau », 17/11); none when it was answered before it was placed
+    // « Je le taperai moi-même » only (17/11, the coordinator's decision): an answered line in the conversation the card
+    // showed in (card_place.rs), « ✋ Tapé par toi dans le Bureau »; today's apps skip a choice they don't know. `once`
+    // and `deny` stay out of the conversation until the apps draw them as « Enregistré dans le coffre » / « Refusé »
+    // (the published ones would show « Accordé · … action à vérifier »). None when answered before it was placed.
     let run_id = format!("{RUN_PREFIX}{id}");
-    let shown = crate::card_place::of(config, &run_id).and_then(|p| p.report.or(p.session));
+    let shown = match choice {
+        SELF => crate::card_place::of(config, &run_id).and_then(|p| p.report.or(p.session)),
+        _ => None,
+    };
     let fields = json!({
         "session_id": shown, "run_id": run_id, "request_id": id,
         "command": if request.host().is_empty() { request.name.clone() } else { format!("{} · {}", request.name, request.host()) },

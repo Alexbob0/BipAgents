@@ -430,10 +430,13 @@ Passation-pro `briefs/design-coffre-rassurer.md` §4 (Alex's D1 A, D3 A, D4 A). 
 unknown kind out (iOS `.other`, Android's lenient decoder) and never sends `way`; a newer app on an older bridge gets
 no `vault_line`, no `bip_secret_use` / `bip_secret_self` (so no « Je le taperai moi-même ») and no `choice: self`.
 
-- **`vault_line`**: one per turn in which the vault typed a password, made when the thread is read (nothing new is
-  kept; an older conversation has none): a success of the bridge's `vault_login` or `vault_create_login` (their result
-  ends with a hidden `<!--bip:filled <item> <host> login|created-->`, taken out of `result` like every `<!--bip:` note),
-  or Hermes' `browser_vault` fill of a login (its JSON: `success`, `kind: login`, `origin`; the item from the handle).
+- **`vault_line`**: one per turn in which the vault typed a password, made when the thread is read, never from a
+  result's words (review R2, 17/11: a forged mark quoted in a refusal made a false line). A success of the bridge's
+  `vault_login` or `vault_create_login` is recorded by the bridge itself (`<data_dir>/vault-fills.jsonl`: agent,
+  session and run of the turn the hub follows, item, host, how; nothing secret), the thread placing each fill in the
+  turn of its session and time; Hermes' `browser_vault` fill of a login (its own JSON: `success`, `kind: login`,
+  `origin`) counts only when its handle is one of this agent's logins kept for that very host. An older conversation,
+  or a turn the hub did not follow, has none.
   Never for a refusal, a failure, a code or « Coordonnées ». Words: « Rempli par le coffre sur [a] et [b], sans le
   donner à l'agent », « Mot de passe créé par le coffre sur [site], sans le donner à l'agent » when the turn only
   created accounts; English « Filled by the vault on … » / « Password made by the vault on …, never given to the
@@ -443,10 +446,10 @@ no `vault_line`, no `bip_secret_use` / `bip_secret_self` (so no « Je le taperai
   type it themselves there). `POST /v1/vault/secrets/requests/{id}` `{"allow": false, "way": "self"}` → 200
   `{"ok": true, "choice": "self"}`; 400 on a card without `bip_secret_self`, 404 once answered, 409 `confirm_others`
   on a card with `bip_secret_others` without `"confirmed_others": true` (as « Enregistrer »). The app then opens the
-  desktop with the hand taken. Every answer to a secret card (`once`, `deny`, `self`) is an `approval` item of the
-  conversation it showed in (topic `secret`; « ✋ Tapé par toi dans le Bureau » for `self`).
-- **Its mark** may be followed by what the bridge or Hermes join to a result (another `<!--bip:` note, a note of the
-  brake, a steer, the end of Hermes' wrapper): the line is still made; any other words after it, none.
+  desktop with the hand taken. A `self` answer is an `approval` item of the conversation the card showed in (topic
+  `secret`, « ✋ Tapé par toi dans le Bureau »; today's apps skip a choice they don't know). `once` and `deny` are not
+  placed there yet (the published apps would draw « Accordé · … action à vérifier »): they come with the apps that draw
+  « ✓ Enregistré dans le coffre » and « ✕ Refusé » (the coordinator's decision, 17/11).
 
 ### 6.4 One item, attachments
 

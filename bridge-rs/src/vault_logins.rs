@@ -32,9 +32,9 @@
 //!    and identifier, without a new card; the waiting login is replaced. After that, a new card;
 //! 6. the site accepted: `vault_confirm_login(site, username)` (or the person in the app) ends the waiting.
 //!
-//! A success of `vault_login` (its password typed) or `vault_create_login` ends with a hidden mark (vault_line.rs
-//! `mark`) the conversation's « Rempli par le coffre » line is made from, and is noted for the vault list's « Récents »
-//! (vault_used.rs), le coffre rassure 17/11.
+//! A success of `vault_login` (its password typed) or `vault_create_login` is recorded by the bridge for the
+//! conversation's « Rempli par le coffre » line (vault_line.rs `note`: never read back from the answer's text, which
+//! may quote the agent's words) and for the vault list's « Récents » (vault_used.rs), le coffre rassure 17/11.
 
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};
@@ -789,15 +789,15 @@ async fn create(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> anyh
     tracing::info!(agent = %agent.name, site = %host, fields = filled, item = %item.id, retry = granted, "account password typed and kept");
     crate::vault_contacts::note_mark(state, &agent.name, CREATE, &crate::vault_contacts::mark(&item.id, &item.label));
     crate::vault_used::note(&state.vault.folder, &item.id, &agent.name);
+    crate::vault_line::note(state, &agent.name, CREATE, &item.id, &host, crate::vault_line::How::Created);
     let fields = if filled > 1 { "the password field and its confirmation" } else { "the password field" };
     Ok(text(&format!(
         "Filled {fields} and saved as « {} » in the vault (waiting for confirmation). You never see the password: \
          don't read the field. Now submit the sign-up form yourself (terms boxes and captchas are the person's). Once \
          the site has accepted the account, call {CONFIRM} with the same site and username. If the site refuses the \
          password, read its password rules and call {CREATE} again with corrected rules within 15 minutes (no new \
-         approval).{}",
-        item.label,
-        crate::vault_line::mark(&item.id, &host, crate::vault_line::How::Created)
+         approval).",
+        item.label
     )))
 }
 
@@ -966,17 +966,15 @@ async fn login(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> anyho
             )))
         }
     };
-    // the password typed: the conversation's vault line (vault_line.rs) and the vault list's « Récents »
+    // the password typed: recorded for the conversation's vault line (vault_line.rs) and the vault list's « Récents »
     // (vault_used.rs), le coffre rassure 17/11
-    let marked = if typed_password {
+    if typed_password {
         crate::vault_used::note(&state.vault.folder, &item.id, &agent.name);
-        crate::vault_line::mark(&item.id, &host, crate::vault_line::How::Login)
-    } else {
-        String::new()
-    };
+        crate::vault_line::note(state, &agent.name, LOGIN, &item.id, &host, crate::vault_line::How::Login);
+    }
     Ok(text(&format!(
         "{done} You never see the password: don't read the fields back. Now submit the form yourself (its button). If \
-         the site then asks for a verification code, use browser_vault action=enter_code.{marked}"
+         the site then asks for a verification code, use browser_vault action=enter_code."
     )))
 }
 
