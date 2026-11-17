@@ -469,6 +469,58 @@ new words fading in from 30 % to full in 250 ms (`StreamReveal`; none with Reduc
 removed), and show their working line under a reply whose words stopped for 2.5 s (`ReplyPause`: Hermes sends
 nothing while the model writes a call's arguments or its own notes).
 
+### 6.5b What the agent does now (`turn.status`, 16/11)
+
+Alex, 16/11: « on attend 5-6 min et on sait pas trop ce que l'agent essaye de faire ». An app that asks for it
+(`GET /v1/runs/{id}/events?agent=…&status=1`) gets, in the run's stream, one `turn.status` each time what the agent does
+changes, and one more when that wait grows abnormal (turn_status.rs):
+
+```json
+{"event": "turn.status", "run_id": "r_…", "v": 1, "state": "tool", "slow": true, "stuck": false,
+ "since": 1794818000.0, "started": 1794817860.0, "now": 1794818025.0,
+ "kind": "browser", "action": "fill", "site": "sncf-connect.com", "service": null, "limit_s": 120,
+ "step": {"index": 3, "total": 4, "text": "Choisir la place"},
+ "text": "Sur sncf-connect.com : la page met du temps"}
+```
+
+`state`: `thinking`, `model` (the model has the hand), `tool`, `waiting_agent` (`message_agent`), `waiting_person` (an
+approval, a question, a call held by a card of the bridge's: turn_status.rs `HOLDING`), `unreachable` (the bridge lost Hermes and keeps trying). `since`: when this state began, `now`:
+the bridge's clock (the apps count from these two, never from their own clock). `slow`: past `[status]`'s threshold for
+the state (model 20 s, a page 15 s, another tool 20 s, another agent 15 s; × 3 for a model on the person's machine);
+`stuck`: the model past 90 s. Never a call's arguments: the tool's kind, a browsing call's bare domain, its action
+(`open`, `click`, `fill`, `read`, `look`, `scroll`, `browse`) from the tool's name, the step in progress of the turn's
+list (« Étapes »), numbers. `text`: the bridge's words in the agent's language, for a state an app doesn't know.
+
+The statuses go in the run's backlog (an app coming back gets the latest) and end with the run (a restart or a rescue
+turn has its own). Without `status=1` nothing changes: an iPhone app from before them takes an unknown event for « not
+words » and drops its working line during a pause in the reply. `[status] enabled = false` until both apps read them.
+
+**A loop** (`state: looping`): at the brake's two thirds (loop_brake.rs, the same moment the agent is told), with
+`loop: {over, kind?, site?, count, stop_at}` (`over`: `same_call`, `same_tool`, `too_many`, `page_reads`, `browser`,
+`discovery`) and `actions: ["continue", "stop", "help"]` (empty in every other state); text « Je tourne en rond sur
+sncf-connect.com (27 étapes) ». The person's answer:
+
+```text
+POST /v1/runs/{run_id}/brake?agent=<id>  {"action": "continue" | "stop"}
+  → 200 {"ok": true, "continued": true}   this turn's limits half as high again, once; the agent told to change approach
+  → 200 {"ok": true, "stopped": true}     the brake's stop at once: its plain line, its rescue turn
+  → 400 unknown_action · 404 run_gone (over or unknown) · 409 not_looping | already_continued
+```
+
+« help » is the app's: its composer opens on « Aide Léon : … », sent into the turn as any message during a turn.
+
+**Times.** `steps.updated` (§6.3b) gives each step its `secs` (done: from when it was first seen going on to when it
+was seen done; going on: so far) and the list the turn's `time`: `{secs, model, tools, person, agent, actions, top}`,
+`top` the one or two waits that took a fifth of it or more (`{what: model | person | agent | site | kind, site?, kind?,
+secs}`). A turn of 60 s or more ends on a status `state: done` with `took` (the same shape), sent before the run's
+end; kept in bridge.db (`turn_times`, numbers only), it comes back on the turn's last reply in timeline pages
+(`message.took`), for « 4 min 10 · surtout sncf-connect.com (2 min 30) ».
+
+**Family.** A member's app that asks (`status=1` on her bridge's relay, passed to the owner's) reads a reduced status:
+`state`, `slow`, `stuck`, `since`, `started`, `now`, `kind`, `limit_s`, `took` (its sites' time as browsing:
+`{what: kind, kind: browser}`, on her page too), and `text` from the status's `plain` words (no site, no connector, no
+step): never the agent's step, a site or the buttons. Friends and feeds: none (no `took` on a reader's page).
+
 ### 6.6 Rooms and shared agents
 
 - **Rooms** (branch rooms-items, reduced in rooms-reduction) are threads `room:<id>` on the same routes, no agent

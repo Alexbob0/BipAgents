@@ -182,8 +182,14 @@ fn step_of(tool: &str) -> Option<&'static str> {
 /// The step that names its site (« Ouvrir le site kiabi.fr »): the browser's and a web page read.
 const SITE_STEP: &str = "browser";
 
+/// One call as a step in words (its site, its connector), as the automatic list says it: the turn's status line
+/// (turn_status.rs). None: no step of the work (the agent's bookkeeping: its list, its memory, the tool search…).
+pub fn call_words(tool: &str, site: Option<&str>, service: Option<&str>, lang: &str) -> Option<String> {
+    step_of(tool).map(|step| label(step, 1, site, service, lang))
+}
+
 /// fr, en, de, es (others English).
-fn lang_index(lang: &str) -> usize {
+pub(crate) fn lang_index(lang: &str) -> usize {
     match lang {
         "fr" => 0,
         "de" => 2,

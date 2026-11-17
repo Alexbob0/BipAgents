@@ -718,10 +718,44 @@ impl Threads {
         });
         self.with_sends(agent, thread, &mut items, &queued).await?;
         self.with_files(agent, thread, &mut items).await?;
+        self.with_took(agent, &mut items).await?;
         with_maps_once(self.config.get(), agent, &mut items).await;
         without_missing_pages(self.config.get(), &mut items).await;
         with_document_sizes(agent, &mut items).await;
         Ok(items)
+    }
+
+    /// Where a long turn's time went (turn_status.rs `took`, kept by the run hub): on its last reply, for the apps'
+    /// line under it (« 4 min 10 · surtout sncf-connect.com »). Only the segments of this page.
+    async fn with_took(&self, agent: &AgentConfig, items: &mut [Item]) -> anyhow::Result<()> {
+        let segments: HashSet<&str> = items.iter().map(|i| i.segment.as_str()).filter(|s| !s.is_empty()).collect();
+        if segments.is_empty() {
+            return Ok(());
+        }
+        let marks = vec!["?"; segments.len()].join(",");
+        let sql = format!("SELECT session_id, started, ended, took FROM turn_times WHERE agent = ? AND session_id IN ({marks})");
+        let mut params = vec![text(&agent.name)];
+        params.extend(segments.iter().map(|s| text(s)));
+        let rows = self.store.run(&sql, params).await?;
+        let turns: Vec<(String, f64, f64, Value)> = rows
+            .iter()
+            .filter_map(|r| {
+                let took = r["took"].as_str().and_then(|t| serde_json::from_str(t).ok())?;
+                Some((r["session_id"].as_str()?.to_string(), r["started"].as_f64()?, r["ended"].as_f64()?, took))
+            })
+            .collect();
+        let found: Vec<(&str, f64, bool)> = items
+            .iter()
+            .map(|i| {
+                let agent_says = i.body.get("kind").and_then(Value::as_str) == Some("message")
+                    && i.body.get("role").and_then(Value::as_str) == Some("agent");
+                (i.segment.as_str(), i.at, agent_says)
+            })
+            .collect();
+        for (i, took) in crate::turn_status::place_took(&found, &turns) {
+            items[i].body.insert("took".into(), took);
+        }
+        Ok(())
     }
 
     /// The files kept for the agent's messages (`attach`): added to those its `MEDIA:` lines give, stale ones left

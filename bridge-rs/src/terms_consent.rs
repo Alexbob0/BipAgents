@@ -36,6 +36,8 @@ use crate::tools_knowledge::tool_text;
 use crate::{py, Dict};
 
 pub const TOOL: &str = "accept_terms";
+/// The tools whose call waits for the person's answer on this card (turn_status.rs `HOLDING`: the person's wait).
+pub const HOLDS_THE_CALL: &[&str] = &[TOOL];
 /// The run id of a card (the apps show it as any card of the bridge's).
 pub const RUN_PREFIX: &str = "bip-terms-";
 /// How long the person has to answer while the agent's turn waits, by default (`[browser] consent_seconds`, at most 540:

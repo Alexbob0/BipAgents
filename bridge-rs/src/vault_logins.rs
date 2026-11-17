@@ -72,6 +72,8 @@ pub const RUN_PREFIX: &str = "bip-login-";
 const ASK_TIMEOUT: Duration = Duration::from_secs(330);
 /// After a « yes », the agent may try again for the same site and identifier without a new card for so long.
 pub const RETRY_WINDOW: Duration = Duration::from_secs(15 * 60);
+/// The tools whose call waits for the person's answer on this card (turn_status.rs `HOLDING`: the person's wait).
+pub const HOLDS_THE_CALL: &[&str] = &[CREATE, CONFIRM];
 
 /// A password's default length, and the bounds of any.
 pub const DEFAULT_LENGTH: usize = 20;

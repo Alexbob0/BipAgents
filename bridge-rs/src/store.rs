@@ -84,6 +84,15 @@ CREATE TABLE IF NOT EXISTS thread_sends (
     created_at TEXT NOT NULL,
     PRIMARY KEY (agent, client_id)
 );
+CREATE TABLE IF NOT EXISTS turn_times (
+    agent TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    started REAL NOT NULL,
+    ended REAL NOT NULL,
+    took TEXT NOT NULL,
+    PRIMARY KEY (agent, run_id)
+);
 CREATE TABLE IF NOT EXISTS thread_files (
     agent TEXT NOT NULL,
     message_id TEXT NOT NULL,
@@ -385,6 +394,17 @@ impl Store {
         let table = if table == "outbox" { "outbox" } else { "watched_runs" };
         let sql = format!("SELECT created_at FROM {table} WHERE agent=? AND created_at > ?");
         self.run(&sql, vec![text(agent), text(since)]).await
+    }
+
+    /// Where a long turn's time went (turn_status.rs `took`), for its last reply (threads `with_took`): numbers only.
+    pub async fn save_turn_time(&self, agent: &str, run_id: &str, session_id: &str, started: f64, ended: f64, took: &Value)
+        -> anyhow::Result<()> {
+        self.run(
+            "INSERT OR REPLACE INTO turn_times (agent, run_id, session_id, started, ended, took) VALUES (?,?,?,?,?,?)",
+            vec![text(agent), text(run_id), text(session_id), Param::Real(started), Param::Real(ended), text(&took.to_string())],
+        )
+        .await?;
+        Ok(())
     }
 
     pub async fn forget_run(&self, agent: &str, run_id: &str) -> anyhow::Result<()> {

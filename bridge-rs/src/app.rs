@@ -1092,7 +1092,9 @@ async fn run_events(State(state): State<AppState>, Path(run_id): Path<String>, q
     // a shared agent's turn: its words from the owner's bridge (`thread`: her conversation, agent_shares.rs)
     if let (true, Some(cid)) = (agent.contains(crate::households::SEPARATOR), q.get("thread")) {
         let run_id = check_run_id(&run_id)?;
-        return crate::agent_shares::relay_stream(&state, &agent, cid, &format!("runs/{run_id}/events")).await;
+        // what the agent does now, reduced on the owner's side, for an app that asks for it (turn_status.rs)
+        let asked = if q.get("status").is_some_and(|v| v == "1") { "?status=1" } else { "" };
+        return crate::agent_shares::relay_stream(&state, &agent, cid, &format!("runs/{run_id}/events{asked}")).await;
     }
     let session_id = web::query_str(&q, "session_id", false, Some(200))?;
     let agent_cfg = agent_or_404(&state.config(), Some(&agent))?;
@@ -1112,25 +1114,60 @@ async fn run_events(State(state): State<AppState>, Path(run_id): Path<String>, q
         crate::family_thread::author_of(&config, &agent_cfg.name, &run_id, &state.households.name())
             .by_of(crate::family_thread::CREATOR)
     });
-    Ok(listener_events_with(listener, by))
+    // what the agent does now (turn_status.rs): only for an app that reads it
+    let status = q.get("status").is_some_and(|v| v == "1");
+    Ok(listener_events_with(listener, by, status))
+}
+
+#[derive(Deserialize)]
+struct BrakeRequest {
+    action: String,
+}
+
+impl Validate for BrakeRequest {}
+
+/// « Je tourne en rond » answered (turn_status.rs `looping`, runs.rs `brake_action`): `continue` (this turn's limits
+/// raised once) or `stop` (the brake's stop at once, with its rescue turn).
+async fn run_brake(
+    State(state): State<AppState>,
+    Path(run_id): Path<String>,
+    q: QueryMap,
+    Json(body): Json<BrakeRequest>,
+) -> ApiResult<Response> {
+    let agent = web::query_required(&q, "agent")?;
+    let agent_cfg = agent_or_404(&state.config(), Some(&agent))?;
+    let run_id = check_run_id(&run_id)?;
+    match state.hub.brake_action(&agent_cfg.name, &run_id, &body.action) {
+        Ok(answer) => Ok(web::ok(answer)),
+        Err((status, code)) => Err(HttpError::new(status, code)),
+    }
 }
 
 /// A listener of the run hub as the SSE the app reads (`event: <type>`, `data: <json>`, a keepalive comment every
 /// 10 s): the bridge's `GET /v1/runs/{id}/events`, and the door's relay of Hermes' own (lan.rs).
 pub fn listener_events(listener: crate::runs::Listener) -> Response {
-    listener_events_with(listener, None)
+    listener_events_with(listener, None, false)
 }
 
-/// `listener_events`, with `by` on its cards (`approval.request`, `clarify.request`): whose turn it is.
-pub fn listener_events_with(mut listener: crate::runs::Listener, by: Option<Value>) -> Response {
+/// `listener_events`, with `by` on its cards (`approval.request`, `clarify.request`): whose turn it is; `status`: with
+/// the run's `turn.status` events (turn_status.rs), which an app asks for (`status=1`): an iPhone app from before them
+/// takes an unknown event for « not words » and drops its working line during a pause in the reply.
+pub fn listener_events_with(mut listener: crate::runs::Listener, by: Option<Value>, status: bool) -> Response {
     let events = async_stream::stream! {
+        // the keepalive 25 s after the last bytes written, whatever the stream left out meanwhile (a status for an app
+        // that doesn't read them: review B2, 17/11; R3 of 16/11)
+        let every = Duration::from_secs_f64(SSE_KEEPALIVE_SECONDS);
+        let mut due = tokio::time::Instant::now() + every;
         loop {
-            match tokio::time::timeout(Duration::from_secs_f64(SSE_KEEPALIVE_SECONDS), listener.queue.recv()).await {
+            match tokio::time::timeout_at(due, listener.queue.recv()).await {
                 Err(_) => {
+                    due = tokio::time::Instant::now() + every;
                     yield Ok::<_, std::io::Error>(bytes::Bytes::from_static(b": keepalive\n\n"));
                 }
                 Ok(None) | Ok(Some(None)) => break,
+                Ok(Some(Some(event))) if !crate::turn_status::crosses(&event.r#type, status) => {}
                 Ok(Some(Some(event))) => {
+                    due = tokio::time::Instant::now() + every;
                     let card = ["approval.request", "clarify.request"].contains(&event.r#type.as_str());
                     let data = match (&by, card) {
                         (Some(by), true) => {
@@ -1601,6 +1638,7 @@ pub fn build_router() -> Router<AppState> {
         .route("/pairing", get(pairing))
         .route("/watch", post(watch_run))
         .route("/runs/{run_id}/events", get(run_events))
+        .route("/runs/{run_id}/brake", post(run_brake))
         .route("/approve", post(approve))
         .route("/approvals", get(approvals))
 }

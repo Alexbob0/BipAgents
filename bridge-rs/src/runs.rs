@@ -545,6 +545,12 @@ pub struct SubscriptionState {
     /// This run is the restart of that run (`restart`), whose stream shows it: a conversation turn like it (its cards
     /// seen through it, the long-work and brake nets, a task's conversation), never continued itself.
     pub restart_of: Option<String>,
+    /// What the agent does now, for the apps that ask (turn_status.rs, `[status]`): made at the run's first event.
+    pub status: Option<crate::turn_status::Tracker>,
+    /// The person said « Continuer » at the brake's two thirds: this turn's limits raised once (`brake_action`).
+    pub brake_raised: bool,
+    /// The stop the brake's last warning announced (« Arrêter » takes it at once).
+    pub loop_over: Option<crate::loop_brake::Over>,
     listeners: Vec<Slot>,
     cancel: Option<CancellationToken>,
     task: Option<JoinHandle<()>>,
@@ -610,6 +616,9 @@ impl Default for SubscriptionState {
             restart: None,
             restarted_as: None,
             restart_of: None,
+            status: None,
+            brake_raised: false,
+            loop_over: None,
             listeners: Vec::new(),
             cancel: None,
             task: None,
@@ -1377,6 +1386,21 @@ impl RunHub {
 
     async fn upstream(self: Arc<Self>, sub: Arc<RunSubscription>, cancel: CancellationToken) {
         let limit = Duration::from_secs(self.watch_max_seconds);
+        // what the agent does now: a wait grown abnormal is said without an event of the run's (turn_status.rs). Only
+        // with `[status] enabled`: off, nothing runs (review B4, 17/11)
+        let on = self.config.as_ref().is_some_and(|c| c.get().status.enabled);
+        let ticker = on.then(|| {
+            let (hub, sub) = (self.clone(), sub.clone());
+            tokio::spawn(async move {
+                let every = Duration::from_secs_f64(crate::turn_status::TICK_SECONDS);
+                loop {
+                    tokio::time::sleep(every).await;
+                    if !hub.status_tick(&sub) {
+                        break;
+                    }
+                }
+            })
+        });
         let outcome = tokio::select! {
             _ = cancel.cancelled() => Outcome::Cancelled,
             result = tokio::time::timeout(limit, self.upstream_loop(&sub)) => match result {
@@ -1394,6 +1418,9 @@ impl RunHub {
                 tracing::error!(exc = %format!("{exc:#}"), agent = %sub.agent.name, run_id = %sub.run_id, "run subscription crashed");
             }
             Outcome::Done | Outcome::Cancelled => {}
+        }
+        if let Some(ticker) = ticker {
+            ticker.abort();
         }
         {
             let mut st = lock(&sub.state);
@@ -1432,6 +1459,9 @@ impl RunHub {
                                 failures = 0;
                                 let terminal = is_terminal(&event.r#type);
                                 let event = if terminal {
+                                    // its statuses end here (a long turn's with its summary), whatever turn takes
+                                    // over (a restart, a rescue…)
+                                    self.status_finish(sub, &event);
                                     self.flush_media(sub);
                                     self.rescue(sub, &event).await;
                                     // a turn stopped for the person's new words: the end of the one restarted
@@ -1528,6 +1558,85 @@ impl RunHub {
         SSEEvent::new(event.r#type, data, raw)
     }
 
+    /// What the agent does now after this event (turn_status.rs), as a `turn.status` of the run's stream: only with
+    /// `[status] enabled`, and only for the apps that ask (`status=1`, app.rs `listener_events_with`).
+    fn status_of(&self, sub: &RunSubscription, st: &mut SubscriptionState, event: &SSEEvent) -> Option<SSEEvent> {
+        if event.r#type == crate::turn_status::EVENT {
+            return None;
+        }
+        let config = self.config.as_ref()?.get();
+        if !config.status.enabled {
+            return None;
+        }
+        let now = crate::py::time_time();
+        if st.status.is_none() {
+            let lang = crate::handback::language_of(&config, &sub.agent);
+            let local = crate::turn_status::local_model(&config, &sub.agent);
+            st.status = Some(crate::turn_status::Tracker::new(now, &lang, local));
+        }
+        let status = st.status.as_mut()?.on_event(&event.r#type, &event.data, now, &config.status)?;
+        self.keep_took(sub, st, &status, now);
+        Some(self.status_event(sub, status))
+    }
+
+    /// A long turn's summary kept for its last reply (threads `with_took`): numbers only.
+    fn keep_took(&self, sub: &RunSubscription, st: &SubscriptionState, status: &Map<String, Value>, now: f64) {
+        let (Some(took), Some(store), Some(session)) = (status.get("took").cloned(), self.store.clone(), st.session_id.clone())
+        else {
+            return;
+        };
+        let (agent, run_id) = (sub.agent.name.clone(), sub.run_id.clone());
+        let started = status.get("started").and_then(Value::as_f64).unwrap_or(now);
+        self.spawn(async move {
+            if let Err(err) = store.save_turn_time(&agent, &run_id, &session, started, now, &took).await {
+                tracing::info!(agent = %agent, run_id = %run_id, error = %format!("{err:#}"), "turn time not kept");
+            }
+        });
+    }
+
+    /// The run's own end from Hermes (before a restart's or a rescue's take over): its last status, a long turn's
+    /// summary (`done`, `took`), then nothing more for it.
+    fn status_finish(&self, sub: &RunSubscription, terminal: &SSEEvent) {
+        let Some(config) = self.config.as_ref().map(|c| c.get()) else { return };
+        let mut st = lock(&sub.state);
+        let now = crate::py::time_time();
+        let status = st.status.as_mut().and_then(|t| {
+            let status = t.on_event(&terminal.r#type, &terminal.data, now, &config.status);
+            t.end();
+            status
+        });
+        if let Some(status) = status {
+            self.keep_took(sub, &st, &status, now);
+            let event = self.status_event(sub, status);
+            append_to_backlog(&mut st.backlog, &event);
+            st.send_all(Some(&event));
+        }
+    }
+
+    fn status_event(&self, sub: &RunSubscription, mut status: Map<String, Value>) -> SSEEvent {
+        status.insert("run_id".into(), json!(sub.run_id));
+        let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(status.clone()));
+        SSEEvent::new(crate::turn_status::EVENT, status, raw)
+    }
+
+    /// The hub's clock for one run (`upstream`'s ticker): a wait grown abnormal said now. false once the run is over.
+    pub fn status_tick(&self, sub: &RunSubscription) -> bool {
+        let Some(config) = self.config.as_ref().map(|c| c.get()) else { return false };
+        if !config.status.enabled {
+            return false; // switched off meanwhile: the clock stops
+        }
+        let mut st = lock(&sub.state);
+        if st.finished {
+            return false;
+        }
+        let now = crate::py::time_time();
+        let Some(status) = st.status.as_mut().and_then(|t| t.tick(now, &config.status)) else { return true };
+        let event = self.status_event(sub, status);
+        append_to_backlog(&mut st.backlog, &event);
+        st.send_all(Some(&event));
+        true
+    }
+
     /// A call started or ended in a run without a list of the agent's own: the automatic list (steps.rs), as a
     /// `steps.updated` when it changed (only from its 2nd step).
     fn auto_steps(&self, sub: &RunSubscription, st: &mut SubscriptionState, event: &SSEEvent) -> Option<SSEEvent> {
@@ -1600,10 +1709,29 @@ impl RunHub {
         let delta = is_delta(&event.r#type);
         let mut shown = st.media.event(event);
         shown.extend(auto);
+        // each step's time, the turn's (turn_status.rs), for the apps that read them
+        if let Some(tracker) = st.status.as_mut() {
+            let now = crate::py::time_time();
+            for e in shown.iter_mut().filter(|e| e.r#type == crate::steps::EVENT) {
+                let Some(steps) = e.data.get("steps").cloned() else { continue };
+                e.data.insert("steps".into(), tracker.steps_with_times(&steps, now));
+                e.raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(e.data.clone()));
+            }
+        }
+        let statuses: Vec<SSEEvent> = shown.iter().filter_map(|e| self.status_of(sub, &mut st, e)).collect();
+        // a long turn's summary before its end (an app stops reading there), any other status after its event
+        if shown.iter().any(|e| is_terminal(&e.r#type)) {
+            for event in &statuses {
+                append_to_backlog(&mut st.backlog, event);
+                st.send_all(Some(event));
+            }
+        } else {
+            shown.extend(statuses);
+        }
         for event in &shown {
             append_to_backlog(&mut st.backlog, event);
             st.send_all(Some(event));
-            if let Some(push) = &self.push {
+            if let (Some(push), false) = (&self.push, event.r#type == crate::turn_status::EVENT) {
                 // the Live Activities following this run (its own, its task's, its discussion's): live_activities.rs
                 let followed = st.followers() > 0;
                 push.live_event(&sub.agent.name, &sub.run_id, st.room_id.as_deref(), &event.r#type, &event.data, followed);
@@ -1823,6 +1951,9 @@ impl RunHub {
             // under Hermes' cap of 150, so a page it can't read ends on the plain line, not a silent failure)
             limits.tool_calls += limits.browser_calls;
         }
+        if st.brake_raised {
+            limits = limits.raised();
+        }
         let signature = crate::loop_brake::event_signature(&event.data);
         let noted = st.turn.note(&tool, signature.as_deref(), browser, &limits);
         // a limit getting close (about two thirds): the agent is told once, in a steer (after its current tool calls,
@@ -1837,6 +1968,16 @@ impl RunHub {
                     tracing::info!(agent = %agent.name, run_id = %run_id, error = %err, "brake_warned: steer refused");
                 }
             });
+            // and the person (turn_status.rs, « Je tourne en rond »): go on, stop, or help
+            st.loop_over = Some(crate::loop_brake::over_of(&warning));
+            let status_settings = config.as_ref().map(|c| c.status.clone()).unwrap_or_default();
+            let found = crate::turn_status::Loop::of(&warning);
+            let now = crate::py::time_time();
+            if let Some(status) = st.status.as_mut().and_then(|t| t.looping(found, now, &status_settings)) {
+                let event = self.status_event(sub, status);
+                append_to_backlog(&mut st.backlog, &event);
+                st.send_all(Some(&event));
+            }
         }
         let Some(over) = noted else { return };
         self.stop_looping(sub, st, over, rescuing, &settings);
@@ -1860,6 +2001,54 @@ impl RunHub {
             let over = crate::loop_brake::Over::SameCall(crate::loop_brake::bare(tool).to_string());
             self.stop_looping(&sub, &mut st, over, rescuing, &settings);
         }
+    }
+
+    /// The person's answer to « Je tourne en rond » (turn_status.rs `looping`, `POST /v1/runs/{id}/brake`): `continue`
+    /// raises this turn's limits once (the agent told, out of sight), `stop` takes the brake's stop at once (its plain
+    /// line, its rescue turn: what it found, what blocked it). Errors: (status, code).
+    pub fn brake_action(&self, agent: &str, run_id: &str, action: &str) -> Result<Value, (u16, &'static str)> {
+        if !matches!(action, "continue" | "stop") {
+            return Err((400, "unknown_action"));
+        }
+        let sub = lock(&self.inner).subs.get(&(agent.to_string(), run_id.to_string())).cloned().ok_or((404, "run_gone"))?;
+        let config = self.config.as_ref().map(|c| c.get());
+        let brake = config.as_ref().map(|c| c.brake.clone()).unwrap_or_default();
+        let status_settings = config.as_ref().map(|c| c.status.clone()).unwrap_or_default();
+        let mut st = lock(&sub.state);
+        if st.finished || st.terminal.is_some() {
+            return Err((404, "run_gone"));
+        }
+        if st.braked {
+            return Err((409, "not_looping"));
+        }
+        if action == "continue" && st.brake_raised {
+            return Err((409, "already_continued"));
+        }
+        let looping = st.status.as_ref().is_some_and(|t| t.is_looping());
+        let Some(over) = st.loop_over.clone().filter(|_| looping) else { return Err((409, "not_looping")) };
+        if action == "stop" {
+            let rescuing = st.rescue_of.is_some();
+            tracing::info!(agent = %agent, run_id = %run_id, "brake: the person said stop");
+            self.stop_looping(&sub, &mut st, over, rescuing, &brake);
+            return Ok(json!({"ok": true, "stopped": true}));
+        }
+        st.brake_raised = true;
+        tracing::info!(agent = %agent, run_id = %run_id, "brake: the person said go on, limits raised once");
+        let now = crate::py::time_time();
+        if let Some(status) = st.status.as_mut().and_then(|t| t.continued(now, &status_settings)) {
+            let event = self.status_event(&sub, status);
+            append_to_backlog(&mut st.backlog, &event);
+            st.send_all(Some(&event));
+        }
+        let (hermes, agent_cfg, run) = (self.hermes.clone(), sub.agent.clone(), sub.run_id.clone());
+        self.spawn(async move {
+            let text = format!("{} A note from the app, not from your person: your person says to go on; you may take \
+more steps in this turn. Don't repeat what failed: change approach.", crate::loop_brake::WARN_MARK);
+            if let Err(err) = hermes.steer_run(&agent_cfg, &run, &text).await {
+                tracing::info!(agent = %agent_cfg.name, run_id = %run, error = %err, "brake: go-on steer refused");
+            }
+        });
+        Ok(json!({"ok": true, "continued": true}))
     }
 
     /// A run going round in circles stopped: the plain line in its stream, the rescue turn planned when it is a
@@ -3656,6 +3845,150 @@ mod tests {
         hub.dispatch(&lone, event("tool.started", json!({"tool": "browser_navigate"})));
         hub.dispatch(&lone, event("run.completed", json!({})));
         assert!(!root.join("lea").exists());
+    }
+
+    /// What the agent does now (turn_status.rs): a `turn.status` after the event that
+    /// changed it, in the run's backlog (an app that comes back gets it), only with `[status] enabled`.
+    #[tokio::test]
+    async fn what_the_agent_does_reaches_the_runs_stream_only_when_on() {
+        let event = |kind: &str, data: Value| SSEEvent::new(kind, data.as_object().cloned().unwrap(), "{}");
+        let statuses = |sub: &RunSubscription| {
+            lock(&sub.state).backlog.iter().filter(|e| e.r#type == crate::turn_status::EVENT).map(|e| e.data.clone())
+                .collect::<Vec<_>>()
+        };
+        for enabled in [false, true] {
+            let data = json!({"bridge_key": "k".repeat(40), "status": {"enabled": enabled, "page_slow": 1}});
+            let config = SharedConfig::new(crate::config::parse_config(&data, None).unwrap());
+            let hub = RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None).with_config(config);
+            let sub = Arc::new(RunSubscription::new(AgentConfig { name: "vie".into(), ..Default::default() }, "run_s"));
+            lock(&hub.inner).subs.insert(sub.key(), sub.clone());
+            hub.dispatch(&sub, event("tool.started", json!({"tool": "mcp_stealth_navigate", "tool_call_id": "a",
+                                                            "preview": "https://www.sncf-connect.com/home?x=1"})));
+            hub.dispatch(&sub, event("message.delta", json!({"delta": "…"})));
+            if !enabled {
+                assert!(statuses(&sub).is_empty(), "off by default");
+                assert!(!hub.status_tick(&sub), "off: no clock (review B4)");
+                continue;
+            }
+            let first = statuses(&sub);
+            assert_eq!(first.len(), 1, "{first:?}");
+            assert_eq!((first[0]["state"].as_str(), first[0]["site"].as_str()), (Some("tool"), Some("sncf-connect.com")));
+            assert_eq!(first[0]["run_id"], "run_s");
+            let kinds: Vec<String> = lock(&sub.state).backlog.iter().map(|e| e.r#type.clone()).collect();
+            assert_eq!(&kinds[..2], ["tool.started", crate::turn_status::EVENT], "after the event that changed it");
+            // a wait grown abnormal is said by the hub's clock, once
+            tokio::time::sleep(Duration::from_millis(1100)).await;
+            assert!(hub.status_tick(&sub));
+            assert!(hub.status_tick(&sub));
+            let all = statuses(&sub);
+            assert_eq!(all.len(), 2, "{all:?}");
+            assert_eq!(all[1]["slow"], true);
+            // the run's end ends them
+            hub.dispatch(&sub, event("run.completed", json!({"output": "Voilà."})));
+            tokio::time::sleep(Duration::from_millis(1100)).await;
+            hub.status_tick(&sub);
+            assert_eq!(statuses(&sub).len(), 2);
+        }
+    }
+
+    /// Review (17/11, blocking): `[status]` off (the default), nothing new runs. Today each followed run gets a clock
+    /// waking every 2 s for its whole life (`upstream`'s ticker), taking the run's lock to say nothing. Off: no clock
+    /// (not spawned, and `status_tick` says it is over at once).
+    #[tokio::test]
+    async fn review_statuses_off_no_clock_ticks_for_a_run() {
+        let data = json!({"bridge_key": "k".repeat(40)});
+        let config = SharedConfig::new(crate::config::parse_config(&data, None).unwrap());
+        let hub = RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None).with_config(config);
+        let sub = Arc::new(RunSubscription::new(AgentConfig { name: "vie".into(), ..Default::default() }, "run_off"));
+        lock(&hub.inner).subs.insert(sub.key(), sub.clone());
+        assert!(!hub.status_tick(&sub), "off by default: no clock every 2 s for each run");
+    }
+
+    /// Review (17/11, blocking): R3 (review-battery-settings, 16/11) again. `listener_events_with` used to write every
+    /// event, so its keepalive per `recv` was « 25 s after the last bytes ». It now leaves `turn.status` out for an app
+    /// that doesn't ask (an app from before, the door's relay): each status left out starts the 25 s again, writing
+    /// nothing. A status 20 s after the last bytes (the model slow at 20 s) puts the next bytes at 45 s: Android reads
+    /// with 45 s, the iPhone 60 s.
+    #[tokio::test]
+    async fn review_an_app_that_reads_no_status_keeps_alive_while_statuses_are_left_out() {
+        use http_body_util::BodyExt;
+        let hub = Arc::new(RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None));
+        let agent = AgentConfig { name: "vie".into(), ..Default::default() };
+        let sub = Arc::new(RunSubscription::new(agent.clone(), "run_k"));
+        lock(&hub.inner).subs.insert(sub.key(), sub.clone());
+        let listener = hub.subscribe(&agent, "run_k", "app", false);
+        let mut body = crate::app::listener_events_with(listener, None, false).into_body();
+        let feeder = {
+            let sub = sub.clone();
+            tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(Duration::from_secs(20)).await;
+                    let data = json!({"event": crate::turn_status::EVENT, "state": "model", "slow": true});
+                    let event = SSEEvent::new(crate::turn_status::EVENT, data.as_object().cloned().unwrap(), "{}");
+                    lock(&sub.state).send_all(Some(&event));
+                }
+            })
+        };
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(28);
+        let mut seen = String::new();
+        let alive = loop {
+            let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+            match tokio::time::timeout(left, body.frame()).await {
+                Ok(Some(Ok(frame))) => {
+                    if let Some(data) = frame.data_ref() {
+                        seen.push_str(&String::from_utf8_lossy(data));
+                    }
+                    if seen.contains(": keepalive") {
+                        break true;
+                    }
+                }
+                _ => break false,
+            }
+        };
+        feeder.abort();
+        assert!(!seen.contains("turn.status"), "a status for an app that didn't ask: {seen:?}");
+        assert!(alive, "no keepalive in 28 s (a status left out at 20 s): {seen:?}");
+    }
+
+    /// The brake's two thirds told to the person too (« Je tourne en rond », 16/11): « Continuer » raises this turn's
+    /// limits once, « Arrêter » takes the brake's own stop (its plain line, its rescue turn) at once.
+    #[tokio::test]
+    async fn the_brakes_two_thirds_are_told_to_the_person_who_may_go_on_once_or_stop() {
+        let data = json!({"bridge_key": "k".repeat(40), "status": {"enabled": true}});
+        let config = SharedConfig::new(crate::config::parse_config(&data, None).unwrap());
+        let hub = RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None).with_config(config);
+        let agent = AgentConfig { name: "daily".into(), ..Default::default() };
+        let run = |id: &str| {
+            let sub = Arc::new(RunSubscription::new(agent.clone(), id));
+            lock(&hub.inner).subs.insert(sub.key(), sub.clone());
+            sub
+        };
+        let add = |n: &str| {
+            let data = json!({"tool": "mcp__bipagents__calendar_add", "tool_call_id": n, "preview": "{\"title\": \"Dentiste\"}"});
+            SSEEvent::new("tool.started", data.as_object().cloned().unwrap(), "{}")
+        };
+        let looping = |sub: &RunSubscription| {
+            lock(&sub.state).backlog.iter().filter(|e| e.r#type == crate::turn_status::EVENT && e.data["state"] == "looping").count()
+        };
+        assert_eq!(hub.brake_action("daily", "nope", "continue"), Err((404, "run_gone")));
+        let (going, stopping) = (run("run_go"), run("run_stop"));
+        hub.dispatch(&going, add("a"));
+        assert_eq!(hub.brake_action("daily", "run_go", "continue"), Err((409, "not_looping")));
+        assert_eq!(hub.brake_action("daily", "run_go", "jump"), Err((400, "unknown_action")));
+        hub.dispatch(&going, add("b"));
+        assert_eq!(looping(&going), 1, "told at the second identical write (stopped at the third)");
+        let said = lock(&going.state).backlog.iter().rev().find(|e| e.r#type == crate::turn_status::EVENT).unwrap().data.clone();
+        assert_eq!(said["actions"], json!(["continue", "stop", "help"]));
+        assert!(hub.brake_action("daily", "run_go", "continue").is_ok());
+        assert_eq!(hub.brake_action("daily", "run_go", "continue"), Err((409, "already_continued")));
+        hub.dispatch(&going, add("c"));
+        assert!(!lock(&going.state).braked, "the third goes on: its limits raised once");
+        hub.dispatch(&stopping, add("a"));
+        hub.dispatch(&stopping, add("b"));
+        assert!(hub.brake_action("daily", "run_stop", "stop").is_ok());
+        assert!(lock(&stopping.state).braked);
+        assert!(lock(&stopping.state).backlog.iter().any(|e| e.r#type == NOTICE && e.data["code"] == "loop_stopped"));
+        assert_eq!(hub.brake_action("daily", "run_stop", "continue"), Err((409, "not_looping")), "stopped already");
     }
 
     #[tokio::test]

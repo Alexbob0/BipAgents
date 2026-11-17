@@ -146,6 +146,8 @@ pub mod style_skills;
 pub mod tool_asks;
 pub mod tool_diet;
 pub mod turn_thinking;
+/// What the agent does now, for the apps (`turn.status`, 16/11).
+pub mod turn_status;
 /// A message sent mid-turn before the agent acted: the turn started again with it.
 pub mod turn_restart;
 pub mod terms_consent;

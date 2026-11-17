@@ -61,6 +61,9 @@ pub const REGISTER: &str = "connector_register";
 pub const UPDATE: &str = "connector_update";
 pub const REMOVE: &str = "connector_remove";
 pub const LIST: &str = "connector_list";
+/// The tools whose call waits for the person's answer on this card (`wait_answer`; turn_status.rs `HOLDING`: the
+/// person's wait). Not the list nor a removal: they ask nothing.
+pub const HOLDS_THE_CALL: &[&str] = &[REGISTER, UPDATE];
 /// Seconds Hermes waits for these tools (the person may take a while to answer a card).
 pub const TOOL_TIMEOUT: u32 = 600;
 /// Seconds Hermes waits for a connector's call.

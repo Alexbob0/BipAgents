@@ -577,6 +577,14 @@ impl Jobs {
             activity["step"] = json!(crate::steps::current(steps));
             activity["steps"] = steps.clone();
         }
+        // what it does now and since when, as a conversation's working line says it (turn_status.rs, `[status]`): the
+        // task's card says « Je lis tes e-mails · depuis 12 min » (its `started`), a wait grown abnormal in amber
+        if let Some(status) = state.status.as_ref().map(|t| t.status(crate::py::time_time())) {
+            if activity.is_null() {
+                activity = json!({});
+            }
+            activity["status"] = Value::Object(status);
+        }
         activity
     }
 

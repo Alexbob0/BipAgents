@@ -45,7 +45,8 @@ use crate::tools_knowledge as tk;
 use crate::web::{self, ApiResult, HttpError, QueryMap};
 
 /// An item's fields the owner's app keeps to itself.
-const PRIVATE_FIELDS: [&str; 6] = ["reasoning", "client_id", "renamed", "tool", "steps", "steered"];
+/// `took`: where a long turn's time went names its sites (review B1, 17/11): nothing new for a reader.
+const PRIVATE_FIELDS: [&str; 7] = ["reasoning", "client_id", "renamed", "tool", "steps", "steered", "took"];
 /// An attachment's fields a relative gets (no `path`: she opens it by its `url`).
 const ATTACHMENT_FIELDS: [&str; 6] = ["id", "kind", "name", "mime", "size", "offset"];
 /// The owner's list kept this long on her bridge for « Nouveau » (`has_new`).
@@ -161,7 +162,7 @@ async fn served_run_events(
     if going.is_none_or(|(run, _)| run != run_id) {
         return Err(HttpError::new(404, "no such turn"));
     }
-    Ok(shares::turn_words(&state, &agent, &run_id, false, None))
+    Ok(shares::turn_words(&state, &agent, &run_id, false, None, false))
 }
 
 async fn served_attachment(
@@ -404,6 +405,17 @@ mod tests {
             row: 1,
             body: json!({"kind": kind, "role": "agent", "text": "x"}).as_object().cloned().unwrap(),
         }
+    }
+
+    /// Review (17/11, blocking): a long turn's reply carries where its time went (`took`, threads `with_took`), with
+    /// the site it went to. A reader (« Friends and feeds: none », §6.5b) must never read it.
+    #[test]
+    fn review_a_reader_never_reads_a_site_in_a_long_turns_summary() {
+        let item = json!({"id": "m_1", "kind": "message", "role": "agent", "text": "Voilà.",
+                          "took": {"secs": 75, "tools": 60, "model": 15, "actions": 3,
+                                   "top": [{"what": "site", "site": "pharmacie-exemple.fr", "secs": 60}]}});
+        let raw = for_relative(item).to_string();
+        assert!(!raw.contains("pharmacie"), "{raw}");
     }
 
     #[test]
