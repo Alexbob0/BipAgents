@@ -740,3 +740,53 @@ fn the_agents_words_say_it_reopens_and_not_to_ask_for_the_password() {
     assert!(sealed_keys::agent_text("fr").contains("se rouvre dans quelques minutes"));
     assert_eq!(sealed_keys::agent_text("it"), sealed_keys::agent_text("en"));
 }
+
+// -- review (17/11, review-vault-sealed-keys): red tests of the blocking points, no fix ----------------------------------
+
+/// A sealing cut off (a crash, a power cut, the disk full) while the originals were being set aside: the journal's
+/// folder holds a copy of vault.json.enc not finished (`std::fs::copy` stopped half way, or never synced before the
+/// power cut), journal.json not written yet, no keys.sealed.json. Nothing had been changed yet, so the next start (or
+/// the next `vault-keys enable`, or `enrol`'s own error path) must leave the vault as it is: never put that copy over it.
+#[tokio::test]
+async fn review_a_sealing_cut_off_while_setting_the_originals_aside_never_puts_half_a_copy_back() {
+    let _guard = SERIAL.lock().await;
+    let h = fixture();
+    let before = contents(&h);
+    let original = std::fs::read(&h.data_files()[0]).unwrap();
+    let journal = h.data().join(".keys-migration");
+    std::fs::create_dir_all(&journal).unwrap();
+    std::fs::write(journal.join("vault.enc"), &original[..original.len() / 3]).unwrap();
+    // what the bridge's next start does (sealed_keys::at_start), with this place's folders
+    sealed_keys::recover(&h.place).unwrap();
+    assert!(
+        std::fs::read(&h.data_files()[0]).unwrap() == original,
+        "vault.json.enc replaced by the unfinished copy: the vault can't be read any more, its clear key still there"
+    );
+    assert!(h.vault().try_items().is_ok());
+    assert_eq!(contents(&h), before);
+    assert_eq!(sealed_keys::state(h.data()), State::Off);
+}
+
+/// A place enrolled before it had a mailbox or a connection (their folders are made today by the stores, with their
+/// key file, at the first write): once sealed, the first mailbox and the first connection must still be kept.
+#[tokio::test]
+async fn review_once_enrolled_the_first_mailbox_and_the_first_connection_are_kept() {
+    let _guard = SERIAL.lock().await;
+    let h = fixture();
+    std::fs::remove_dir_all(h.data().join("mail")).unwrap();
+    std::fs::remove_dir_all(h.data().join("connections")).unwrap();
+    let service = Service::new();
+    sealed_keys::enrol(&h.place, Some(key_service()), &*service).await.unwrap();
+    assert_eq!(sealed_keys::state(h.data()), State::Open);
+    if let Err(e) = h.mail().write(&[mail_account()]) {
+        panic!("the first mailbox not kept once sealed: {e:#}");
+    }
+    if let Err(e) = h.connections().write(&stored_connections()) {
+        panic!("the first connection not kept once sealed: {e:#}");
+    }
+    assert_eq!(h.mail().read().unwrap().len(), 1);
+    assert_eq!(h.connections().read().unwrap().connections.len(), 1);
+    for key in h.key_files() {
+        assert!(!key.exists(), "{} made", key.display());
+    }
+}
