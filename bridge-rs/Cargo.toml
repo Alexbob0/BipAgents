@@ -64,6 +64,11 @@ qrcode = { version = "0.14", default-features = false }
 rand = "0.8"
 # read_shares.rs: P-256 boxes and AES-256-GCM (already built for rustls)
 ring = "0.17"
+# sealed_keys.rs: the vault's keys sealed by the place key (AES-256-GCM, its key schedule wiped when dropped) under
+# HKDF-SHA256 of both halves (this server's, the key service's)
+aes = { version = "0.8", features = ["zeroize"] }
+aes-gcm = { version = "0.10", features = ["zeroize"] }
+hkdf = "0.12"
 rcgen = { version = "0.13", default-features = false, features = ["crypto", "pem", "ring"] }
 regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "http2", "stream", "multipart", "gzip", "brotli", "deflate", "zstd"] }
