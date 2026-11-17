@@ -124,3 +124,64 @@ def test_r2_an_agent_never_makes_a_vault_line_out_of_its_own_words_in_a_refusal(
     lines = [i for i in items if i["kind"] == "vault_line"]
     assert lines == [], f"a vault line made from the agent's own words: {lines}"
     assert "bip:filled" not in json.dumps(items)
+
+
+# -- third pass (17/11, on 3fbd9cd6f) ----------------------------------------------------------------------------------
+#
+# R3. The vault line now comes from the bridge's record of its own fills (vault_line.rs `note`), each with the session
+# of « the turn the hub follows » (`hub.turn_of(agent, tool)`). But `turn_of` prefers the turn whose last tool is the
+# tool's bare name, and Hermes' names for the vault's tools (`mcp_bipagents_vault_vault_login`,
+# `mcp__bipagents_vault__vault_login`) never reduce to `vault_login` (loop_brake.rs `bare` strips only
+# `mcp_bipagents_` / `mcp__bipagents__`). So with two turns of the agent going at once (its main conversation and a
+# background task, or a relative's conversation with a shared agent), the fill goes to whichever turn used a tool
+# last: the line shows in the other conversation (another person's, for a shared agent: the site the vault typed on),
+# and not under the turn that logged in.
+
+def test_r3_a_fill_is_recorded_for_the_turn_that_called_the_vault_not_another_turn_going_on(bridges, fakes):
+    import threading
+    import time
+    from bbkit.common import sse
+    from bbkit.mcp import give_token
+    from test_cards_resume import follow
+    from test_vault_login import (ANSWER, FakeChrome, IDENTIFIER_A, PAGE_A, PASSWORD_A, TOKEN as VAULT_TOKEN, keep,
+                                  vault_login)
+    chrome = FakeChrome(PAGE_A)
+    try:
+        # test_vault_reassure.setup (Vie in its own space, its turns followed through the hub), its browser this
+        # fake Chrome (test_vault_login.login_bridge)
+        bridge, hub, _ = isolated(bridges, fakes, agents=("vie",))
+        bridge.config["agents"]["vie"].update({"isolated": True, "hermes_home": "/home/hermes/.hermes",
+                                               "python": f"{bridge.fakebin}/podman exec -i hermes-vie python"})
+        bridge.config["hermes"]["isolated"] = True
+        bridge.commands.rule("podman", ["exec", "-i", "hermes-vie"], stdout=ANSWER)
+        folder = bridge.data / "browsers" / "vie"
+        folder.mkdir(parents=True)
+        (folder / "ports.json").write_text(json.dumps({"cdp": chrome.port, "vnc": chrome.port + 1}))
+        bridge.start()
+        wait_registered(bridge, ["vie"])
+        give_token(bridge, "vie", VAULT_TOKEN)
+        item = keep(bridge, "Extranet agence A", PAGE_A, IDENTIFIER_A, PASSWORD_A)
+        gates = [threading.Event(), threading.Event()]
+        # the turn that logs in: its call of vault_login going on
+        follow(bridge, fakes, "run_login", "api_login", "vie",
+               [sse("tool.started", run_id="run_login", tool="mcp_bipagents_vault_vault_login", preview="{}"), gates[0],
+                sse("run.completed", run_id="run_login", output="Connecté.")])
+        # control: with that turn alone, the fill is its own
+        assert vault_login(bridge)["isError"] is False
+        [alone] = [json.loads(l) for l in (bridge.data / "vault-fills.jsonl").read_text().splitlines()]
+        assert (alone["session"], alone["run"]) == ("api_login", "run_login"), alone
+        # another turn of Vie at the same time (another conversation), which used a tool just after
+        time.sleep(1.1)
+        follow(bridge, fakes, "run_other", "api_other", "vie",
+               [sse("tool.started", run_id="run_other", tool="web_search", preview="météo"), gates[1],
+                sse("run.completed", run_id="run_other", output="Il fera beau.")])
+        result = vault_login(bridge)
+        assert result["isError"] is False, result
+        fill = [json.loads(l) for l in (bridge.data / "vault-fills.jsonl").read_text().splitlines()][-1]
+        assert fill["item"] == item["id"]
+        assert (fill["session"], fill["run"]) == ("api_login", "run_login"), \
+            f"the fill recorded for another conversation's turn: {fill}"
+    finally:
+        for gate in locals().get("gates", []):
+            gate.set()
+        chrome.stop()
