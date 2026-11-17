@@ -598,7 +598,8 @@ pub async fn try_open(place: &Place, source: &dyn ShareSource) -> bool {
         Err(e) => {
             let reason = match e.downcast_ref::<ShareError>() {
                 Some(ShareError::Unreachable(_)) => "unreachable",
-                Some(ShareError::Refused(why)) if why.contains("held") => "held",
+                // keys-rs: « held: … » (the guichet denied or can't be asked), « held after a rescue boot … »
+                Some(ShareError::Refused(why)) if why.contains(": held") => "held",
                 Some(ShareError::Refused(_)) => "refused",
                 None if e.is::<WrongKey>() => "wrong_key",
                 None => "unreadable",
