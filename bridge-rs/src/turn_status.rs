@@ -1084,6 +1084,71 @@ mod tests {
         }
     }
 
+    /// B3 of the review (17/11), so that no card can be missed again: every module of the bridge that makes a card of
+    /// its own (a `"bip-…"` prefix) and waits on it (a `Notify`, a `oneshot`, a `watch` channel, a `Condvar`) says
+    /// which of its tools hold the agent's call until the person answers (`HOLDS_THE_CALL`, empty when none), and
+    /// `HOLDING` reads every one of them. Each tool held reads as the person's wait, never a slow tool.
+    #[test]
+    fn every_card_that_holds_the_call_says_which_tools_and_each_is_the_persons_wait() {
+        fn scan(dir: &std::path::Path, root: &std::path::Path, found: &mut Vec<String>) {
+            for entry in std::fs::read_dir(dir).expect("src").flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    scan(&path, root, found);
+                    continue;
+                }
+                if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                    continue;
+                }
+                let text = std::fs::read_to_string(&path).unwrap_or_default();
+                let card = regex::Regex::new(r#":\s*&str\s*=\s*"bip-"#).unwrap().is_match(&text);
+                let waits = ["Notify", "oneshot", "watch::channel", "Condvar"].iter().any(|w| text.contains(w));
+                if card && waits {
+                    let module = path.strip_prefix(root).unwrap().with_extension("").to_string_lossy().replace('/', "::");
+                    found.push(module);
+                }
+            }
+        }
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut found = Vec::new();
+        scan(&root, &root, &mut found);
+        found.sort();
+        let mut known: Vec<String> = HOLDING.iter().map(|(m, _)| m.to_string()).collect();
+        known.sort();
+        assert!(found.len() >= 6, "the scan found too little: {found:?}");
+        assert_eq!(found, known, "a card that waits for the person, not in HOLDING (or one gone)");
+        for (module, tools) in HOLDING {
+            let text = std::fs::read_to_string(root.join(format!("{}.rs", module.replace("::", "/")))).unwrap();
+            assert!(text.contains("pub const HOLDS_THE_CALL"), "{module}: which tools hold the call?");
+            for tool in *tools {
+                let mut t = Tracker::new(0.0, "fr", false);
+                let asked = started(&mut t, &format!("mcp__bipagents_x__{tool}"), "c", "", 1.0).unwrap();
+                assert_eq!(s(&asked, "state"), "waiting_person", "{module}: {tool}");
+                assert_eq!(t.tick(200.0, &on()), None, "{module}: {tool}");
+            }
+        }
+        // the same name in other words is no card: a connector's list, its removal
+        for tool in ["mcp__bipagents_connectors__connector_list", "mcp__bipagents_connectors__connector_remove"] {
+            let mut t = Tracker::new(0.0, "fr", false);
+            assert_eq!(s(&started(&mut t, tool, "c", "", 1.0).unwrap(), "state"), "tool", "{tool}");
+        }
+    }
+
+    /// B1 of the review: what a family member reads of a long turn's summary names no site; two sites' times are one
+    /// browsing time.
+    #[test]
+    fn a_members_summary_puts_the_sites_together_as_browsing() {
+        let took = json!({"secs": 300, "top": [{"what": "site", "site": "a.example", "secs": 120},
+                                               {"what": "site", "site": "b.example", "secs": 90},
+                                               {"what": "person", "secs": 60}]});
+        let mut status = Map::new();
+        status.insert("took".into(), took.clone());
+        let out = reduced(&status);
+        assert_eq!(out["took"]["top"], json!([{"what": "kind", "kind": "browser", "secs": 210}, {"what": "person", "secs": 60}]));
+        assert_eq!(out["took"]["secs"], 300);
+        assert_eq!(for_others(&took)["top"], out["took"]["top"]);
+    }
+
     #[test]
     fn a_model_on_this_machine_or_the_network_is_local() {
         assert!(local_base("http://127.0.0.1:8080/v1") && local_base("http://192.168.1.4:8000/v1"));
