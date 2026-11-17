@@ -232,6 +232,10 @@ pub fn main(argv: Vec<String>) -> i32 {
     if argv.first().map(String::as_str) == Some("space") {
         return crate::space::cli(&argv[1..]);
     }
+    // `bipbridge vault-keys …`: the vault's keys sealed (sealed_keys.rs), its own command line.
+    if argv.first().map(String::as_str) == Some("vault-keys") {
+        return crate::sealed_keys::cli(&argv[1..]);
+    }
     // `bipbridge sandbox adopt …`: its own command line (sandbox_adopt.rs), `--config X` before it or among its own
     // options.
     let (mut config_first, mut rest) = (Vec::new(), &argv[..]);

@@ -1699,6 +1699,11 @@ pub fn render_soul(config: &Config, agent: &AgentConfig) -> anyhow::Result<bool>
     if editable(config, &agent.name).is_err() || !profile_folder(config, agent).is_dir() {
         return Ok(false);
     }
+    if crate::sealed_keys::closed(config) && open_agent(config, agent) && crate::card_pay::offered(config, agent) {
+        // its payments block names its cards, kept in the vault, sealed and not reopened yet: left as it is until
+        // then (sealed_keys::start renders it again once open)
+        return Ok(false);
+    }
     let record = soul_record(config, agent)?;
     let Some(personality) = record.personality.as_deref() else { return Ok(false) };
     // a personality without a language yet writes first in the place's (every agent talks plainly: owner 2026-10-22),

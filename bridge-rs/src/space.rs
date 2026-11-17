@@ -55,8 +55,8 @@ pub const KEEP_OUT: [&str; 5] = ["bridge", "voices", "lan", "space", "migrations
 const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::URL_SAFE_NO_PAD;
 const SHARE_LEN: usize = 32;
 /// Waits between tries to reach the key service while locked (then every five minutes).
-const BACKOFF: [u64; 6] = [5, 10, 20, 40, 80, 160];
-const BACKOFF_MAX: u64 = 300;
+pub(crate) const BACKOFF: [u64; 6] = [5, 10, 20, 40, 80, 160];
+pub(crate) const BACKOFF_MAX: u64 = 300;
 
 pub fn default_dir() -> PathBuf {
     match std::env::var(DIR_ENV) {

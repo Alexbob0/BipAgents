@@ -611,6 +611,11 @@ fn profile_folder(config: &Config, agent: &AgentConfig) -> Option<PathBuf> {
 
 /// The diet of `agent` as things are now (None: an agent whose profile this bridge doesn't reach).
 pub fn current(config: &Config, agent: &AgentConfig) -> Option<Diet> {
+    if crate::sealed_keys::closed(config) {
+        // the vault's keys sealed and not reopened yet: what it holds and the mailboxes unknown, the diet left as it
+        // is (sealed_keys::start brings it up to date once open)
+        return None;
+    }
     let folder = profile_folder(config, agent)?;
     let soul = std::fs::read_to_string(folder.join("SOUL.md")).unwrap_or_default();
     let kind = kind_of(config, agent, &soul);

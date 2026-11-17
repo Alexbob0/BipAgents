@@ -259,5 +259,8 @@ pub mod agent_restart;
 /// « Ce que tes agents font tout seuls »: routines, tasks, scans and scheduled connectors in one list (2026-10-28).
 pub mod autonomous;
 pub mod secrets;
+/// The vault's keys sealed by a place key, under both halves (this server's, the key service's): lot 1 of « Clé du
+/// coffre » (16/11), off unless the place is enrolled (`bipbridge vault-keys enable`).
+pub mod sealed_keys;
 
 pub use app::AppState;

@@ -2041,6 +2041,17 @@ pub async fn serve(
             200,
             &rpc(&id, crate::update_drain::busy_result(&crate::handback::language_of(&config, &agent))),
         )),
+        // the vault's keys sealed and not reopened yet (sealed_keys.rs): cards, connectors, logins and contact details
+        // wait, in plain words; a site's terms (asked of the person) don't need it
+        "tools/call"
+            if params.get("name").and_then(Value::as_str) != Some(crate::terms_consent::TOOL)
+                && crate::sealed_keys::closed(&config) =>
+        {
+            Ok(web::json_response(
+                200,
+                &rpc(&id, crate::sealed_keys::closed_result(&crate::handback::language_of(&config, &agent))),
+            ))
+        }
         "tools/call" => {
             let lang = crate::handback::language_of(&config, &agent);
             let name = params.get("name").and_then(Value::as_str).unwrap_or("").to_string();

@@ -1249,6 +1249,13 @@ pub fn purge_audio(config: &Config, retention_days: i64, now: Option<f64>) -> us
 
 // --- MCP (streamable HTTP, JSON-RPC) ------------------------------------------------------------------------------
 
+/// The tools of this server that read the mailboxes' passwords (sealed with the vault's keys, sealed_keys.rs).
+fn reads_sealed_stores(name: &str) -> bool {
+    mailbox::MAIL_TOOL_NAMES.contains(&name)
+        || crate::mail_tidy::TOOL_NAMES.contains(&name)
+        || crate::archives::TOOL_NAMES.contains(&name)
+}
+
 fn rpc_result(request_id: &Value, result: Value) -> Value {
     json!({"jsonrpc": "2.0", "id": request_id, "result": result})
 }
@@ -2026,6 +2033,13 @@ async fn mcp(
     };
     // a deferred tool's call that the model's constrained names ended on an in-view tool (tool_diet.rs)
     let name = crate::tool_diet::reroute(&state.config(), &agent, &name, &arguments);
+    if crate::sealed_keys::closed(&state.config()) && reads_sealed_stores(&name) {
+        // the vault's keys sealed and not reopened yet (a server restart): plain words, never « give me the password »
+        tracing::info!(agent = %agent.name, tool = %name, "a mail tool called while the vault is closed");
+        let result =
+            json!({"content": [{"type": "text", "text": crate::sealed_keys::agent_text(&lang)}], "isError": false});
+        return Ok(crate::web::json_response(200, &rpc_result(&request_id, result)));
+    }
     if crate::family_agent::is_family(&state.config(), &agent.name) {
         // the family's agent: only the family's tools, in every turn, its creator's too (family_agent.rs)
         // the calendars family members share with it are answered below, once whose turn it is is known

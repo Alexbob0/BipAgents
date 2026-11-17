@@ -550,6 +550,11 @@ impl Vault {
     // -- storage ---------------------------------------------------------------------------------------
 
     fn fernet(&self) -> anyhow::Result<fernet::Fernet> {
+        // a place enrolled for sealed keys: its key from keys.sealed.json, never a file (sealed_keys.rs)
+        if let Some(key) = crate::sealed_keys::data_key(&self.folder, crate::sealed_keys::DataKey::Vault)? {
+            return fernet::Fernet::new(&key)
+                .ok_or_else(|| anyhow::anyhow!("the vault's sealed key is not a Fernet key"));
+        }
         crate::py::makedirs(&self.folder.to_string_lossy(), 0o700)?;
         if !self.key_path.exists() {
             use std::io::Write;

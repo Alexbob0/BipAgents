@@ -530,6 +530,10 @@ pub async fn give(
         Some(card) => (card.agent.clone(), card.request.clone()),
         None => return Err(GiveError::NoCard),
     };
+    if crate::sealed_keys::closed(&config) {
+        // the vault's keys sealed and not reopened yet: the card stays open, the person gives it again in a minute
+        return Err(GiveError::Failed(crate::sealed_keys::Locked.into()));
+    }
     if value.is_empty() || value.len() > MAX_VALUE || value.contains('\0') {
         return Err(GiveError::Invalid(format!("the value must be 1 to {MAX_VALUE} characters")));
     }
@@ -643,6 +647,9 @@ async fn answer_route(State(state): State<AppState>, Path(id): Path<String>, bod
                 // The agent's vault out of reach is the server's to fix, not « not possible for this agent ».
                 if let Some(crate::vault::VaultError::Unavailable(agent)) = exc.downcast_ref::<crate::vault::VaultError>() {
                     return Err(HttpError::json(503, json!({"code": "vault_unavailable", "agents": [agent]})));
+                }
+                if crate::sealed_keys::is_locked(&exc) {
+                    return Err(crate::sealed_keys::http_locked()); // « Ton coffre se rouvre »: give it again shortly
                 }
                 return Err(HttpError::new(409, "the secret could not be kept"));
             }

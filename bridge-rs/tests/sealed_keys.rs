@@ -149,7 +149,7 @@ fn vault_records() -> Value {
 
 fn mail_account() -> Dict {
     json!({"id": "mail_cccccccccccc", "provider": "imap", "label": "Perso", "username": "alex@example.test",
-           "password": "fake-imap-pw-0002", "host": "imap.example.test", "port": 993, "agents": ["wellness"]})
+           "password": "fake-imap-pw-0002", "host": "127.0.0.1", "port": 9, "agents": ["wellness"]})
     .as_object()
     .unwrap()
     .clone()
@@ -228,9 +228,9 @@ fn snapshot(dirs: &[&Path]) -> BTreeMap<PathBuf, Vec<u8>> {
 }
 
 /// What the stores hold, as they read it.
-fn contents(h: &Fixture) -> (Vec<Value>, Vec<Dict>, Stored) {
+fn contents(h: &Fixture) -> (Vec<Value>, Vec<Dict>, Value) {
     let items = h.vault().try_items().unwrap().iter().map(|i| serde_json::to_value(i).unwrap()).collect();
-    (items, h.mail().read().unwrap(), h.connections().read().unwrap())
+    (items, h.mail().read().unwrap(), serde_json::to_value(h.connections().read().unwrap()).unwrap())
 }
 
 fn old_keys(h: &Fixture) -> Vec<Zeroizing<String>> {
@@ -275,8 +275,11 @@ fn unseal_independently(h: &Fixture, service: &Service) -> Unsealed {
 /// A secret's spellings worth searching for: its bytes, hex, base64 and base64url with and without padding.
 fn spellings(label: &str, bytes: &[u8]) -> Vec<(String, Vec<u8>)> {
     use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE};
-    let mut out = vec![(format!("{label} (bytes)"), bytes.to_vec()), (format!("{label} (hex)"), hex::encode(bytes).into_bytes())];
-    for (name, engine) in [("b64", STANDARD), ("b64 no pad", STANDARD_NO_PAD), ("b64url", URL_SAFE), ("b64url no pad", B64URL)] {
+    let mut out =
+        vec![(format!("{label} (bytes)"), bytes.to_vec()), (format!("{label} (hex)"), hex::encode(bytes).into_bytes())];
+    for (name, engine) in
+        [("b64", STANDARD), ("b64 no pad", STANDARD_NO_PAD), ("b64url", URL_SAFE), ("b64url no pad", B64URL)]
+    {
         out.push((format!("{label} ({name})"), engine.encode(bytes).into_bytes()));
     }
     out
@@ -363,7 +366,9 @@ async fn once_enrolled_no_clear_key_is_left_anywhere_under_the_data_folder() {
     assert!(!h.data().join(".keys-migration").exists());
     // on the disk: the encrypted files, keys.sealed.json, this server's half and the service's settings (0600)
     use std::os::unix::fs::PermissionsExt;
-    for file in [h.data().join("keys.sealed.json"), h.place.space.join("vault.share"), h.place.space.join("keyservice.json")] {
+    for file in
+        [h.data().join("keys.sealed.json"), h.place.space.join("vault.share"), h.place.space.join("keyservice.json")]
+    {
         assert_eq!(std::fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600, "{}", file.display());
     }
     assert!(std::fs::read_to_string(h.place.space.join("keyservice.json")).unwrap().contains("keys.test"));
@@ -393,7 +398,8 @@ async fn once_enrolled_no_clear_key_is_left_anywhere_under_the_data_folder() {
     assert_eq!(std::fs::metadata(cache.parent().unwrap()).unwrap().permissions().mode() & 0o777, 0o700);
     let in_memory = snapshot(&[&h.runtime]);
     assert!(!found_in(&in_memory, &spellings("SK", &keys.sk)).is_empty(), "SK is kept in the tmpfs");
-    assert!(found_in(&in_memory, &needles.iter().filter(|(l, _)| !l.starts_with("SK")).cloned().collect::<Vec<_>>()).is_empty());
+    assert!(found_in(&in_memory, &needles.iter().filter(|(l, _)| !l.starts_with("SK")).cloned().collect::<Vec<_>>())
+        .is_empty());
     // enrolled once: a second enrolment is refused, nothing changes
     let e = sealed_keys::enrol(&h.place, Some(key_service()), &*service).await.unwrap_err();
     assert!(format!("{e:#}").contains("already sealed"), "{e:#}");
@@ -413,7 +419,9 @@ async fn the_migration_keeps_every_entry_and_rotates_the_data_keys() {
     assert_eq!(after.1, before.1, "the mailboxes");
     assert_eq!(after.2, before.2, "the connections");
     // the secrets themselves, entry by entry (the items above hide them)
-    let raw = |file: &Path, key: &str| fernet::Fernet::new(key).unwrap().decrypt(std::fs::read_to_string(file).unwrap().trim());
+    let raw = |file: &Path, key: &str| {
+        fernet::Fernet::new(key).unwrap().decrypt(std::fs::read_to_string(file).unwrap().trim())
+    };
     let keys = unseal_independently(&h, &service);
     let plain = raw(&h.data_files()[0], &keys.data_keys[0].1).unwrap();
     assert_eq!(serde_json::from_slice::<Value>(&plain).unwrap(), vault_records());
@@ -502,9 +510,7 @@ async fn an_interrupted_migration_is_put_back_or_finished_at_the_next_start() {
     assert!(h.mail().write(&[mail_account()]).is_err());
     h.reboot();
     sealed_keys::recover(&h.place).unwrap();
-    let mut after = snapshot(&[h.data(), &h.place.space]);
-    after.retain(|p, _| !p.ends_with(".keys.lock"));
-    assert_eq!(after, before);
+    assert_eq!(snapshot(&[h.data(), &h.place.space]), before);
     assert_eq!(sealed_keys::state(h.data()), State::Off);
     assert_eq!(contents(&h), contents_before);
 
@@ -581,7 +587,10 @@ async fn after_a_server_restart_the_vault_stays_closed_until_the_service_answers
     // the bridge says so, the agents get plain words, the app a code it knows
     let app = app(&h);
     let body = health(&app).await;
-    assert_eq!((body["ok"].clone(), body["vault"].clone(), body["vault_reason"].clone()), (json!(true), json!("locked"), json!("opening")));
+    assert_eq!(
+        (body["ok"].clone(), body["vault"].clone(), body["vault_reason"].clone()),
+        (json!(true), json!("locked"), json!("opening"))
+    );
     for (path, tool) in VAULT_TOOLS {
         let text = tool_text(&app, path, tool).await;
         assert!(sealed_keys::AGENT_TEXTS.contains(&text.as_str()), "{path} {tool}: {text}");
@@ -598,9 +607,12 @@ async fn after_a_server_restart_the_vault_stays_closed_until_the_service_answers
     service.then(&["down", "down"]);
     let asked = service.asked();
     let source: Arc<dyn ShareSource> = service.clone();
-    tokio::time::timeout(Duration::from_secs(20), sealed_keys::reopen(h.place.clone(), source, Duration::from_millis(5)))
-        .await
-        .expect("opens");
+    tokio::time::timeout(
+        Duration::from_secs(20),
+        sealed_keys::reopen(h.place.clone(), source, Duration::from_millis(5)),
+    )
+    .await
+    .expect("opens");
     assert_eq!(service.asked(), asked + 3);
     assert_eq!(sealed_keys::state(h.data()), State::Open);
     assert!(sealed_keys::cache_path(h.data()).unwrap().is_file());
@@ -666,11 +678,14 @@ async fn while_closed_the_agents_tool_diet_is_left_as_it_is() {
     std::fs::write(folder.join("config.yaml"), "model:\n  default: x\n").unwrap();
     std::fs::write(folder.join("SOUL.md"), "Tu es Wellness.\n").unwrap();
     assert!(bipbridge::tool_diet::current(&config, &agent).is_some(), "open: the diet as usual");
+    // open: the profile brought up to date (its mailbox's tools in view), as at any start
+    bipbridge::profile_files::reconcile_all(&config);
+    let open = snapshot(&[&folder]);
+    // closed (a server restart): the mailbox can't be read, yet nothing in the profile moves
     h.reboot();
     assert!(bipbridge::tool_diet::current(&config, &agent).is_none(), "closed: nothing to change");
-    let before = snapshot(&[&folder]);
     bipbridge::profile_files::reconcile_all(&config);
-    assert_eq!(snapshot(&[&folder]), before);
+    assert_eq!(snapshot(&[&folder]), open);
 }
 
 // -- not enrolled: today, exactly ---------------------------------------------------------------------------------------
@@ -715,7 +730,9 @@ async fn a_place_that_is_not_enrolled_keeps_todays_layout_and_behaviour() {
 
 #[test]
 fn the_agents_words_say_it_reopens_and_not_to_ask_for_the_password() {
-    for (lang, words) in [("fr", "ne demande pas le mot de passe"), ("en", "Don't ask"), ("de", "Frag"), ("es", "No pidas")] {
+    for (lang, words) in
+        [("fr", "ne demande pas le mot de passe"), ("en", "Don't ask"), ("de", "Frag"), ("es", "No pidas")]
+    {
         let text = sealed_keys::agent_text(lang);
         assert!(text.contains(words), "{lang}: {text}");
         assert!(sealed_keys::AGENT_TEXTS.contains(&text));

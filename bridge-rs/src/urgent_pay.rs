@@ -382,17 +382,29 @@ pub fn purchase_view(state: &AppState, config: &Config, agent: &str, conn: &Conn
         (Some(r), false) => json!({"id": "rehearsal", "state": if r.ok { "ok" } else { "blocked" }, "at": r.at,
                                    "blocked": if r.ok { Value::Null } else { json!(r.blocked) }}),
     };
-    json!({
+    let mut steps = vec![
+        json!({"id": "account", "state": if account { "ok" } else { "missing" }}),
+        address_step(&entries),
+        card_step(config, &items, agent, purchase),
+        rehearsal,
+    ];
+    let locked = crate::sealed_keys::closed(config);
+    if locked {
+        // the vault's keys sealed and not reopened yet: the account, the address and the card unknown, not missing
+        for step in steps.iter_mut().take(3) {
+            *step = json!({"id": step["id"], "state": "vault_locked"});
+        }
+    }
+    let mut view = json!({
         "site": purchase.site, "what": purchase.what,
         "price": (purchase.cents > 0).then(|| cards::format_cents(purchase.cents)), "currency": purchase.currency,
         "payments_allowed": cards::allowed(config) && cards::enabled(config),
-        "steps": [
-            {"id": "account", "state": if account { "ok" } else { "missing" }},
-            address_step(&entries),
-            card_step(config, &items, agent, purchase),
-            rehearsal,
-        ],
-    })
+        "steps": steps,
+    });
+    if locked {
+        view["vault"] = json!("locked");
+    }
+    view
 }
 
 /// The note of an account set-up (hidden in the apps). `email`: the first e-mail of the person's « Coordonnées » given to
@@ -848,6 +860,9 @@ fn signup_email(state: &AppState, config: &Config, agent: &str) -> Option<(Strin
 async fn account_route(State(state): State<AppState>, Path((agent, id)): Path<(String, String)>) -> ApiResult<Response> {
     let config = state.config();
     let (agent, conn, purchase) = purchase_of(&config, &agent, &id)?;
+    if crate::sealed_keys::closed(&config) {
+        return Err(crate::sealed_keys::http_locked()); // its logins and « Coordonnées » wait for the vault to reopen
+    }
     let email = signup_email(&state, &config, &agent.name);
     let note = account_note(&purchase, email.as_ref().map(|(l, m)| (l.as_str(), m.as_str())));
     let lang = crate::handback::language_of(&config, &agent);
@@ -867,6 +882,9 @@ async fn account_route(State(state): State<AppState>, Path((agent, id)): Path<(S
 async fn rehearse_route(State(state): State<AppState>, Path((agent, id)): Path<(String, String)>) -> ApiResult<Response> {
     let config = state.config();
     let (agent, conn, purchase) = purchase_of(&config, &agent, &id)?;
+    if crate::sealed_keys::closed(&config) {
+        return Err(crate::sealed_keys::http_locked()); // a rehearsal reads the card and the login: once reopened
+    }
     let Some(marked) = Rehearsal::start(&agent.name) else {
         return Err(HttpError::json(409, json!({"code": "rehearsal_running"})));
     };

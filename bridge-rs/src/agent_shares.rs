@@ -317,7 +317,12 @@ pub fn private_tools(config: &Config, agent: &str) -> Vec<&'static str> {
     if crate::health::enabled(config, agent) {
         out.push("health");
     }
-    if crate::mailbox::of(config).of_agent(agent).map(|a| !a.is_empty()).unwrap_or(false) {
+    // the vault's keys sealed and not reopened yet: its mailboxes unknown, said as reached (sealed_keys.rs)
+    if crate::mailbox::of(config)
+        .of_agent(agent)
+        .map(|a| !a.is_empty())
+        .unwrap_or_else(|e| crate::sealed_keys::is_locked(&e))
+    {
         out.push("mail");
     }
     if crate::agent_tools::calendar_on(config, agent) {
