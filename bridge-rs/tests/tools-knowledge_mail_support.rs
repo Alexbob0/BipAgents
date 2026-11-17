@@ -956,3 +956,41 @@ fn stock_hydroxide_is_said_with_the_build_that_shows_the_folders() {
     assert!(error && said.contains("hydroxide") && said.contains("github.com/Alexbob0/hydroxide"), "{said}");
     assert!(said.contains("« INBOX »"), "{said}");
 }
+
+// -- review, 2nd pass (17/11): failing test for its blocking finding (briefs/review-support-mail-fixes.md) ------------
+
+/// R5: an address hidden in an encoded display name (RFC 2047) never counts, no more than a quoted one. hydroxide
+/// writes a non-ASCII name as a Q-word that keeps « <…@…> » in clear (Go's `mime.QEncoding`): the name « Sérvice
+/// client <service@banque.example> » arrives as `=?utf-8?q?S=C3=A9rvice_client_<service@banque.example>?=
+/// <attacker@evil.example>`. Parsed after decoding, the first « <…> » is the name's: the answer says the e-mail came
+/// from the bank, and a Reply-To written the same way (here with `=3C…=3E`) sends the draft to its name's address.
+#[test]
+fn review2_an_address_in_an_encoded_display_name_never_counts() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = setup(dir.path(), "r5");
+    let server = proton();
+    server.lock().unwrap().put(Mail {
+        api: "p2".into(),
+        folder: "Support".into(),
+        from: "=?utf-8?q?S=C3=A9rvice_client_<service@banque.example>?= <attacker@evil.example>".into(),
+        reply_to: "=?utf-8?q?L=C3=A9a_=3Clea=40example.org=3E?= <x@evil.example>".into(),
+        to: "support@bipagents.com".into(),
+        subject: "Votre dossier".into(),
+        body: "Merci de répondre.".into(),
+        message_id: "<p2@evil.example>".into(),
+        ..Mail::default()
+    });
+    let open = opener(&server);
+    let (_, found) = call(&config, &open, "mail_search", json!({"folder": "Support", "limit": 20}));
+    let listed = ids(&found);
+    let (error, said) = call(
+        &config,
+        &open,
+        "mail_draft",
+        json!({"subject": "Re: Votre dossier", "body": "Bonjour,", "reply_to_id": listed["Votre dossier"]}),
+    );
+    assert!(!error, "{said}");
+    // where its Reply-To really sends a reply, and who really sent it
+    assert_eq!(appended(&server).last().map(|m| m.to.clone()).as_deref(), Some("x@evil.example"), "{said}");
+    assert!(said.contains("attacker@evil.example") && !said.contains("service@banque.example"), "{said}");
+}
