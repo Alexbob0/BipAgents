@@ -200,7 +200,8 @@
         if (score > bestScore) { best = el; bestScore = score; }
       }
       this.button = best;
-      return best ? norm(best.innerText || best.value || best.getAttribute("aria-label")).slice(0, 80) : null;
+      // whole (120 characters at most, as scored): the bridge checks the amount it shows before pressing it
+      return best ? norm(best.innerText || best.value || best.getAttribute("aria-label")).slice(0, 120) : null;
     },
     clickButton() {
       if (!this.button) return false;

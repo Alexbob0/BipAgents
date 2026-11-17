@@ -837,7 +837,7 @@ pub fn own_refusal(response: &Dict) -> bool {
      // the hotfix's (15/11): what a script may do, said to the agent, not a step the page failed
      SCRIPT_CHANGES_PAGE_REFUSED, SCRIPT_UNCHECKED_REFUSED, SCRIPT_STORAGE_REFUSED, SCRIPT_ON_CARDS_REFUSED,
      // vault-no-readback (16/11)
-     SELECTOR_VALUE_REFUSED, TEXT_MATCH_REFUSED]
+     SELECTOR_VALUE_REFUSED, TEXT_MATCH_REFUSED, SHOT_UNMASKED_REFUSED]
         .contains(&text)
 }
 
@@ -1097,6 +1097,11 @@ return told.some((v) => forms(v).some((f) => A.includes(f))); }})()"
 }
 
 /// What the agent reads when its script's answer held a password (`shows_password`).
+/// `take_screenshot` while the browser's DevTools can't be reached (audit 17/11, 1.7 follow-up): the frames of other
+/// sites (a payment provider's, a login's) can't have their protected fields masked, and an image shows them all.
+pub const SHOT_UNMASKED_REFUSED: &str = "No screenshot right now: the bridge can't reach your browser's DevTools to \
+hide what other sites' frames protect. Read the page with get_page_content instead, or try again in a moment.";
+
 pub const PASSWORD_SHOWN: &str = "Not shown: that answer held what a password field holds, and you never \
 read a password. Read the other fields by their selectors, never all of a form's values. The vault fills and keeps \
 passwords (vault_create_login, vault_login).";
@@ -2289,7 +2294,7 @@ impl Proxy {
     /// one, the production flags (`--disable-features=IsolateOrigins,site-per-process`) notwithstanding (checked on
     /// 16/11). False when DevTools can't be reached.
     async fn conceal_frames(&self, instance: &str) -> bool {
-        let Some(port) = self.config.get("cdp_port").and_then(Value::as_u64).filter(|p| (1..65536).contains(p)) else {
+        let Some(port) = self.devtools_port() else {
             return false;
         };
         let secret = self
@@ -2316,6 +2321,11 @@ impl Proxy {
             }
         }
         true
+    }
+
+    /// The browser's DevTools port, when this proxy has one (`cdp_port`).
+    fn devtools_port(&self) -> Option<u64> {
+        self.config.get("cdp_port").and_then(Value::as_u64).filter(|p| (1..65536).contains(p))
     }
 
     /// Before a page read without `guard_before` (`PAGE_READERS`, get_page_content's real tool): the page's protected
@@ -2794,6 +2804,12 @@ impl Proxy {
             && !instance.is_empty()
             && !self.conceal_frames(&instance).await
         {
+            // DevTools set up but out of reach (audit 17/11, 1.7 follow-up): another site's frame can't be masked, and a
+            // screenshot shows every frame: none is taken
+            if tool == "take_screenshot" && self.devtools_port().is_some() {
+                log("take_screenshot refused: DevTools out of reach, other sites' frames not masked");
+                return Ok(refused(SHOT_UNMASKED_REFUSED));
+            }
             self.conceal(&instance).await;
         }
         if tool == "take_screenshot" {

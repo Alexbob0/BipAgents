@@ -1118,9 +1118,48 @@ impl Vault {
             .collect()
     }
 
-    /// A payment made with card `item_id`, kept on it (a single-use card is then used).
-    pub async fn record_card_payment(&self, item_id: &str, payment: Value) -> anyhow::Result<()> {
+    /// The payment `payment` of `cents` in `currency` with card `item_id` kept aside on it, its card about to be typed
+    /// (audit 17/11, 2.3): under the vault's lock, the card read again and its cap checked with every payment of it in
+    /// flight, so that two agents sharing a card, both approved, never pay over its cap together; a single-use card
+    /// used meanwhile, or being used, is refused too. Err: what to tell the agent (nothing is typed).
+    pub async fn reserve_card_payment(
+        &self,
+        item_id: &str,
+        payment: &str,
+        cents: i64,
+        currency: &str,
+    ) -> anyhow::Result<Result<crate::cards::Reservation, String>> {
         let _lock = self.lock.lock().await;
+        let records = self.read()?;
+        let Some(record) = records.iter().find(|r| r.get("id").and_then(Value::as_str) == Some(item_id)) else {
+            return Ok(Err("The card was removed from the vault meanwhile: nothing was typed. Don't pay.".into()));
+        };
+        let label = record.get("label").map(crate::py::py_str).unwrap_or_default();
+        let meta = record.get("card").cloned().unwrap_or(Value::Null);
+        let (in_flight, others) = crate::cards::in_flight_on(item_id, currency);
+        let single_use = meta.get("single_use").and_then(Value::as_bool) == Some(true);
+        if single_use && (meta.get("used").and_then(Value::as_bool) == Some(true) || others > 0) {
+            return Ok(Err(format!(
+                "The single-use card « {label} » was used by another payment meanwhile: nothing was typed. Don't pay; \
+                 tell the person."
+            )));
+        }
+        if let Some(why) = crate::cards::over_cap_with(&meta, &label, cents, currency, in_flight) {
+            return Ok(Err(format!("Nothing was typed. {why}")));
+        }
+        Ok(Ok(crate::cards::Reservation::take(payment, item_id, cents, currency)))
+    }
+
+    /// A payment made with card `item_id`, kept on it (a single-use card is then used); its reservation
+    /// (`reserve_card_payment`) ends under the same lock, counted in `spent` from now on.
+    pub async fn record_card_payment(
+        &self,
+        item_id: &str,
+        payment: Value,
+        reservation: Option<crate::cards::Reservation>,
+    ) -> anyhow::Result<()> {
+        let _lock = self.lock.lock().await;
+        let _ends_here = reservation;
         let mut records = self.read()?;
         let Some(record) = records.iter_mut().find(|r| r.get("id").and_then(Value::as_str) == Some(item_id)) else {
             return Err(NoSuchItem(item_id.to_string()).into());

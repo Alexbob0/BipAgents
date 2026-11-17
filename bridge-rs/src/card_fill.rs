@@ -271,6 +271,15 @@ fn protocol(text: impl Into<String>) -> FillError {
     FillError::Protocol(text.into())
 }
 
+/// The card form's pay button `Page::find_pay` found (its world remembers it), to be pressed by `Page::press`.
+#[derive(Debug, Clone)]
+pub struct PayButton {
+    /// Its text (120 characters at most), as the card script read it: lower case, spaces collapsed.
+    pub text: String,
+    session: String,
+    context: i64,
+}
+
 /// One field found: its frame's world, its index there, its kind (number, exp, exp_month, exp_year, csc, name,
 /// given_name, family_name, postal) and how the expiry is written (`MM/YY`, `MM/YYYY`, `MMYY`; `YY`, `YYYY`).
 #[derive(Debug, Clone, PartialEq)]
@@ -1091,17 +1100,19 @@ impl Page {
         Ok(context)
     }
 
-    /// The card form's pay button clicked (the one showing `wanted`, else a « pay » button, the amount helping): its
-    /// text, or None when there is no such button. Only a button of the form that holds the card's fields (`rule`:
-    /// those it was typed into), or around the frame holding them, else the provider frame's own pay button; never a
-    /// link, nor a button elsewhere on the page (fix review 11/11, B2: any button or link could be pressed by its text,
-    /// « Aide », and a link took the tab to a new document with the card still typed in the one before).
-    pub async fn click_pay(
+    /// The card form's pay button (the one showing `wanted`, else a « pay » button, the amount helping), found but not
+    /// pressed yet (`press`): its text as the bridge's own world read it in the page under the hold (audit 17/11, 2.2:
+    /// what the payment's amount is checked against), or None when there is no such button. Only a button of the form
+    /// that holds the card's fields (`rule`: those it was typed into), or around the frame holding them, else the
+    /// provider frame's own pay button; never a link, nor a button elsewhere on the page (fix review 11/11, B2: any
+    /// button or link could be pressed by its text, « Aide », and a link took the tab to a new document with the card
+    /// still typed in the one before).
+    pub async fn find_pay(
         &mut self,
         wanted: &str,
         amount_digits: &str,
         rule: &Frames,
-    ) -> Result<Option<String>, FillError> {
+    ) -> Result<Option<PayButton>, FillError> {
         let card = pick(&self.found().await?, Some(rule));
         let main = self.main_frame().await?;
         let context = self.main_world().await?;
@@ -1129,17 +1140,35 @@ impl Page {
             serde_json::to_string(amount_digits).unwrap_or_default()
         );
         if let Value::String(text) = self.cdp.evaluate(&session, context, &find).await? {
-            self.cdp.evaluate(&session, context, "globalThis.__bipPay.clickButton()").await?;
-            return Ok(Some(text));
+            return Ok(Some(PayButton { text, session, context }));
         }
         // A provider whose pay button is in its own frame, with the card's number (its world found the fields).
         for field in card.iter().filter(|f| f.kind == "number" && f.frame != main) {
             if let Ok(Value::String(text)) = self.cdp.evaluate(&field.session, field.context, &find).await {
-                self.cdp.evaluate(&field.session, field.context, "globalThis.__bipPay.clickButton()").await?;
-                return Ok(Some(text));
+                return Ok(Some(PayButton { text, session: field.session.clone(), context: field.context }));
             }
         }
         Ok(None)
+    }
+
+    /// The pay button `find_pay` found, pressed (in the world that found it).
+    pub async fn press(&mut self, button: &PayButton) -> Result<(), FillError> {
+        self.cdp.evaluate(&button.session, button.context, "globalThis.__bipPay.clickButton()").await.map(|_| ())
+    }
+
+    /// The tab sent to `url` (a payment handed over to the person, card_pay.rs: its checkout page again, a new
+    /// document with nothing typed in it), waited for until it shows that address (5 s at most).
+    pub async fn go_to(&mut self, url: &str) -> Result<(), FillError> {
+        let session = self.session.clone();
+        self.cdp.call("Page.navigate", json!({"url": url}), Some(&session)).await?;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while tokio::time::Instant::now() < deadline {
+            if self.url().await.is_ok_and(|u| u == url) {
+                return Ok(());
+            }
+            self.cdp.drain(POLL).await?;
+        }
+        Ok(())
     }
 
     /// The bank asks the person to confirm (3-D Secure): a frame of an authentication server, or the page says so.

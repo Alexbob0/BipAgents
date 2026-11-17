@@ -99,6 +99,23 @@ pub fn late_line(lang: &str, about: &About) -> String {
     }
 }
 
+/// The « Panier prêt » line of a payment whose pay button showed another amount than the one approved (card_pay.rs
+/// `amount_differs`, audit 17/11 2.2): `about` with the page's amount, `approved` the person's.
+pub fn changed_line(lang: &str, about: &About, approved: i64) -> String {
+    let (shown, approved) = (money(lang, about.cents, &about.currency), money(lang, approved, &about.currency));
+    let site = about.site.as_str();
+    match lang {
+        "de" => format!(
+            "Nicht bezahlt: {site} verlangt {shown} statt der genehmigten {approved}. Der Warenkorb wartet auf dich"
+        ),
+        "es" => format!("No pagado: {site} pide {shown} en lugar de los {approved} aprobados. El carrito te espera"),
+        "en" => {
+            format!("Not paid: {site} asks {shown} instead of the {approved} you approved. The cart is waiting for you")
+        }
+        _ => format!("Pas payé : {site} demande {shown} au lieu des {approved} approuvés. Le panier t'attend"),
+    }
+}
+
 /// « Faire un essai »'s alert.
 pub fn test_line(lang: &str) -> &'static str {
     match lang {
@@ -124,6 +141,9 @@ pub struct Cart {
     pub session: Option<String>,
     pub at: f64,
     pub until: f64,
+    /// A payment whose pay button showed another amount (`cents`) than the person approved (this): not too late, the
+    /// total changed (`changed_line`).
+    pub approved_cents: Option<i64>,
 }
 
 static LOCK: Mutex<()> = Mutex::new(());
@@ -160,6 +180,11 @@ fn change<T>(config: &Config, f: impl FnOnce(&mut Vec<Cart>) -> T) -> T {
 
 /// A « Panier prêt » kept for `agent` (the payment `about`, asked in `session`).
 pub fn keep(config: &Config, agent: &str, about: &About, session: Option<&str>) -> Cart {
+    keep_cart(config, agent, about, session, None)
+}
+
+/// `keep`; `approved`: the amount the person approved, when the page's pay button showed `about.cents` instead.
+fn keep_cart(config: &Config, agent: &str, about: &About, session: Option<&str>, approved: Option<i64>) -> Cart {
     let now = py::time_time();
     let cart = Cart {
         id: format!("hov_{}", &py::uuid4_hex()[..12]),
@@ -172,6 +197,7 @@ pub fn keep(config: &Config, agent: &str, about: &About, session: Option<&str>) 
         session: session.map(str::to_string),
         at: now,
         until: now + KEEP_SECONDS,
+        approved_cents: approved,
     };
     change(config, |carts| carts.push(cart.clone()));
     cart
@@ -189,11 +215,21 @@ pub fn pending_items(config: &Config, agent: Option<&str>) -> Vec<Dict> {
         .filter_map(|c| {
             let message = crate::handover::approval_message(&c.id, c.cents, &c.currency, &c.site, &c.merchant, &c.url);
             let lang = crate::mail_tidy::language(config, &c.agent);
-            let about = About { merchant: c.merchant.clone(), site: c.site.clone(), ..About::default() };
+            let about = About {
+                merchant: c.merchant.clone(),
+                site: c.site.clone(),
+                cents: c.cents,
+                currency: c.currency.clone(),
+                ..About::default()
+            };
+            let summary = match c.approved_cents {
+                Some(approved) => changed_line(&lang, &about, approved),
+                None => late_line(&lang, &about),
+            };
             json!({
                 "agent": c.agent, "run_id": format!("{CART_PREFIX}{}", c.id), "request_id": c.id,
                 "command": message, "description": message, "choices": ["once", "deny"], "created_at": c.at,
-                "session_id": c.session, "pattern_key": "mcp_elicitation", "bip_summary": late_line(&lang, &about),
+                "session_id": c.session, "pattern_key": "mcp_elicitation", "bip_summary": summary,
             })
             .as_object()
             .cloned()
@@ -213,16 +249,41 @@ pub fn answer(config: &Config, agent: &str, id: &str) -> bool {
 /// The window is over (card_pay.rs `pay`): the « Panier prêt » card in the turn's conversation, pushed with the « trop
 /// tard » line.
 pub async fn too_late(state: &AppState, agent: &AgentConfig, about: &About, run: Option<&str>, session: Option<&str>) {
+    let line = late_line(&crate::handback::language_of(&state.config(), agent), about);
+    let card = cart_for(state, agent, about, run, session, None, &line).await;
+    tracing::info!(target: "bipbridge::urgent_pay", agent = %agent.name, card = %card, "too late to pay: the cart waits");
+}
+
+/// The page's pay button showed another amount (`about.cents`) than the person approved (`approved`): not pressed
+/// (card_pay.rs `amount_differs`, audit 17/11 2.2). The « Panier prêt » card in the agent's main conversation, pushed
+/// with the line saying what changed (« Pas payé : shop.example demande 1 250,00 € au lieu des 12,50 € approuvés… »).
+pub async fn amount_changed(state: &AppState, agent: &AgentConfig, about: &About, approved: i64) {
+    let line = changed_line(&crate::handback::language_of(&state.config(), agent), about, approved);
+    let card = cart_for(state, agent, about, None, None, Some(approved), &line).await;
+    tracing::info!(target: "bipbridge::urgent_pay", agent = %agent.name, card = %card, "another amount: the cart waits");
+}
+
+/// A « Panier prêt » card of the bridge's own: kept, placed in the turn `run`'s conversation (None: the main one),
+/// pushed with `line`. Its id (`bip-cart-…`).
+async fn cart_for(
+    state: &AppState,
+    agent: &AgentConfig,
+    about: &About,
+    run: Option<&str>,
+    session: Option<&str>,
+    approved: Option<i64>,
+    line: &str,
+) -> String {
     let config = state.config();
     let (c, name, a, s) = (config.clone(), agent.name.clone(), about.clone(), session.map(str::to_string));
-    let Ok(cart) = tokio::task::spawn_blocking(move || keep(&c, &name, &a, s.as_deref())).await else { return };
+    let kept = tokio::task::spawn_blocking(move || keep_cart(&c, &name, &a, s.as_deref(), approved)).await;
+    let Ok(cart) = kept else { return String::new() };
     let card = format!("{CART_PREFIX}{}", cart.id);
     crate::card_place::place_for(state, agent, &card, run).await;
     // put away by the person, who buys it themselves: nothing to tell the agent (never resumed with « ALLOWED »)
     crate::card_place::taken(&config, &card);
-    let line = late_line(&crate::handback::language_of(&config, agent), about);
-    state.push.notify_bridge_card(&agent.name, &line, "mail_request", &card).await;
-    tracing::info!(target: "bipbridge::urgent_pay", agent = %agent.name, card = %card, "too late to pay: the cart waits");
+    state.push.notify_bridge_card(&agent.name, line, "mail_request", &card).await;
+    card
 }
 
 // --- « Prêt à acheter » ------------------------------------------------------------------------------------------------
@@ -970,6 +1031,18 @@ mod tests {
         assert_eq!(money("fr", 1299, "USD"), "12,99 $");
         assert_eq!(money("en", 1299, "SEK"), "12.99 SEK");
         assert!(test_line("fr").starts_with("Essai"));
+        // audit 17/11, 2.2: the pay button showed another amount
+        let shown = About { cents: 125_000, ..about() };
+        assert_eq!(
+            changed_line("fr", &shown, 4500),
+            "Pas payé : ticketmaster.fr demande 1250,00 € au lieu des 45,00 € approuvés. Le panier t'attend"
+        );
+        assert_eq!(
+            changed_line("en", &shown, 4500),
+            "Not paid: ticketmaster.fr asks €1250.00 instead of the €45.00 you approved. The cart is waiting for you"
+        );
+        assert!(changed_line("de", &shown, 4500).contains("1250,00 € statt der genehmigten 45,00 €"));
+        assert!(changed_line("es", &shown, 4500).contains("1250,00 € en lugar de los 45,00 €"));
     }
 
     #[test]

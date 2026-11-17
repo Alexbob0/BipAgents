@@ -158,8 +158,9 @@ pub fn tools() -> Vec<Value> {
         }),
         json!({
             "name": CONFIRM,
-            "description": "After pay_with_card: press the page's pay button (you can't use your browser meanwhile). \
-        Give the button's text as you read it before, e.g. « Payer 12,50 € ».",
+            "description": "After pay_with_card: press the page's pay button (you can't use your browser meanwhile), \
+        once: it is never pressed twice for a payment. Give the button's text as you read it before, e.g. « Payer \
+        12,50 € ».",
             "inputSchema": {"type": "object", "properties": {
                 "button": {"type": "string", "description": "the pay button's text"},
             }},
@@ -404,6 +405,31 @@ struct Held {
     stop: Option<&'static str>,
     /// The fields the card was typed into (their frame and node): what `release` empties.
     fields: Vec<card_fill::Typed>,
+    /// What is paid for (the « Panier prêt » of a payment whose pay button shows another amount).
+    merchant: String,
+    /// A card of the vault (not a one-time card of another entry): « Paiements par tes agents » must still be on.
+    vault: bool,
+    /// The pay button was pressed (audit 17/11, 2.1): set under `held()`'s lock right before, never pressed again.
+    clicked: bool,
+    /// `SUSPENDS` read before the hold was asked: another value means « Suspendre tous les paiements » came since.
+    epoch: u64,
+}
+
+/// « Suspendre tous les paiements » so far (`stop_all`). A payment reads it before its hold is asked and stops at its
+/// next step once it changed (audit 17/11, 2.5): `stop_all` sees neither `pending()` (the approval taken out) nor
+/// `held()` (not in it yet) while the hold is being set.
+static SUSPENDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn suspends() -> u64 {
+    SUSPENDS.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// The payment `entry` was suspended since its hold was asked: its stop set (`suspended`), as `ask_stop` would have.
+fn suspended(entry: &mut Held) -> bool {
+    if entry.epoch != suspends() && entry.stop.is_none() {
+        entry.stop = Some("suspended");
+    }
+    entry.stop == Some("suspended")
 }
 
 static HELD: LazyLock<Mutex<HashMap<String, Held>>> = LazyLock::new(Default::default);
@@ -463,9 +489,16 @@ pub fn person_view_token(agent: &str) -> Option<String> {
     held().get(agent).map(|e| e.token.clone())
 }
 
-/// The payment `token` still holds `agent`'s browser and nobody asked it to stop: it may go on typing.
+/// The payment `token` still holds `agent`'s browser and nobody asked it to stop (nor suspended the payments since its
+/// hold was asked, `SUSPENDS`): it may go on typing.
 fn still_ours(agent: &str, token: &str) -> bool {
-    held().get(agent).is_some_and(|e| e.token == token && e.stop.is_none())
+    match held().get_mut(agent) {
+        Some(entry) if entry.token == token => {
+            suspended(entry);
+            entry.stop.is_none()
+        }
+        _ => false,
+    }
 }
 
 /// Why the payment `token` of `agent` was asked to stop, if it was.
@@ -490,6 +523,44 @@ fn ask_stop(agent: &str, why: &'static str) -> bool {
 
 const STOPPED: &str = "The payment was stopped (cancel_payment, or the person suspended the payments) before it was \
 done: nothing of the card stays in the page, and your browser shows an empty page. Don't pay; tell the person.";
+
+/// A second `confirm_payment` for a payment whose pay button was pressed (audit 17/11, 2.1).
+const ALREADY_PRESSED: &str = "The pay button of this payment was already pressed: it is never pressed twice. Don't \
+call confirm_payment again. Wait: your browser stays paused until the page moves on (5 minutes at most, then the card \
+is erased from the page); then look at it to check whether the payment went through, and tell the person. If the bank \
+asks them to confirm in their banking app, tell them « Confirme le paiement dans ton app bancaire » (in their \
+language).";
+
+/// The pay button shows `shown` cents, not the amount the person approved (audit 17/11, 2.2): not pressed. The payment
+/// is given up (the card's fields emptied, the typed-into document left and forgotten, the tab sent to the checkout
+/// page again, `release_entry`) and handed over to the person: a « Panier prêt » of the bridge's own, with the
+/// page's amount and a line saying what changed (urgent_pay.rs `amount_changed`).
+async fn amount_differs(state: &AppState, agent: &AgentConfig, entry: &Held, shown: i64) -> Dict {
+    let config = state.config();
+    tracing::warn!(agent = %agent.name, site = %entry.site, approved = entry.cents, shown = shown,
+                   "card payment: the pay button shows another amount, not pressed");
+    ask_stop(&agent.name, "amount_differs");
+    release(&config, &agent.name, "amount_differs").await;
+    let about = About {
+        message: String::new(),
+        merchant: entry.merchant.clone(),
+        site: entry.hosted.as_ref().map_or_else(|| entry.site.clone(), |(shop, _)| shop.clone()),
+        url: entry.url.clone(),
+        cents: shown,
+        currency: entry.currency.clone(),
+    };
+    crate::urgent_pay::amount_changed(state, agent, &about, entry.cents).await;
+    refusal(&format!(
+        "The page's pay button shows {} {cur}, but the person approved {} {cur}: it was not pressed and nothing was \
+         paid. The card is erased from the page and the payment given up; your browser shows the payment page again. \
+         A « Panier prêt » card now waits for the person, with the new total, to pay themselves if they want to: \
+         don't call pay_with_card or hand_over_payment again for it. Tell them in one short sentence that the total \
+         changed.",
+        cards::format_cents(shown),
+        cards::format_cents(entry.cents),
+        cur = entry.currency
+    ))
+}
 
 /// The payment `token` ends with nothing more typed: given back as `outcome`, or as the stop asked meanwhile (then
 /// the agent is told so, not `say`).
@@ -639,6 +710,12 @@ async fn release_entry(config: &Config, agent: &str, outcome: &str, entry: Held)
                 if let Err(exc) = page.forget_history().await {
                     tracing::warn!(agent = %agent, exc = %exc, "card payment: history not forgotten, tab closed");
                     let _ = page.close().await;
+                } else if blanked && outcome == "amount_differs" {
+                    // handed over to the person (« Panier prêt »): the checkout page again, a new document with
+                    // nothing typed, for them to pay in the agent's browser if they want to
+                    if let Err(exc) = page.go_to(&entry.url).await {
+                        tracing::warn!(agent = %agent, exc = %exc, "card payment: checkout page not opened again");
+                    }
                 }
             }
         }
@@ -733,6 +810,8 @@ impl Drop for Ending {
 /// Every payment stopped: those asked are refused, the held browsers given back (« Suspendre tous les paiements »).
 /// A payment still reloading its page or typing is asked to stop first, then given back once it has (its lock).
 pub async fn stop_all(config: &Config) {
+    // first: a payment setting its hold right now (in neither table) stops at its next step
+    SUSPENDS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     for entry in pending().values_mut() {
         entry.denied = true;
         entry.code = None;
@@ -1262,6 +1341,10 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
         loader: String::new(),
         stop: None,
         fields: Vec::new(),
+        merchant: merchant.clone(),
+        vault: true,
+        clicked: false,
+        epoch: 0,
     };
     if let Some(why) = cards::over_cap(&meta, &card.label, cents, &currency) {
         journal(&config, &entry, &agent.name, "refused_cap");
@@ -1353,6 +1436,8 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
         }
     };
     journal(&config, &entry, &agent.name, "approved");
+    // read before the switch: « Suspendre » writes the switch, then counts (`stop_all`)
+    entry.epoch = suspends();
     if !cards::enabled(&state.config()) {
         return Ok(refusal(OFF));
     }
@@ -1379,6 +1464,10 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
     held().insert(agent.name.clone(), entry.clone());
     let mut ending = Ending::new(state, &agent.name, &entry.payment);
     let (agent_name, token) = (agent.name.as_str(), entry.token.as_str());
+    // « Suspendre tous les paiements » while the hold was set (audit 17/11, 2.5): it found nothing to stop yet
+    if !cards::enabled(&state.config()) {
+        ask_stop(agent_name, "suspended");
+    }
     let still = || still_ours(agent_name, token);
     let (mut page, fields) = match fresh_page(&config, &agent.name, &entry, &still).await {
         Ok(found) => found,
@@ -1387,7 +1476,21 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
             return Ok(give_up(&config, &agent.name, token, "failed", &say).await);
         }
     };
-    if !typing_into(&agent.name, token, &mut page).await {
+    // The amount kept aside on the card, the card read again (audit 17/11, 2.3): another agent's payment with the same
+    // card, approved meanwhile, may have taken what was left under its cap. Ends with the card typed (counted in
+    // `spent` then) or with the payment.
+    let reservation = match state.vault.reserve_card_payment(&card.id, &entry.payment, cents, &currency).await? {
+        Ok(reservation) => reservation,
+        Err(why) => {
+            drop(code);
+            return Ok(give_up(&config, &agent.name, token, "refused_cap", &why).await);
+        }
+    };
+    let switched_off = !cards::enabled(&state.config());
+    if switched_off {
+        ask_stop(agent_name, "suspended");
+    }
+    if switched_off || !typing_into(&agent.name, token, &mut page).await {
         drop(code);
         return Ok(give_up(&config, &agent.name, token, "failed", STOPPED).await);
     }
@@ -1403,7 +1506,7 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
     if entry.hosted.is_some() {
         payment["via"] = json!(host);
     }
-    state.vault.record_card_payment(&card.id, payment).await?;
+    state.vault.record_card_payment(&card.id, payment, Some(reservation)).await?;
     crate::vault_contacts::note_mark(state, &agent.name, PAY, &crate::vault_contacts::mark(&card.id, &card.label));
     journal(&config, &entry, &agent.name, "typed");
     tracing::info!(agent = %agent.name, site = %host, fields = %filled.join(","), "card payment: card typed");
@@ -1647,14 +1750,16 @@ async fn fresh_page(
 /// nothing may be typed, when the hold is no longer this payment's (`token`) or it was asked to stop.
 async fn typing_into(agent: &str, token: &str, page: &mut Page) -> bool {
     let loader = page.loader().await.unwrap_or_default();
-    match held().get_mut(agent) {
-        Some(entry) if entry.token == token && entry.stop.is_none() => {
-            entry.typed = true;
-            entry.loader = loader;
-            true
-        }
-        _ => false,
+    let mut table = held();
+    let Some(entry) = table.get_mut(agent).filter(|e| e.token == token) else { return false };
+    // « Suspendre tous les paiements » since the hold was asked (audit 17/11, 2.5) is a stop too
+    suspended(entry);
+    if entry.stop.is_some() {
+        return false;
     }
+    entry.typed = true;
+    entry.loader = loader;
+    true
 }
 
 /// The fields `fill` typed into (or began to), kept with the payment `token`'s hold for `release` to empty.
@@ -1722,6 +1827,17 @@ async fn confirm(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> any
         return Ok(refusal("This payment is being given up (cancel_payment, or the person suspended the payments): \
                            nothing is clicked. Don't pay."));
     }
+    // Pressed once only (audit 17/11, 2.1): a shop slow to answer is waited for (`watch`), never paid twice.
+    if entry.clicked {
+        return Ok(text(ALREADY_PRESSED));
+    }
+    // « Suspendre tous les paiements » since the hold was asked (audit 17/11, 2.5): given up, nothing pressed.
+    let switched_off = entry.vault && !cards::enabled(&config);
+    if switched_off || held().get_mut(&agent.name).is_some_and(suspended) {
+        ask_stop(&agent.name, "suspended");
+        release(&config, &agent.name, "suspended").await;
+        return Ok(refusal(STOPPED));
+    }
     let mut page = match Page::open(entry.port, Some(&entry.token)).await {
         Ok(page) => page,
         Err(exc) => return Ok(refusal(&unreachable_text(&exc))),
@@ -1732,7 +1848,7 @@ async fn confirm(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> any
     let wanted = cards::quoted(&arg(arguments, "button"), 80);
     let digits: String = cards::format_cents(entry.cents).chars().filter(char::is_ascii_digit).collect();
     let rule = card_fill::Frames::new(&entry.url).with_tests(&config);
-    let clicked = match page.click_pay(&wanted, &digits, &rule).await {
+    let button = match page.find_pay(&wanted, &digits, &rule).await {
         Ok(Some(button)) => button,
         Ok(None) => {
             // Not worth another try (security check 11/11, N4): a pay button outside the card's form is never pressed.
@@ -1743,6 +1859,20 @@ async fn confirm(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> any
         }
         Err(exc) => return Ok(refusal(&unreachable_text(&exc))),
     };
+    // The amount the button shows, read by the bridge in the page reloaded under the hold (audit 17/11, 2.2): one clear
+    // amount in the payment's currency other than the one approved, and the button is never pressed.
+    if let Some(shown) = cards::button_amount(&button.text, &entry.currency).filter(|c| *c != entry.cents) {
+        drop(page);
+        return Ok(amount_differs(state, agent, &entry, shown).await);
+    }
+    match held().get_mut(&agent.name) {
+        Some(e) if e.token == entry.token && e.stop.is_none() => e.clicked = true,
+        _ => return Ok(refusal(STOPPED)),
+    }
+    if let Err(exc) = page.press(&button).await {
+        return Ok(refusal(&unreachable_text(&exc)));
+    }
+    let clicked = cards::quoted(&button.text, 80);
     journal(&config, &entry, &agent.name, "clicked");
     tracing::info!(agent = %agent.name, site = %entry.site, "card payment: pay button clicked");
     let deadline = Instant::now() + AFTER_CLICK;
@@ -1844,6 +1974,10 @@ pub(crate) async fn pay_with_values(
         loader: String::new(),
         stop: None,
         fields: Vec::new(),
+        merchant: label.to_string(),
+        vault: false,
+        clicked: false,
+        epoch: suspends(),
     };
     if let Some(folder) = crate::desktop::desktop_dir(&config, agent).filter(|f| f.is_dir()) {
         if crate::desktop::app_holds(&folder) {
