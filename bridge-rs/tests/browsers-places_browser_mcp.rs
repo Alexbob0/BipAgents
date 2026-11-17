@@ -663,6 +663,9 @@ async fn pages_come_back_as_text_screenshots_as_images_and_navigation_once_loade
     std::fs::write(tmp.join("server.py"), SPEED_SERVER).unwrap();
     std::fs::write(tmp.join("exec.py"), FAKE_EXEC).unwrap();
     config.insert("exec".into(), json!([python(), tmp.join("exec.py").to_string_lossy()]));
+    // no DevTools here: the page's own frame masked through the real server (a DevTools set up but out of reach
+    // refuses the screenshot: a_screenshot_waits_for_devtools_when_they_are_out_of_reach)
+    config.shift_remove("cdp_port");
     let out = Out::default();
     let proxy = Proxy::new(config, Box::new(out.clone()));
     proxy.handle(init()).await;
@@ -742,6 +745,32 @@ characters of this page. To read on, run execute_script with: "
     proxy.handle(tool(9, "take_screenshot", json!({"instance_id": "319ceedb", "full_page": true}))).await;
     let answer = out.messages().last().unwrap().clone();
     assert!(answer["result"]["content"][0]["text"].as_str().unwrap().contains("too large"));
+    proxy.stop_child().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_screenshot_waits_for_devtools_when_they_are_out_of_reach() {
+    // Audit 17/11, 1.7 follow-up: the frames of other sites (a payment provider's, a login's) are masked through
+    // DevTools only; with DevTools set up but out of reach (port 19602: nothing listens), the main frame alone could
+    // be masked, so no screenshot is taken. Other page reads keep the main frame's masking.
+    let dir = tempfile::tempdir().unwrap();
+    let tmp = dir.path();
+    let config = config(tmp);
+    std::fs::write(tmp.join("server.py"), SPEED_SERVER).unwrap();
+    let out = Out::default();
+    let proxy = Proxy::new(config, Box::new(out.clone()));
+    proxy.handle(init()).await;
+    proxy.handle(tool(7, "take_screenshot", json!({"instance_id": "319ceedb"}))).await;
+    let answer = out.messages().last().unwrap().clone();
+    assert_eq!(answer["id"], json!(7));
+    assert!(
+        calls(tmp).iter().all(|c| c["name"] != "take_screenshot"),
+        "the real server never took it: {:?}",
+        calls(tmp)
+    );
+    let text = answer["result"]["content"][0]["text"].as_str().unwrap_or("");
+    assert!(text.starts_with("No screenshot right now") && text.contains("DevTools"), "{answer}");
+    assert!(browser_mcp::own_refusal(answer.as_object().unwrap()), "not a failed step of the page");
     proxy.stop_child().await;
 }
 
