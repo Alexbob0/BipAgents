@@ -49,8 +49,12 @@ struct Proton {
     next: HashMap<String, u32>,
     /// hydroxide: no In-Reply-To in the header of a draft it serves. false: a server that keeps it.
     hide_in_reply_to: bool,
+    /// Stock hydroxide on today's API: only its own folders, all \Noinferiors; the person's are not there.
+    stock: bool,
     log: Vec<String>,
 }
+
+const SYSTEM: [&str; 8] = ["INBOX", "All Mail", "Archive", "Drafts", "Starred", "Spam", "Sent", "Trash"];
 
 type Shared = Arc<Mutex<Proton>>;
 
@@ -125,7 +129,7 @@ impl Imap for Fake {
         let name = unquote(folder);
         let mut s = self.server.lock().unwrap();
         s.log.push(format!("SELECT {name} {readonly}"));
-        if s.folders.contains(&name) {
+        if s.folders.contains(&name) && !(s.stock && !SYSTEM.contains(&name.as_str())) {
             let n = s.in_folder(&name).len();
             self.selected = name;
             Ok(("OK".into(), vec![Data::Line(n.to_string().into_bytes())]))
@@ -278,12 +282,24 @@ impl Imap for Fake {
         ] {
             rows.push(Data::Line(format!("({flags}) \"/\" \"{name}\"").into_bytes()));
         }
-        for name in s.folders.iter().filter(|f| !["INBOX", "Drafts"].contains(&f.as_str())) {
+        for name in s.folders.iter().filter(|f| !s.stock && !SYSTEM.contains(&f.as_str())) {
             let children = s.folders.iter().any(|f| f.starts_with(&format!("{name}/")));
             let flags = if children { "\\HasChildren" } else { "\\HasNoChildren" };
             rows.push(Data::Line(format!("({flags}) \"/\" \"{}\"", mailbox::utf7_encode(name)).into_bytes()));
         }
         Ok(("OK".into(), rows))
+    }
+
+    /// The patched build makes folders (POST /labels); stock hydroxide answers « not yet implemented ».
+    fn create(&mut self, folder: &str) -> Result<Reply, ImapError> {
+        let mut s = self.server.lock().unwrap();
+        let name = unquote(folder);
+        s.log.push(format!("CREATE {name}"));
+        if s.stock || s.folders.contains(&name) {
+            return Ok(("NO".into(), vec![Data::Line(b"not yet implemented".to_vec())]));
+        }
+        s.folders.push(name);
+        Ok(("OK".into(), vec![]))
     }
 
     fn append(&mut self, folder: &str, _: &str, _: &str, message: &[u8]) -> Result<Reply, ImapError> {
@@ -557,7 +573,8 @@ fn a_reply_goes_to_the_reply_to_never_to_an_address_in_the_text() {
     assert!(!error, "{said}");
     let made = appended(&server);
     assert_eq!(made.len(), 1);
-    assert_eq!(made[0].to, "Léa <lea@example.org>");
+    // the bare address: a display name is the sender's to choose (« "lea@example.org" <x@evil.example> »)
+    assert_eq!(made[0].to, "lea@example.org");
     assert_eq!(made[0].in_reply_to, "<h1@mail.bipagents.com>");
     assert!(said.contains("lea@example.org"), "{said}");
     // a direct mail: its sender, named or not
@@ -853,4 +870,89 @@ fn review_a_draft_to_a_reply_to_names_the_sender_too() {
         assert!(!error, "{subject}: {said}");
         assert!(said.contains(reply_to) && said.contains(sender), "{subject}: both addresses expected: {said}");
     }
+}
+
+// -- after the review (17/11): the same rule for the folder a card takes its mails from, a job never makes a folder
+// two could be, folded names never merged at random, no folder list for an empty folder, stock hydroxide said ---------
+
+#[test]
+fn a_card_takes_its_mails_from_a_folder_said_as_a_person_says_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = setup(dir.path(), "a1");
+    let server = proton();
+    let open = opener(&server);
+    let called = bulk(
+        &config,
+        &open,
+        json!({"action": "move:Support/En attente", "folder": "traite", "from": "no-reply@bipagents.com",
+            "subject_contains": "AAA-111"}),
+    );
+    let card = called.card.unwrap_or_else(|| panic!("{}", text_of(&called.result)));
+    assert_eq!((card.folder.as_str(), card.dest.as_str()), ("Support/Traité", "Support/En attente"));
+    // two it could be, or none: the folders named, no card
+    server.lock().unwrap().folders.push("Factures/Traité".into());
+    for (folder, names) in
+        [("Traité", ["« Support/Traité »", "« Factures/Traité »"]), ("Nowhere", ["« Support »", "« Admin »"])]
+    {
+        let called =
+            bulk(&config, &open, json!({"action": "archive", "folder": folder, "from": "no-reply@bipagents.com"}));
+        let said = text_of(&called.result);
+        assert!(called.card.is_none() && names.iter().all(|n| said.contains(n)), "{folder}: {said}");
+        let overview =
+            mail_tidy::call(&config, "coach", "mail_overview", &args(json!({"folder": folder})), &open).unwrap();
+        assert!(names.iter().all(|n| text_of(&overview.result).contains(n)), "{folder}: {}", text_of(&overview.result));
+    }
+}
+
+#[test]
+fn a_job_never_makes_a_folder_two_could_be() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = setup(dir.path(), "a2");
+    let server = proton();
+    let open = opener(&server);
+    // a folder nobody has yet: the card makes it, by the exact name said
+    let called = bulk(
+        &config,
+        &open,
+        json!({"action": "move:Archives 2026", "folder": "Support", "from": "no-reply@bipagents.com",
+            "subject_contains": "K7Q-4XN"}),
+    );
+    let card = called.card.unwrap_or_else(|| panic!("{}", text_of(&called.result)));
+    assert!(card.make_dest && card.dest == "Archives 2026", "{card:?}");
+    // meanwhile the person made two folders of that name elsewhere: the job asks, it makes none
+    server.lock().unwrap().folders.extend(["Support/Archives 2026".to_string(), "Admin/Archives 2026".to_string()]);
+    let job = mail_tidy::answer(&config, "coach", &card.id, true, "app").unwrap().unwrap();
+    mail_tidy::run_job(&config, &job.id, &open).unwrap();
+    let done = mail_tidy::jobs_of(&config, "coach").into_iter().find(|j| j.id == job.id).unwrap();
+    assert_eq!(done.status, "failed", "{done:?}");
+    assert!(
+        done.error.contains("« Support/Archives 2026 »") && done.error.contains("« Admin/Archives 2026 »"),
+        "{}",
+        done.error
+    );
+    let s = server.lock().unwrap();
+    assert!(!s.log.iter().any(|l| l.starts_with("CREATE")), "{:?}", s.log);
+    assert!(!s.folders.contains(&"Archives 2026".to_string()) && s.subjects("Support").len() == 3);
+}
+
+#[test]
+fn an_empty_folder_says_so_without_the_folder_list() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = setup(dir.path(), "a3");
+    let server = proton();
+    let open = opener(&server);
+    let (error, empty) = call(&config, &open, "mail_search", json!({"folder": "Support/Suspect", "limit": 20}));
+    assert!(!error && empty == "No e-mail in « Support/Suspect ».", "{empty}");
+}
+
+#[test]
+fn stock_hydroxide_is_said_with_the_build_that_shows_the_folders() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = setup(dir.path(), "a4");
+    let server = proton();
+    server.lock().unwrap().stock = true;
+    let open = opener(&server);
+    let (error, said) = call(&config, &open, "mail_search", json!({"folder": "Support"}));
+    assert!(error && said.contains("hydroxide") && said.contains("github.com/Alexbob0/hydroxide"), "{said}");
+    assert!(said.contains("« INBOX »"), "{said}");
 }

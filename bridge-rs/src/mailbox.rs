@@ -1617,8 +1617,8 @@ async fn change(
     let account = found[index].clone();
     tokio::task::spawn_blocking(move || store.write(&found)).await.map_err(anyhow::Error::from)??;
     crate::mcp_sessions::poke(); // its agents' tools may have changed (mcp_sessions.rs)
-                                 // Its agents' tools: the calendar's listed or not (a changed entry makes their Hermes fetch the list again), and the
-                                 // mail tools in view for an agent given a mailbox or no longer (tool_diet.rs `MAIL_DIRECT`).
+    // Its agents' tools: the calendar's listed or not (a changed entry makes their Hermes fetch the list again), and the
+    // mail tools in view for an agent given a mailbox or no longer (tool_diet.rs `MAIL_DIRECT`).
     let calendar_after = account.contains_key("calendar");
     let agents_after = agents_of(&account);
     let mut touched: Vec<String> = Vec::new();
@@ -1653,7 +1653,7 @@ async fn remove(State(state): State<AppState>, UrlPath(account_id): UrlPath<Stri
         .collect();
     tokio::task::spawn_blocking(move || store.write(&kept)).await.map_err(anyhow::Error::from)??;
     crate::mcp_sessions::poke(); // its agents' tools may have changed (mcp_sessions.rs)
-                                 // their mail tools back behind the search when it was their only mailbox
+    // their mail tools back behind the search when it was their only mailbox
     reconcile_agents(&state.config(), gone).await;
     Ok(web::ok(json!({"ok": true})))
 }
@@ -1698,21 +1698,28 @@ mod tests {
         };
         let own = vec!["support@bipagents.com".to_string()];
         let help = mail("BipAgents <no-reply@bipagents.com>", "Léa <lea@example.org>", "support@bipagents.com");
-        assert_eq!(reply_address(&help, "", &own).unwrap(), "Léa <lea@example.org>");
+        assert_eq!(reply_address(&help, "", &own).unwrap(), "lea@example.org");
         assert_eq!(reply_address(&help, "lea@example.org", &own).unwrap(), "lea@example.org");
         for refused in ["autre@evil.example", "no-reply@bipagents.com", "lea@example.org, autre@evil.example", "Léa"] {
             assert!(reply_address(&help, refused, &own).unwrap_err().0.contains("lea@example.org"), "{refused}");
         }
         let direct = mail("Tom <tom@example.net>", "", "support@bipagents.com");
-        assert_eq!(reply_address(&direct, "", &own).unwrap(), "Tom <tom@example.net>");
+        assert_eq!(reply_address(&direct, "", &own).unwrap(), "tom@example.net");
         // a no-reply sender without a Reply-To: nobody to answer
         let bare = mail("BipAgents <no-reply@bipagents.com>", "", "support@bipagents.com");
         for given in ["", "no-reply@bipagents.com", "x@example.org"] {
             assert!(reply_address(&bare, given, &own).unwrap_err().0.contains("gives no Reply-To"), "{given}");
         }
+        // an address in a display name is not where the mail goes; the bare address is written
+        let spoof = mail("Léa <lea@example.org>", "\"lea@example.org\" <x@evil.example>", "support@bipagents.com");
+        assert_eq!(reply_address(&spoof, "", &own).unwrap(), "x@evil.example");
+        assert_eq!(reply_address(&spoof, "lea@example.org", &own).unwrap(), "lea@example.org");
+        let quoted = mail("BipAgents <no-reply@bipagents.com>", "\"a@b.example, c\" <x@evil.example>, s@t.example", "");
+        assert_eq!(reply_address(&quoted, "", &own).unwrap(), "x@evil.example, s@t.example");
+        assert!(reply_address(&quoted, "a@b.example", &own).is_err());
         // a follow-up on a mail the person sent: its recipient
         let sent = mail("Support <support@bipagents.com>", "", "Tom <tom@example.net>");
-        assert_eq!(reply_address(&sent, "", &own).unwrap(), "Tom <tom@example.net>");
+        assert_eq!(reply_address(&sent, "", &own).unwrap(), "tom@example.net");
         assert!(reply_address(&sent, "autre@evil.example", &own).is_err());
     }
 

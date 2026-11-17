@@ -1956,6 +1956,15 @@ mod tests {
         let cjk = names(&["台北", "日本語"]);
         assert_eq!(cjk.resolve("日本語").as_deref(), Some("日本語"));
         assert_eq!(cjk.resolve("中文"), None);
+        // two names the same once folded: the exact one, else both named (never the first listed)
+        let twins = names(&["Traité", "Traite", "Factures", "factures"]);
+        assert_eq!(twins.resolve("Traite").as_deref(), Some("Traite"));
+        assert_eq!(twins.find("TRAITE"), Err(vec!["Traité".to_string(), "Traite".to_string()]));
+        assert_eq!(twins.find("FACTURES"), Err(vec!["Factures".to_string(), "factures".to_string()]));
+        // only Latin accents fold: an Indic vowel sign or a Japanese dakuten keeps a word apart
+        assert_ne!(folded("कि"), folded("क"));
+        assert_ne!(folded("が"), folded("か"));
+        assert_eq!(folded(" Ÿvette ÉTÉ "), "yvette ete");
     }
 
     #[test]
