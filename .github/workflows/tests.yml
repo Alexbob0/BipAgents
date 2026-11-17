@@ -15,8 +15,8 @@ jobs:
     if: github.repository == 'Alexbob0/BipAgents'   # free there; the private copy would count minutes
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0   # v7
         with:
           python-version: "3.12"
           cache: pip
@@ -28,7 +28,7 @@ jobs:
       # The bridge (bridge-rs/), built once for the installer's config checks and the black-box suite; its own unit
       # tests and clippy run in bridge-release.yml.
       - run: rustup toolchain install stable --profile minimal && rustup default stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0   # v2
         with:
           workspaces: bridge-rs
       - name: Build the bridge
@@ -72,9 +72,9 @@ jobs:
       run:
         working-directory: relay
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7
       - run: rustup toolchain install stable --profile minimal -c clippy,rustfmt && rustup default stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0   # v2
         with:
           workspaces: relay
       - run: cargo fmt --check
@@ -86,7 +86,7 @@ jobs:
     if: github.repository == 'Alexbob0/BipAgents'   # free there; the private copy would count minutes
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7
       - name: install.ps1 parses (Windows PowerShell 5.1, the one every PC has)
         shell: powershell
         run: |
@@ -100,7 +100,7 @@ jobs:
     if: github.repository == 'Alexbob0/bipagents-private' && github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7
       # The newest Xcode on the runner: the voices' packages use the iOS SDK's latest asset-pack API.
       - name: Newest Xcode
         run: sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)" && xcodebuild -version
@@ -125,12 +125,12 @@ jobs:
     if: github.repository == 'Alexbob0/bipagents-private' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880   # v6
         with:
           distribution: temurin
           java-version: "17"
-      - uses: gradle/actions/setup-gradle@v6
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c   # v6
       - name: Unit tests and debug build
         working-directory: android
         run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-configuration-cache
