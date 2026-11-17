@@ -1825,6 +1825,30 @@ mod tests {
     }
 
     #[test]
+    fn a_folder_is_found_as_a_person_says_it() {
+        // Alex 17/11: « Traité » meant « Support/Traité »; any case, accents or not; never one of two at random
+        let names = |n: &[&str]| Folders(n.iter().map(|n| ("\\HasNoChildren".to_string(), n.to_string())).collect());
+        let support = names(&["INBOX", "Support", "Support/En attente", "Support/Traité", "Admin"]);
+        for (said, real) in [
+            ("Traité", "Support/Traité"),
+            ("traite", "Support/Traité"),
+            ("SUPPORT/TRAITE", "Support/Traité"),
+            ("en attente", "Support/En attente"),
+            ("support", "Support"),
+            ("inbox", "INBOX"),
+        ] {
+            assert_eq!(support.resolve(said).as_deref(), Some(real), "{said}");
+        }
+        let two = names(&["Support/Traité", "Factures/Traité"]);
+        assert_eq!(two.resolve("traite"), None);
+        assert_eq!(two.resolve("factures/traite").as_deref(), Some("Factures/Traité"));
+        // names in other scripts are not folded away into one another
+        let cjk = names(&["台北", "日本語"]);
+        assert_eq!(cjk.resolve("日本語").as_deref(), Some("日本語"));
+        assert_eq!(cjk.resolve("中文"), None);
+    }
+
+    #[test]
     fn hydroxide_without_the_folder_says_why_before_any_card() {
         let hx = hydroxide_folders(&[]);
         let why = hx.destination("Copro St Ex").unwrap_err();
