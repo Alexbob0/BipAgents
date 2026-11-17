@@ -109,14 +109,16 @@ fn wrapped_call(name: &str, arguments: &str) -> (String, String) {
     (inner.to_string(), inner_args)
 }
 
-/// A result without Hermes' « untrusted_tool_result » wrapper (its opening tag and notice, its closing tag).
-fn unwrapped(raw: &str) -> &str {
-    let text = raw.trim();
+/// A result without what the bridge or Hermes join to it (timeline.rs `result_words`) and without Hermes'
+/// « untrusted_tool_result » wrapper (its opening tag and notice, its closing tag).
+fn unwrapped(raw: &str) -> String {
+    let text = crate::threads::timeline::result_words(raw);
+    let text = text.trim();
     if !text.starts_with("<untrusted_tool_result") {
-        return text;
+        return text.to_string();
     }
     let body = text.split_once("\n\n").map_or("", |(_, body)| body).trim_end();
-    body.strip_suffix("</untrusted_tool_result>").unwrap_or(body).trim()
+    body.strip_suffix(WRAP_END).unwrap_or(body).trim().to_string()
 }
 
 fn an_item(id: &str) -> bool {
@@ -127,10 +129,17 @@ fn a_host(host: &str) -> bool {
     !host.is_empty() && host.len() <= 255 && host.bytes().all(|b| b.is_ascii_alphanumeric() || b".-:[]".contains(&b))
 }
 
-/// The bridge's own mark, the last words of its result.
-fn bridge_fill(text: &str, how: How) -> Option<Fill> {
-    let body = text.strip_suffix("-->")?;
-    let inner = &body[body.rfind(MARK_OPEN)? + MARK_OPEN.len()..];
+/// Hermes' wrapper's end.
+const WRAP_END: &str = "</untrusted_tool_result>";
+
+/// The bridge's own mark, the last words of its result: after it, only what the bridge or Hermes join to a result
+/// (another hidden note, a note of the brake, a steer, the wrapper's end: timeline.rs `result_words` takes them out).
+fn bridge_fill(raw: &str, how: How) -> Option<Fill> {
+    let start = raw.rfind(MARK_OPEN)?;
+    let (inner, after) = raw[start + MARK_OPEN.len()..].split_once("-->")?;
+    if !crate::threads::timeline::result_words(after).replace(WRAP_END, "").trim().is_empty() {
+        return None;
+    }
     let parts: Vec<&str> = inner.split(' ').collect();
     let [item, host, word] = parts[..] else { return None };
     (an_item(item) && a_host(host) && How::of(word) == Some(how)).then(|| Fill {
@@ -164,13 +173,12 @@ fn hermes_fill(arguments: &str, text: &str) -> Option<Fill> {
 /// out); None when it typed no password of the vault.
 pub fn fill_of(name: &str, arguments: &str, raw: &str) -> Option<Fill> {
     let (name, arguments) = wrapped_call(name, arguments);
-    let text = unwrapped(raw);
     if is_vault_tool(&name, LOGIN) {
-        bridge_fill(text, How::Login)
+        bridge_fill(raw, How::Login)
     } else if is_vault_tool(&name, CREATE) {
-        bridge_fill(text, How::Created)
+        bridge_fill(raw, How::Created)
     } else if name == HERMES_TOOL {
-        hermes_fill(&arguments, text)
+        hermes_fill(&arguments, &unwrapped(raw))
     } else {
         None
     }

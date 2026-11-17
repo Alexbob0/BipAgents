@@ -346,7 +346,9 @@ pub fn person_message(content: &Value) -> Option<bool> {
 
 /// A tool's result as served: the app's notes and the bridge's words to the agent joined to it (the brake's warning
 /// after a result, a steer Hermes added to it) left out.
-fn result_words(raw: &str) -> String {
+/// A tool's result as the apps read it: the bridge's notes, steers and words for the agent only taken out (also
+/// what may follow the vault's mark: vault_line.rs).
+pub(crate) fn result_words(raw: &str) -> String {
     let text = NOTES.replace_all(raw, "");
     let mut text = BRIDGE_STEER_BLOCK.replace_all(&text, "").to_string();
     if let Some(at) = BRIDGE_MARK.find(&text).map(|m| m.start()) {

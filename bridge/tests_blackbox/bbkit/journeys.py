@@ -119,7 +119,7 @@ def hermes_holds(folder: Path, token: str) -> None:
 
 
 def journey_bridge(bridges, fakes, word_gap: float = 0.06, name: str = "journeys",
-                   family_relay: Optional[str] = None, tool_asks: bool = False) -> Journey:
+                   family_relay: Optional[str] = None, tool_asks: bool = False, browser: bool = False) -> Journey:
     from test_connectors import IMAGE, SERVER
     from test_sandbox import TOKENS, isolated, started
     from conftest import profile
@@ -149,6 +149,11 @@ def journey_bridge(bridges, fakes, word_gap: float = 0.06, name: str = "journeys
         bridge.config["family"] = {"relay_url": family_relay}
     if tool_asks:   # J59–J63: the agent asks for a tool it has off, on a card (tool_asks.rs)
         bridge.config["tools"] = {"ask_in_conversation": True}
+    if browser:   # J65: a visible browser of its own the person can take over (its container's ports, its desktop)
+        agent["desktop_vnc"] = f"tcp://127.0.0.1:{free_port()}"
+        folder = bridge.data / "browsers" / AGENT
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "ports.json").write_text(json.dumps({"cdp": free_port(), "vnc": free_port()}))
     started(bridge, hub, [AGENT])
     token = TOKENS[AGENT]
     path = bridge.state_dir / "agent-tools.json"
@@ -185,6 +190,28 @@ def journey_bridge(bridges, fakes, word_gap: float = 0.06, name: str = "journeys
                            {"name": "exemple", "site": "exemple.com", "kind": "password",
                             "reason": "Pour te connecter à ton compte"})
 
+    def login_secret(words: str) -> str:
+        return journey.mcp("/v1/agent-tools/connectors", "ask_secret",
+                           {"name": "fournisseur", "site": "www.fournisseur.example", "kind": "password", "use": "browser",
+                            "identifier_label": "Identifiant", "reason": "Pour passer ta commande"})
+
+    kept: Dict[str, str] = {}
+
+    def vault_login(words: str) -> str:
+        """`vault_login`'s answer on the supplier's login page, as the bridge gives it (vault_logins.rs `login`, its mark
+        last: vault_line.rs): the journeys' bridge has no Chrome to type into. The login is the person's, given to Vie."""
+        if "id" not in kept:
+            made = bridge.post("/v1/vault", headers=AUTH, json={
+                "label": "Fournisseur", "site": "https://www.fournisseur.example", "identifier": "camille@example.org",
+                "password": "Fake-Pa55word-J64", "agents": [AGENT]})
+            assert made.status_code == 201, made.text
+            kept["id"] = made.json()["id"]
+        host = "www.fournisseur.example"
+        return (f"Typed the identifier and the password of « Fournisseur » into the login form of {host}. You never see "
+                f"the password: don't read the fields back. Now submit the form yourself (its button). If the site then "
+                f"asks for a verification code, use browser_vault action=enter_code."
+                f"<!--bip:filled {kept['id']} {host} login-->")
+
     def sites(words: str) -> str:
         return journey.mcp("/v1/agent-tools/files", "sandbox_sites_request",
                            {"host": "connect.garmin.example", "reason": "le connecteur Garmin"})
@@ -199,7 +226,8 @@ def journey_bridge(bridges, fakes, word_gap: float = 0.06, name: str = "journeys
     inline = os.environ.get("JOURNEYS_PHOTOS") == "inline"
     journey.model = ScriptedModel(fakes.hermes, files, FILES_ROOT, word_gap=word_gap,
                                   calls={"page": page, "map": map_, "secret": secret, "sites": sites,
-                                         "connector": connector, "page_with": page_with, "memory_page": memory_page},
+                                         "connector": connector, "page_with": page_with, "memory_page": memory_page,
+                                         "login_secret": login_secret, "vault_login": vault_login},
                                   profile=None if inline else profile(hub, AGENT),
                                   profile_seen_as=f"{agent['hermes_home']}/profiles/{AGENT}").install()
     return journey

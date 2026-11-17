@@ -441,8 +441,12 @@ no `vault_line`, no `bip_secret_use` / `bip_secret_self` (so no « Je le taperai
 - **The secret card** (`GET /v1/approvals`, `bip-secret-`, internal/next/agent-connectors-api.md §1a): `bip_secret_use`
   (`browser`: a site's login for the agent's visible browser; `connector`) and `bip_secret_self` (true: the person may
   type it themselves there). `POST /v1/vault/secrets/requests/{id}` `{"allow": false, "way": "self"}` → 200
-  `{"ok": true, "choice": "self"}`; 400 on a card without `bip_secret_self`, 404 once answered. The app then opens the
-  desktop with the hand taken. The answered card's `choice` is `self`.
+  `{"ok": true, "choice": "self"}`; 400 on a card without `bip_secret_self`, 404 once answered, 409 `confirm_others`
+  on a card with `bip_secret_others` without `"confirmed_others": true` (as « Enregistrer »). The app then opens the
+  desktop with the hand taken. Every answer to a secret card (`once`, `deny`, `self`) is an `approval` item of the
+  conversation it showed in (topic `secret`; « ✋ Tapé par toi dans le Bureau » for `self`).
+- **Its mark** may be followed by what the bridge or Hermes join to a result (another `<!--bip:` note, a note of the
+  brake, a steer, the end of Hermes' wrapper): the line is still made; any other words after it, none.
 
 ### 6.4 One item, attachments
 

@@ -18,7 +18,9 @@
 //!   (`{"allow": false, "way": "self"}`, kept as the choice `self`) keeps nothing: the agent's call waits until the
 //!   person has taken its browser and handed it back (`HAND_WAIT`), then reads the page (`HANDED_BACK`); still held
 //!   then, it says it will go on once handed back and stops (`NOT_BACK`), and goes on once, in a later turn, when the
-//!   hand is back (card_place.rs `settle`, `self_hand`, `resume_words`).
+//!   hand is back (card_place.rs `settle`, `self_hand`, `resume_words`). Nobody took the browser while it waited, or
+//!   `SELF_KEEP` passed: the answer is closed, a take afterwards resumes nothing (review of 17/11). On an agent other
+//!   people talk to, only with the person's confirmation (`confirmed_others`), as « Enregistrer ».
 //! - **Blanking** (`Blanker`): every value of the agent's secrets, raw, URL-encoded, JSON-escaped, hex and base64
 //!   (padded, unpadded, URL-safe, and the aligned cores of a value inside a longer base64 stream, as in a Basic
 //!   header), is replaced by « [secret] » in whatever a connector sends back before it reaches Hermes, the model, the
@@ -318,7 +320,8 @@ pub fn hand_wait() -> Duration {
         return HAND_WAIT;
     };
     let wait = Duration::from_secs(seconds.clamp(1, HAND_WAIT.as_secs()));
-    tracing::warn!(seconds = wait.as_secs(), "secret card: the person's hand waited for at a test interval");
+    static SAID: std::sync::Once = std::sync::Once::new();
+    SAID.call_once(|| tracing::warn!(seconds = wait.as_secs(), "secret card: the person's hand waited for at a test interval"));
     wait
 }
 
@@ -340,7 +343,12 @@ pub const SELF_KEEP: Duration = Duration::from_secs(2 * 3600);
 
 /// For an answer kept until the agent knows it (card_place.rs `settle`), `age` seconds after it was given: `hand_now`,
 /// or `Hand::Closed` when nobody took the browser by the time the agent stopped waiting, or `SELF_KEEP` passed.
-pub fn hand_after(holds: bool, held: bool, _age: f64) -> Hand {
+pub fn hand_after(holds: bool, held: bool, age: f64) -> Hand {
+    // the agent's call waits `hand_wait`, checking each second; a minute more for an answer it never saw
+    let gave_up = hand_wait().as_secs_f64() + 60.0;
+    if age > SELF_KEEP.as_secs_f64() || (!held && age > gave_up) {
+        return Hand::Closed;
+    }
     hand_now(holds, held)
 }
 
@@ -353,6 +361,20 @@ pub fn hand_now(holds: bool, held: bool) -> Hand {
     }
 }
 
+/// When the person last handed each agent's browser back (desktop.rs `control`): a take and a hand-back between two
+/// looks of a wait (a second apart) still count.
+static GIVEN_BACK: LazyLock<Mutex<HashMap<String, f64>>> = LazyLock::new(Default::default);
+
+/// The person handed `agent`'s browser back, now.
+pub fn hand_given_back(agent: &str) {
+    GIVEN_BACK.lock().unwrap_or_else(|e| e.into_inner()).insert(agent.to_string(), py::time_time());
+}
+
+/// Handed back at `since` (Unix seconds) or later.
+pub fn given_back_since(agent: &str, since: f64) -> bool {
+    GIVEN_BACK.lock().unwrap_or_else(|e| e.into_inner()).get(agent).is_some_and(|at| *at >= since)
+}
+
 /// The person holds the agent's browser in the app: its desktop taken over (desktop.rs `control`), or Hermes' lease.
 pub fn person_holds(state: &AppState, agent: &str) -> bool {
     if state.desktop_control.lock().unwrap_or_else(|e| e.into_inner()).get(agent).copied().unwrap_or(false) {
@@ -363,29 +385,48 @@ pub fn person_holds(state: &AppState, agent: &str) -> bool {
     folder.filter(|f| f.is_dir()).is_some_and(|f| crate::desktop::app_holds(&f))
 }
 
-/// After « Je le taperai moi-même »: until the person has taken the agent's browser and handed it back (true), or
-/// `hand_wait` passed (false), as « Payer dans le navigateur de l'agent » (handover.rs).
-pub async fn wait_for_hand(state: &AppState, agent: &str) -> bool {
+/// How the agent's wait for the person's hand ended (`wait_for_hand`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HandEnd {
+    /// Taken, then handed back.
+    Back,
+    /// Taken, still held when the wait ended: the agent goes on once it is back (card_place.rs).
+    StillHeld,
+    /// Never taken while the agent waited: nothing more to wait for.
+    NeverTaken,
+}
+
+/// After « Je le taperai moi-même »: until the person has taken the agent's browser and handed it back, or
+/// `hand_wait` passed, as « Payer dans le navigateur de l'agent » (handover.rs).
+pub async fn wait_for_hand(state: &AppState, agent: &str) -> HandEnd {
     let started = Instant::now();
+    let since = py::time_time();
     let wait = hand_wait();
     let mut held = false;
     loop {
-        match hand_now(person_holds(state, agent), held) {
-            Hand::Back => return true,
+        let holds = person_holds(state, agent);
+        held |= given_back_since(agent, since);
+        match hand_now(holds, held) {
+            Hand::Back => return HandEnd::Back,
             Hand::Taken => held = true,
             Hand::Wait | Hand::Closed => {}
         }
         if started.elapsed() >= wait {
-            return false;
+            return if held { HandEnd::StillHeld } else { HandEnd::NeverTaken };
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
 }
 
 /// For an answer card_place.rs keeps until the agent knows it: where the person's hand is when it was « Je le taperai
-/// moi-même » to a secret card (None: another answer, or another card). `held`: seen holding since the answer.
-pub fn self_hand(state: &AppState, card: &str, agent: &str, choice: &str, held: bool) -> Option<Hand> {
-    (card.starts_with(RUN_PREFIX) && choice == SELF).then(|| hand_now(person_holds(state, agent), held))
+/// moi-même » to a secret card, `age` seconds after (None: another answer, or another card). `held`: seen holding
+/// since the answer.
+pub fn self_hand(state: &AppState, card: &str, agent: &str, choice: &str, held: bool, age: f64) -> Option<Hand> {
+    if !card.starts_with(RUN_PREFIX) || choice != SELF {
+        return None;
+    }
+    let held = held || given_back_since(agent, py::time_time() - age);
+    Some(hand_after(person_holds(state, agent), held, age))
 }
 
 /// Whether the person may type it themselves in the agent's browser: a site's login for its visible browser, asked
@@ -405,11 +446,21 @@ pub enum SelfError {
     NoCard,
     /// Not a site's login, or no browser to take over (`bip_secret_self` false).
     NotHere,
+    /// Other people talk to the agent and the person did not confirm (`confirmed_others`), as for « Enregistrer »:
+    /// their session would stay in that agent's browser (review R1, 17/11).
+    ConfirmOthers,
 }
 
 /// « Je le taperai moi-même » (`{"allow": false, "way": "self"}`): nothing kept, the agent's call waits for the
-/// browser handed back (`wait_for_hand`).
-pub fn choose_self(config: &Config, agent: Option<&str>, id: &str, via: &str) -> Result<(), SelfError> {
+/// browser handed back (`wait_for_hand`). For an agent other people talk to, only once the person confirmed it
+/// (`confirmed_others`), as `give` asks: the session they open stays in that agent's browser.
+pub fn choose_self(
+    config: &Config,
+    agent: Option<&str>,
+    id: &str,
+    confirmed_others: bool,
+    via: &str,
+) -> Result<(), SelfError> {
     let (agent, request) = {
         let mut table = cards();
         let Some(card) = table.get_mut(id).filter(|c| c.answer.is_none() && agent.is_none_or(|a| a == c.agent)) else {
@@ -417,6 +468,11 @@ pub fn choose_self(config: &Config, agent: Option<&str>, id: &str, via: &str) ->
         };
         if !may_type_self(config, &card.agent, &card.request) {
             return Err(SelfError::NotHere);
+        }
+        if !confirmed_others && crate::vault::others_facing(config, &card.agent) {
+            tracing::info!(agent = %card.agent, secret = %card.request.name,
+                "secret card: not typed by the person, other people talk to the agent, not confirmed");
+            return Err(SelfError::ConfirmOthers);
         }
         card.answer = Some(Outcome::TypedByPerson);
         card.notify.notify_waiters();
@@ -626,8 +682,12 @@ pub fn item(config: &Config, id: &str) -> Option<Dict> {
 }
 
 fn record(config: &Config, agent: &str, id: &str, request: &Request, choice: &str, via: &str) {
+    // the conversation the card showed in (card_place.rs): its answered line there (« ✋ Tapé par toi dans le
+    // Bureau », 17/11); none when it was answered before it was placed
+    let run_id = format!("{RUN_PREFIX}{id}");
+    let shown = crate::card_place::of(config, &run_id).and_then(|p| p.report.or(p.session));
     let fields = json!({
-        "session_id": null, "run_id": format!("{RUN_PREFIX}{id}"), "request_id": id,
+        "session_id": shown, "run_id": run_id, "request_id": id,
         "command": if request.host().is_empty() { request.name.clone() } else { format!("{} · {}", request.name, request.host()) },
         "description": sentence(&shown_name(config, agent), request),
         "topic": "secret", "choice": choice, "via": via,
@@ -773,7 +833,8 @@ pub async fn give(
 // --- the app's route (bridge key) --------------------------------------------------------------------------------------
 
 /// A secret card answered in the app: `{"allow": true, "value": "…", "identifier": "…"}`, `{"allow": false}`, or
-/// « Je le taperai moi-même » `{"allow": false, "way": "self"}` (a card with `bip_secret_self` only).
+/// « Je le taperai moi-même » `{"allow": false, "way": "self"}` (a card with `bip_secret_self` only; with
+/// `"confirmed_others": true` for an agent other people talk to, as « Enregistrer »).
 async fn answer_route(State(state): State<AppState>, Path(id): Path<String>, body: Bytes) -> ApiResult<Response> {
     let body: Value = serde_json::from_slice(&body).map_err(|_| HttpError::new(400, "invalid JSON"))?;
     let Some(allow) = body.get("allow").and_then(Value::as_bool) else {
@@ -784,9 +845,13 @@ async fn answer_route(State(state): State<AppState>, Path(id): Path<String>, bod
         if allow || way.as_str() != Some(SELF) {
             return Err(HttpError::new(400, "way: only « self », with allow false"));
         }
-        match choose_self(&state.config(), None, &id, "app") {
+        let confirmed = body.get("confirmed_others").and_then(Value::as_bool) == Some(true);
+        match choose_self(&state.config(), None, &id, confirmed, "app") {
             Ok(()) => web::ok(json!({"ok": true, "choice": SELF})),
             Err(SelfError::NoCard) => return Err(HttpError::new(404, "no such request (answered already?)")),
+            Err(SelfError::ConfirmOthers) => {
+                return Err(HttpError::json(409, json!({"code": CONFIRM_OTHERS, "message": CONFIRM_OTHERS_TEXT})))
+            }
             Err(SelfError::NotHere) => {
                 return Err(HttpError::new(400, "not a site's login with a browser of the agent's to take over"))
             }
@@ -984,14 +1049,14 @@ mod tests {
         let connector =
             open("unit-self", Request { name: "garmin".into(), kind: "password".into(), ..Default::default() }).unwrap();
         let login = open("unit-self", site_login("fournisseur")).unwrap();
-        assert_eq!(choose_self(&config, None, &login, "app"), Err(SelfError::NotHere), "no browser yet");
+        assert_eq!(choose_self(&config, None, &login, false, "app"), Err(SelfError::NotHere), "no browser yet");
         with_browser(&config, "unit-self");
-        assert_eq!(choose_self(&config, None, &connector, "app"), Err(SelfError::NotHere));
-        assert_eq!(choose_self(&config, Some("someone-else"), &login, "app"), Err(SelfError::NoCard));
-        assert_eq!(choose_self(&config, None, "nope", "app"), Err(SelfError::NoCard));
-        assert_eq!(choose_self(&config, None, &login, "app"), Ok(()));
+        assert_eq!(choose_self(&config, None, &connector, false, "app"), Err(SelfError::NotHere));
+        assert_eq!(choose_self(&config, Some("someone-else"), &login, false, "app"), Err(SelfError::NoCard));
+        assert_eq!(choose_self(&config, None, "nope", false, "app"), Err(SelfError::NoCard));
+        assert_eq!(choose_self(&config, None, &login, false, "app"), Ok(()));
         assert_eq!(cards().get(&login).unwrap().answer, Some(Outcome::TypedByPerson));
-        assert_eq!(choose_self(&config, None, &login, "app"), Err(SelfError::NoCard), "answered already");
+        assert_eq!(choose_self(&config, None, &login, false, "app"), Err(SelfError::NoCard), "answered already");
         assert!(!deny(&config, None, &login, "app"));
         // kept as the person's choice, nothing in the vault
         let kept = crate::approvals_log::list(&config, "unit-self", None);
@@ -1013,7 +1078,7 @@ mod tests {
             async move { wait(&id).await }
         });
         tokio::time::sleep(Duration::from_millis(50)).await;
-        choose_self(&config, None, &id, "app").unwrap();
+        choose_self(&config, None, &id, false, "app").unwrap();
         assert_eq!(waiting.await.unwrap(), Some(Outcome::TypedByPerson));
         assert!(cards().get(&id).is_none());
     }
@@ -1074,6 +1139,17 @@ mod tests {
         assert_eq!(hand_after(true, true, kept), Hand::Closed);
         assert_eq!(hand_after(false, true, kept), Hand::Closed);
         assert!(SELF_KEEP > HAND_WAIT && SELF_KEEP.as_secs() <= 6 * 3600);
+    }
+
+    /// A take and a hand-back between two looks of a wait (a second apart) still count.
+    #[test]
+    fn a_hand_given_back_is_remembered() {
+        let before = py::time_time() - 1.0;
+        assert!(!given_back_since("unit-hand", before));
+        hand_given_back("unit-hand");
+        assert!(given_back_since("unit-hand", before));
+        assert!(!given_back_since("unit-hand", py::time_time() + 5.0), "only since the answer");
+        assert!(!given_back_since("unit-other", before));
     }
 
     #[test]

@@ -926,12 +926,18 @@ async fn settle(state: &AppState) {
             continue;
         }
         // « Je le taperai moi-même »: once the person has taken the agent's browser and handed it back (secrets.rs)
-        match crate::secrets::self_hand(state, &card, &place.agent, &decision.choice, decision.held) {
+        match crate::secrets::self_hand(state, &card, &place.agent, &decision.choice, decision.held, now - decision.at) {
             Some(crate::secrets::Hand::Taken) => {
                 update(&config, &card, |p| p.decided.iter_mut().for_each(|d| d.held = true));
                 continue;
             }
-            Some(crate::secrets::Hand::Wait | crate::secrets::Hand::Closed) => continue,
+            Some(crate::secrets::Hand::Wait) => continue,
+            Some(crate::secrets::Hand::Closed) => {
+                // never taken while the agent waited, or kept too long: nothing told (review of 17/11)
+                tracing::info!(agent = %place.agent, card = %card, "« Je le taperai moi-même »: closed, the hand never came back");
+                forget(&config, &card);
+                continue;
+            }
             Some(crate::secrets::Hand::Back) | None => {}
         }
         match turn_now(state, &card, &place, &decision).await {

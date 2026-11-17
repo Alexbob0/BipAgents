@@ -27,6 +27,11 @@ def fold(text):
     return "".join(c for c in decomposed if unicodedata.category(c) != "Mn").lower()
 
 
+def name_of(item):
+    """The name as the list reads it: NFC, white space off both ends."""
+    return unicodedata.normalize("NFC", item.get("label") or "").strip()
+
+
 def host_of(url):
     return (urlsplit(url).hostname or "") if url else ""
 
@@ -44,8 +49,13 @@ def no_scheme(url):
     return url.split("://", 1)[1] if "://" in url else url
 
 
+DEFAULT_PORTS = {"https": 443, "http": 80}
+
+
 def page_of(item, grouped):
-    """« Page : … »: only when the login page is not the site's root; in a group, the host left out (« …/V5/x »)."""
+    """« Page : … »: only when the login page is not the site's root. Its host in lower case with its port (unless the
+    scheme's own), its path and query exactly as written (never %-decoded), no scheme, no fragment; in a group, the
+    host left out (« …/V5/x »)."""
     url = item.get("login_url")
     if not url:
         return None
@@ -53,16 +63,26 @@ def page_of(item, grouped):
     rest = parts.path + (f"?{parts.query}" if parts.query else "")
     if rest in ("", "/"):
         return None
-    return f"…{rest}" if grouped else f"{parts.hostname}{rest}"
+    port = parts.port
+    host = (parts.hostname or "") + (f":{port}" if port and port != DEFAULT_PORTS.get(parts.scheme) else "")
+    return f"…{rest}" if grouped else f"{host}{rest}"
 
 
 def color_of(key):
-    """The square's colour, 0-6 (the palette's index): the sum of the folded key's code points, modulo 7."""
+    """The square's colour, 0-6 (the palette's index): the sum of the folded key's code points (never UTF-16 units),
+    modulo 7."""
     return sum(ord(c) for c in fold(key)) % PALETTE
 
 
 def initial_of(text):
-    return text[:1].upper() if text else "?"
+    """The first letter or digit (general category L or N) of the text in NFC, white space off, by code point (never a
+    UTF-16 unit, nor a grapheme cluster): in capitals when its upper case is one code point, else as it is; « ? » when
+    there is none (an empty name, only emoji or punctuation)."""
+    for ch in unicodedata.normalize("NFC", text or "").strip():
+        if unicodedata.category(ch)[0] in "LN":
+            upper = ch.upper()
+            return upper if len(upper) == 1 else ch
+    return "?"
 
 
 def fields_of(item):
@@ -86,7 +106,7 @@ def matches(item, words):
 
 
 def sort_key(item):
-    return (fold(item.get("label")), fold(item.get("identifier") or ""), item["id"])
+    return (fold(name_of(item)), fold(item.get("identifier") or ""), item["id"])
 
 
 def letter_of(key):
@@ -124,6 +144,8 @@ def view(vault, kind="all", agent=None, query=""):
         counts["all"] += 1
         counts[CATEGORY[item["kind"]]] += 1
     chips = [{"key": c, "count": counts[c]} for c in CHIPS if c == "all" or counts[c] > 0]
+    if kind != "all" and counts[kind] == 0:
+        kind = "all"   # its chip is gone (« Pour » changed): « Tout »
     if kind != "all":
         items = [i for i in items if CATEGORY[i["kind"]] == kind]
     words = fold(query).split()
@@ -136,10 +158,10 @@ def view(vault, kind="all", agent=None, query=""):
         rows += [{"id": i["id"]} for s in SECTIONS for i in others[s]]
         count = len(logins) + sum(len(v) for v in others.values())
         sections = [{"key": "results", "count": count, "rows": rows}] if count else []
-        return {"chips": chips, "sections": sections, "nothing_found": count == 0}
+        return {"kind": kind, "chips": chips, "sections": sections, "nothing_found": count == 0}
     sections = []
     used = [i for i in logins if i.get("last_used_at")]
-    used.sort(key=lambda i: (datetime.fromisoformat(i["last_used_at"]), i["id"]), reverse=True)
+    used.sort(key=lambda i: (-datetime.fromisoformat(i["last_used_at"]).timestamp(), i["id"]))
     if used[:RECENT]:
         sections.append({"key": "recent", "rows": [{"id": i["id"], "used_by": i.get("last_used_by"),
                                                    "used_at": i["last_used_at"]} for i in used[:RECENT]]})
@@ -151,7 +173,7 @@ def view(vault, kind="all", agent=None, query=""):
     for section in SECTIONS:
         if others[section]:
             sections.append({"key": section, "rows": [{"id": i["id"]} for i in others[section]]})
-    return {"chips": chips, "sections": sections, "nothing_found": False}
+    return {"kind": kind, "chips": chips, "sections": sections, "nothing_found": False}
 
 
 def for_menu(vault):
@@ -169,7 +191,7 @@ def looks(vault):
         if item.get("kind") != "login":
             continue
         site = site_of(item)
-        out[item["id"]] = {"initial": initial_of(item.get("label")), "color": color_of(site or item.get("label") or ""),
+        out[item["id"]] = {"initial": initial_of(item.get("label")), "color": color_of(site or name_of(item)),
                            "page": page_of(item, False), "page_grouped": page_of(item, True)}
         if site:
             groups[site] = {"initial": initial_of(site), "color": color_of(site)}

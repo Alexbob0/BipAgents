@@ -1,20 +1,21 @@
 {
  "about": "The vault list's rule (passation-pro briefs/design-coffre-rassurer.md §7; Alex's D6 A « Récents » and D7 A, 16/11), shared by HermesKit and Android: given `vaults` (each a `GET /v1/vault` answer, fake data) and a case's `filter` (`kind`: all | logins | cards | contacts | connectors; `for`: an agent id or null; `query`), the app draws `expect`. Written once in plain Python by bridge/tests_blackbox/test_vault_list_cases.py, which checks this file (VAULT_LIST_WRITE=1 rewrites the expected parts); bridge-rs checks the logins' `domain` is the bridge's (vault_used.rs).",
  "rules": {
-  "fold": "Lower case without accents: Unicode NFD, every non-spacing mark (category Mn) dropped, then lower case, no locale. Sorting and search compare folded texts; folded keys compare by Unicode code points (no collation).",
+  "fold": "Lower case without accents: Unicode NFD, every non-spacing mark (category Mn) dropped, then lower case, no locale. Sorting and search compare folded texts. Every comparison and sum is by Unicode code point, never by UTF-16 unit (Kotlin: `codePoints()`, not `Char` nor `compareTo`) nor by grapheme cluster (Swift: `unicodeScalars`, not `Character`): « Ｚone » (U+FF5A once folded) sorts before « 𝒜rt » (U+1D49C), which sorts before « 🎵 » (U+1F3B5).",
   "kinds": "login → Identifiants (logins), card and payment → Cartes (cards), address → Coordonnées (contacts), secret → Connecteurs (connectors, the accesses given through a connector's card). Any other kind is left out.",
   "for": "« Pour : <agent> »: only the items whose `agents` hold that agent. Its menu (`for_menu`): the vault's `agents` that hold at least one item, by their folded name.",
-  "chips": "« Tout » then the four kinds, each with the number of items after « Pour » (never after the search or the chosen kind). A kind at 0 is not shown; « Tout » always is.",
+  "chips": "« Tout » then the four kinds, each with the number of items after « Pour » (never after the search or the chosen kind). A kind at 0 is not shown; « Tout » always is. A chosen kind whose chip goes (« Pour » changed) falls back to « Tout »: `expect.kind` is the kind the list then shows.",
   "site": "A login's site: its `domain` (the bridge's, 17/11), else, from an older bridge, its origin's host without a leading « www. ».",
-  "sort": "By the folded name (`label`), then the folded identifier, then the id. A group of a site sorts by its folded site.",
+  "sort": "By the folded name, then the folded identifier, then the id (code points, see `fold`). A group of a site sorts by its folded site. An empty name sorts first.",
   "groups": "Two logins or more on one site (after « Pour », the kind and the search) are one group: `{group: <site>, count, rows}` (« reseau-agences.fr · 3 identifiants »), unfolded by default, its rows sorted. A site's only login is a plain row.",
-  "letters": "Without a search: the logins (and groups) by letter, the folded key's first character A-Z, anything else under « # », last. Letters only with the kind « all » or « logins ».",
-  "recent": "« Récents » (D6 A), first, without a search, with the kind « all » or « logins »: the 3 logins (after « Pour ») whose `last_used_at` is the latest, newest first, each with `used_by` (`last_used_by`, an agent id) and `used_at`. They stay in their letter too. None from a bridge without `last_used_at`.",
+  "letters": "Without a search: the logins (and groups) by letter, the first code point of the folded key when it is a-z, anything else (a digit, an emoji, punctuation, another script, an empty name) under « # », last. Letters only with the kind « all » or « logins ».",
+  "recent": "« Récents » (D6 A), first, without a search, with the kind « all » or « logins »: the 3 logins (after « Pour ») whose `last_used_at` is the latest, newest first, equal times by id (ascending), each with `used_by` (`last_used_by`, an agent id: it may be gone, the app then needs a name of its own) and `used_at`. They stay in their letter too. None from a bridge without `last_used_at`.",
   "sections": "After the letters: « Cartes », « Coordonnées », « Connecteurs », each sorted, each only when not empty and only with the kind « all » or its own.",
-  "search": "Trimmed and folded, split on spaces: every word must be found in at least one field of the item. A login: its name, its origin's host, its identifier, its login page (`login_url` without its scheme). A card: its name and `card.last4`. Contact details: their name and `contact.city`. A connector's access: its name, its origin's host, its identifier. Results: one section `results` with their count, no letters, no « Récents »: the logins (groups kept, two or more found on one site), then cards, contact details, connectors. The chips apply (a kind searches only that kind).",
+  "search": "Trimmed and folded, split on any white space (Unicode White_Space: the no-break space U+00A0 included; Kotlin's `\\s` is ASCII only): every word must be found in at least one field of the item. A login: its name, its origin's host, its identifier, its login page (`login_url` without its scheme, as written). A card: its name and `card.last4`. Contact details: their name and `contact.city`. A connector's access: its name, its origin's host, its identifier. Results: one section `results` with their count, no letters, no « Récents »: the logins (groups kept, two or more found on one site), then cards, contact details, connectors. The chips apply (a kind searches only that kind).",
   "nothing_found": "A search that finds nothing: no section, `nothing_found` true (« Rien pour « … » », what the search looks at, « Ajouter un identifiant » with the name already written).",
-  "looks": "Each login's square (D7 A, nothing leaves the server): `initial`, its name's first character in capitals (accents kept: « É »), on the colour `color` of its site (0-6, the palette's index: the sum of the folded site's code points modulo 7; its folded name when it has no site). A group's square: its site's first character and colour. `page`: « Page : … », only when `login_url` is not the site's root: its host and path (and query); `page_grouped`, in a group: « … » and its path. Null: no line.",
-  "installs": "Several servers: one list per server, as today; the search runs in each."
+  "looks": "Each login's square (D7 A, nothing leaves the server): `initial`, the first letter or digit (category L or N) of its name (NFC, trimmed), one code point, in capitals when its upper case is one code point, else as it is (« ß »); « ? » when there is none (an empty name, only emoji or punctuation: « 🎵 Musique » is « M »). On the colour `color` of its site (0-6, the palette's index: the sum of the folded site's code points modulo 7; its folded name when it has no site): the colour is the site's, not the initial's. A group's square: its site's initial and colour. `page`: « Page : … », only when `login_url` is not the site's root: its host in lower case with its port unless the scheme's own (« :8443 »), its path and query exactly as written, never %-decoded (Swift `URL.path` and Kotlin `Uri.path` decode: use the raw string), no scheme, no user, no fragment; `page_grouped`, in a group: « … » and that path and query. Null: no line.",
+  "installs": "Several servers: one list per server, as today; the search runs in each.",
+  "name": "A name (`label`) is read in NFC with white space off both ends (« École » is « École », «  Zèbre » is « Zèbre »)."
  },
  "palette": [
   {
@@ -85,11 +86,11 @@
   ],
   [
    "École",
-   ""
+   "ecole"
   ],
   [
    "Ｚone",
-   ""
+   "ｚone"
   ]
  ],
  "vaults": {
@@ -986,6 +987,7 @@
     "query": ""
    },
    "expect": {
+    "kind": "all",
     "chips": [
      {
       "key": "all",
@@ -1228,6 +1230,7 @@
     "query": ""
    },
    "expect": {
+    "kind": "logins",
     "chips": [
      {
       "key": "all",
@@ -1437,6 +1440,7 @@
     "query": ""
    },
    "expect": {
+    "kind": "cards",
     "chips": [
      {
       "key": "all",
@@ -1484,6 +1488,7 @@
     "query": ""
    },
    "expect": {
+    "kind": "connectors",
     "chips": [
      {
       "key": "all",
@@ -1528,6 +1533,7 @@
     "query": ""
    },
    "expect": {
+    "kind": "all",
     "chips": [
      {
       "key": "all",
@@ -1643,6 +1649,7 @@
     "query": ""
    },
    "expect": {
+    "kind": "all",
     "chips": [
      {
       "key": "all",
@@ -1731,6 +1738,7 @@
     "query": ""
    },
    "expect": {
+    "kind": "all",
     "chips": [
      {
       "key": "all",
@@ -1750,6 +1758,7 @@
     "query": "ecole"
    },
    "expect": {
+    "kind": "all",
     "chips": [
      {
       "key": "all",
@@ -1795,6 +1804,7 @@
     "query": "  ÉCOLE "
    },
    "expect": {
+    "kind": "all",
     "chips": [
      {
       "key": "all",
@@ -1840,6 +1850,7 @@
     "query": "agence"
    },
    "expect": {
+    "kind": "all",
     "chips": [
      {
       "key": "all",
@@ -1900,6 +1911,7 @@
     "query": "c.martin.lyon"
    },
    "expect": {
+    "kind": "all",
     "chips": [
      {
       "key": "all",
@@ -1945,6 +1957,7 @@
     "query": "portail"
    },
    "expect": {
+    "kind": "all",
     "chips": [
      {
       "key": "all",
@@ -1990,6 +2003,7 @@
     "query": "mutuelle"
    },
    "expect": {
+    "kind": "all",
     "chips": [
      {
       "key": "all",
@@ -2035,6 +2049,7 @@
     "query": "camille.pro"
    },
    "expect": {
+    "kind": "all",
     "chips": [
      {
       "key": "all",
@@ -2080,6 +2095,7 @@
     "query": "4821"
    },
    "expect": {
+    "kind": "all",
     "chips": [
      {
       "key": "all",
@@ -2125,6 +2141,7 @@
     "query": "lyon"
    },
    "expect": {
+    "kind": "all",
     "chips": [
      {
       "key": "all",
@@ -2173,6 +2190,7 @@
     "query": "agence nantes"
    },
    "expect": {
+    "kind": "all",
     "chips": [
      {
       "key": "all",
@@ -2218,6 +2236,7 @@
     "query": "garmin"
    },
    "expect": {
+    "kind": "all",
     "chips": [
      {
       "key": "all",
@@ -2263,6 +2282,7 @@
     "query": "agence"
    },
    "expect": {
+    "kind": "cards",
     "chips": [
      {
       "key": "all",
@@ -2298,6 +2318,7 @@
     "query": "rail"
    },
    "expect": {
+    "kind": "all",
     "chips": [
      {
       "key": "all",
@@ -2348,6 +2369,7 @@
     "query": "piscine"
    },
    "expect": {
+    "kind": "all",
     "chips": [
      {
       "key": "all",
@@ -2383,6 +2405,7 @@
     "query": ""
    },
    "expect": {
+    "kind": "all",
     "chips": [
      {
       "key": "all",
@@ -2444,6 +2467,109 @@
     "kind": "all",
     "for": null,
     "query": ""
+   },
+   "expect": {
+    "kind": "all",
+    "chips": [
+     {
+      "key": "all",
+      "count": 11
+     },
+     {
+      "key": "logins",
+      "count": 10
+     },
+     {
+      "key": "cards",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "recent",
+      "rows": [
+       {
+        "id": "item_000000000509",
+        "used_by": "paul",
+        "used_at": "2026-11-17T08:00:00+00:00"
+       },
+       {
+        "id": "item_00000000050a",
+        "used_by": "vie",
+        "used_at": "2026-11-17T08:00:00+00:00"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "B",
+      "rows": [
+       {
+        "id": "item_000000000509"
+       },
+       {
+        "id": "item_00000000050a"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "E",
+      "rows": [
+       {
+        "id": "item_000000000502"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "I",
+      "rows": [
+       {
+        "id": "item_000000000508"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "Z",
+      "rows": [
+       {
+        "id": "item_000000000505"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "#",
+      "rows": [
+       {
+        "id": "item_000000000506"
+       },
+       {
+        "id": "item_000000000507"
+       },
+       {
+        "id": "item_000000000503"
+       },
+       {
+        "id": "item_000000000504"
+       },
+       {
+        "id": "item_000000000501"
+       }
+      ]
+     },
+     {
+      "key": "cards",
+      "rows": [
+       {
+        "id": "item_000000000601"
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
    }
   },
   {
@@ -2453,6 +2579,35 @@
     "kind": "all",
     "for": null,
     "query": "musique plus"
+   },
+   "expect": {
+    "kind": "all",
+    "chips": [
+     {
+      "key": "all",
+      "count": 11
+     },
+     {
+      "key": "logins",
+      "count": 10
+     },
+     {
+      "key": "cards",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "results",
+      "count": 1,
+      "rows": [
+       {
+        "id": "item_000000000501"
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
    }
   },
   {
@@ -2462,6 +2617,41 @@
     "kind": "cards",
     "for": "paul",
     "query": ""
+   },
+   "expect": {
+    "kind": "all",
+    "chips": [
+     {
+      "key": "all",
+      "count": 1
+     },
+     {
+      "key": "logins",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "recent",
+      "rows": [
+       {
+        "id": "item_000000000509",
+        "used_by": "paul",
+        "used_at": "2026-11-17T08:00:00+00:00"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "B",
+      "rows": [
+       {
+        "id": "item_000000000509"
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
    }
   },
   {
@@ -2471,6 +2661,35 @@
     "kind": "all",
     "for": null,
     "query": "espace"
+   },
+   "expect": {
+    "kind": "all",
+    "chips": [
+     {
+      "key": "all",
+      "count": 11
+     },
+     {
+      "key": "logins",
+      "count": 10
+     },
+     {
+      "key": "cards",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "results",
+      "count": 1,
+      "rows": [
+       {
+        "id": "item_000000000508"
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
    }
   }
  ],
@@ -2646,6 +2865,68 @@
     "page": null,
     "page_grouped": null
    }
+  },
+  "edges": {
+   "item_000000000501": {
+    "initial": "M",
+    "color": 0,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_000000000502": {
+    "initial": "É",
+    "color": 2,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_000000000503": {
+    "initial": "Ｚ",
+    "color": 0,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_000000000504": {
+    "initial": "𝒜",
+    "color": 0,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_000000000505": {
+    "initial": "Z",
+    "color": 3,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_000000000506": {
+    "initial": "?",
+    "color": 3,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_000000000507": {
+    "initial": "?",
+    "color": 4,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_000000000508": {
+    "initial": "I",
+    "color": 0,
+    "page": "intra.exemple-port.example:8443/Mon%20Espace/connexion?retour=%2Faccueil",
+    "page_grouped": "…/Mon%20Espace/connexion?retour=%2Faccueil"
+   },
+   "item_00000000050a": {
+    "initial": "B",
+    "color": 6,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_000000000509": {
+    "initial": "B",
+    "color": 5,
+    "page": null,
+    "page_grouped": null
+   }
   }
  },
  "group_looks": {
@@ -2748,6 +3029,48 @@
     "initial": "C",
     "color": 5
    }
+  },
+  "edges": {
+   "musiqueplus.example": {
+    "initial": "M",
+    "color": 0
+   },
+   "ecole-arts.example": {
+    "initial": "E",
+    "color": 2
+   },
+   "zonelibre.example": {
+    "initial": "Z",
+    "color": 0
+   },
+   "artstudio.example": {
+    "initial": "A",
+    "color": 0
+   },
+   "zebre-cafe.example": {
+    "initial": "Z",
+    "color": 3
+   },
+   "sans-nom.example": {
+    "initial": "S",
+    "color": 3
+   },
+   "etoiles.example": {
+    "initial": "E",
+    "color": 4
+   },
+   "intra.exemple-port.example": {
+    "initial": "I",
+    "color": 0
+   },
+   "temps-b.example": {
+    "initial": "T",
+    "color": 6
+   },
+   "temps-a.example": {
+    "initial": "T",
+    "color": 5
+   }
   }
  },
  "for_menu": {
@@ -2757,6 +3080,10 @@
    "vie"
   ],
   "older": [
+   "paul",
+   "vie"
+  ],
+  "edges": [
    "paul",
    "vie"
   ]

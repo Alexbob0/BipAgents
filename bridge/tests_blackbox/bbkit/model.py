@@ -21,6 +21,8 @@ Installed as `FakeHermes.override`, it takes only the runs it starts (every othe
 | `#question` | asks a question (`clarify.request`) and waits for the answer, then says it |
 | `#approbation` | asks to run a command (`approval.request`), waits, says what was decided |
 | `#secret` | calls the bridge's `ask_secret` (a card in the conversation) and waits for the person |
+| `#coffre` | logs in with a login of the vault (`vault_login`, its answer as the bridge gives it): J64, the vault's line under the answer |
+| `#connexion` | asks for a site's login for its browser (`ask_secret`, `use: browser`) and waits: the person may type it themselves (J65), then says what it sees |
 | `#sites` | asks the bridge for two sites (`sandbox_sites_request`, a sites card) and waits |
 | `#connecteur` | registers a connector (`connector_register`, a connector card) and waits |
 | `#podcast` | makes its podcast (an .m4a in its files, as `create_podcast` gives) and names it |
@@ -28,7 +30,8 @@ Installed as `FakeHermes.override`, it takes only the runs it starts (every othe
 | `#jours` | first run of its session: a history stored before the person's row (2 days ago, yesterday, today ~1 h ago; replies with `reasoning`, one after a tool call), then a short reply |
 | `#reel` | streams as GLM through Hermes: ~1.5 s before the first words, then 1–3 words every 60–200 ms (the same each run), ~50 words, stored with `reasoning` |
 
-`calls`: the agent's own tool calls to the bridge (MCP), given by the harness (`secret`, `sites`, `page`, `map`,
+`calls`: the agent's own tool calls to the bridge (MCP), given by the harness (`secret`, `login_secret`, `vault_login`,
+`sites`, `page`, `map`,
 `page_with`: a page of the given HTML, `memory_page`: a page that remembers), each a function of the run's words returning the text of its result. They run
 in the run's thread, while the turn waits."""
 from __future__ import annotations
@@ -327,6 +330,25 @@ class ScriptedModel:
             opening = self.say(run, "Il me faut ton identifiant, je te le demande. ")
             self.tool(run, "mcp_bipagents_connectors_ask_secret", {"name": "exemple", "site": "exemple.com"},
                       lambda: self.calls["secret"](run.words), calls, results)
+        if "#coffre" in words and "vault_login" in self.calls:
+            # J64: a login of the vault typed for it; under the answer, the vault's line (vault_line.rs)
+            opening = self.say(run, "J’ouvre la page de connexion. ")
+            self.tool(run, "mcp_bipagents_vault_vault_login", {},
+                      lambda: self.calls["vault_login"](run.words), calls, results)
+            lines.append("Je suis connecté au fournisseur.")
+        if "#connexion" in words and "login_secret" in self.calls:
+            # J65: no login for the site; « Je le taperai moi-même » possible, the call waits for the hand given back
+            opening = self.say(run, "Il me faut ton accès au fournisseur, je te le demande. ")
+            told = self.tool(run, "mcp_bipagents_connectors_ask_secret", {"name": "fournisseur", "use": "browser"},
+                             lambda: self.calls["login_secret"](run.words), calls, results)
+            if "handed it back" in told and "hasn't" not in told:
+                lines.append("Je vois la page : tu es connecté, je continue.")
+            elif "hasn't handed it back" in told:
+                lines.append("Je continue dès que tu me rends la main.")
+            elif "vault_login" in told:
+                lines.append("C’est enregistré dans le coffre, je me connecte.")
+            else:
+                lines.append("D’accord, je fais sans.")
         if "#sites" in words and "sites" in self.calls:
             opening = self.say(run, "Je demande l’accès à deux sites. ")
             self.tool(run, "mcp_bipagents_files_sandbox_sites_request", {"host": "connect.garmin.example"},

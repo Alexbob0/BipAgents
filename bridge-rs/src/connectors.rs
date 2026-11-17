@@ -1371,13 +1371,22 @@ async fn ask_secret_tool(state: &AppState, agent: &AgentConfig, arguments: &Dict
         // « Je le taperai moi-même »: told here once the person hands the browser back, else in a later turn when they
         // do (card_place.rs `settle`)
         Some(secrets::Outcome::TypedByPerson) => {
-            if secrets::wait_for_hand(state, &agent.name).await {
-                crate::card_place::taken(&state.config(), &run_id);
-                text(secrets::HANDED_BACK)
-            } else {
-                // answered before the card was placed in the conversation: its answer kept there all the same
-                crate::card_place::answered_unplaced(state, agent, &run_id, ASK_SECRET, secrets::SELF, &line_fr).await;
-                text(secrets::NOT_BACK)
+            match secrets::wait_for_hand(state, &agent.name).await {
+                secrets::HandEnd::Back => {
+                    crate::card_place::taken(&state.config(), &run_id);
+                    text(secrets::HANDED_BACK)
+                }
+                secrets::HandEnd::StillHeld => {
+                    // kept for a later turn, even when answered before the card was placed in the conversation
+                    crate::card_place::answered_unplaced(state, agent, &run_id, ASK_SECRET, secrets::SELF, &line_fr)
+                        .await;
+                    text(secrets::NOT_BACK)
+                }
+                secrets::HandEnd::NeverTaken => {
+                    // nothing to wait for any more: a take of the browser afterwards is another matter (review 17/11)
+                    crate::card_place::taken(&state.config(), &run_id);
+                    text(secrets::NOT_BACK)
+                }
             }
         }
         None => refusal(&format!(

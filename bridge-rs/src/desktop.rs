@@ -863,6 +863,7 @@ async fn control(
         if !take {
             // a tab shown as on the person's phone: back to its desktop rendering before the agent's tools resume
             crate::desktop_page::give_back(&agent.name).await;
+            crate::secrets::hand_given_back(&agent.name); // « Je le taperai moi-même » waits for it
         }
         // During a card payment (the bank asks the person in the page): their input goes through, the payment's hold
         // stays as it is for the agent (security check 11/11, N1); its release ends it, then hands the hold over to
