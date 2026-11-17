@@ -236,6 +236,49 @@ mod tests {
         assert_eq!(kept_days(&config), 30);
     }
 
+    /// 17/11 (Alex: « Garder les fichiers » vanished on a full self-install): the settings answer at once, the size
+    /// from the place's last measure (storage_watch.rs, its `received` kind), never by walking the uploads.
+    #[test]
+    fn the_settings_answer_from_the_last_measure_without_walking_the_uploads() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.path().join("bridge.db").to_string_lossy().into_owned();
+        let uploads = dir.path().join("uploads");
+        std::fs::create_dir_all(uploads.join("2026-11")).unwrap();
+        std::fs::write(uploads.join("2026-11").join("a.txt"), b"12345").unwrap();
+        config.agents.insert("vie".into(), crate::config::AgentConfig {
+            name: "vie".into(),
+            upload_dir_host: Some(uploads.to_string_lossy().into_owned()),
+            upload_dir_container: Some("/uploads".into()),
+            ..Default::default()
+        });
+        // before any measure: the choice at once, the size unknown
+        let first = settings(&config);
+        assert_eq!((first["kept_days"].as_i64(), first["choices"].clone()), (Some(30), json!([30, 365, 0])));
+        assert!(first["used_bytes"].is_null(), "{first}");
+        assert!(first.get("measured_at").is_some_and(Value::is_null), "{first}");
+        // measured (every 30 minutes and after a big write)
+        crate::storage_watch::usage(&config, true);
+        let measured = settings(&config);
+        assert_eq!(measured["used_bytes"], json!(5));
+        assert!(measured["measured_at"].as_f64().is_some_and(|at| at > 0.0), "{measured}");
+        // a file more: still the measure's figure, the request walks nothing
+        std::fs::write(uploads.join("2026-11").join("b.bin"), vec![0u8; 1000]).unwrap();
+        assert_eq!(settings(&config)["used_bytes"], json!(5));
+    }
+
+    /// « Ils comptent dans tes 5 Go » only where there are 5 GB: the offer's places.
+    #[test]
+    fn the_allowance_only_on_the_offer() {
+        let usage = crate::storage_watch::Usage { used: 10, allowance: None, measured_at: 1.0, agents: vec![], other: 10 };
+        let home = settings_body(30, Some(&usage), false);
+        assert!(home.get("allowance_bytes").is_none(), "{home}");
+        assert_eq!(home["used_bytes"], json!(0));
+        let offer = settings_body(0, None, true);
+        assert_eq!(offer["allowance_bytes"], json!(crate::place_backup::ALLOWANCE_BYTES));
+        assert!(offer["used_bytes"].is_null() && offer["measured_at"].is_null(), "{offer}");
+    }
+
     #[test]
     fn a_sent_photo_never_filed_is_erased_after_30_days() {
         let dir = tempfile::tempdir().unwrap();

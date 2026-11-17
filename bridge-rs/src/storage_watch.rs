@@ -1508,6 +1508,34 @@ mod tests {
         assert_eq!(b["percent"], Value::Null);
     }
 
+    /// 17/11 (settings clean-up): a request never walks the place's folders once a measure is there; an old one is
+    /// given as it is, and a new one asked of the background loop.
+    #[test]
+    fn a_request_gets_the_last_measure_at_once_however_old() {
+        let (_dir, config) = setup();
+        audio(&config, "vie", 2, 1000);
+        assert!(last_usage(&config).is_none());
+        // none yet (a bridge just started): measured once
+        let (first, stale) = usage_for_request(&config);
+        assert!(!stale);
+        assert_eq!(first.agents[0].kinds["audio"], 2000);
+        assert_eq!(last_usage(&config).map(|u| u.measured_at), Some(first.measured_at));
+        // an old measure: given at once, a new one asked of the background loop
+        let mut old = first.clone();
+        old.measured_at -= 2.0 * MEASURE_EVERY;
+        CACHE.lock().unwrap().insert(config.data_dir(), old.clone());
+        audio(&config, "vie", 5, 1000);
+        let (given, stale) = usage_for_request(&config);
+        assert!(stale, "an old measure is not asked again");
+        assert_eq!(given.measured_at, old.measured_at);
+        assert_eq!(given.agents[0].kinds["audio"], 2000, "the request walked the folders");
+        // a recent one: as it is, nothing asked
+        CACHE.lock().unwrap().insert(config.data_dir(), first.clone());
+        let (given, stale) = usage_for_request(&config);
+        assert!(!stale);
+        assert_eq!(given.agents[0].kinds["audio"], 2000);
+    }
+
     #[test]
     fn one_card_per_threshold_per_month() {
         let (_dir, config) = setup();
