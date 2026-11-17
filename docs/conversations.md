@@ -484,7 +484,7 @@ changes, and one more when that wait grows abnormal (turn_status.rs):
 ```
 
 `state`: `thinking`, `model` (the model has the hand), `tool`, `waiting_agent` (`message_agent`), `waiting_person` (an
-approval, a question), `unreachable` (the bridge lost Hermes and keeps trying). `since`: when this state began, `now`:
+approval, a question, a call held by a card of the bridge's: turn_status.rs `HOLDING`), `unreachable` (the bridge lost Hermes and keeps trying). `since`: when this state began, `now`:
 the bridge's clock (the apps count from these two, never from their own clock). `slow`: past `[status]`'s threshold for
 the state (model 20 s, a page 15 s, another tool 20 s, another agent 15 s; × 3 for a model on the person's machine);
 `stuck`: the model past 90 s. Never a call's arguments: the tool's kind, a browsing call's bare domain, its action
@@ -517,8 +517,9 @@ end; kept in bridge.db (`turn_times`, numbers only), it comes back on the turn's
 (`message.took`), for « 4 min 10 · surtout sncf-connect.com (2 min 30) ».
 
 **Family.** A member's app that asks (`status=1` on her bridge's relay, passed to the owner's) reads a reduced status:
-`state`, `slow`, `stuck`, `since`, `started`, `now`, `kind`, `limit_s`, `took`, and `text` from the status's `plain`
-words (no site, no connector, no step): never the agent's step, a site or the buttons. Friends and feeds: none.
+`state`, `slow`, `stuck`, `since`, `started`, `now`, `kind`, `limit_s`, `took` (its sites' time as browsing:
+`{what: kind, kind: browser}`, on her page too), and `text` from the status's `plain` words (no site, no connector, no
+step): never the agent's step, a site or the buttons. Friends and feeds: none (no `took` on a reader's page).
 
 ### 6.6 Rooms and shared agents
 
