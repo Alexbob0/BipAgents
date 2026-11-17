@@ -197,6 +197,14 @@ fn too_many() -> HttpError {
     HttpError::new(429, "too many wrong keys, try again later")
 }
 
+/// What a web console never does, whatever its session (security audit 1.11 / 6.8, 17/11): show a password of the
+/// vault in clear (`POST /v1/vault/{id}/reveal`), which the app does only behind Face ID or the phone's lock.
+pub fn app_only(method: &axum::http::Method, path: &str) -> bool {
+    let parts: Vec<&str> = path.trim_end_matches('/').split('/').filter(|p| !p.is_empty()).collect();
+    *method == axum::http::Method::POST
+        && matches!(parts.as_slice(), [.., "vault", id, "reveal"] if !id.is_empty())
+}
+
 /// The bridge key (the app), or a web console's session (console.py; `Caller.console` then says so). An address
 /// that kept presenting wrong keys is refused for a while (guard.py). A request from an app wakes a sleeping place
 /// first (sleep.py).
@@ -223,6 +231,9 @@ pub async fn require_bridge_key(State(state): State<AppState>, request: Request,
         return next.run(Request::from_parts(parts, body)).await;
     }
     if crate::console::is_console(&state, &parts.headers) {
+        if app_only(&parts.method, parts.uri.path()) {
+            return HttpError::new(403, "only from the app (behind Face ID or the phone's lock)").into_response();
+        }
         parts.extensions.insert(Caller { console: true, device: None });
         return next.run(Request::from_parts(parts, body)).await;
     }

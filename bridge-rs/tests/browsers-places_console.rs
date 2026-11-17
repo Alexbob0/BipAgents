@@ -60,6 +60,27 @@ async fn a_one_time_link_opens_a_session_once() {
     );
 }
 
+/// Audit 1.11 / 6.8 (17/11): a console's session stands for the bridge key, but never shows a vault password in clear
+/// (`reveal`): the app does it behind Face ID only.
+#[tokio::test]
+async fn a_console_never_reveals_a_vault_password() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = TestApp::new(config(dir.path(), &Urls::default()));
+    let (_, cookie) = login(&app).await;
+    let console = [("x-bip-console", "1"), ("cookie", cookie.as_str())];
+    let said = app.request("POST", "/v1/vault/abc123/reveal", &console, None).await;
+    assert_eq!(said.status, 403, "{}", said.text());
+    assert!(said.text().contains("only from the app"), "{}", said.text());
+    assert!(bipbridge::auth::app_only(&axum::http::Method::POST, "/vault/abc123/reveal/"), "a nested router's path");
+    // the app's key goes on to the route (an unknown item there)
+    let (k, v) = auth();
+    assert_ne!(app.request("POST", "/v1/vault/abc123/reveal", &[(k, &v)], None).await.status, 403);
+    // the rest of the vault's routes stay the console's
+    assert_ne!(app.get("/v1/vault", &console).await.status, 403);
+    assert!(!bipbridge::auth::app_only(&axum::http::Method::GET, "/v1/vault/abc/reveal"));
+    assert!(!bipbridge::auth::app_only(&axum::http::Method::POST, "/v1/vault/reveal"));
+}
+
 #[tokio::test]
 async fn a_code_approved_in_the_app_opens_a_session() {
     let dir = tempfile::tempdir().unwrap();

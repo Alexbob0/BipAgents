@@ -598,10 +598,14 @@ async fn serve_handshake(
 
 // -- routes ------------------------------------------------------------------------------------------
 
-/// Short-lived tickets for the desktop page and its stream (ticket → (agent, expiry)).
+/// A ticket is never valid past this long after its issue, however often its page comes back (`keep`; security
+/// audit 3.1, 17/11: a leaked page address no longer opens the desktop for as long as someone reconnects).
+pub const TICKET_MAX_SECONDS: f64 = 12.0 * 3600.0;
+
+/// Short-lived tickets for the desktop page and its stream (ticket → (agent, expiry, issued)).
 #[derive(Default)]
 pub struct Tickets {
-    pub items: Mutex<HashMap<String, (String, f64)>>,
+    pub items: Mutex<HashMap<String, (String, f64, f64)>>,
 }
 
 impl Tickets {
@@ -609,26 +613,63 @@ impl Tickets {
         Self::default()
     }
 
-    /// Python's `Tickets.new(agent)`: a ticket for the agent's desktop.
+    /// Python's `Tickets.new(agent)`: a ticket for the agent's desktop. (Expired ones are kept until their cap, so a
+    /// page coming back finds its issue time: `keep` never starts one again.)
     pub fn issue(&self, agent: &str) -> String {
         let now = crate::py::time_time();
         let mut items = self.items.lock().unwrap_or_else(|e| e.into_inner());
-        items.retain(|_, v| v.1 > now);
+        items.retain(|_, v| now < v.2 + TICKET_MAX_SECONDS);
         let ticket = crate::py::token_urlsafe(24);
-        items.insert(ticket.clone(), (agent.to_string(), now + TICKET_SECONDS));
+        items.insert(ticket.clone(), (agent.to_string(), now + TICKET_SECONDS, now));
         ticket
     }
 
     pub fn agent(&self, ticket: &str) -> Option<String> {
         let items = self.items.lock().unwrap_or_else(|e| e.into_inner());
-        items.get(ticket).filter(|v| v.1 > crate::py::time_time()).map(|v| v.0.clone())
+        let now = crate::py::time_time();
+        items.get(ticket).filter(|v| v.1 > now && now < v.2 + TICKET_MAX_SECONDS).map(|v| v.0.clone())
     }
 
     /// The ticket of a page view whose stream just ended (hidden, or cut): valid `TICKET_SECONDS` more, for that page
-    /// to come back (review R5, 16/11: the page view closes its stream while hidden, D7).
+    /// to come back (review R5, 16/11: the page view closes its stream while hidden, D7), never past
+    /// `TICKET_MAX_SECONDS` after its issue; a ticket unknown here, or another agent's, is not made again.
     pub fn keep(&self, ticket: &str, agent: &str) {
-        let until = crate::py::time_time() + TICKET_SECONDS;
-        self.items.lock().unwrap_or_else(|e| e.into_inner()).insert(ticket.to_string(), (agent.to_string(), until));
+        let now = crate::py::time_time();
+        let mut items = self.items.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(entry) = items.get_mut(ticket).filter(|v| v.0 == agent) {
+            entry.1 = (now + TICKET_SECONDS).min(entry.2 + TICKET_MAX_SECONDS);
+        }
+    }
+}
+
+#[cfg(test)]
+mod ticket_tests {
+    use super::*;
+
+    #[test]
+    fn a_ticket_kept_by_its_page_never_outlives_its_cap() {
+        let tickets = Tickets::new();
+        let ticket = tickets.issue("vie");
+        assert_eq!(tickets.agent(&ticket).as_deref(), Some("vie"));
+        let now = crate::py::time_time();
+        // its page came back again and again for almost 12 hours: one more `keep` stops at the cap
+        tickets.items.lock().unwrap().get_mut(&ticket).unwrap().2 = now - TICKET_MAX_SECONDS + 60.0;
+        tickets.keep(&ticket, "vie");
+        let until = tickets.items.lock().unwrap()[&ticket].1;
+        assert!(until <= now - TICKET_MAX_SECONDS + 60.0 + TICKET_MAX_SECONDS + 1.0 && until < now + 120.0, "{until}");
+        // past the cap: no more, whatever `keep` says
+        tickets.items.lock().unwrap().get_mut(&ticket).unwrap().2 = now - TICKET_MAX_SECONDS - 1.0;
+        tickets.keep(&ticket, "vie");
+        assert_eq!(tickets.agent(&ticket), None);
+        // an unknown ticket, or another agent's, is never made by `keep`
+        tickets.keep("made-up", "vie");
+        assert_eq!(tickets.agent("made-up"), None);
+        let other = tickets.issue("coach");
+        tickets.items.lock().unwrap().get_mut(&other).unwrap().1 = now - 1.0;
+        tickets.keep(&other, "vie");
+        assert_eq!(tickets.agent(&other), None);
+        tickets.keep(&other, "coach");
+        assert_eq!(tickets.agent(&other).as_deref(), Some("coach"), "its own page, back within the cap");
     }
 }
 
