@@ -739,6 +739,12 @@ impl Queues {
             (true, ())
         });
         tracing::info!(agent = %agent.name, run_id = %run_id, "queue: next message started");
+        // its conversation's open screens told now (its thread's version grows): with their event stream open the apps no
+        // longer ask the queue every 5 s (16/11, D1), and nothing else is said before the turn ends (review R4)
+        if let Some(threads) = crate::threads::upgrade(&self.hub.threads) {
+            let (name, session) = (agent.name.clone(), item.session_id.clone());
+            tokio::spawn(async move { threads.touch(&name, Some(&session), "queue").await });
+        }
         self.tell(
             &agent.name,
             "queue.started",

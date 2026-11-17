@@ -663,10 +663,15 @@ pub fn quoted(text: &str, limit: usize) -> String {
         .chars()
         .map(|c| match c {
             '"' | '\u{201c}' | '\u{201d}' => '\'',
-            c if c.is_control() => ' ',
+            // the line and paragraph separators break a line too (review R5)
+            c if c.is_control() || c == '\u{2028}' || c == '\u{2029}' => ' ',
             c => c,
         })
-        .filter(|c| !matches!(c, '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'))
+        // invisible format characters: zero widths and joiners, direction marks and overrides, the BOM, the tags
+        .filter(|c| {
+            !matches!(c, '\u{00ad}' | '\u{061c}' | '\u{180e}' | '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}'
+                | '\u{2060}'..='\u{206f}' | '\u{feff}' | '\u{fff9}'..='\u{fffb}' | '\u{e0000}'..='\u{e007f}')
+        })
         .collect();
     pyx::head(pyx::strip(&clean), limit)
 }

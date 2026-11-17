@@ -58,7 +58,10 @@ pub static RUN_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Za-z0-9_.
 pub static DEVICE_TOKEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[0-9a-fA-F]{32,512}$").expect("valid regex"));
 pub static SESSION_ID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z0-9_.:-]{1,200}$").expect("valid regex"));
-pub const SSE_KEEPALIVE_SECONDS: f64 = 10.0;
+/// The apps' event streams' keepalive comment (thread events, a run's events, a shared agent's relayed streams). 25 s
+/// since 16/11 (10 s before: on 4G/5G the radio never slept while a conversation was open, Alex's battery, D1); under
+/// the presence's 45 s, the apps' read timeouts (Android 45 s, iOS 60 s) and the relayed streams' touch.
+pub const SSE_KEEPALIVE_SECONDS: f64 = 25.0;
 pub const MESSAGE_MAX_CHARS: usize = 8000;
 
 /// Everything that needs a running event loop (created in the lifespan).
@@ -366,6 +369,8 @@ impl AppState {
             self.spawn(crate::sandbox_sites::watch(self.clone()));
             // a card made while a tool call runs, in its turn's conversation; one answered elsewhere, gone (card_place.rs)
             self.spawn(crate::card_place::watch(self.clone()));
+            // a tool card whose tool got turned on some other way closes by itself; one past its time expires
+            self.spawn(crate::tool_asks::sweep(self.clone()));
             self.spawn(crate::send_guard::watch(self.clone()));
             // « what my agents know about me » common to the person's own agents (shared_memory.rs)
             self.spawn(crate::shared_memory::run_forever(self.clone()));
@@ -1224,6 +1229,10 @@ async fn bridge_card(
             Err(HttpError::new(404, "no such request (answered already?)"))
         }?));
     }
+    // a tool asked in the conversation (tool_asks.rs): an older app's « Oui, vas-y » turns on what the bridge can alone
+    if let Some(id) = run_id.strip_prefix(crate::tool_asks::RUN_PREFIX) {
+        return Ok(Some(crate::tool_asks::approve(state, id, &body.choice).await?));
+    }
     // a secret card (secrets.rs): refused here; the value only comes through the app's secure field
     if let Some(id) = run_id.strip_prefix(crate::secrets::RUN_PREFIX) {
         if body.choice.trim().to_lowercase() != "deny" {
@@ -1820,6 +1829,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::vault_logins::app_router())
         .merge(crate::secrets::app_router())
         .merge(crate::connectors::app_router())
+        .merge(crate::tool_asks::app_router())
         .merge(crate::templates::router())
         .merge(crate::autonomous::router())
         .merge(crate::triggers::router())

@@ -271,8 +271,17 @@ function connect() {
       post("state:" + m.state);
     }
   };
-  socket.onclose = () => { post("disconnected"); setTimeout(connect, 1500); };
+  socket.onclose = () => { post("disconnected"); setTimeout(() => { if (!hidden()) connect(); }, 1500); };
 }
+// Hidden (the app in the background, the Bureau under another screen, Android's WebView paused): no stream of pictures
+// for nobody — the socket closed, the bridge stops sending (16/11, battery, D7: a paused Android WebView still ran its
+// script and took every picture); shown again, it comes back at once.
+function hidden() { return document.visibilityState === "hidden"; }
+document.addEventListener("visibilitychange", () => {
+  if (hidden()) {
+    if (socket) { socket.onclose = null; socket.close(); socket = null; post("paused"); }
+  } else if (!socket) connect();
+});
 function send(m) { if (socket && socket.readyState === 1) socket.send(JSON.stringify(m)); }
 // On the offer's places, a card field focused in the page: a warning instead of the keyboard (the bridge refuses
 // the typing too). The person pays on their own phone.

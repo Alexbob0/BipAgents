@@ -122,6 +122,9 @@ impl Kind {
         match key {
             "secret_request" => Kind::Secret,
             "mail_request" => Kind::MailCard,
+            // a tool asked in the conversation (tool_asks.rs): « Une demande attend ton accord », and an older app's
+            // « Refuser » answers it through /v1/approve as a mail card's (its run id in `r`)
+            "tool_request" => Kind::MailCard,
             _ => Kind::Connector,
         }
     }

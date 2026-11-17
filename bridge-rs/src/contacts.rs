@@ -29,6 +29,7 @@
 //!     PUT  /v1/contacts                  {groups: [{id, title}], contacts: [{id, name, nickname?, phones?, emails?,
 //!                                        addresses?: [{label?, value}], birthday?, organization?, job?, notes?,
 //!                                        relations?: [{label?, name}], groups?: [group ids]}]}
+//!     POST /v1/contacts/verified         {hash}: the phone's copy unchanged (phone_copy.rs; 409: send it whole)
 //!     PUT  /v1/contacts/scope            {all, groups: [group ids], notes}: what the phone shares with this server
 //!     PUT  /v1/contacts/agents           {agents}
 //!     PUT  /v1/contacts/rights           {agent, rights: {phones?, emails?, birthdays?, addresses?, write?}}
@@ -197,6 +198,29 @@ pub fn agents(config: &Config) -> Vec<String> {
     }
 }
 
+/// Whether a phone sent its copy here (some phone shares it already).
+pub fn copied(config: &Config) -> bool {
+    let data = read(config);
+    data.contains_key("at") || data.contains_key("android")
+}
+
+/// `names` allowed too (a « Oui » on a tool card, tool_asks.rs), the agents allowed before kept.
+pub fn allow(config: &Config, names: &[String]) -> std::io::Result<()> {
+    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut data = read(config);
+    let mut agents: Vec<String> = match data.get("agents") {
+        Some(Value::Array(v)) => v.iter().filter_map(|n| n.as_str().map(str::to_string)).collect(),
+        _ => Vec::new(),
+    };
+    for name in names {
+        if !agents.contains(name) {
+            agents.push(name.clone());
+        }
+    }
+    set_agents_in(&mut data, &agents);
+    write(config, &data)
+}
+
 /// Whether `agent` may use the address book (and gets its tools).
 pub fn enabled(config: &Config, agent: &str) -> bool {
     agents(config).iter().any(|a| a == agent)
@@ -362,6 +386,9 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict, now: Opt
     let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut data = read(config);
     if !tk::py_in(agent, data.get("agents").unwrap_or(&json!([]))) {
+        if let Some(ask) = crate::tool_asks::ask_hint(config, agent, "contacts") {
+            return Ok(tool_text(&format!("The person hasn't shared their address book with you. {ask}"), true));
+        }
         return Ok(tool_text(
             "The person hasn't shared their address book with you: they switch « Contacts » on in your page of the \
 BipAgents app.",
@@ -380,10 +407,7 @@ BipAgents app.",
     };
     let contacts: Vec<Value> = list_of(&data, "contacts").into_iter().map(|c| without(c, &given)).collect();
     let arg = |k: &str| tk::strip(&tk::str_or_empty(arguments.get(k))).to_string();
-    let since = match data.get("at").and_then(Value::as_f64) {
-        Some(at) => format!("as the phone shared it {} ago", age(now - at)),
-        None => "the phone hasn't shared it yet".to_string(),
-    };
+    let since = crate::phone_copy::freshness(&data, now, age).unwrap_or_else(|| "the phone hasn't shared it yet".to_string());
     // The contacts of the group asked for (all without one). Err: no such group.
     let in_group = |wanted: &str| -> Result<Vec<&Value>, String> {
         if wanted.is_empty() {
@@ -757,10 +781,14 @@ pub struct Snapshot {
     pub groups: Vec<Group>,
     #[serde(default)]
     pub contacts: Vec<Contact>,
+    /// Its fingerprint (the phone's, phone_copy.rs): the next time it is unchanged, the phone only says so.
+    #[serde(default)]
+    pub hash: Option<String>,
 }
 
 impl Validate for Snapshot {
     fn validate(&self, errors: &mut Vec<FieldError>) {
+        web::check_max_len(errors, "hash", self.hash.as_deref(), 128);
         check_max_items(errors, "groups", Some(&self.groups), 500);
         check_max_items(errors, "contacts", Some(&self.contacts), MAX_CONTACTS);
         for (n, g) in self.groups.iter().enumerate() {
@@ -847,6 +875,7 @@ async fn status(State(state): State<AppState>) -> ApiResult<Response> {
     let data = blocking(move || Ok(read(&config))).await?;
     Ok(web::ok(json!({
         "agents": data.get("agents").cloned().unwrap_or(json!([])), "at": data.get("at").cloned().unwrap_or(Value::Null),
+        "checked": data.get("checked").cloned().unwrap_or(Value::Null),
         "rights": rights::listed(&data, &rights::CONTACTS), "shared": rights::shared(&data, &rights::CONTACT_FIELDS),
         "scope": dump(&scope_of(&data)),
         "groups": list_of(&data, "groups").len(), "contacts": list_of(&data, "contacts").len(),
@@ -868,7 +897,7 @@ async fn snapshot(State(state): State<AppState>, Json(body): Json<Snapshot>) -> 
         let kept = contacts.len();
         data.insert("groups".into(), Value::Array(groups));
         data.insert("contacts".into(), Value::Array(contacts));
-        data.insert("at".into(), json!(py::time_time()));
+        crate::phone_copy::sent(&mut data, body.hash.as_deref());
         let cutoff = py::time_time() - (QUEUE_DAYS * 86400) as f64;
         let queue: Vec<Value> = list_of(&data, "queue")
             .into_iter()
@@ -892,6 +921,7 @@ async fn set_scope(State(state): State<AppState>, Json(body): Json<Scope>) -> Ap
         data.insert("groups".into(), Value::Array(groups));
         data.insert("contacts".into(), Value::Array(contacts));
         data.insert("scope".into(), dump(&body));
+        data.remove("hash");   // narrowed here: the phone's fingerprint no longer says what is held (sent whole next time)
         write(&config, &data)?;
         Ok(body)
     })
@@ -903,10 +933,12 @@ async fn set_scope(State(state): State<AppState>, Json(body): Json<Scope>) -> Ap
 /// the details no agent here sees any more go at once.
 fn set_agents_in(data: &mut Dict, names: &[String]) {
     data.insert("agents".into(), json!(names));
+    data.remove("hash");   // narrowed or dropped here: the phone sends it whole next time (phone_copy.rs)
     if names.is_empty() {
         data.remove("contacts");
         data.remove("groups");
         data.remove("at");
+        crate::phone_copy::forget(data);
     } else if data.contains_key("contacts") {
         let contacts = read_by_someone(data, list_of(data, "contacts"));
         data.insert("contacts".into(), Value::Array(contacts));
@@ -986,6 +1018,7 @@ async fn set_rights(State(state): State<AppState>, Json(body): Json<rights::Righ
         if data.contains_key("contacts") {
             let contacts = read_by_someone(&data, list_of(&data, "contacts"));
             data.insert("contacts".into(), Value::Array(contacts));
+            data.remove("hash");   // narrowed here: sent whole next time (phone_copy.rs)
         }
         write(&config_c, &data)?;
         Ok(given)
@@ -1037,9 +1070,29 @@ async fn done(State(state): State<AppState>, Path(op_id): Path<String>, Json(bod
 }
 
 /// Mounted under /v1 with the bridge key.
+/// `POST /v1/{kind}/verified {hash}`: the phone's copy unchanged (phone_copy.rs); 409 when the one here is another.
+async fn verified(State(state): State<AppState>, Json(body): Json<crate::phone_copy::Verified>) -> ApiResult<Response> {
+    let config = state.config();
+    let checked = blocking(move || {
+        let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let mut data = read(&config);
+        if !crate::phone_copy::verify(&mut data, &body.hash) {
+            return Ok(None);
+        }
+        write(&config, &data)?;
+        Ok(data.get("checked").cloned())
+    })
+    .await?;
+    match checked {
+        Some(checked) => Ok(web::ok(json!({"checked": checked}))),
+        None => Err(HttpError::new(409, "not the copy here: send it whole")),
+    }
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/contacts", get(status).put(snapshot))
+        .route("/contacts/verified", post(verified))
         .route("/contacts/scope", put(set_scope))
         .route("/contacts/agents", put(set_agents))
         .route("/contacts/rights", put(set_rights))

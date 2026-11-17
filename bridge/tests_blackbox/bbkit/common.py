@@ -39,7 +39,7 @@ def sse(event_type: str, **data: Any) -> str:
 
 def read_sse(resp, timeout: float = 120.0) -> list:
     """(event, data) pairs of an SSE response (httpx streaming response) until it ends; keepalives skipped. A stream
-    that never ends fails after `timeout` s: its keepalives (every 10 s) would keep the client's read timeout from ever
+    that never ends fails after `timeout` s: its keepalives (every 25 s) would keep the client's read timeout from ever
     firing, and the run would hang instead of failing."""
     events, name = [], None
     deadline = time.monotonic() + timeout

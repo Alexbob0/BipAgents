@@ -63,6 +63,7 @@ pub mod media;
 pub mod spoken;
 pub mod outbox;
 pub mod live_activities;
+pub mod phone_copy;
 pub mod push;
 pub mod relay;
 pub mod runs;
@@ -142,6 +143,7 @@ pub mod steps;
 /// The styled documents skills (decks and Word documents), in place of Hermes' `powerpoint` and `docx`.
 pub mod style_skills;
 /// What each kind of agent keeps in view of Hermes' tools (token diet, phase 2).
+pub mod tool_asks;
 pub mod tool_diet;
 pub mod turn_thinking;
 /// What the agent does now, for the apps (`turn.status`, 16/11).

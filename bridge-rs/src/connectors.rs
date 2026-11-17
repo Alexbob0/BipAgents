@@ -279,6 +279,25 @@ fn find<'a>(store: &'a mut Store, agent: &str, id: &str) -> Option<&'a mut Conne
     store.agents.get_mut(agent)?.iter_mut().find(|c| c.id == id)
 }
 
+/// A connector of `agent` switched on or off (the app's switch, or a « Oui » on a tool card: tool_asks.rs); on only
+/// once approved.
+pub fn set_enabled(config: &Config, agent: &str, id: &str, on: bool) -> anyhow::Result<()> {
+    let found = change(config, |store| {
+        let c = find(store, agent, id)?;
+        if on && c.status != APPROVED {
+            return Some(false);
+        }
+        c.enabled = on;
+        c.updated_at = crate::vault::now();
+        Some(true)
+    })?;
+    match found {
+        Some(true) => Ok(()),
+        Some(false) => anyhow::bail!("the connector is not approved"),
+        None => anyhow::bail!("no such connector"),
+    }
+}
+
 pub fn of_agent(config: &Config, agent: &str) -> Vec<Connector> {
     load(config).agents.get(agent).cloned().unwrap_or_default()
 }

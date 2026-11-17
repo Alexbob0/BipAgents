@@ -623,6 +623,13 @@ impl Tickets {
         let items = self.items.lock().unwrap_or_else(|e| e.into_inner());
         items.get(ticket).filter(|v| v.1 > crate::py::time_time()).map(|v| v.0.clone())
     }
+
+    /// The ticket of a page view whose stream just ended (hidden, or cut): valid `TICKET_SECONDS` more, for that page
+    /// to come back (review R5, 16/11: the page view closes its stream while hidden, D7).
+    pub fn keep(&self, ticket: &str, agent: &str) {
+        let until = crate::py::time_time() + TICKET_SECONDS;
+        self.items.lock().unwrap_or_else(|e| e.into_inner()).insert(ticket.to_string(), (agent.to_string(), until));
+    }
 }
 
 /// The viewer page (`assets/desktop.html`, once desktop.py's `PAGE`).
@@ -860,9 +867,18 @@ async fn control(
         // During a card payment (the bank asks the person in the page): their input goes through, the payment's hold
         // stays as it is for the agent (security check 11/11, N1); its release ends it, then hands the hold over to
         // them if they still hold the browser. Handing back never lifts it either (the command leaves a « card »).
-        if !(take && paying)
-            && crate::browsers::hold(&config, &agent.name, take).await == crate::browsers::Hold::Payment
-        {
+        let held = if take && paying { crate::browsers::Hold::Done } else { crate::browsers::hold(&config, &agent.name, take).await };
+        if held == crate::browsers::Hold::NotFresh {
+            // the page a script of the agent's ran on couldn't be reloaded before the person's hand (hotfix of 15/11)
+            crate::card_pay::person_holds(&agent.name, false);
+            state.desktop_control.lock().unwrap_or_else(|e| e.into_inner()).insert(agent.name.clone(), false);
+            tracing::info!(agent = %agent.name, "desktop control refused: the page could not be reloaded first");
+            return Err(HttpError::json(
+                409,
+                json!({"code": "page_not_fresh", "text": not_fresh_text(&crate::notebook::language(&config))}),
+            ));
+        }
+        if held == crate::browsers::Hold::Payment {
             // The bridge holds it for a payment or a vault fill that is starting or ending: not taken.
             crate::card_pay::person_holds(&agent.name, false);
             state.desktop_control.lock().unwrap_or_else(|e| e.into_inner()).insert(agent.name.clone(), false);
@@ -886,6 +902,16 @@ async fn control(
     let holder = lease.get("holder").cloned().unwrap_or(Value::Null);
     tracing::info!(agent = %agent.name, holder = ?crate::logs::J(&holder), "desktop control");
     Ok(web::ok(json!({"holder": holder, "you_hold": app_holds(&folder)})))
+}
+
+/// Why the browser can't be taken over: the page a script of the agent's ran on couldn't be reloaded first.
+fn not_fresh_text(lang: &str) -> &'static str {
+    match lang {
+        "fr" => "La page n'a pas pu être rechargée avant que tu prennes la main : demande à l'agent de la rouvrir, puis réessaie.",
+        "de" => "Die Seite konnte nicht neu geladen werden, bevor du übernimmst: bitte den Agenten, sie neu zu öffnen, und versuch es dann noch einmal.",
+        "es" => "No se pudo recargar la página antes de que tomes el control: pide al agente que la vuelva a abrir y vuelve a intentarlo.",
+        _ => "The page could not be reloaded before you take over: ask the agent to open it again, then try again.",
+    }
 }
 
 /// Why the browser can't be taken over this very moment (a payment or a vault fill starts or ends in it).

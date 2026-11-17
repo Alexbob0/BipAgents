@@ -83,8 +83,10 @@ def test_every_member_gets_the_familys_agent(bridges, fakes):
     fakes.hermes.started["r1"]["status"] = "completed"
     assert wait(lambda: b.get(timeline, headers=AUTH, params={"agent": "famille__alex"}).json()["pending"]["run"] is None)
 
-    usage = a.get("/v1/family-agent/usage", headers=AUTH).json()["members"]
-    assert [m["id"] for m in usage] == ["self", "marie"]
+    # her turn's tokens are counted once the run has ended (family_thread.rs: a task of its own asks Hermes for the run
+    # and the session, then writes them), a moment after the conversation shows it done: waited for, never read once
+    members = lambda: [m["id"] for m in a.get("/v1/family-agent/usage", headers=AUTH).json()["members"]]
+    assert wait(lambda: members() == ["self", "marie"]), members()
     assert b.get("/v1/family-agent/usage", headers=AUTH).json()["members"][1]["name"] == "Marie"
 
     # Marie's discussions may have it without a « qui peut écrire à qui » link

@@ -486,6 +486,17 @@ def picture(path: Path) -> Path:
 
 # -- the release journeys J32+ (people and this release's features): more markers, in a model of their own ----------
 
+def tool_asked(words: str) -> str:
+    """The tool a `#demande-outil` message asks for (J59–J63)."""
+    if "mails" in words:
+        return "mail"
+    if "meteo" in words or "météo" in words:
+        return "weather"
+    if "calendrier" in words:
+        return "calendar"
+    return "reminders"
+
+
 class PeopleModel(ScriptedModel):
     """The scripted model with this release's turns (test_journeys_people.py, test_journeys_features.py). Every marker
     of `ScriptedModel` still works; these ones call the bridge's own tools as the agent (`calls[name](run)`, the run
@@ -501,10 +512,12 @@ class PeopleModel(ScriptedModel):
 | `#carnet` | reads a page of the Carnet, files a fact, asks the question of the day (`notebook_read`, `notebook_write`) |
 | `#rangement` | files a fact on the Carnet's « Famille » page again (`notebook_write`): J52, after the person moved one like it |
 | `#fichiers` | lists the files everyone sent the agent (`read_sent_file`, no path): J55, a shared agent's pool |
+| `#demande-outil` | asks for a tool it has off (`ask_for_tool`: « rappels », « mails », « meteo » or « calendrier » in the words), waits for the card's answer, then goes on or does without: J59–J63 |
 
     A run started with `message` instead of `input` (another household's agent through `/peer/…`) is read the same."""
 
-    MARKERS = ("#routine", "#tache", "#famille", "#etapes", "#relais", "#carnet", "#rangement", "#fichiers")
+    MARKERS = ("#routine", "#tache", "#famille", "#etapes", "#relais", "#carnet", "#rangement", "#fichiers",
+               "#demande-outil")
 
     @classmethod
     def upgrade(cls, model: ScriptedModel) -> "PeopleModel":
@@ -570,6 +583,16 @@ class PeopleModel(ScriptedModel):
                 except Exception as exc:  # noqa: BLE001 - the 5th is refused: the tool's error is the step's result
                     self.step_results.append({"run": run.id, "tool": "message_agent", "error": str(exc)})
             lines.append("J’ai échangé avec Coach, je te tiens au courant.")
+        if "#demande-outil" in words and "tool_ask" in self.calls:
+            # J59–J63: a tool it has off, asked on a card; the call waits for the person's answer
+            opening += self.say(run, "Il me faut un outil, je te le demande. ")
+            made = step("tool_ask", "mcp_bipagents_ask_for_tool", {"tool": tool_asked(words)})
+            if "is on for you" in made:
+                lines.append("C’est fait, merci.")
+            elif "said no" in made:
+                lines.append("D’accord, je fais sans.")
+            else:
+                lines.append("Une carte t’attend dans l’app.")
         if "#fichiers" in words and "files" in self.calls:
             # the files everyone who uses the agent sent it (its pool), named in the reply
             opening += self.say(run, "Je regarde les fichiers. ")

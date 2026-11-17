@@ -239,7 +239,10 @@ def test_a_reminder_at_two_goes_to_the_phone_that_does_it_and_the_agent_says_whe
     assert "2026-11-07T14:00" in add["inputSchema"]["properties"]["due"]["description"]
     assert all("Settings" not in json.dumps(tools[n]) for n in ("reminders_list", "reminders_add", "reminders_complete"))
     not_shared = text_of(call(bridge, "reminders_add", {"title": "Appeler Paul", "due": "2026-11-07T14:00"}, token=token))
-    assert "tool on your page" in not_shared and "Settings" not in not_shared and "iPhone" not in not_shared
+    # where it is turned on: the agent asks for it on a card (tool_asks.rs, on by default since 16/11), or, a place
+    # that turned asking off, « the « Rappels » tool on your page »
+    assert ("ask_for_tool" in not_shared or "tool on your page" in not_shared), not_shared
+    assert "Settings" not in not_shared and "iPhone" not in not_shared
     assert bridge.put("/v1/reminders/agents", json={"agents": ["coach"]}, headers=AUTH).status_code == 200
     queue = lambda phone=None: bridge.get("/v1/reminders/queue" + (f"?phone={phone}" if phone else ""),
                                           headers=AUTH).json()["queue"]

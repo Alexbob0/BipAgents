@@ -2937,6 +2937,8 @@ more steps in this turn. Don't repeat what failed: change approach.", crate::loo
                     st.recent_tools.pop_front();
                 }
                 st.recent_tools.push_back(tool.to_string());
+                // what the conversation read, for the amber line of a tool card asked later in it (review R4)
+                crate::tool_asks::note_read(&sub.agent.name, st.session_id.as_deref(), tool);
                 if handoff_tool(tool) {
                     st.handed_off = true;
                 }

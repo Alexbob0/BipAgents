@@ -2,7 +2,7 @@
 
 # Datenschutzerklärung von BipAgents
 
-> Zuletzt aktualisiert: 12. November 2026.
+> Zuletzt aktualisiert: 16. November 2026.
 
 ## Kurz gesagt
 
@@ -16,11 +16,14 @@
   eines Platzes, ohne jeden Inhalt (Abschnitt 5.12). Unter Android senden die in die App eingebauten Google-Dienste (Karten,
   Dokumentenscanner) Google ihre eigenen technischen Daten (Abschnitt 7). Kein Konto mit deinem eigenen Server; ein
   Konto für das Alles-inklusive-Angebot.
-- Mit deinem eigenen Server kann Kerfy Studio nur drei Dinge erhalten:
+- Mit deinem eigenen Server kann Kerfy Studio nur vier Dinge erhalten:
   1. was nötig ist, um deine **Benachrichtigungen** über sein Relay zuzustellen: ein versiegeltes Gerätetoken, nie
      den Text deiner Nachrichten im Klartext;
   2. was du uns schicken möchtest: eine **E-Mail** an den Support oder die **Meldung** einer Antwort oder einer Nachricht aus der App;
-  3. **Absturzberichte**, nur wenn du ihre Weitergabe in den Einstellungen deines Telefons eingeschaltet hast.
+  3. **Absturzberichte**, nur wenn du ihre Weitergabe in den Einstellungen deines Telefons eingeschaltet hast;
+  4. wenn deine Installation und die eines verbundenen Haushalts sich nicht direkt erreichen können, ihr Austausch
+     über sein **Relay**, Ende-zu-Ende-verschlüsselt: Das Relay sieht die IP-Adressen, wer wen anruft, wann, die
+     Größe der Austausche und wann dein Computer eingeschaltet ist (Abschnitt 4.1 bis).
 - Mit dem Alles-inklusive-Angebot verarbeitet Kerfy Studio außerdem dein Konto, den Status deines Abos, technische
   Daten über deinen Platz (nie seinen Inhalt) und deine Sicherungen, ohne ihren Schlüssel unlesbar, der auf deinem Platz und auf deinen
   Geräten bleibt (Abschnitt 5.5); es hostet deinen Platz, ohne darauf zuzugreifen (Abschnitt 5). Wenn du einem Agenten eine eigene E-Mail-Adresse
@@ -347,6 +350,35 @@ ausschalten: Die App funktioniert ohne sie. Wenn du die App deinstallierst, meld
 ungültig, und dein Server vergisst es.
 
 **Auf Android** fragt die App Google erst dann nach einem Token, wenn du Benachrichtigungen einschaltest.
+
+### 4.1 bis Zwei Haushalte über das Relay von Kerfy Studio verbinden
+
+Wenn sich zwei Installationen nicht direkt erreichen können (zum Beispiel zwei Computer zu Hause, jeder hinter seinem
+eigenen Router), laufen ihre Bridges über ein Relay, das Kerfy Studio betreibt (`push.bipagents.com`, derselbe Server
+wie für die Benachrichtigungen, bei OVHcloud in Frankreich). Alles, was darüber läuft, ist Ende-zu-Ende-verschlüsselt,
+mit einem eigenen Schlüssel für jede Verbindung, den nur die beiden Haushalte haben: Kerfy Studio kann die
+ausgetauschten Nachrichten, Neuigkeiten, geteilten Inhalte oder Seitendaten weder lesen noch verändern, ebenso wenig
+den Einladungscode. Nur die Haushalte, mit denen du dich verbunden hast, können deine Bridge über das Relay erreichen:
+Wenn du eine Verbindung entfernst, kann dieser Haushalt sie nicht mehr erreichen und auch nicht erkennen, ob sie
+eingeschaltet ist.
+
+**Was das Relay sieht**: die IP-Adresse jeder Bridge; eine zufällige „Briefkasten“-Kennung pro Installation (ohne
+Bezug zu einem Namen, einem Konto oder einer E-Mail-Adresse); welcher Briefkasten welchen anderen anruft, wann, und
+die Größe der Austausche. Solange eine Verbindung über das Relay läuft (oder eine Einladung wartet), hält deine Bridge
+eine Anfrage an das Relay offen: Das Relay sieht also ununterbrochen, **wann dein Computer eingeschaltet ist und von
+welcher IP-Adresse aus**.
+
+**Was es aufbewahrt**: nichts auf der Festplatte. Ein Austausch bleibt nur so lange im Arbeitsspeicher, wie er zum
+Durchlaufen braucht (höchstens einige Minuten für eine lange Antwort, die als Datenstrom durchläuft). Die Kennungen
+der verbundenen Briefkästen bleiben im Arbeitsspeicher, solange sie verbunden sind, danach noch eine Stunde. Die
+Zähler gegen Missbrauch liegen im Arbeitsspeicher, als Fingerabdrücke, und werden innerhalb einer Stunde vergessen.
+Erfolgreiche Austausche werden nicht protokolliert. Protokolliert werden: einige Ablehnungen (Kontingent
+überschritten, Briefkasten gesperrt, Antwort abgebrochen), mit einem kurzen Fingerabdruck eines einzigen Briefkastens,
+berechnet mit einem Schlüssel, den nur das Relay hat, und eine Summe pro Stunde (Anzahl der Austausche, Bytes,
+verbundene Briefkästen). Diese Protokolle werden 14 Tage aufbewahrt.
+
+Ein Zuhause, das mit einem Platz des Angebots verbunden ist, geht nur einmal über das Relay, um sich vorzustellen;
+danach sprechen ihre Bridges direkt miteinander.
 
 ### 4.2 Support und Meldungen
 

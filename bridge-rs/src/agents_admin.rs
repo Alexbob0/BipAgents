@@ -2137,6 +2137,8 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
             .collect(),
         _ => Vec::new(),
     };
+    // what it may ask for in a conversation follows Hermes' own word (tool_asks.rs)
+    crate::tool_asks::note_toolsets(&agent.name, &toolsets);
     Ok(json!({"id": agent.name, "name": agent.display_name, "soul": soul.trim(), "language": lang,
               "thinking": shown_thinking(config, agent), "model": read_model(config, agent), "toolsets": toolsets,
               "isolated": agent.isolated,

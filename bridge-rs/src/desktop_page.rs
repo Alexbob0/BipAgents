@@ -692,7 +692,11 @@ pub async fn stream(
     if cdp_port(&config, &agent.name).is_none() || !has_vnc(&agent) {
         return StatusCode::FORBIDDEN.into_response();
     }
-    ws.max_message_size(1 << 20).on_upgrade(move |socket| session(state, agent.name, phone, socket))
+    ws.max_message_size(1 << 20).on_upgrade(move |socket| async move {
+        session(state.clone(), agent.name.clone(), phone, socket).await;
+        // hidden (D7) or cut: the same page may open its stream again with this ticket (review R5)
+        state.desktop_tickets.keep(&ticket, &agent.name);
+    })
 }
 
 async fn send_json(app: &mut SplitSink<WebSocket, Message>, value: Value) -> bool {
@@ -1023,6 +1027,19 @@ fn page_info(tab: &Tab) -> Value {
 
 #[cfg(test)]
 mod tests {
+
+    /// 16/11 (battery, D7): hidden (the app in the background, Android's WebView paused: it still runs its script), the
+    /// page view closes its socket — the bridge stops its pictures — and opens it again once shown; a drop while hidden
+    /// is not reconnected. (A real browser's check needs Chromium, absent from the build server: by hand on a phone.)
+    #[test]
+    fn the_page_view_lets_its_pictures_go_while_hidden() {
+        let page = PAGE.as_str();
+        assert!(page.contains(r#"document.addEventListener("visibilitychange""#));
+        assert!(page.contains("if (socket) { socket.onclose = null; socket.close(); socket = null;"));
+        assert!(page.contains("} else if (!socket) connect();"));
+        assert!(page.contains("setTimeout(() => { if (!hidden()) connect(); }, 1500)"));
+    }
+
     use super::*;
 
     #[test]

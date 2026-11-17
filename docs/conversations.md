@@ -440,7 +440,7 @@ thread's too: the app knows it from `GET /v1/threads/main`) and `item` (`m_…`)
 ### 6.5 Events
 
 ```text
-GET /v1/threads/events[?agent=<id>]      SSE, keepalive comment every 10 s
+GET /v1/threads/events[?agent=<id>]      SSE, keepalive comment every 25 s (10 s before 16/11)
 event: thread         data: {"thread": "t_…", "agent": "vie", "version": 43, "reason": "run|boite|segment|call|lost"}
 event: notification   data: {"n": "n_…", "agent": "vie", "t": "reply", "c": "t_…", "m": "m_…", "state": "open"}
 event: read           data: {"agent": "vie", "thread": "t_…", "notifications": ["n_…"]}

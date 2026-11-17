@@ -169,6 +169,7 @@ pub fn bridge_cards(state: &AppState, config: &Config, agent: Option<&str>) -> V
     items.extend(crate::held_approvals::pending_items(config, agent));
     items.extend(crate::card_pay::pending_items(agent));
     items.extend(crate::urgent_pay::pending_items(config, agent));
+    items.extend(crate::tool_asks::pending_items(config, agent));
     // the kinds a « Toujours » may cover offer it (approval_level.rs)
     items.into_iter().map(|item| crate::approval_level::with_always(config, item)).collect()
 }
@@ -472,6 +473,8 @@ fn asking_tool(run_id: &str) -> &'static str {
         crate::sandbox_sites::REQUEST
     } else if run_id.starts_with(crate::phone_exit::store::RUN_PREFIX) {
         crate::phone_exit::agent::TOOL_NAME
+    } else if run_id.starts_with(crate::tool_asks::RUN_PREFIX) {
+        crate::tool_asks::TOOL_NAME
     } else {
         ""
     }
@@ -645,7 +648,9 @@ const TAKE_GRACE_NO_TURN: f64 = 30.0;
 
 /// Seconds an answer to `card` is left to a call that may wait for it.
 fn take_grace(card: &str, place: &Place) -> f64 {
-    let waits = [crate::secrets::RUN_PREFIX, crate::connectors::RUN_PREFIX].iter().any(|p| card.starts_with(p));
+    let waits = [crate::secrets::RUN_PREFIX, crate::connectors::RUN_PREFIX, crate::tool_asks::RUN_PREFIX]
+        .iter()
+        .any(|p| card.starts_with(p));
     if waits && place.run.is_none() {
         TAKE_GRACE_NO_TURN
     } else {
@@ -776,6 +781,9 @@ pub fn resume_note_for(decisions: &[(String, bool)], routine: Option<&str>) -> S
 /// (held_approvals.rs); a mail card's, that the bridge does it already (its « Oui » moves the mails itself).
 fn told_words(config: &Config, card: &str, summary: &str, ok: bool) -> String {
     if let Some(words) = crate::held_approvals::resume_words(config, card, summary, ok) {
+        return words;
+    }
+    if let Some(words) = crate::tool_asks::resume_words(config, card, ok) {
         return words;
     }
     let by_bridge = card.starts_with(crate::mail_tidy::RUN_PREFIX) || card.starts_with(crate::mail_rules::RUN_PREFIX);

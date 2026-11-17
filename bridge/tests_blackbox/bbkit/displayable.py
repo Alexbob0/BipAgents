@@ -217,11 +217,47 @@ def card_problems(card: Dict[str, Any], where: str) -> List[str]:
     elif run.startswith("bip-secret-"):
         if not (card.get("description") or card.get("command") or card.get("bip_secret")):
             out.append(f"{where}: a secret card that says nothing of what it asks")
+    elif run.startswith("bip-tool-"):
+        out.extend(tool_card_problems(card, where))
     elif not (card.get("command") or card.get("description") or card.get("topic")):
         out.append(f"{where}: a card that says nothing of what it asks")
     choices = card.get("choices")
     if choices is not None and not isinstance(choices, list):
         out.append(f"{where}: `choices` is {type(choices).__name__}")
+    return out
+
+
+def tool_card_problems(card: Dict[str, Any], where: str) -> List[str]:
+    """A tool asked in the conversation (tool_asks.rs, internal/next/tool-asks-api.md): what both apps read of it,
+    with the types they read, and what an older app draws (`bip_summary`, the generic « Oui, vas-y / Non »)."""
+    out: List[str] = []
+    if not str(card.get("bip_summary") or "").strip():
+        out.append(f"{where}: a tool card without `bip_summary` (an older app's top line)")
+    tool = card.get("bip_tool")
+    if not isinstance(tool, dict):
+        return out + [f"{where}: a tool card without its `bip_tool`"]
+    for name in ("tool", "kind", "label", "reason", "risk", "state"):
+        if not isinstance(tool.get(name), str) or not tool[name].strip():
+            out.append(f"{where}: bip_tool.{name} missing or not a string ({tool.get(name)!r})")
+    if tool.get("kind") not in ("phone", "account", "server", "screen"):
+        out.append(f"{where}: bip_tool.kind {tool.get('kind')!r} no app knows")
+    if not isinstance(tool.get("line"), str):
+        out.append(f"{where}: bip_tool.line is {type(tool.get('line')).__name__}")
+    icon = tool.get("icon")
+    if not (isinstance(icon, dict) and isinstance(icon.get("sf"), str) and isinstance(icon.get("material"), str)):
+        out.append(f"{where}: bip_tool.icon without its two symbols ({icon!r})")
+    also = tool.get("also")
+    if not (isinstance(also, list) and all(isinstance(a, dict) and isinstance(a.get("agent"), str)
+                                           and isinstance(a.get("name"), str) for a in also)):
+        out.append(f"{where}: bip_tool.also is not a list of {{agent, name}} ({also!r})")
+    if not isinstance(tool.get("connected"), bool):
+        out.append(f"{where}: bip_tool.connected is {type(tool.get('connected')).__name__}")
+    if not isinstance(tool.get("accounts"), list):
+        out.append(f"{where}: bip_tool.accounts is {type(tool.get('accounts')).__name__}")
+    if tool.get("after_reading") not in (None, "mail", "web", "page", "file"):
+        out.append(f"{where}: bip_tool.after_reading {tool.get('after_reading')!r} no app knows")
+    if len(str(tool.get("reason") or "")) > 140:
+        out.append(f"{where}: bip_tool.reason longer than one line")
     return out
 
 
