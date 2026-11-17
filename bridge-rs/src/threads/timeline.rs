@@ -633,10 +633,8 @@ pub fn segment_items(
                         }
                         continue;
                     }
-                    let result = call_id
-                        .as_deref()
-                        .and_then(|c| results.get(c))
-                        .map(|r| result_words(&words_and_images(&r.content).0));
+                    let raw = call_id.as_deref().and_then(|c| results.get(c)).map(|r| words_and_images(&r.content).0);
+                    let result = raw.as_deref().map(result_words);
                     let status = match &result {
                         None => "running",
                         Some(r) if r.trim_start().starts_with("{\"error\"") => "failed",
@@ -644,7 +642,12 @@ pub fn segment_items(
                     };
                     let tool = json!({"name": name, "call_id": call_id, "arguments": cut(&args, RESULT_MAX),
                                       "result": result.map(|r| cut(&r, RESULT_MAX)), "status": status, "via": null});
-                    items.push(item(format!("{id}.t{n}"), 1 + n as u32, turn, json!({"kind": "tool", "tool": tool})));
+                    let mut body = json!({"kind": "tool", "tool": tool});
+                    // a password the vault typed: the turn's vault line (threads/mod.rs `with_vault_lines`)
+                    if let Some(fill) = raw.as_deref().and_then(|r| crate::vault_line::fill_of(&name, &args, r)) {
+                        body[crate::vault_line::STASH] = crate::vault_line::stash(&fill);
+                    }
+                    items.push(item(format!("{id}.t{n}"), 1 + n as u32, turn, body));
                 }
             }
             _ => {}

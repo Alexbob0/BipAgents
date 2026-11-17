@@ -19,9 +19,12 @@
 //!
 //! No Python counterpart.
 
+use std::collections::HashMap;
+
 use serde_json::{json, Value};
 
 use crate::threads::timeline::Item;
+use crate::vault_logins::{CREATE, LOGIN, SERVER_NAME};
 
 /// The item's kind.
 pub const KIND: &str = "vault_line";
@@ -29,6 +32,8 @@ pub const KIND: &str = "vault_line";
 pub const MARK_OPEN: &str = "<!--bip:filled ";
 /// Where a tool item carries its fill between the timeline (timeline.rs) and `with_vault_lines`: never served.
 pub const STASH: &str = "_vault_fill";
+/// Hermes' own vault tool.
+const HERMES_TOOL: &str = "browser_vault";
 
 /// How the vault typed a password.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +42,23 @@ pub enum How {
     Login,
     /// A password the vault made, for an account the agent created.
     Created,
+}
+
+impl How {
+    fn word(self) -> &'static str {
+        match self {
+            How::Login => "login",
+            How::Created => "created",
+        }
+    }
+
+    fn of(word: &str) -> Option<How> {
+        match word {
+            "login" => Some(How::Login),
+            "created" => Some(How::Created),
+            _ => None,
+        }
+    }
 }
 
 /// One password the vault typed, read from a tool item.
@@ -52,29 +74,196 @@ pub struct Fill {
 }
 
 /// The hidden mark a success of `vault_login` (`How::Login`) or `vault_create_login` (`How::Created`) ends with.
-pub fn mark(_item: &str, _host: &str, _how: How) -> String {
-    String::new()
+pub fn mark(item: &str, host: &str, how: How) -> String {
+    format!("{MARK_OPEN}{item} {host} {}-->", how.word())
+}
+
+/// The bridge's vault tool `tool` as Hermes names it (`mcp__bipagents_vault__vault_login`, `mcp_bipagents_vault_…`).
+fn is_vault_tool(name: &str, tool: &str) -> bool {
+    let entry = |open: &str, between: &str| {
+        name.strip_prefix(open).and_then(|r| r.strip_prefix(SERVER_NAME)).and_then(|r| r.strip_prefix(between))
+            == Some(tool)
+    };
+    name == tool || entry("mcp__", "__") || entry("mcp_", "_")
+}
+
+/// A call made through the tool search (`tool_call` wrapping one call, threads/mod.rs `with_services`): the call it
+/// wraps, its arguments as text.
+fn wrapped_call(name: &str, arguments: &str) -> (String, String) {
+    let unchanged = || (name.to_string(), arguments.to_string());
+    if name != "tool_call" {
+        return unchanged();
+    }
+    let Ok(args) = serde_json::from_str::<Value>(arguments) else { return unchanged() };
+    let call = match args.get("calls").and_then(Value::as_array) {
+        Some(calls) if calls.len() == 1 => calls[0].clone(),
+        Some(_) => return unchanged(),
+        None => args,
+    };
+    let Some(inner) = call.get("name").and_then(Value::as_str) else { return unchanged() };
+    let inner_args = match call.get("arguments") {
+        Some(Value::String(text)) => text.clone(),
+        Some(value) => value.to_string(),
+        None => "{}".to_string(),
+    };
+    (inner.to_string(), inner_args)
+}
+
+/// A result without Hermes' « untrusted_tool_result » wrapper (its opening tag and notice, its closing tag).
+fn unwrapped(raw: &str) -> &str {
+    let text = raw.trim();
+    if !text.starts_with("<untrusted_tool_result") {
+        return text;
+    }
+    let body = text.split_once("\n\n").map_or("", |(_, body)| body).trim_end();
+    body.strip_suffix("</untrusted_tool_result>").unwrap_or(body).trim()
+}
+
+fn an_item(id: &str) -> bool {
+    id.starts_with("item_") && id.len() <= 64 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+}
+
+fn a_host(host: &str) -> bool {
+    !host.is_empty() && host.len() <= 255 && host.bytes().all(|b| b.is_ascii_alphanumeric() || b".-:[]".contains(&b))
+}
+
+/// The bridge's own mark, the last words of its result.
+fn bridge_fill(text: &str, how: How) -> Option<Fill> {
+    let body = text.strip_suffix("-->")?;
+    let inner = &body[body.rfind(MARK_OPEN)? + MARK_OPEN.len()..];
+    let parts: Vec<&str> = inner.split(' ').collect();
+    let [item, host, word] = parts[..] else { return None };
+    (an_item(item) && a_host(host) && How::of(word) == Some(how)).then(|| Fill {
+        item: Some(item.to_string()),
+        handle: None,
+        host: host.to_ascii_lowercase(),
+        how,
+    })
+}
+
+/// Hermes' `browser_vault` fill of a login: its JSON answer (`success`, `kind`, `origin`), the handle it was given.
+fn hermes_fill(arguments: &str, text: &str) -> Option<Fill> {
+    let args: Value = serde_json::from_str(arguments).ok()?;
+    if args.get("action").and_then(Value::as_str) != Some("fill") {
+        return None;
+    }
+    let handle = args.get("handle").and_then(Value::as_str).filter(|h| !h.is_empty())?.to_string();
+    let answer: Value = serde_json::from_str(text).ok()?;
+    let filled = answer.get("filled_fields").and_then(Value::as_u64).unwrap_or(1);
+    if answer.get("success") != Some(&Value::Bool(true))
+        || answer.get("kind").and_then(Value::as_str) != Some("login")
+        || filled == 0
+    {
+        return None;
+    }
+    let host = crate::vault_match::site_of(answer.get("origin")?.as_str()?)?.host;
+    Some(Fill { item: None, handle: Some(handle), host, how: How::Login })
 }
 
 /// The fill a tool call made, from its name, its arguments and its raw result (before the bridge's notes are taken
 /// out); None when it typed no password of the vault.
-pub fn fill_of(_name: &str, _arguments: &str, _raw: &str) -> Option<Fill> {
-    None
+pub fn fill_of(name: &str, arguments: &str, raw: &str) -> Option<Fill> {
+    let (name, arguments) = wrapped_call(name, arguments);
+    let text = unwrapped(raw);
+    if is_vault_tool(&name, LOGIN) {
+        bridge_fill(text, How::Login)
+    } else if is_vault_tool(&name, CREATE) {
+        bridge_fill(text, How::Created)
+    } else if name == HERMES_TOOL {
+        hermes_fill(&arguments, text)
+    } else {
+        None
+    }
 }
 
 /// The fill as a tool item carries it (`STASH`).
-pub fn stash(_fill: &Fill) -> Value {
-    Value::Null
+pub fn stash(fill: &Fill) -> Value {
+    json!({"item": fill.item, "handle": fill.handle, "host": fill.host, "how": fill.how.word()})
+}
+
+fn unstash(value: &Value) -> Option<Fill> {
+    let text = |key: &str| value.get(key).and_then(Value::as_str).map(str::to_string);
+    Some(Fill { item: text("item"), handle: text("handle"), host: text("host")?, how: How::of(&text("how")?)? })
+}
+
+/// A host as the person reads it: « www. » left out.
+fn shown(host: &str) -> String {
+    host.strip_prefix("www.").unwrap_or(host).to_string()
+}
+
+/// « a », « a et b », « a, b et c ».
+fn joined(sites: &[String], and: &str) -> String {
+    match sites {
+        [] => String::new(),
+        [one] => one.clone(),
+        [head @ .., last] => format!("{} {and} {last}", head.join(", ")),
+    }
 }
 
 /// The line's words in `lang`.
-pub fn words(_lang: &str, _sites: &[String], _created: bool) -> String {
-    String::new()
+pub fn words(lang: &str, sites: &[String], created: bool) -> String {
+    let french = lang.split(['-', '_']).next().is_some_and(|l| l.eq_ignore_ascii_case("fr"));
+    match (french, created) {
+        (true, false) => format!("Rempli par le coffre sur {}, sans le donner à l'agent", joined(sites, "et")),
+        (true, true) => {
+            format!("Mot de passe créé par le coffre sur {}, sans le donner à l'agent", joined(sites, "et"))
+        }
+        (false, false) => format!("Filled by the vault on {}, never given to the agent", joined(sites, "and")),
+        (false, true) => format!("Password made by the vault on {}, never given to the agent", joined(sites, "and")),
+    }
 }
 
 /// Under each turn in which the vault typed a password, after its last item, one `vault_line` item; every tool item's
 /// stash taken out. `item_of_handle`: a handle of the agent's Hermes vault → the vault's item id.
-pub fn with_vault_lines(_items: &mut Vec<Item>, _lang: &str, _item_of_handle: impl FnMut(&str) -> Option<String>) {}
+pub fn with_vault_lines(items: &mut Vec<Item>, lang: &str, mut item_of_handle: impl FnMut(&str) -> Option<String>) {
+    let mut turns: Vec<(String, Vec<Fill>)> = Vec::new();
+    let mut last: HashMap<String, usize> = HashMap::new();
+    for (i, item) in items.iter_mut().enumerate() {
+        let fill = item.body.remove(STASH).as_ref().and_then(unstash);
+        if item.turn.is_empty() {
+            continue;
+        }
+        last.insert(item.turn.clone(), i);
+        if let Some(fill) = fill {
+            match turns.iter_mut().find(|(turn, _)| *turn == item.turn) {
+                Some((_, fills)) => fills.push(fill),
+                None => turns.push((item.turn.clone(), vec![fill])),
+            }
+        }
+    }
+    let mut lines: Vec<(usize, Item)> = Vec::new();
+    for (turn, fills) in turns {
+        let Some(&index) = last.get(&turn) else { continue };
+        let mut sites: Vec<String> = Vec::new();
+        let mut ids: Vec<Option<String>> = Vec::new();
+        for fill in &fills {
+            let site = shown(&fill.host);
+            if !sites.contains(&site) {
+                sites.push(site);
+            }
+            ids.push(fill.item.clone().or_else(|| fill.handle.as_deref().and_then(&mut item_of_handle)));
+        }
+        let created = fills.iter().all(|f| f.how == How::Created);
+        let mut body = json!({"kind": KIND, "text": words(lang, &sites, created), "sites": sites});
+        // the vault opens on it when the turn filled that one login only
+        if let Some(Some(first)) = ids.first() {
+            if ids.iter().all(|id| id.as_ref() == Some(first)) {
+                body["item"] = json!(first);
+            }
+        }
+        let Value::Object(body) = body else { continue };
+        let at = &items[index];
+        let pos = (at.pos.0, at.pos.1, at.pos.2 + 1);
+        let line =
+            Item { id: format!("{turn}.vault"), pos, at: at.at, turn, segment: at.segment.clone(), row: at.row, body };
+        lines.push((index, line));
+    }
+    // from the end, so each index still points at its turn's last item
+    lines.sort_by_key(|(index, _)| std::cmp::Reverse(*index));
+    for (index, line) in lines {
+        items.insert(index + 1, line);
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -102,14 +291,18 @@ mod tests {
 
     #[test]
     fn the_mark_names_the_item_the_host_and_how() {
-        assert_eq!(mark(ITEM, "www.fournisseur.example", How::Login), format!("<!--bip:filled {ITEM} www.fournisseur.example login-->"));
+        assert_eq!(
+            mark(ITEM, "www.fournisseur.example", How::Login),
+            format!("<!--bip:filled {ITEM} www.fournisseur.example login-->")
+        );
         assert_eq!(mark(ITEM, "shop.example", How::Created), format!("<!--bip:filled {ITEM} shop.example created-->"));
     }
 
     #[test]
     fn a_fill_is_read_from_the_bridges_own_vault_tools_only() {
         let done = logged_in("www.fournisseur.example");
-        let fill = Fill { item: Some(ITEM.into()), handle: None, host: "www.fournisseur.example".into(), how: How::Login };
+        let fill =
+            Fill { item: Some(ITEM.into()), handle: None, host: "www.fournisseur.example".into(), how: How::Login };
         for name in ["mcp_bipagents_vault_vault_login", "mcp__bipagents_vault__vault_login", "vault_login"] {
             assert_eq!(fill_of(name, "{}", &done), Some(fill.clone()), "{name}");
             assert_eq!(fill_of(name, "{}", &wrapped(name, &done)), Some(fill.clone()), "{name} wrapped");
@@ -129,7 +322,10 @@ mod tests {
         // not at the end, a mark of the other tool, a malformed mark
         assert_eq!(fill_of("mcp__bipconn_x__vault_login", "{}", &done), None);
         assert_eq!(fill_of("mcp__stealth__get_page_content", "{}", &done), None);
-        assert_eq!(fill_of("mcp_bipagents_vault_vault_login", "{}", "No login form of x on this page: nothing was typed."), None);
+        assert_eq!(
+            fill_of("mcp_bipagents_vault_vault_login", "{}", "No login form of x on this page: nothing was typed."),
+            None
+        );
         assert_eq!(fill_of("mcp_bipagents_vault_vault_login", "{}", &format!("{done} And more.")), None);
         assert_eq!(fill_of("mcp_bipagents_vault_vault_login", "{}", &made), None);
         assert_eq!(fill_of("mcp_bipagents_vault_vault_create_login", "{}", &done), None);
@@ -148,16 +344,25 @@ mod tests {
     fn hermes_fill_of_a_login_counts_never_an_address_a_code_or_a_failure() {
         let args = r#"{"action": "fill", "handle": "vault_7f3a"}"#;
         let ok = r#"{"success": true, "filled_fields": 1, "backend": "local", "kind": "login", "origin": "https://www.mutuelle.example", "next": "Submit."}"#;
-        let fill = Fill { item: None, handle: Some("vault_7f3a".into()), host: "www.mutuelle.example".into(), how: How::Login };
+        let fill = Fill {
+            item: None,
+            handle: Some("vault_7f3a".into()),
+            host: "www.mutuelle.example".into(),
+            how: How::Login,
+        };
         assert_eq!(fill_of("browser_vault", args, &wrapped("browser_vault", ok)), Some(fill.clone()));
         assert_eq!(fill_of("browser_vault", args, ok), Some(fill));
         let address = r#"{"success": true, "filled_fields": 4, "kind": "address", "origin": "https://shop.example", "fields": ["name"]}"#;
         let failed = r#"{"success": false, "error_type": "origin_mismatch", "error": "Refused"}"#;
-        let nothing = r#"{"success": false, "filled_fields": 0, "kind": "login", "origin": "https://www.mutuelle.example"}"#;
-        for result in [address, failed, nothing, "not json", r#"{"error": "Could not determine the current page origin"}"#] {
+        let nothing =
+            r#"{"success": false, "filled_fields": 0, "kind": "login", "origin": "https://www.mutuelle.example"}"#;
+        for result in
+            [address, failed, nothing, "not json", r#"{"error": "Could not determine the current page origin"}"#]
+        {
             assert_eq!(fill_of("browser_vault", args, &wrapped("browser_vault", result)), None, "{result}");
         }
-        let code = r#"{"success": true, "filled_fields": 1, "origin": "https://www.mutuelle.example", "source": "totp"}"#;
+        let code =
+            r#"{"success": true, "filled_fields": 1, "origin": "https://www.mutuelle.example", "source": "totp"}"#;
         assert_eq!(fill_of("browser_vault", r#"{"action": "enter_code", "handle": "vault_7f3a"}"#, code), None);
         assert_eq!(fill_of("browser_vault", r#"{"action": "list"}"#, ok), None);
         assert_eq!(fill_of("mcp__x__browser_vault", args, ok), None);
@@ -173,12 +378,27 @@ mod tests {
             words("fr", &two, false),
             "Rempli par le coffre sur fournisseur.example et mutuelle.example, sans le donner à l'agent"
         );
-        assert_eq!(words("fr", &three, false), "Rempli par le coffre sur a.example, b.example et c.example, sans le donner à l'agent");
-        assert_eq!(words("fr", &one, true), "Mot de passe créé par le coffre sur fournisseur.example, sans le donner à l'agent");
+        assert_eq!(
+            words("fr", &three, false),
+            "Rempli par le coffre sur a.example, b.example et c.example, sans le donner à l'agent"
+        );
+        assert_eq!(
+            words("fr", &one, true),
+            "Mot de passe créé par le coffre sur fournisseur.example, sans le donner à l'agent"
+        );
         assert_eq!(words("en", &one, false), "Filled by the vault on fournisseur.example, never given to the agent");
-        assert_eq!(words("en", &two, false), "Filled by the vault on fournisseur.example and mutuelle.example, never given to the agent");
-        assert_eq!(words("en", &three, false), "Filled by the vault on a.example, b.example and c.example, never given to the agent");
-        assert_eq!(words("en", &one, true), "Password made by the vault on fournisseur.example, never given to the agent");
+        assert_eq!(
+            words("en", &two, false),
+            "Filled by the vault on fournisseur.example and mutuelle.example, never given to the agent"
+        );
+        assert_eq!(
+            words("en", &three, false),
+            "Filled by the vault on a.example, b.example and c.example, never given to the agent"
+        );
+        assert_eq!(
+            words("en", &one, true),
+            "Password made by the vault on fournisseur.example, never given to the agent"
+        );
         // German and Spanish: English until their words are written
         assert_eq!(words("de", &one, false), words("en", &one, false));
         assert_eq!(words("es", &two, true), words("en", &two, true));
@@ -190,7 +410,8 @@ mod tests {
     }
 
     fn tool(n: i64, id: &str, turn: &str, fill: Option<Fill>) -> Item {
-        let mut item = at(n, id, turn, json!({"kind": "tool", "tool": {"name": "x", "result": "done", "status": "done"}}));
+        let mut item =
+            at(n, id, turn, json!({"kind": "tool", "tool": {"name": "x", "result": "done", "status": "done"}}));
         item.pos.2 = 1;
         if let Some(fill) = fill {
             item.body.insert(STASH.into(), stash(&fill));
@@ -211,7 +432,12 @@ mod tests {
             tool(3, "m3.t0", "m1", filled(Some(ITEM), None, "fournisseur.example", How::Login)),
             at(4, "m4", "m1", json!({"kind": "message", "role": "agent", "text": "C'est fait."})),
             // a turn with a fill of Hermes (its handle known) and a created account: two sites, two items
-            at(5, "m5", "m5", json!({"kind": "message", "role": "person", "text": "Et la mutuelle, puis crée le compte"})),
+            at(
+                5,
+                "m5",
+                "m5",
+                json!({"kind": "message", "role": "person", "text": "Et la mutuelle, puis crée le compte"}),
+            ),
             tool(6, "m6.t0", "m5", filled(None, Some("vault_7f3a"), "www.mutuelle.example", How::Login)),
             tool(7, "m7.t0", "m5", filled(Some("item_bbbbbbbbbbbb"), None, "shop.example", How::Created)),
             at(8, "m8", "m5", json!({"kind": "message", "role": "agent", "text": "Voilà."})),
@@ -228,7 +454,13 @@ mod tests {
         assert_eq!(asked, ["vault_7f3a"]);
         assert!(items.iter().all(|i| !i.body.contains_key(STASH)), "never served");
         let ids: Vec<&str> = items.iter().map(|i| i.id.as_str()).collect();
-        assert_eq!(ids, ["m1", "m2", "m2.t0", "m3.t0", "m4", "m1.vault", "m5", "m6.t0", "m7.t0", "m8", "m5.vault", "m9", "m10.t0", "m11"]);
+        assert_eq!(
+            ids,
+            [
+                "m1", "m2", "m2.t0", "m3.t0", "m4", "m1.vault", "m5", "m6.t0", "m7.t0", "m8", "m5.vault", "m9",
+                "m10.t0", "m11"
+            ]
+        );
         let first = &items[5];
         assert_eq!(first.kind(), KIND);
         assert_eq!(first.turn, "m1");

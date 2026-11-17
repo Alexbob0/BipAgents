@@ -12,6 +12,13 @@
 //!   written anywhere.
 //! - **The agent** gets « saved as <name> » (the identifier only when it passed it itself), or a refusal / no answer in
 //!   plain words. Names are unique per agent; cards are limited per agent (`MAX_WAITING` at once, `MAX_PER_HOUR`).
+//! - **A site's login** (`use: browser`; le coffre rassure, 17/11, passation-pro briefs/design-coffre-rassurer.md §4):
+//!   the card says so (`bip_secret_use`) and whether the person may type it themselves in the agent's browser
+//!   (`bip_secret_self`: asked by the agent, a visible browser of its own to take over). « Je le taperai moi-même »
+//!   (`{"allow": false, "way": "self"}`, kept as the choice `self`) keeps nothing: the agent's call waits until the
+//!   person has taken its browser and handed it back (`HAND_WAIT`), then reads the page (`HANDED_BACK`); still held
+//!   then, it says it will go on once handed back and stops (`NOT_BACK`), and goes on once, in a later turn, when the
+//!   hand is back (card_place.rs `settle`, `self_hand`, `resume_words`).
 //! - **Blanking** (`Blanker`): every value of the agent's secrets, raw, URL-encoded, JSON-escaped, hex and base64
 //!   (padded, unpadded, URL-safe, and the aligned cores of a value inside a longer base64 stream, as in a Basic
 //!   header), is replaced by « [secret] » in whatever a connector sends back before it reaches Hermes, the model, the
@@ -296,13 +303,23 @@ pub const SELF: &str = "self";
 /// navigateur de l'agent », handover.rs).
 pub const HAND_WAIT: Duration = Duration::from_secs(600);
 /// What the agent reads once the person signed in themselves and handed its browser back (design §1.5).
-pub const HANDED_BACK: &str = "";
-/// What it reads when they still hold it after `HAND_WAIT`, or never took it.
-pub const NOT_BACK: &str = "";
+pub const HANDED_BACK: &str = "The person signed in themselves in your browser and handed it back. Read the page: signed \
+in, go on; the sign-in page still there, tell them in one sentence what you see. Nothing was kept in the vault: don't \
+ask for this site again in this conversation.";
+/// What it reads when they still hold it after `HAND_WAIT`, or never took it: it goes on in a later turn once they
+/// hand it back (card_place.rs `settle`, `resume_words`).
+pub const NOT_BACK: &str = "The person chose to sign in themselves in your browser and hasn't handed it back yet. Don't \
+use your browser: say you'll go on once they hand it back, then stop.";
 
-/// `HAND_WAIT`, shorter in the black-box tests (`BIP_TEST_HAND_WAIT_SECONDS`).
+/// `HAND_WAIT`, only ever shorter in the black-box tests (`BIP_TEST_HAND_WAIT_SECONDS`, 1 to 600, said in the log).
 pub fn hand_wait() -> Duration {
-    HAND_WAIT
+    let Some(seconds) = std::env::var("BIP_TEST_HAND_WAIT_SECONDS").ok().and_then(|s| s.trim().parse::<u64>().ok())
+    else {
+        return HAND_WAIT;
+    };
+    let wait = Duration::from_secs(seconds.clamp(1, HAND_WAIT.as_secs()));
+    tracing::warn!(seconds = wait.as_secs(), "secret card: the person's hand waited for at a test interval");
+    wait
 }
 
 /// Where the person's hand is, for an answer « Je le taperai moi-même » not told to the agent yet.
@@ -317,14 +334,57 @@ pub enum Hand {
 }
 
 /// `holds`: the person holds the agent's browser now; `held`: they were seen holding it since their answer.
-pub fn hand_now(_holds: bool, _held: bool) -> Hand {
-    Hand::Back
+pub fn hand_now(holds: bool, held: bool) -> Hand {
+    match (holds, held) {
+        (true, false) => Hand::Taken,
+        (false, true) => Hand::Back,
+        _ => Hand::Wait,
+    }
+}
+
+/// The person holds the agent's browser in the app: its desktop taken over (desktop.rs `control`), or Hermes' lease.
+pub fn person_holds(state: &AppState, agent: &str) -> bool {
+    if state.desktop_control.lock().unwrap_or_else(|e| e.into_inner()).get(agent).copied().unwrap_or(false) {
+        return true;
+    }
+    let config = state.config();
+    let folder = config.agent(Some(agent)).and_then(|a| crate::desktop::desktop_dir(&config, a));
+    folder.filter(|f| f.is_dir()).is_some_and(|f| crate::desktop::app_holds(&f))
+}
+
+/// After « Je le taperai moi-même »: until the person has taken the agent's browser and handed it back (true), or
+/// `hand_wait` passed (false), as « Payer dans le navigateur de l'agent » (handover.rs).
+pub async fn wait_for_hand(state: &AppState, agent: &str) -> bool {
+    let started = Instant::now();
+    let wait = hand_wait();
+    let mut held = false;
+    loop {
+        match hand_now(person_holds(state, agent), held) {
+            Hand::Back => return true,
+            Hand::Taken => held = true,
+            Hand::Wait => {}
+        }
+        if started.elapsed() >= wait {
+            return false;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+}
+
+/// For an answer card_place.rs keeps until the agent knows it: where the person's hand is when it was « Je le taperai
+/// moi-même » to a secret card (None: another answer, or another card). `held`: seen holding since the answer.
+pub fn self_hand(state: &AppState, card: &str, agent: &str, choice: &str, held: bool) -> Option<Hand> {
+    (card.starts_with(RUN_PREFIX) && choice == SELF).then(|| hand_now(person_holds(state, agent), held))
 }
 
 /// Whether the person may type it themselves in the agent's browser: a site's login for its visible browser, asked
 /// by the agent (not opened from the app), and a browser they can take over.
-pub fn may_type_self(_config: &Config, _agent: &str, _request: &Request) -> bool {
-    false
+pub fn may_type_self(config: &Config, agent: &str, request: &Request) -> bool {
+    request.browser_login
+        && request.kind == "password"
+        && !request.edit
+        && !request.origin.is_empty()
+        && crate::browsers::ports_of(config, agent).is_some()
 }
 
 /// Why « Je le taperai moi-même » can't be taken.
@@ -338,13 +398,35 @@ pub enum SelfError {
 
 /// « Je le taperai moi-même » (`{"allow": false, "way": "self"}`): nothing kept, the agent's call waits for the
 /// browser handed back (`wait_for_hand`).
-pub fn choose_self(_config: &Config, _agent: Option<&str>, _id: &str, _via: &str) -> Result<(), SelfError> {
-    Err(SelfError::NoCard)
+pub fn choose_self(config: &Config, agent: Option<&str>, id: &str, via: &str) -> Result<(), SelfError> {
+    let (agent, request) = {
+        let mut table = cards();
+        let Some(card) = table.get_mut(id).filter(|c| c.answer.is_none() && agent.is_none_or(|a| a == c.agent)) else {
+            return Err(SelfError::NoCard);
+        };
+        if !may_type_self(config, &card.agent, &card.request) {
+            return Err(SelfError::NotHere);
+        }
+        card.answer = Some(Outcome::TypedByPerson);
+        card.notify.notify_waiters();
+        let out = (card.agent.clone(), card.request.clone());
+        if card.left {
+            table.shift_remove(id); // nobody waits for it: the agent goes on once the hand is back (card_place.rs)
+        }
+        out
+    };
+    record(config, &agent, id, &request, SELF, via);
+    tracing::info!(agent = %agent, secret = %request.name, "secret card: the person signs in themselves");
+    Ok(())
 }
 
 /// What the agent reads of an answer it learns in a later turn (card_place.rs `resume`): « self » only.
-pub fn resume_words(_card: &str, _choice: &str, _summary: &str) -> Option<String> {
-    None
+pub fn resume_words(card: &str, choice: &str, summary: &str) -> Option<String> {
+    if !card.starts_with(RUN_PREFIX) || choice != SELF {
+        return None;
+    }
+    let what = if summary.is_empty() { "your sign-in" } else { summary };
+    Some(format!("« {what} » — {}", HANDED_BACK.trim_end_matches('.')))
 }
 
 struct Card {
@@ -504,6 +586,9 @@ fn item_of(config: &Config, id: &str, card: &Card) -> Dict {
         "bip_secret_reason": r.reason,
         "bip_secret_edit": r.edit,
         "bip_secret_connector": r.connector,
+        // le coffre rassure (17/11): a site's login or a connector's secret, and « Je le taperai moi-même »
+        "bip_secret_use": if r.browser_login { "browser" } else { "connector" },
+        "bip_secret_self": may_type_self(config, &card.agent, r),
     });
     let mut item = item.as_object().cloned().unwrap_or_default();
     if crate::vault::others_facing(config, &card.agent) {
@@ -529,12 +614,12 @@ pub fn item(config: &Config, id: &str) -> Option<Dict> {
     cards().get(id).map(|c| item_of(config, id, c))
 }
 
-fn record(config: &Config, agent: &str, id: &str, request: &Request, allow: bool, via: &str) {
+fn record(config: &Config, agent: &str, id: &str, request: &Request, choice: &str, via: &str) {
     let fields = json!({
         "session_id": null, "run_id": format!("{RUN_PREFIX}{id}"), "request_id": id,
         "command": if request.host().is_empty() { request.name.clone() } else { format!("{} · {}", request.name, request.host()) },
         "description": sentence(&shown_name(config, agent), request),
-        "topic": "secret", "choice": if allow { "once" } else { "deny" }, "via": via,
+        "topic": "secret", "choice": choice, "via": via,
     });
     if let Some(map) = fields.as_object() {
         if let Err(exc) = crate::approvals_log::record(config, agent, map) {
@@ -558,7 +643,7 @@ pub fn deny(config: &Config, agent: Option<&str>, id: &str, via: &str) -> bool {
         }
         out
     };
-    record(config, &agent, id, &request, false, via);
+    record(config, &agent, id, &request, "deny", via);
     tracing::info!(agent = %agent, secret = %request.name, "secret card refused");
     true
 }
@@ -669,20 +754,33 @@ pub async fn give(
             }
         }
     }
-    record(&config, &agent, id, &request, true, via);
+    record(&config, &agent, id, &request, "once", via);
     tracing::info!(agent = %agent, secret = %request.name, kind = %request.kind, "secret given by the person");
     Ok(request.name)
 }
 
 // --- the app's route (bridge key) --------------------------------------------------------------------------------------
 
-/// A secret card answered in the app: `{"allow": true, "value": "…", "identifier": "…"}` or `{"allow": false}`.
+/// A secret card answered in the app: `{"allow": true, "value": "…", "identifier": "…"}`, `{"allow": false}`, or
+/// « Je le taperai moi-même » `{"allow": false, "way": "self"}` (a card with `bip_secret_self` only).
 async fn answer_route(State(state): State<AppState>, Path(id): Path<String>, body: Bytes) -> ApiResult<Response> {
     let body: Value = serde_json::from_slice(&body).map_err(|_| HttpError::new(400, "invalid JSON"))?;
     let Some(allow) = body.get("allow").and_then(Value::as_bool) else {
         return Err(HttpError::new(400, "allow must be true or false"));
     };
-    let mut response = if !allow {
+    let way = body.get("way").filter(|w| !w.is_null());
+    let mut response = if let Some(way) = way {
+        if allow || way.as_str() != Some(SELF) {
+            return Err(HttpError::new(400, "way: only « self », with allow false"));
+        }
+        match choose_self(&state.config(), None, &id, "app") {
+            Ok(()) => web::ok(json!({"ok": true, "choice": SELF})),
+            Err(SelfError::NoCard) => return Err(HttpError::new(404, "no such request (answered already?)")),
+            Err(SelfError::NotHere) => {
+                return Err(HttpError::new(400, "not a site's login with a browser of the agent's to take over"))
+            }
+        }
+    } else if !allow {
         if !deny(&state.config(), None, &id, "app") {
             return Err(HttpError::new(404, "no such request (answered already?)"));
         }

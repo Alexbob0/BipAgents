@@ -18,8 +18,9 @@ use crate::config::Config;
 /// Per agent.
 pub const KEEP: usize = 1000;
 /// Hermes' words, the space cards' (storage_watch.rs) and the tip cards' (feature_tips.rs).
-/// `deny_always`: a send card's « Refuser toujours » (sandbox_sites.rs, 11/11).
-const CHOICES: [&str; 12] = [
+/// `deny_always`: a send card's « Refuser toujours » (sandbox_sites.rs, 11/11). `self`: a secret card's « Je le taperai
+/// moi-même » (secrets.rs, 17/11).
+const CHOICES: [&str; 13] = [
     "once",
     "session",
     "always",
@@ -32,6 +33,7 @@ const CHOICES: [&str; 12] = [
     "try",
     "later",
     "never",
+    "self",
 ];
 static WRITING: Mutex<()> = Mutex::new(());
 

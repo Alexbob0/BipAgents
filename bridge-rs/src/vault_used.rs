@@ -11,29 +11,84 @@
 //!
 //! No Python counterpart.
 
+use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::Mutex;
 
-use serde_json::Value;
+use serde_json::{json, Map, Value};
 
 /// Beside `vault.json.enc`.
 pub const FILE: &str = "vault_used.json";
 /// Items kept at most (the most recent).
 pub const KEEP: usize = 500;
 
+static WRITING: Mutex<()> = Mutex::new(());
+
+fn read(folder: &Path) -> Map<String, Value> {
+    match std::fs::read_to_string(folder.join(FILE)).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
+        Some(Value::Object(kept)) => kept,
+        _ => Map::new(),
+    }
+}
+
 /// Agent `agent` had the vault type login `item` now.
-pub fn note(_folder: &Path, _item: &str, _agent: &str) {}
+pub fn note(folder: &Path, item: &str, agent: &str) {
+    if !folder.is_dir() {
+        return; // no vault: nothing was typed from it
+    }
+    let _one_at_a_time = WRITING.lock().unwrap_or_else(|e| e.into_inner());
+    let mut kept = read(folder);
+    kept.insert(item.to_string(), json!({"at": crate::vault::now(), "by": agent}));
+    if kept.len() > KEEP {
+        let mut by_time: Vec<(String, String)> = kept
+            .iter()
+            .map(|(id, used)| (used.get("at").and_then(Value::as_str).unwrap_or("").to_string(), id.clone()))
+            .collect();
+        by_time.sort();
+        for (_, id) in by_time.into_iter().take(kept.len() - KEEP) {
+            kept.remove(&id);
+        }
+    }
+    // written beside, then put in place: a list read meanwhile sees the old file or the new one
+    let fresh = folder.join(format!("{FILE}.new"));
+    let written =
+        crate::py::write_with_mode(&fresh.to_string_lossy(), Value::Object(kept).to_string().as_bytes(), 0o600)
+            .and_then(|()| std::fs::rename(&fresh, folder.join(FILE)));
+    if let Err(err) = written {
+        tracing::warn!(error = %err, "vault: last use not kept");
+    }
+}
 
 /// Every item's last use: id → (at, by).
-pub fn all(_folder: &Path) -> std::collections::BTreeMap<String, (String, String)> {
-    Default::default()
+pub fn all(folder: &Path) -> BTreeMap<String, (String, String)> {
+    read(folder)
+        .into_iter()
+        .filter_map(|(id, used)| {
+            let text = |key: &str| used.get(key).and_then(Value::as_str).map(str::to_string);
+            Some((id, (text("at")?, text("by")?)))
+        })
+        .collect()
 }
 
 /// The logins of a `GET /v1/vault` answer with their last use, when there is one.
-pub fn decorate(_folder: &Path, _items: &mut [Value]) {}
+pub fn decorate(folder: &Path, items: &mut [Value]) {
+    let used = all(folder);
+    if used.is_empty() {
+        return;
+    }
+    for item in items.iter_mut().filter(|i| i.get("kind").and_then(Value::as_str) == Some("login")) {
+        let Some((at, by)) = item.get("id").and_then(Value::as_str).and_then(|id| used.get(id)).cloned() else {
+            continue;
+        };
+        item["last_used_at"] = json!(at);
+        item["last_used_by"] = json!(by);
+    }
+}
 
 /// A login's site as the vault matches it (see above); None: not a web address.
-pub fn domain_of(_origin: &str) -> Option<String> {
-    None
+pub fn domain_of(origin: &str) -> Option<String> {
+    let site = crate::vault_match::site_of(origin)?;
+    Some(site.domain.unwrap_or_else(|| site.host.strip_prefix("www.").unwrap_or(&site.host).to_string()))
 }
 
 #[cfg(test)]
@@ -114,7 +169,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut kept = serde_json::Map::new();
         for n in 0..KEEP + 20 {
-            kept.insert(format!("item_{n:012}"), json!({"at": format!("2026-11-01T00:{:02}:{:02}+00:00", n / 60 % 60, n % 60), "by": "vie"}));
+            kept.insert(
+                format!("item_{n:012}"),
+                json!({"at": format!("2026-11-01T00:{:02}:{:02}+00:00", n / 60 % 60, n % 60), "by": "vie"}),
+            );
         }
         std::fs::write(dir.path().join(FILE), Value::Object(kept).to_string()).unwrap();
         note(dir.path(), "item_new", "vie");

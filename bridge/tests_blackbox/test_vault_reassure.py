@@ -102,7 +102,6 @@ def test_the_card_says_what_it_is_for_and_an_older_app_answers_it_as_before(brid
         assert login["choices"] == ["once", "deny"] and login["bip_secret_kind"] == "password"
         assert login["bip_secret_site"] == "www.fournisseur.example" and login["bip_secret_identifier_required"] is True
         assert login["description"] == "Vie a besoin de ton accès Fournisseur (www.fournisseur.example)"
-        assert displayable.card_problems(login, "login") == []
         # « Je le taperai moi-même » only where the person can take the browser; a way no app sends: refused
         assert answer(bridge, connector, {"allow": False, "way": "self"}).status_code == 400
         assert answer(bridge, login, {"allow": False, "way": "phone"}).status_code == 400

@@ -1,7 +1,7 @@
 ---
 name: visible-browser
 description: "Browse the web with your own visible browser: a real Chrome on your desktop, which the person can watch and take over from the BipAgents app. Use its `stealth` tools for every website, including sites that block automated browsers."
-version: 1.14.1
+version: 1.15.0
 author: BipAgents
 license: MIT
 metadata:
@@ -119,6 +119,8 @@ If the vault has no login for a site you must log in to for the person (`vault_l
 once with `ask_secret` (`kind: password`, `use: browser`, the site, a short reason): ONE card in the app asks the
 person for the identifier and the password, which go to the vault, never to you. Then log in with `vault_login`. Never ask in a message, never twice for the same site. Never for a payment card: `ask_secret` refuses a card's
 number, expiry, holder or security code (§ 5).
+Ask from the site's login page itself, open in your browser: the person may choose to sign in themselves there
+instead; the call then waits until they hand your browser back and tells you what to do.
 
 ## 4d. Downloads
 What your browser downloads lands in `/telechargements/<name>`: a place of the bridge, not of your terminal (`ls`
