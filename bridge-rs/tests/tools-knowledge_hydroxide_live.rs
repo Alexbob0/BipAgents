@@ -130,6 +130,16 @@ fn the_support_routine_through_hydroxide() {
         mail_tidy::run_job(&config, &job.id, &open).unwrap();
         mail_tidy::jobs_of(&config, "coach").into_iter().find(|j| j.id == job.id).unwrap()
     };
+    // stock hydroxide (no folders of today's API): « Support » named missing, with the build that shows it
+    let mut probe = connect(port);
+    let stock = Folders::of(&mut probe).unwrap().hydroxide();
+    let _ = probe.logout(); // nothing stays logged in: each call its own hydroxide session, as on Alex's box
+    if stock {
+        let (error, said) = call("mail_search", json!({"folder": "Support", "limit": 20}));
+        println!("stock hydroxide, search Support: {error} {said}");
+        assert!(error && said.contains("stock hydroxide") && said.contains("« INBOX »"), "{said}");
+        return;
+    }
     // Q1: Support's own messages only
     let (error, found) = call("mail_search", json!({"folder": "Support", "limit": 20}));
     println!("search Support: {found}");
