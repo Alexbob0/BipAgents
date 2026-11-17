@@ -163,6 +163,8 @@ pub struct Threads {
     on_screen: std::sync::Mutex<std::collections::HashMap<String, usize>>,
     /// The agents' queues (msg_queue.rs): a message waiting there shows in `pending.queue`, not as a sent item.
     queued: std::sync::OnceLock<Weak<crate::msg_queue::Queues>>,
+    /// The vault: the item a fill of Hermes' named by its handle (vault_line.rs).
+    vault: Option<Arc<crate::vault::Vault>>,
 }
 
 /// One app showing a thread, for as long as its event stream is open.
@@ -189,6 +191,7 @@ pub fn threads_of(state: &AppState) -> Arc<Threads> {
         .get_or_init(|| {
             let mut threads = Threads::new(state.config.clone(), state.store.clone(), state.hermes.clone());
             threads.briefs = Some(state.briefs.clone());
+            threads.vault = Some(state.vault.clone());
             let _ = threads.queued.set(Arc::downgrade(&crate::msg_queue::queues_of(state)));
             let threads = Arc::new(threads);
             let _ = state.hub.threads.set(Arc::downgrade(&threads));
@@ -212,6 +215,7 @@ impl Threads {
             briefs: None,
             on_screen: Default::default(),
             queued: Default::default(),
+            vault: None,
         }
     }
 
@@ -702,6 +706,7 @@ impl Threads {
         }
         with_services(&self.config.get(), &agent.name, &mut items);
         crate::steps::fold(&mut items, &crate::handback::language_of(&self.config.get(), agent));
+        self.with_vault_lines(agent, &mut items);
         with_carnet_lines(&self.config.get(), agent, &mut items);
         if thread.kind != "main" {
             // a run without the person that had nothing to tell (« [SILENT] », or the code word translated): no reply
@@ -756,6 +761,33 @@ impl Threads {
             items[i].body.insert("took".into(), took);
         }
         Ok(())
+    }
+
+    /// Under each turn in which the vault typed a password, its line « Rempli par le coffre sur … » (vault_line.rs),
+    /// before the Carnet's: from the bridge's record of its fills, and Hermes' own fills of one of this agent's logins
+    /// kept for that host. Read only when a turn called the vault or Hermes filled.
+    fn with_vault_lines(&self, agent: &AgentConfig, items: &mut Vec<Item>) {
+        let vault_call = |i: &Item| {
+            i.body.contains_key(crate::vault_line::STASH)
+                || (i.kind() == "tool"
+                    && i.body.get("tool").and_then(|t| t.get("name")).and_then(Value::as_str).is_some_and(|n| {
+                        crate::vault_line::calls_the_vault(n) || n == "tool_call"
+                    }))
+        };
+        if !items.iter().any(vault_call) {
+            return;
+        }
+        let config = self.config.get();
+        let lang = crate::handback::language_of(&config, agent);
+        let recorded = crate::vault_line::recorded_for(&config, &agent.name);
+        let mut known: Option<Vec<crate::vault::Item>> = None;
+        crate::vault_line::with_vault_lines(items, &lang, &recorded, |handle, host| {
+            let all = known.get_or_insert_with(|| self.vault.as_ref().and_then(|v| v.try_items().ok()).unwrap_or_default());
+            all.iter()
+                .filter(|i| i.kind == "login" && i.agents.get(&agent.name).is_some_and(|h| h == handle))
+                .find(|i| i.origin.as_deref().and_then(crate::vault_match::site_of).is_some_and(|s| s.host == host))
+                .map(|i| i.id.clone())
+        });
     }
 
     /// The files kept for the agent's messages (`attach`): added to those its `MEDIA:` lines give, stale ones left

@@ -317,9 +317,10 @@ something, `answers: <name>` on the first reply to that request. The apps keep t
 | `tool` | `tool: {name, call_id, arguments, result, status (done \| failed \| running), via}` | assistant `tool_calls` + their tool rows |
 | `notice` | `notice: {code, text, stopped?}`: `failed_turn` (Hermes' failed-turn row; `stopped`: `partial` \| `not_processed`, which of Hermes' two lines, the apps say it in their words), `loop_rescue` (the bridge's rescue turn) | Hermes rows the bridge recognizes |
 | `boite` | `text`, `title`, `attachments`, `boite: {outbox_id, audio: bool}` | the bridge's outbox (routine reports, hand-backs, credit, storage, imports) |
-| `approval` | `approval: {run_id, request_id, command, description, topic, choice, state: answered}` | approvals_log.rs (Hermes' history has no approval rows) |
+| `approval` | `approval: {run_id, request_id, command, description, topic, choice, state: answered}` (`choice: self` for a secret card answered « Je le taperai moi-même », §6.3c) | approvals_log.rs (Hermes' history has no approval rows) |
 | `call` | `call`: the Live call's record as `GET /v1/live/calls` gives it | live_calls.rs |
 | `steps` | `steps: {items: [{text, status, depth?}], done, total}`: the turn's task list (« Étapes », §6.3b) | the turn's `todo_list` calls (steps.rs) |
+| `vault_line` | `text` (the agent's language: « Rempli par le coffre sur fournisseur.example, sans le donner à l'agent »), `sites` (the hosts filled, without « www. », in order), `item`? (the vault item, when every fill of the turn was that one: the app opens the vault on it; absent: the list). Id `<turn>.vault`, right after the turn's last item, before its `carnet_line` (§6.3c) | the turn's tool items (vault_line.rs) |
 | (role `peer`) | a `message` with `role: peer`, `from: <agent id>`, `from_name` (the name it signed with, Hermes' emoji badge left out), `text` its words alone: another agent's message in Bot Mode's conversation (the apps find the agent by `from`, never by name) | « Message from … (@x): » rows |
 
 **Drawing order: the items' order** (no ordering logic in the apps). Each assistant row gives its words first, then
@@ -422,6 +423,34 @@ relay keeps the two numbers, never words).
 
 Apps from before 6/11 skip the item (an unknown `kind`) and the event (an unknown type): they show neither the card nor
 the `todo_list` calls.
+
+### 6.3c The vault's line and « Je le taperai moi-même » (le coffre rassure, 17/11)
+
+Passation-pro `briefs/design-coffre-rassurer.md` §4 (Alex's D1 A, D3 A, D4 A). All additive: an older app leaves an
+unknown kind out (iOS `.other`, Android's lenient decoder) and never sends `way`; a newer app on an older bridge gets
+no `vault_line`, no `bip_secret_use` / `bip_secret_self` (so no « Je le taperai moi-même ») and no `choice: self`.
+
+- **`vault_line`**: one per turn in which the vault typed a password, made when the thread is read, never from a
+  result's words (review R2, 17/11: a forged mark quoted in a refusal made a false line). A success of the bridge's
+  `vault_login` or `vault_create_login` is recorded by the bridge itself (`<data_dir>/vault-fills.jsonl`: agent,
+  session and run of that very call's turn — the one turn of the agent the hub sees inside a call of that tool, none
+  when it can't be sure (review R3) —, item, host, how; nothing secret), the thread placing each fill in the turn of
+  its session and time; Hermes' `browser_vault` fill of a login (its own JSON: `success`, `kind: login`,
+  `origin`) counts only when its handle is one of this agent's logins kept for that very host. An older conversation,
+  or a turn the hub did not follow, has none.
+  Never for a refusal, a failure, a code or « Coordonnées ». Words: « Rempli par le coffre sur [a] et [b], sans le
+  donner à l'agent », « Mot de passe créé par le coffre sur [site], sans le donner à l'agent » when the turn only
+  created accounts; English « Filled by the vault on … » / « Password made by the vault on …, never given to the
+  agent »; other languages: English for now. The apps draw it like the Carnet's line; a tap opens the vault on `item`.
+- **The secret card** (`GET /v1/approvals`, `bip-secret-`, internal/next/agent-connectors-api.md §1a): `bip_secret_use`
+  (`browser`: a site's login for the agent's visible browser; `connector`) and `bip_secret_self` (true: the person may
+  type it themselves there). `POST /v1/vault/secrets/requests/{id}` `{"allow": false, "way": "self"}` → 200
+  `{"ok": true, "choice": "self"}`; 400 on a card without `bip_secret_self`, 404 once answered, 409 `confirm_others`
+  on a card with `bip_secret_others` without `"confirmed_others": true` (as « Enregistrer »). The app then opens the
+  desktop with the hand taken. A `self` answer is an `approval` item of the conversation the card showed in (topic
+  `secret`, « ✋ Tapé par toi dans le Bureau »; today's apps skip a choice they don't know). `once` and `deny` are not
+  placed there yet (the published apps would draw « Accordé · … action à vérifier »): they come with the apps that draw
+  « ✓ Enregistré dans le coffre » and « ✕ Refusé » (the coordinator's decision, 17/11).
 
 ### 6.4 One item, attachments
 

@@ -38,8 +38,10 @@ def test_items_reach_only_the_agents_allowed_and_never_come_back(bridges, fakes)
     assert {k: item[k] for k in ("kind", "label", "origin", "identifier_type", "identifier", "has_otp", "agents")} == {
         "kind": "login", "label": "SNCF", "origin": "https://sncf-connect.com", "identifier_type": "email",
         "identifier": "alex@example.org", "has_otp": True, "agents": ["vie"]}
-    assert set(item) == {"id", "kind", "label", "origin", "login_url", "identifier_type", "identifier", "has_otp",
-                         "agents", "created_at", "updated_at"}
+    assert set(item) == {"id", "kind", "label", "origin", "login_url", "domain", "identifier_type", "identifier",
+                         "has_otp", "agents", "created_at", "updated_at"}
+    # its site as the vault fills on it (the apps group a site's logins by it; le coffre rassure, 17/11)
+    assert item["domain"] == "sncf-connect.com"
     # the login page typed is kept beside the site (16/11), never sent to the agent's Hermes
     assert item["login_url"] == "https://sncf-connect.com/login"
     assert "s3cret" not in made.text and "JBSWY" not in made.text

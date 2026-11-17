@@ -859,10 +859,14 @@ async fn control(
         let take = take_of(&body)?;
         // Told to the payments first: a payment's release then leaves the hold to the person (card_pay.rs).
         let paying = crate::card_pay::person_holds(&agent.name, take);
-        state.desktop_control.lock().unwrap_or_else(|e| e.into_inner()).insert(agent.name.clone(), take);
+        let held_before =
+            state.desktop_control.lock().unwrap_or_else(|e| e.into_inner()).insert(agent.name.clone(), take) == Some(true);
         if !take {
             // a tab shown as on the person's phone: back to its desktop rendering before the agent's tools resume
             crate::desktop_page::give_back(&agent.name).await;
+            if held_before {
+                crate::secrets::hand_given_back(&agent.name); // « Je le taperai moi-même » waits for it
+            }
         }
         // During a card payment (the bank asks the person in the page): their input goes through, the payment's hold
         // stays as it is for the agent (security check 11/11, N1); its release ends it, then hands the hold over to

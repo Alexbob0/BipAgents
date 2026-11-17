@@ -174,6 +174,8 @@ impl Item {
         }
         if let (true, Value::Object(map)) = (self.kind == "login", &mut out) {
             map.insert("login_url".into(), json!(self.login_url));
+            // the site the vault fills on, the apps' groups (vault_used.rs, 17/11)
+            map.insert("domain".into(), json!(self.origin.as_deref().and_then(crate::vault_used::domain_of)));
         }
         if let (Some(agent), Value::Object(map)) = (&self.created_by, &mut out) {
             map.insert("created_by".into(), json!(agent));
@@ -1587,7 +1589,7 @@ fn as_dict(value: Value) -> ApiResult<Dict> {
 
 async fn listing(State(state): State<AppState>) -> ApiResult<Response> {
     let config = state.config();
-    let items: Vec<Value> = state
+    let mut items: Vec<Value> = state
         .vault
         .try_items()?
         .iter()
@@ -1599,6 +1601,7 @@ async fn listing(State(state): State<AppState>) -> ApiResult<Response> {
             out
         })
         .collect();
+    crate::vault_used::decorate(&state.vault.folder, &mut items); // « Récents » (vault_used.rs, 17/11)
     let agents: Vec<Value> = config
         .agents
         .values()

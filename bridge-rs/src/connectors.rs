@@ -64,8 +64,9 @@ pub const LIST: &str = "connector_list";
 /// The tools whose call waits for the person's answer on this card (`wait_answer`; turn_status.rs `HOLDING`: the
 /// person's wait). Not the list nor a removal: they ask nothing.
 pub const HOLDS_THE_CALL: &[&str] = &[REGISTER, UPDATE];
-/// Seconds Hermes waits for these tools (the person may take a while to answer a card).
-pub const TOOL_TIMEOUT: u32 = 600;
+/// Seconds Hermes waits for these tools (the person may take a while to answer a card, then, for « Je le taperai
+/// moi-même », to sign in themselves in the agent's browser: secrets.rs `ASK_TIMEOUT` + `HAND_WAIT`).
+pub const TOOL_TIMEOUT: u32 = 1000;
 /// Seconds Hermes waits for a connector's call.
 pub const ENTRY_TIMEOUT: u32 = 180;
 /// How long the agent's call waits for the person's approval before saying it still waits.
@@ -940,7 +941,7 @@ pub fn tools() -> Vec<Value> {
                 "identifier": {"type": "string", "description": "the identifier, only if the person already gave it (prefilled; they can change it)"},
                 "reason": {"type": "string", "description": "why, in a few words the person understands"},
                 "connector": {"type": "string", "description": "the connector's name, if it exists already"},
-                "use": {"type": "string", "enum": ["connector", "browser"], "description": "browser: a login for your visible browser on this site (you then log in with vault_login), e.g. a supplier's portal; connector (default): for a connector you build"},
+                "use": {"type": "string", "enum": ["connector", "browser"], "description": "browser: a login for your visible browser on this site (you then log in with vault_login), e.g. a supplier's portal; call it from the site's login page itself in your browser: the person may choose to sign in themselves there instead, and the call then waits until they hand your browser back; connector (default): for a connector you build"},
             }, "required": ["name", "site", "kind", "reason"]},
             "annotations": {"readOnlyHint": false, "destructiveHint": false, "openWorldHint": false},
         }),
@@ -1343,15 +1344,17 @@ async fn ask_secret_tool(state: &AppState, agent: &AgentConfig, arguments: &Dict
     };
     let lang = crate::names::agent_language(&config, &agent.name);
     let line = secrets::sentence_in(&lang, &shown_name(&config, &agent.name), &request);
+    let line_fr = secrets::sentence(&shown_name(&config, &agent.name), &request); // the card's own, as card_place keeps it
     let id = match secrets::open(&agent.name, request) {
         Ok(id) => id,
         Err(why) => return Ok(refusal(&why)),
     };
     state.push.notify_bridge_card(&agent.name, &line, "secret_request", &id).await;
     let answer = secrets::wait(&id).await;
-    if answer.is_some() {
+    let run_id = format!("{}{id}", secrets::RUN_PREFIX);
+    if answer.is_some() && answer != Some(secrets::Outcome::TypedByPerson) {
         // told in this call: no other turn for it (card_place.rs)
-        crate::card_place::taken(&config, &format!("{}{id}", secrets::RUN_PREFIX));
+        crate::card_place::taken(&config, &run_id);
     }
     Ok(match answer {
         Some(secrets::Outcome::Saved { identifier }) => {
@@ -1368,6 +1371,28 @@ async fn ask_secret_tool(state: &AppState, agent: &AgentConfig, arguments: &Dict
         Some(secrets::Outcome::Refused) => refusal(&format!(
             "The person refused to give « {name} »: don't ask again unless they tell you to."
         )),
+        // « Je le taperai moi-même »: told here once the person hands the browser back, else in a later turn when they
+        // do (card_place.rs `settle`)
+        Some(secrets::Outcome::TypedByPerson) => {
+            match secrets::wait_for_hand(state, &agent.name).await {
+                secrets::HandEnd::Back => {
+                    crate::card_place::taken(&state.config(), &run_id);
+                    text(secrets::HANDED_BACK)
+                }
+                secrets::HandEnd::StillHeld => {
+                    // kept for a later turn, even when answered before the card was placed in the conversation
+                    crate::card_place::answered_unplaced(state, agent, &run_id, ASK_SECRET, secrets::SELF, &line_fr)
+                        .await;
+                    text(secrets::NOT_BACK)
+                }
+                secrets::HandEnd::NeverTaken => {
+                    // nothing to wait for any more: a take of the browser afterwards is another matter, and the agent
+                    // is told so (reviews of 17/11)
+                    crate::card_place::taken(&state.config(), &run_id);
+                    text(secrets::NOT_TAKEN)
+                }
+            }
+        }
         None => refusal(&format!(
             "The person did not answer yet: nothing is kept so far. Tell them a card waits for « {name} » in the app; \
              once they answer it, you're told in this conversation and go on from there. Don't ask again."

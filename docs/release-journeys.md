@@ -35,7 +35,7 @@ photos y sont gardées comme Hermes v0.22.5 les garde (un fichier du profil nomm
 qu'Hermes voit dans son conteneur), pas comme le pont l'imagine. `serve_journeys.py` sert ce pont aux apps.
 
 Mots-clés que le faux modèle comprend : `#fichier`, `#page`, `#memoire` (une page qui se souvient), `#carte`, `#trajet` (la carte collée dans une page), `#outil`, `#question`, `#approbation`,
-`#secret`, `#sites`, `#connecteur`, `#lent`, `#jours` (au premier tour d'une conversation : un historique sur trois
+`#secret`, `#coffre` (J64), `#connexion` (J65), `#sites`, `#connecteur`, `#lent`, `#jours` (au premier tour d'une conversation : un historique sur trois
 jours, réponses avec leur `reasoning`), `#reel` (le rythme de GLM par Hermes : 1,5 s d'attente puis 1 à 3 mots toutes
 les 60–200 ms) (voir `bbkit/model.py`) ; et pour J32 et après (`PeopleModel`) :
 `#routine`, `#tache`, `#famille`, `#etapes`, `#relais`.
@@ -142,6 +142,8 @@ la bêta.
 | J61 | « Non » | (Calendrier : J59 a déjà allumé Rappels) « ✕ Refusé · Calendrier · Modifier » ; l'agent continue sans ; redemandé dans la même conversation : aucune deuxième carte | P, i, A |
 | J62 | Un outil du serveur (Météo) | « Oui » : allumé tout de suite, l'agent répond avec ; dans « Applis et outils », Météo est allumée pour Vie | P, i |
 | J63 | Sans personne, et une app d'avant | Une routine qui « demanderait » un outil : aucune carte, aucune notification, son rapport le dit en une phrase ; une carte lue comme une app d'avant : la carte générique (« Vie demande l'outil Rappels », « Oui, vas-y / Non »), « Oui, vas-y » sur Rappels qu'aucun téléphone ne partage : « Active « Rappels » dans Applis et outils, ou mets l'app à jour. », la carte reste | P |
+| J64 | La ligne du coffre (le coffre rassure) | « Connecte-toi au fournisseur » (`#coffre`) : sous la réponse, avant la ligne du Carnet, UNE ligne « Rempli par le coffre sur fournisseur.example, sans le donner à l'agent » ; un toucher ouvre le coffre (Face ID) sur l'identifiant « Fournisseur » ; la marque cachée nulle part | P (`test_journeys_vault.py`) ; i, A : à écrire avec les écrans |
+| J65 | « Je le taperai moi-même » | « Connecte-toi au fournisseur » (`#connexion`, pont servi avec le navigateur de Vie : `journey_bridge(browser=True)`) : la carte « Enregistrer · Refuser » et la ligne « Je le taperai moi-même » ; un toucher : le Bureau s'ouvre main prise ; le quitter : l'agent dit « tu es connecté » dans le même tour ; la carte répondue « ✋ Tapé par toi dans le Bureau » ; rien dans le coffre | P (`test_journeys_vault.py`) ; i, A : à écrire avec les écrans |
 
 **Ce que les parcours J32 et après ont trouvé (6/11)**
 
