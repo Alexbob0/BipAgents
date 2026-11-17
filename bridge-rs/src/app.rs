@@ -1758,7 +1758,8 @@ pub fn create_app(config: Config, options: AppOptions) -> anyhow::Result<App> {
     let config = state.config();
     // An existing Hermes the person brought: its profiles left as they are, but for the bridge's tools' entry
     crate::profile_files::set_hands_off(crate::profile_files::hands_off_home(&config));
-    crate::sealed_keys::at_start(&config); // before anything reads the vault: the place key from memory, if sealed
+    // before anything reads the vault: the data folder held (no sealing meanwhile), the place key from memory if sealed
+    crate::sealed_keys::at_start(&config)?;
     crate::profile_files::reconcile_all(&config); // what the bridge decides in each profile, as this bridge renders it
     crate::voices::heal_defaults(&state.config); // after the souls: their language says the Bip's
     let config = state.config();

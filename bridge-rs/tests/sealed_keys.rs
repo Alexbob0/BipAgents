@@ -536,6 +536,50 @@ async fn an_interrupted_migration_is_put_back_or_finished_at_the_next_start() {
     assert_eq!(contents(&h), contents_before);
 }
 
+#[tokio::test]
+async fn only_a_complete_journal_whose_copies_match_is_ever_put_back() {
+    let _guard = SERIAL.lock().await;
+    // stopped while setting the originals aside (its journal written first, not complete): nothing had changed, the
+    // copies are thrown away, even a full one
+    let h = fixture();
+    std::fs::create_dir_all(&h.place.space).unwrap();
+    let before = snapshot(&[h.data(), &h.place.space]);
+    let service = Service::new();
+    sealed_keys::stop_enrolment_at(Some("setting aside"));
+    let e = sealed_keys::enrol(&h.place, Some(key_service()), &*service).await;
+    sealed_keys::stop_enrolment_at(None);
+    assert!(e.is_err());
+    let journal = h.data().join(".keys-migration");
+    assert!(journal.join("journal.json").exists() && journal.join("vault.enc").exists());
+    // the power cut lost the end of a copy
+    let copy = std::fs::read(journal.join("vault.enc")).unwrap();
+    std::fs::write(journal.join("vault.enc"), &copy[..copy.len() / 2]).unwrap();
+    h.reboot();
+    sealed_keys::recover(&h.place).unwrap();
+    assert_eq!(snapshot(&[h.data(), &h.place.space]), before);
+    assert_eq!(sealed_keys::state(h.data()), State::Off);
+
+    // stopped once the new files were written (the journal complete): a copy that doesn't match what was set aside is
+    // never put over anything; the vault stays closed, the journal kept for an operator
+    let h = fixture();
+    let service = Service::new();
+    sealed_keys::stop_enrolment_at(Some("written"));
+    let e = sealed_keys::enrol(&h.place, Some(key_service()), &*service).await;
+    sealed_keys::stop_enrolment_at(None);
+    assert!(e.is_err());
+    let journal = h.data().join(".keys-migration");
+    let copy = std::fs::read(journal.join("vault.enc")).unwrap();
+    std::fs::write(journal.join("vault.enc"), &copy[..copy.len() / 2]).unwrap();
+    let written = std::fs::read(&h.data_files()[0]).unwrap();
+    h.reboot();
+    let e = sealed_keys::recover(&h.place).unwrap_err();
+    assert!(format!("{e:#}").contains("doesn't match"), "{e:#}");
+    assert_eq!(std::fs::read(&h.data_files()[0]).unwrap(), written, "nothing put over it");
+    assert!(journal.join("journal.json").exists());
+    assert!(matches!(sealed_keys::state(h.data()), State::Closed(_)));
+    assert!(h.vault().try_items().is_err());
+}
+
 // -- restarts ----------------------------------------------------------------------------------------------------------
 
 #[tokio::test]

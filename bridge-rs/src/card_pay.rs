@@ -2049,7 +2049,7 @@ pub async fn serve(
         {
             Ok(web::json_response(
                 200,
-                &rpc(&id, crate::sealed_keys::closed_result(&crate::handback::language_of(&config, &agent))),
+                &rpc(&id, crate::sealed_keys::closed_result(&config, &crate::handback::language_of(&config, &agent))),
             ))
         }
         "tools/call" => {

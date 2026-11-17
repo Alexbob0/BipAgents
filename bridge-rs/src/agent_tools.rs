@@ -2036,8 +2036,7 @@ async fn mcp(
     if crate::sealed_keys::closed(&state.config()) && reads_sealed_stores(&name) {
         // the vault's keys sealed and not reopened yet (a server restart): plain words, never « give me the password »
         tracing::info!(agent = %agent.name, tool = %name, "a mail tool called while the vault is closed");
-        let result =
-            json!({"content": [{"type": "text", "text": crate::sealed_keys::agent_text(&lang)}], "isError": false});
+        let result = crate::sealed_keys::closed_result(&state.config(), &lang);
         return Ok(crate::web::json_response(200, &rpc_result(&request_id, result)));
     }
     if crate::family_agent::is_family(&state.config(), &agent.name) {

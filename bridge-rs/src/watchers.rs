@@ -711,7 +711,10 @@ fn push_run(rt: &mut Runtime, run: RunRecord) {
 
 /// Errors that are not the watcher's own failures (off, waiting for approval, changed since): not counted.
 fn not_its_fault(err: &RunError) -> bool {
-    matches!(err, RunError::Unknown | RunError::NotApproved | RunError::Off | RunError::Changed | RunError::VaultClosed)
+    matches!(
+        err,
+        RunError::Unknown | RunError::NotApproved | RunError::Off | RunError::Changed | RunError::VaultClosed(_)
+    )
 }
 
 struct Running(String);

@@ -38,7 +38,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::io::Write;
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
@@ -463,36 +463,121 @@ fn wipe(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// One sealing (or putting back) at a time per data folder: a lock on the folder itself (no file of its own).
-struct DirLock(#[allow(dead_code)] std::fs::File);
+/// The running bridges' hold on their data folder, kept until they stop (shared: an update or a test may hand a folder
+/// from one bridge to another).
+static BRIDGE_LOCKS: LazyLock<Mutex<HashMap<PathBuf, std::fs::File>>> = LazyLock::new(Default::default);
+
+fn bridge_locks() -> std::sync::MutexGuard<'static, HashMap<PathBuf, std::fs::File>> {
+    BRIDGE_LOCKS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// `flock(how | LOCK_NB)` on `file`; a lock it holds already is converted (shared to alone, or back).
+fn flock(file: &std::fs::File, how: libc::c_int) -> bool {
+    use std::os::unix::io::AsRawFd;
+    // SAFETY: flock on a descriptor `file` owns; its lock goes with the last descriptor of that open file.
+    unsafe { libc::flock(file.as_raw_fd(), how | libc::LOCK_NB) == 0 }
+}
+
+/// The data folder held alone (`flock` on the folder itself: no file of its own) by a sealing or a putting back. A
+/// running bridge holds it shared ([`hold_for_bridge`]): a sealing is refused then; its own putting back (at its start)
+/// converts the bridge's hold for that time.
+struct DirLock {
+    file: std::fs::File,
+    /// The bridge's own hold, converted: shared again when done.
+    bridge: bool,
+}
 
 impl DirLock {
-    fn take(dir: &Path) -> Result<DirLock> {
-        use std::os::unix::io::AsRawFd;
-        let file = std::fs::File::open(dir).with_context(|| format!("{} can't be opened", dir.display()))?;
-        // SAFETY: flock on a descriptor this function owns; released when it is closed.
-        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
-            bail!("the vault's keys are being changed by another process");
+    fn take(dir: &Path, recovery: bool) -> Result<DirLock> {
+        let held = bridge_locks().get(&id(dir)).map(|f| f.try_clone()).transpose()?;
+        if let Some(file) = held {
+            if !recovery {
+                bail!("the bridge is running: stop it first");
+            }
+            if !flock(&file, libc::LOCK_EX) {
+                if !flock(&file, libc::LOCK_SH) {
+                    tracing::error!(target: "bipbridge::vault", "vault: the bridge lost its hold on its data folder");
+                }
+                bail!("another bridge holds this data folder too");
+            }
+            return Ok(DirLock { file, bridge: true });
         }
-        Ok(DirLock(file))
+        let file = std::fs::File::open(dir).with_context(|| format!("{} can't be opened", dir.display()))?;
+        if !flock(&file, libc::LOCK_EX) {
+            bail!("the bridge is running (or another vault-keys enable): stop it first");
+        }
+        Ok(DirLock { file, bridge: false })
     }
+}
+
+impl Drop for DirLock {
+    fn drop(&mut self) {
+        if self.bridge && !flock(&self.file, libc::LOCK_SH) {
+            tracing::error!(target: "bipbridge::vault", "vault: the bridge lost its hold on its data folder");
+        }
+    }
+}
+
+/// The bridge starting: its data folder held (shared) until it stops, so that `vault-keys enable` (which takes it
+/// alone) is refused while it runs; while an enable runs, it waits `wait`, then is refused (systemd starts it again).
+/// Then, for an enrolled place, a sealing cut off put back (or finished) and the place key from the tmpfs (a bridge
+/// update asks nothing). Not enrolled: the hold only (no file, nothing else).
+pub fn hold_for_bridge(place: &Place, wait: Duration) -> Result<()> {
+    let key = id(&place.data);
+    if !bridge_locks().contains_key(&key) {
+        let Ok(file) = std::fs::File::open(&place.data) else { return Ok(()) }; // no data yet: nothing to hold
+        let deadline = std::time::Instant::now() + wait;
+        while !flock(&file, libc::LOCK_SH) {
+            if std::time::Instant::now() >= deadline {
+                bail!("vault-keys enable is sealing this place's keys: the bridge starts once it is done");
+            }
+            std::thread::sleep(Duration::from_millis(100).min(wait));
+        }
+        bridge_locks().insert(key, file);
+    }
+    if !place.journal_dir().exists() && !place.sealed().exists() {
+        return Ok(());
+    }
+    if let Err(e) = recover(place) {
+        tracing::error!(target: "bipbridge::vault", error = %format!("{e:#}"), "vault: a sealing cut off not put back");
+    }
+    if place.sealed().exists() && !open_from_cache(place) {
+        tracing::info!(target: "bipbridge::vault", "vault: closed until the key service answers");
+    }
+    Ok(())
 }
 
 // -- the place key in memory (tmpfs) -----------------------------------------------------------------------------------
 
-/// The folder kept in memory by the system: $XDG_RUNTIME_DIR, else /run/user/<uid>; only on a memory filesystem
-/// (tmpfs, ramfs), but with the space's test switch.
+/// The folder kept in memory by the system: $XDG_RUNTIME_DIR, else /run/user/<uid>; ours (not a link, not writable by
+/// others: never /dev/shm) and on a memory filesystem (tmpfs, ramfs).
 fn runtime_dir() -> Option<PathBuf> {
     let dir = match std::env::var("XDG_RUNTIME_DIR") {
         Ok(d) if !d.is_empty() => PathBuf::from(d),
         // SAFETY: getuid has no failure mode.
         _ => PathBuf::from(format!("/run/user/{}", unsafe { libc::getuid() })),
     };
-    if !dir.is_dir() {
-        return None;
-    }
-    let testing = std::env::var(crate::space::FAKE_ENV).map(|v| v == "1").unwrap_or(false);
-    (testing || in_memory(&dir)).then_some(dir)
+    (ours(&dir) && memory_folder(&dir)).then_some(dir)
+}
+
+/// A folder of this account's own: a folder (not a link to one), its owner this account, nobody else may write in it.
+fn ours(dir: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let Ok(meta) = std::fs::symlink_metadata(dir) else { return false };
+    // SAFETY: getuid has no failure mode.
+    meta.is_dir() && meta.uid() == unsafe { libc::getuid() } && meta.mode() & 0o022 == 0
+}
+
+/// On a memory filesystem; tests (a debug build, with the space's test switch) use a folder on the disk instead.
+fn memory_folder(dir: &Path) -> bool {
+    let switch = std::env::var(crate::space::FAKE_ENV).map(|v| v == "1").unwrap_or(false);
+    memory_folder_accepted(in_memory(dir), switch, cfg!(debug_assertions))
+}
+
+/// Whether a folder may keep the place key: in memory, or (tests only) the switch on in a debug build. A release build
+/// never keeps it on a disk, whatever its environment says.
+fn memory_folder_accepted(in_memory: bool, switch: bool, debug_build: bool) -> bool {
+    in_memory || (switch && debug_build)
 }
 
 #[cfg(target_os = "linux")]
@@ -523,8 +608,26 @@ pub fn cache_path(data: &Path) -> Option<PathBuf> {
     Some(runtime.join("bipagents").join(format!("vault-{}.sk", &hex::encode(digest)[..16])))
 }
 
+/// The place key's own folder in memory, as it must be (made if `make`): ours, 0700, on a memory filesystem itself (a
+/// link or a mount put there would send the key to a disk).
+fn cache_dir(path: &Path, make: bool) -> Result<PathBuf> {
+    let dir = path.parent().unwrap_or(Path::new("/")).to_path_buf();
+    if make && std::fs::symlink_metadata(&dir).is_err() {
+        std::fs::DirBuilder::new().mode(0o700).create(&dir)?;
+    }
+    if !ours(&dir) || !memory_folder(&dir) {
+        bail!("{} is not this account's own folder in memory", dir.display());
+    }
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
+    Ok(dir)
+}
+
 fn read_cache(data: &Path) -> Option<Box<Zeroizing<[u8; KEY_LEN]>>> {
     let path = cache_path(data)?;
+    cache_dir(&path, false).ok()?;
+    if !std::fs::symlink_metadata(&path).ok()?.is_file() {
+        return None;
+    }
     let text = Zeroizing::new(std::fs::read_to_string(path).ok()?);
     let raw = Zeroizing::new(B64.decode(text.trim()).ok()?);
     if raw.len() != KEY_LEN {
@@ -538,9 +641,7 @@ fn read_cache(data: &Path) -> Option<Box<Zeroizing<[u8; KEY_LEN]>>> {
 fn write_cache(data: &Path, sk: &[u8; KEY_LEN]) -> Result<()> {
     let path =
         cache_path(data).ok_or_else(|| anyhow!("no folder in memory (XDG_RUNTIME_DIR on tmpfs) for the place key"))?;
-    let dir = path.parent().unwrap_or(Path::new("/"));
-    private_dir(dir)?;
-    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
+    cache_dir(&path, true)?;
     write_private(&path, Zeroizing::new(B64.encode(sk)).as_bytes())
 }
 
@@ -598,6 +699,8 @@ pub async fn try_open(place: &Place, source: &dyn ShareSource) -> bool {
         Err(e) => {
             let reason = match e.downcast_ref::<ShareError>() {
                 Some(ShareError::Unreachable(_)) => "unreachable",
+                // keys-rs holds a release while the guichet can't be asked, and gives it as soon as it answers
+                Some(ShareError::Refused(why)) if why.contains("can't confirm") => "unconfirmed",
                 // keys-rs: « held: … » (the guichet denied or can't be asked), « held after a rescue boot … »
                 Some(ShareError::Refused(why)) if why.contains(": held") => "held",
                 Some(ShareError::Refused(_)) => "refused",
@@ -618,7 +721,21 @@ pub fn wait_after(tries: u64) -> Duration {
     Duration::from_secs(seconds)
 }
 
-/// Tries until open, at once then after [`wait_after`] (`pace`: the unit of its seconds, a second but in tests).
+/// The wait after try `tries` of a closed vault, by why it is closed. The key service out of reach, or the guichet that
+/// can't confirm (keys-rs gives the release once it answers): [`wait_after`]. What doesn't mend by itself waits long:
+/// a place stopped or held after a rescue boot (an operator lifts it), a file unreadable, once an hour; a share that
+/// doesn't open the place key every 6 hours, since each such try is one of the place's 24 daily releases, shared with
+/// the encrypted space. An operator's `bipbridge vault-keys open` tries at once (a waiting bridge sees it).
+pub fn wait_for(reason: &str, tries: u64) -> Duration {
+    match reason {
+        "wrong_key" => Duration::from_secs(6 * 3600),
+        "refused" | "held" | "unreadable" => Duration::from_secs(3600),
+        _ => wait_after(tries),
+    }
+}
+
+/// Tries until open, at once then after [`wait_for`] (`pace`: the unit of its seconds, a second but in tests); between
+/// tries, every 5 minutes at most, the tmpfs looked at (another process may have opened it).
 pub async fn reopen(place: Place, source: Arc<dyn ShareSource>, pace: Duration) {
     let mut tries = 0u64;
     loop {
@@ -626,8 +743,19 @@ pub async fn reopen(place: Place, source: Arc<dyn ShareSource>, pace: Duration) 
         if try_open(&place, source.as_ref()).await {
             return;
         }
-        let wait = wait_after(tries).as_secs() as u32;
-        tokio::time::sleep(pace * wait).await;
+        let reason = match state(&place.data) {
+            State::Closed(closed) => closed.reason,
+            State::Open | State::Off => return,
+        };
+        let mut left = wait_for(&reason, tries).as_secs();
+        while left > 0 {
+            let slice = left.min(crate::space::BACKOFF_MAX);
+            tokio::time::sleep(pace * slice as u32).await;
+            left -= slice;
+            if open_from_cache(&place) {
+                return;
+            }
+        }
     }
 }
 
@@ -643,19 +771,9 @@ impl ShareSource for FromFile {
     }
 }
 
-/// At the bridge's start, before anything reads a store: a sealing cut off put back (or finished), then the place
-/// key from the tmpfs (a bridge update asks nothing). Not enrolled: nothing at all.
-pub fn at_start(config: &Config) {
-    let place = Place::of(config);
-    if !place.journal_dir().exists() && !place.sealed().exists() {
-        return;
-    }
-    if let Err(e) = recover(&place) {
-        tracing::error!(target: "bipbridge::vault", error = %format!("{e:#}"), "vault: a sealing cut off not put back");
-    }
-    if place.sealed().exists() && !open_from_cache(&place) {
-        tracing::info!(target: "bipbridge::vault", "vault: closed until the key service answers");
-    }
+/// At the bridge's start, before anything reads a store: [`hold_for_bridge`] (up to 2 minutes while an enable runs).
+pub fn at_start(config: &Config) -> Result<()> {
+    hold_for_bridge(&Place::of(config), Duration::from_secs(120))
 }
 
 /// Closed at the start: reopened in the background; then what was left as it was meanwhile (the agents' souls and
@@ -682,28 +800,88 @@ pub fn start(app: &crate::app::AppState) {
 
 // -- the enrolment: the migration --------------------------------------------------------------------------------------
 
-/// What a sealing set aside and made, to put it back.
+/// What a sealing sets aside and makes, to put it back. Written first (nothing changed yet), then once every original
+/// is set aside, synced and checked (`complete`): only a complete journal is ever put back; an incomplete one means
+/// nothing was changed, and its copies are thrown away.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct Journal {
     started: f64,
     space: PathBuf,
-    /// The stores whose file existed (their originals are in the journal's folder as `<name>.enc`).
-    had_file: Vec<String>,
-    /// vault.share and keyservice.json: made by this sealing (removed when put back).
-    made_share: bool,
+    complete: bool,
+    /// The stores whose file existed, with that file's SHA-256 (its copy: `<name>.enc` in the journal's folder).
+    originals: BTreeMap<String, String>,
+    /// vault.share as it was: its SHA-256 (its copy: `share.old`); None: made by this sealing.
+    share_before: Option<String>,
     made_key_service: bool,
-    /// An earlier vault.share kept as `share.old` (put back).
-    kept_share: bool,
 }
 
-/// Tests: the next sealing stops (as a crash would, nothing tidied) once at `step`: « written » (the new files there,
-/// not read back yet) or « committed » (everything read back, the clear keys not deleted yet).
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    hex::encode(sha2::Sha256::digest(bytes))
+}
+
+/// A file's SHA-256, None when it can't be read.
+fn file_sha256(path: &Path) -> Option<String> {
+    std::fs::read(path).ok().map(|bytes| sha256_hex(&bytes))
+}
+
+/// The originals set aside: the journal first (incomplete), each copy written and synced, read back and checked, then
+/// the journal complete. Nothing of the place is changed before this returns.
+fn set_aside(place: &Place, old: &[Old], made_key_service: bool) -> Result<()> {
+    let journal_dir = place.journal_dir();
+    private_dir(&journal_dir)?;
+    let mut originals = BTreeMap::new();
+    let mut contents = Vec::new();
+    for store in old.iter().filter(|o| o.plain.is_some()) {
+        let bytes = Zeroizing::new(std::fs::read(&store.data_path)?);
+        originals.insert(store.which.name().to_string(), sha256_hex(&bytes));
+        contents.push((format!("{}.enc", store.which.name()), bytes));
+    }
+    let share_before = match std::fs::read(place.share()).map(Zeroizing::new) {
+        Ok(bytes) => {
+            let sum = sha256_hex(&bytes);
+            contents.push(("share.old".into(), bytes));
+            Some(sum)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(e.into()),
+    };
+    let mut journal = Journal {
+        started: now(),
+        space: place.space.clone(),
+        complete: false,
+        originals,
+        share_before,
+        made_key_service,
+    };
+    write_private(&journal_dir.join(JOURNAL), serde_json::to_string_pretty(&journal)?.as_bytes())?;
+    for (name, bytes) in &contents {
+        write_private(&journal_dir.join(name), bytes)?;
+        if file_sha256(&journal_dir.join(name)).as_deref() != Some(sha256_hex(bytes).as_str()) {
+            bail!("the copy of {name} set aside differs");
+        }
+    }
+    if stops_at("setting aside") {
+        return Err(Stopped.into()); // as a crash would: nothing tidied
+    }
+    journal.complete = true;
+    write_private(&journal_dir.join(JOURNAL), serde_json::to_string_pretty(&journal)?.as_bytes())
+}
+
+/// Tests: the next sealing stops (as a crash would, nothing tidied) once at `step`: « setting aside » (the copies
+/// written, the journal not complete), « written » (the new files there, not read back yet) or « committed »
+/// (everything read back, the clear keys not deleted yet).
 #[doc(hidden)]
 pub fn stop_enrolment_at(step: Option<&'static str>) {
     *STOP_AT.lock().unwrap_or_else(|e| e.into_inner()) = step;
 }
 
 static STOP_AT: Mutex<Option<&'static str>> = Mutex::new(None);
+
+/// A sealing stopped by [`stop_enrolment_at`] (tests).
+#[derive(Debug, thiserror::Error)]
+#[error("stopped (tests)")]
+struct Stopped;
 
 fn stops_at(step: &str) -> bool {
     *STOP_AT.lock().unwrap_or_else(|e| e.into_inner()) == Some(step)
@@ -763,8 +941,15 @@ fn read_old(place: &Place) -> Result<Vec<Old>> {
 /// settings to keep when this place has none yet (an encrypted space has them already: used as they are). The bridge
 /// must be stopped (`bipbridge vault-keys enable` checks it). Its report: {state, entries, removed}.
 pub async fn enrol(place: &Place, key_service_given: Option<KeyService>, source: &dyn ShareSource) -> Result<Value> {
-    crate::py::makedirs(&place.data.to_string_lossy(), 0o700)?;
-    let _lock = DirLock::take(&place.data)?;
+    if !place.data.is_dir() {
+        bail!("no data folder at {}: nothing changed", place.data.display());
+    }
+    if let Ok(Some(space)) = crate::space::Space::load(&place.space) {
+        if space.settings.enabled && !space.is_open() {
+            bail!("the encrypted space is closed: open it first (nothing changed)");
+        }
+    }
+    let _lock = DirLock::take(&place.data, false)?;
     recover_locked(place)?;
     if place.sealed().exists() {
         bail!("this place's vault keys are already sealed");
@@ -773,7 +958,10 @@ pub async fn enrol(place: &Place, key_service_given: Option<KeyService>, source:
         bail!("no folder in memory (XDG_RUNTIME_DIR on tmpfs) to keep the place key in: nothing changed");
     }
     let has_key_service = place.key_service_file().exists();
-    if !has_key_service && key_service_given.is_none() {
+    if has_key_service {
+        // the one the bridge will read at each start: it must be readable now
+        key_service(place).context("keyservice.json can't be read: nothing changed")?;
+    } else if key_service_given.is_none() {
         bail!("no key service settings ({KEY_SERVICE_FILE} or BIPAGENTS_KEYS_URL and BIPAGENTS_KEYS_TOKEN): nothing changed");
     }
     // 1. Every store read with its clear key: nothing changed yet.
@@ -801,28 +989,15 @@ pub async fn enrol(place: &Place, key_service_given: Option<KeyService>, source:
     for (which, key) in DataKey::ALL.iter().zip(&new_keys) {
         sealed.keys.insert(which.name().into(), seal(&sk, key.as_bytes(), &which.aad())?);
     }
-    // 3. The journal: what is set aside and made, written before anything changes.
-    let journal_dir = place.journal_dir();
-    private_dir(&journal_dir)?;
-    let journal = Journal {
-        started: now(),
-        space: place.space.clone(),
-        had_file: old.iter().filter(|o| o.plain.is_some()).map(|o| o.which.name().to_string()).collect(),
-        made_share: true,
-        made_key_service: !has_key_service,
-        kept_share: place.share().exists(),
-    };
+    // 3. The originals set aside (the journal first, then the copies, synced and checked, then the journal complete).
+    if let Err(e) = set_aside(place, &old, !has_key_service) {
+        if e.is::<Stopped>() {
+            return Err(e);
+        }
+        return Err(undone(e, put_back(place)));
+    }
+    // 4. The new files: each store's text encrypted with its new key, this server's half, the settings, the keys.
     let written: Result<()> = async {
-        for store in old.iter().filter(|o| o.plain.is_some()) {
-            let copy = journal_dir.join(format!("{}.enc", store.which.name()));
-            std::fs::copy(&store.data_path, &copy)?;
-            std::fs::set_permissions(&copy, std::fs::Permissions::from_mode(0o600))?;
-        }
-        if journal.kept_share {
-            std::fs::copy(place.share(), journal_dir.join("share.old"))?;
-        }
-        write_private(&journal_dir.join(JOURNAL), serde_json::to_string_pretty(&journal)?.as_bytes())?;
-        // 4. The new files: each store's text encrypted with its new key, this server's half, the settings, the keys.
         for (store, key) in old.iter().zip(&new_keys) {
             if let Some(plain) = &store.plain {
                 let fernet = fernet::Fernet::new(key).ok_or_else(|| anyhow!("a new key is not a Fernet key"))?;
@@ -839,8 +1014,7 @@ pub async fn enrol(place: &Place, key_service_given: Option<KeyService>, source:
     }
     .await;
     if let Err(e) = written {
-        let _ = put_back(place);
-        return Err(e.context("the vault's keys were not sealed: everything is as before"));
+        return Err(undone(e, put_back(place)));
     }
     if stops_at("written") {
         bail!("stopped once written (tests)");
@@ -890,27 +1064,39 @@ pub async fn enrol(place: &Place, key_service_given: Option<KeyService>, source:
     }
     .await;
     if let Err(e) = checked {
-        let _ = put_back(place);
-        return Err(e.context("the vault's keys were not sealed: everything is as before"));
+        return Err(undone(e, put_back(place)));
     }
     // 6. The place key in memory, then the commit (the journal's file removed), then the clear keys deleted.
     if let Err(e) = write_cache(&place.data, &sk) {
-        let _ = put_back(place);
-        return Err(e.context("the vault's keys were not sealed: everything is as before"));
+        return Err(undone(e, put_back(place)));
     }
     remember(&place.data, sk);
-    std::fs::remove_file(journal_dir.join(JOURNAL)).inspect_err(|_| {
-        let _ = put_back(place);
-    })?;
-    sync_dir(&journal_dir.join(JOURNAL));
+    let journal_file = place.journal_dir().join(JOURNAL);
+    if let Err(e) = std::fs::remove_file(&journal_file) {
+        return Err(undone(e.into(), put_back(place)));
+    }
+    sync_dir(&journal_file);
     if stops_at("committed") {
         bail!("stopped once committed (tests)");
     }
-    let removed = finish(place)?;
+    let removed = finish(place).context(
+        "the vault's keys are sealed, but the clear keys could not all be deleted: the next start deletes them",
+    )?;
     let entries: Map<String, Value> = old.iter().map(|o| (o.which.name().to_string(), json!(o.entries))).collect();
     let counts = Value::Object(entries.clone());
     tracing::info!(target: "bipbridge::vault", entries = %counts, "vault: keys sealed, the clear keys deleted");
     Ok(json!({"state": "sealed", "entries": entries, "removed": removed}))
+}
+
+/// A sealing's failure, said with what became of its putting back.
+fn undone(e: anyhow::Error, put_back: Result<()>) -> anyhow::Error {
+    match put_back {
+        Ok(()) => e.context("the vault's keys were not sealed: everything is as before"),
+        Err(why) => e.context(format!(
+            "the vault's keys were not sealed, and putting everything back failed ({why:#}): the vault stays closed, the \
+             next start puts it back"
+        )),
+    }
 }
 
 /// After the commit: the clear keys and the originals (encrypted with them) deleted. The deleted keys, by name.
@@ -934,46 +1120,83 @@ fn finish(place: &Place) -> Result<Vec<String>> {
     Ok(removed)
 }
 
-/// Before the commit: everything as before the sealing (its journal's folder says what), the journal's file last.
+/// Before the commit: everything as before the sealing, from a complete journal only, each original checked against
+/// its SHA-256 before it is put back (a copy that doesn't match is never put over anything: the journal stays, the
+/// vault closed). An incomplete journal (or none): nothing was changed yet, its copies are thrown away.
 fn put_back(place: &Place) -> Result<()> {
     let journal_dir = place.journal_dir();
-    let journal: Journal =
-        serde_json::from_str(&std::fs::read_to_string(journal_dir.join(JOURNAL)).unwrap_or_default())
-            .unwrap_or_else(|_| Journal { space: place.space.clone(), ..Journal::default() });
-    // the mode first: no sealed file, the clear keys (never touched) are used again
-    let _ = std::fs::remove_file(place.sealed());
-    sync_dir(&place.sealed());
+    let journal = std::fs::read_to_string(journal_dir.join(JOURNAL))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Journal>(&text).ok())
+        .filter(|j| j.complete);
+    let Some(journal) = journal else {
+        discard(place)?;
+        tracing::warn!(target: "bipbridge::vault", "vault: a sealing stopped before it changed anything: its copies thrown away");
+        return Ok(());
+    };
+    // 1. What goes where, checked before anything moves.
+    let mut renames = Vec::new();
+    let mut removals = Vec::new();
     for which in DataKey::ALL {
-        let original = journal_dir.join(format!("{}.enc", which.name()));
         let path = place.data.join(which.name()).join(which.data_file());
-        if original.exists() {
-            std::fs::rename(&original, &path)?;
-            sync_dir(&path);
-        } else if !journal.had_file.iter().any(|n| n == which.name()) && journal_dir.join(JOURNAL).exists() {
-            let _ = std::fs::remove_file(&path);
+        match journal.originals.get(which.name()) {
+            Some(sum) if file_sha256(&path).as_ref() == Some(sum) => {} // untouched, or put back already
+            Some(sum) => {
+                let copy = journal_dir.join(format!("{}.enc", which.name()));
+                if file_sha256(&copy).as_ref() != Some(sum) {
+                    bail!("the {} store's original set aside doesn't match: nothing put back", which.name());
+                }
+                renames.push((copy, path));
+            }
+            None => removals.push(path), // made by this sealing
         }
     }
     let space = Place::new(&place.data, &journal.space);
-    let old_share = journal_dir.join("share.old");
-    if old_share.exists() {
-        std::fs::rename(&old_share, space.share())?;
-    } else if journal.made_share {
-        wipe(&space.share())?;
+    match &journal.share_before {
+        Some(sum) if file_sha256(&space.share()).as_ref() == Some(sum) => {}
+        Some(sum) => {
+            let copy = journal_dir.join("share.old");
+            if file_sha256(&copy).as_ref() != Some(sum) {
+                bail!("this server's half set aside doesn't match: nothing put back");
+            }
+            renames.push((copy, space.share()));
+        }
+        None => removals.push(space.share()),
+    }
+    // 2. The mode first (no sealed file: the clear keys, never touched, are used again), then the files.
+    let _ = std::fs::remove_file(place.sealed());
+    sync_dir(&place.sealed());
+    for (copy, path) in renames {
+        std::fs::rename(&copy, &path)?;
+        sync_dir(&path);
+    }
+    for path in removals {
+        wipe(&path)?;
     }
     if journal.made_key_service {
         let _ = std::fs::remove_file(space.key_service_file());
     }
     remove_cache(&place.data);
     forget_memory(&place.data);
-    let _ = std::fs::remove_file(journal_dir.join(JOURNAL));
-    if journal_dir.exists() {
-        for entry in std::fs::read_dir(&journal_dir)?.flatten() {
-            let _ = std::fs::remove_file(entry.path());
-        }
-        std::fs::remove_dir(&journal_dir)?;
-    }
-    sync_dir(&journal_dir);
+    discard(place)?;
     tracing::warn!(target: "bipbridge::vault", "vault: sealing undone, the keys as before");
+    Ok(())
+}
+
+/// The journal's folder removed, its file last.
+fn discard(place: &Place) -> Result<()> {
+    let journal_dir = place.journal_dir();
+    if !journal_dir.exists() {
+        return Ok(());
+    }
+    for entry in std::fs::read_dir(&journal_dir)?.flatten() {
+        if entry.file_name() != JOURNAL {
+            wipe(&entry.path())?;
+        }
+    }
+    wipe(&journal_dir.join(JOURNAL))?;
+    std::fs::remove_dir(&journal_dir)?;
+    sync_dir(&journal_dir);
     Ok(())
 }
 
@@ -983,7 +1206,7 @@ pub fn recover(place: &Place) -> Result<()> {
     if !place.journal_dir().exists() {
         return Ok(());
     }
-    let _lock = DirLock::take(&place.data)?;
+    let _lock = DirLock::take(&place.data, true)?;
     recover_locked(place)
 }
 
@@ -992,62 +1215,96 @@ fn recover_locked(place: &Place) -> Result<()> {
     if !journal_dir.exists() {
         return Ok(());
     }
-    if journal_dir.join(JOURNAL).exists() || !place.sealed().exists() {
+    if journal_dir.join(JOURNAL).exists() {
         tracing::warn!(target: "bipbridge::vault", "vault: a sealing was cut off before its end: put back");
         return put_back(place);
     }
-    tracing::warn!(target: "bipbridge::vault", "vault: a sealing was cut off after its commit: finished");
-    finish(place).map(|_| ())
+    if place.sealed().exists() {
+        tracing::warn!(target: "bipbridge::vault", "vault: a sealing was cut off after its commit: finished");
+        return finish(place).map(|_| ());
+    }
+    // no journal's file and nothing sealed: a putting back that ended, or a sealing stopped before its journal
+    discard(place)
 }
 
 // -- the agents' and the app's words ------------------------------------------------------------------------------------
 
-/// What an agent is told when it reaches the vault (or the mailboxes, the connectors, the cards) while it is closed.
-pub const AGENT_TEXTS: [&str; 4] = [AGENT_FR, AGENT_EN, AGENT_DE, AGENT_ES];
+/// What an agent is told when it reaches the vault (or the mailboxes, the connectors, the cards) while it is closed:
+/// « in a few minutes » only while the key service is out of reach and asked again ([`SOON_TEXTS`]); held, stopped, a
+/// wrong share or anything else that waits for someone: no delay promised ([`CHECK_TEXTS`]). Never « give me the
+/// password ».
+pub const SOON_TEXTS: [&str; 4] = [SOON_FR, SOON_EN, SOON_DE, SOON_ES];
+pub const CHECK_TEXTS: [&str; 4] = [CHECK_FR, CHECK_EN, CHECK_DE, CHECK_ES];
+pub const AGENT_TEXTS: [&str; 8] = [SOON_FR, SOON_EN, SOON_DE, SOON_ES, CHECK_FR, CHECK_EN, CHECK_DE, CHECK_ES];
 
-const AGENT_FR: &str =
+const SOON_FR: &str =
     "Le coffre-fort est fermé pour le moment : il se rouvre tout seul dans quelques minutes (le serveur \
 a redémarré). Surtout, ne demande pas le mot de passe à ta personne : dis-lui simplement que le coffre se rouvre dans \
 quelques minutes, et réessaie plus tard.";
-const AGENT_EN: &str =
+const SOON_EN: &str =
     "The vault is closed for now: it reopens by itself in a few minutes (the server restarted). Don't \
 ask your person for the password: just tell them the vault reopens in a few minutes, and try again later.";
-const AGENT_DE: &str = "Der Tresor ist gerade geschlossen: Er öffnet sich in ein paar Minuten von selbst wieder (der \
+const SOON_DE: &str = "Der Tresor ist gerade geschlossen: Er öffnet sich in ein paar Minuten von selbst wieder (der \
 Server wurde neu gestartet). Frag deine Person nicht nach dem Passwort: Sag ihr einfach, dass der Tresor in ein paar \
 Minuten wieder offen ist, und versuch es später noch einmal.";
-const AGENT_ES: &str = "La caja fuerte está cerrada por ahora: se vuelve a abrir sola en unos minutos (el servidor se \
+const SOON_ES: &str = "La caja fuerte está cerrada por ahora: se vuelve a abrir sola en unos minutos (el servidor se \
 reinició). No pidas la contraseña a tu persona: dile simplemente que la caja fuerte se vuelve a abrir en unos minutos, \
 y vuelve a intentarlo más tarde.";
+const CHECK_FR: &str =
+    "Le coffre-fort est fermé pour le moment, le temps d'une vérification. Surtout, ne demande pas le \
+mot de passe à ta personne : dis-lui simplement que le coffre est fermé et qu'il se rouvrira une fois cette \
+vérification faite.";
+const CHECK_EN: &str =
+    "The vault is closed for now, pending a check. Don't ask your person for the password: just tell \
+them the vault is closed and will reopen once that check is done.";
+const CHECK_DE: &str =
+    "Der Tresor ist gerade geschlossen, bis eine Prüfung erledigt ist. Frag deine Person nicht nach \
+dem Passwort: Sag ihr einfach, dass der Tresor geschlossen ist und nach dieser Prüfung wieder öffnet.";
+const CHECK_ES: &str =
+    "La caja fuerte está cerrada por ahora, a la espera de una comprobación. No pidas la contraseña a \
+tu persona: dile simplemente que la caja fuerte está cerrada y que se volverá a abrir tras esa comprobación.";
 
-pub fn agent_text(lang: &str) -> &'static str {
-    match lang {
-        "fr" => AGENT_FR,
-        "de" => AGENT_DE,
-        "es" => AGENT_ES,
-        _ => AGENT_EN,
+/// The words for an agent speaking `lang`, the vault closed for `reason` ([`Closed::reason`]).
+pub fn agent_text(lang: &str, reason: &str) -> &'static str {
+    let soon = matches!(reason, "opening" | "unreachable");
+    match (lang, soon) {
+        ("fr", true) => SOON_FR,
+        ("de", true) => SOON_DE,
+        ("es", true) => SOON_ES,
+        (_, true) => SOON_EN,
+        ("fr", false) => CHECK_FR,
+        ("de", false) => CHECK_DE,
+        ("es", false) => CHECK_ES,
+        (_, false) => CHECK_EN,
     }
 }
 
-/// [`agent_text`] as an MCP tool result.
-pub fn closed_result(lang: &str) -> Value {
-    json!({"content": [{"type": "text", "text": agent_text(lang)}], "isError": false})
+/// [`agent_text`] for this bridge's vault as it is now.
+pub fn closed_text(config: &Config, lang: &str) -> &'static str {
+    match state(Path::new(&config.data_dir())) {
+        State::Closed(closed) => agent_text(lang, &closed.reason),
+        _ => agent_text(lang, "opening"),
+    }
 }
 
-/// What the app's routes answer while it is closed (the app says « Ton coffre se rouvre »).
+/// [`closed_text`] as an MCP tool result.
+pub fn closed_result(config: &Config, lang: &str) -> Value {
+    json!({"content": [{"type": "text", "text": closed_text(config, lang)}], "isError": false})
+}
+
+/// What the app's routes answer while it is closed (the app says it in its own words).
 pub fn http_locked() -> crate::web::HttpError {
-    crate::web::HttpError::json(
-        503,
-        json!({"code": "vault_locked", "message": "Ton coffre se rouvre dans quelques minutes."}),
-    )
+    crate::web::HttpError::json(503, json!({"code": "vault_locked", "message": "Ton coffre est fermé pour le moment."}))
 }
 
 // -- the command line --------------------------------------------------------------------------------------------------
 
-const USAGE: &str = "usage: bipbridge vault-keys status | enable [--config FILE]
+const USAGE: &str = "usage: bipbridge vault-keys status | enable | open [--config FILE]
 
   status   the vault's keys: off (today's layout), open, or locked (and why)
   enable   seal this place's vault, mailbox and connection keys (the bridge stopped): the key service's settings
            from the space's keyservice.json, else BIPAGENTS_KEYS_URL, BIPAGENTS_KEYS_TOKEN (and _GRANT, _SIGNATURE)
+  open     ask the key service now (an operator, once a place is resumed): a running bridge sees it open
 ";
 
 fn env(name: &str) -> Option<String> {
@@ -1127,6 +1384,19 @@ pub fn cli(argv: &[String]) -> i32 {
                 };
                 let source = crate::space::HttpShare::new(service)?;
                 enrol(&place, given, &source).await
+            }
+            "open" => {
+                if !place.sealed().exists() {
+                    bail!("this place's vault keys are not sealed");
+                }
+                if try_open(&place, &FromFile(place.clone())).await {
+                    Ok(json!({"state": "open"}))
+                } else {
+                    match state(&place.data) {
+                        State::Closed(c) => Ok(json!({"state": "locked", "reason": c.reason})),
+                        _ => Ok(json!({"state": "open"})),
+                    }
+                }
             }
             other => bail!("unknown action {other}"),
         }

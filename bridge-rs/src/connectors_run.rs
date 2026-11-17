@@ -267,8 +267,9 @@ pub enum RunError {
     Timeout,
     /// Blanked already.
     Failed(String),
-    /// The vault's keys sealed and not reopened yet (sealed_keys.rs): its secrets can't be read nor blanked.
-    VaultClosed,
+    /// The vault's keys sealed and not reopened yet (sealed_keys.rs): its secrets can't be read nor blanked. The
+    /// agent's words, in its language.
+    VaultClosed(String),
 }
 
 impl RunError {
@@ -287,7 +288,7 @@ impl RunError {
             ),
             RunError::Timeout => format!("The connector didn't answer within {} seconds.", CALL_TIMEOUT.as_secs()),
             RunError::Failed(why) => format!("The connector failed: {why}"),
-            RunError::VaultClosed => crate::sealed_keys::agent_text("en").into(),
+            RunError::VaultClosed(words) => words.clone(),
         }
     }
 
@@ -302,7 +303,7 @@ impl RunError {
             RunError::MissingSecret(name) => format!("Le secret « {name} » n'est pas dans le coffre."),
             RunError::Timeout => "Le service n'a pas répondu à temps.".into(),
             RunError::Failed(why) => format!("Erreur : {}", crate::browsers::pyx::head(why, 200)),
-            RunError::VaultClosed => "Le coffre se rouvre dans quelques minutes.".into(),
+            RunError::VaultClosed(_) => "Le coffre est fermé pour le moment.".into(),
         }
     }
 }
@@ -649,7 +650,10 @@ pub async fn call_tool(
 
 async fn run(state: &AppState, agent: &AgentConfig, id: &str, tool: &str, arguments: Dict) -> Result<Value, RunError> {
     if crate::sealed_keys::closed(&state.config()) {
-        return Err(RunError::VaultClosed); // its secrets can't be read, nor blanked from what it says
+        // its secrets can't be read, nor blanked from what it says
+        let config = state.config();
+        let lang = crate::names::agent_language(&config, &agent.name);
+        return Err(RunError::VaultClosed(crate::sealed_keys::closed_text(&config, &lang).to_string()));
     }
     let (conn, podman) = ready(state, agent, id, true).await?;
     let config = state.config();

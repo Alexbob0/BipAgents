@@ -1505,7 +1505,9 @@ async fn connector_mcp(
             let arguments = params.get("arguments").and_then(Value::as_object).cloned().unwrap_or_default();
             let result = match runner::call_tool(&state, &agent, &id, &tool, arguments, "agent").await {
                 Ok(result) => result,
-                Err(err) => json!({"content": [{"type": "text", "text": err.agent_text()}], "isError": true}),
+                // the vault closed: plain words, not an error of the connector's (sealed_keys.rs)
+                Err(err) => json!({"content": [{"type": "text", "text": err.agent_text()}],
+                                   "isError": !matches!(err, runner::RunError::VaultClosed(_))}),
             };
             Ok(rpc(&rid, result))
         }
