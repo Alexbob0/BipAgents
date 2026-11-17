@@ -1233,20 +1233,28 @@ fn household_of(state: &AppState, headers: &HeaderMap) -> ApiResult<String> {
     household.ok_or_else(|| HttpError::new(401, "unknown household"))
 }
 
-fn served(state: &AppState, headers: &HeaderMap) -> ApiResult<(String, AgentConfig)> {
+/// The calling household and the family agents of this place it is in (their creator may have chosen the members):
+/// 404 when it is in none, for every household route (the view, the Carnet, the counts), not only the view.
+fn served(state: &AppState, headers: &HeaderMap) -> ApiResult<(String, Vec<AgentConfig>)> {
     let household = household_of(state, headers)?;
-    let agent = own_agent(&state.config()).ok_or_else(|| HttpError::new(404, "no family agent here"))?;
-    Ok((household, agent))
+    let config = state.config();
+    let agents: Vec<AgentConfig> = own_agents(&config)
+        .into_iter()
+        .filter(|a| crate::agent_shares::shared_with(&config, &a.name).contains(&household))
+        .collect();
+    if agents.is_empty() {
+        return Err(HttpError::new(404, "no family agent for this household"));
+    }
+    Ok((household, agents))
 }
 
 /// `GET /family/fa`: the family agents of this place the calling household is in (`agents`; the first's fields too,
 /// for bridges of before); 404 when it is in none.
 async fn served_view(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
-    let (household, _) = served(&state, &headers)?;
+    let (_, mine) = served(&state, &headers)?;
     let config = state.config();
-    let agents: Vec<Value> = own_agents(&config)
+    let agents: Vec<Value> = mine
         .iter()
-        .filter(|a| crate::agent_shares::shared_with(&config, &a.name).contains(&household))
         .map(|a| json!({"agent": a.name, "name": a.display_name, "category": a.category, "color": a.color,
                         "everyone": members(&config, &a.name).is_none()}))
         .collect();
@@ -1278,16 +1286,21 @@ async fn served_change(State(state): State<AppState>, headers: HeaderMap, body: 
     changed(&config, &body, &person)
 }
 
+/// The counts of the family agents the calling household is in, only those.
 async fn served_usage(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
-    served(&state, &headers)?;
-    Ok(web::ok(usage_of(&state, &own_agents(&state.config())).await))
+    let (_, mine) = served(&state, &headers)?;
+    Ok(web::ok(usage_of(&state, &mine).await))
 }
 
-/// The creator left: what is the family's, kept here until this person takes it over.
+/// The creator left: what is the family's, kept here until this person takes it over. Only from the household that
+/// holds the family agents this person uses (`known`): another linked household can't plant a personality here.
 async fn handed_over(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> ApiResult<Response> {
     let household = household_of(&state, &headers)?;
     let body = body_json(&body)?;
     let config = state.config();
+    if known(&config).is_none_or(|(_, entry)| str_of(&entry, "household") != household) {
+        return Err(HttpError::new(403, "this household doesn't hold your family's agents"));
+    }
     if own(&config).is_some() {
         return Ok(web::ok(json!({"ok": true, "kept": false}))); // this person already holds a family agent
     }
