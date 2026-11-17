@@ -171,7 +171,7 @@ def test_a_portal_login_for_the_browser_is_asked_once_in_the_card_and_kept_for_t
                                 "use": "browser", "reason": "Récupérer les factures du mois"},
                        {"value": PASSWORD, "identifier": "compta@example.org"})
     assert result["isError"] is False, result
-    assert "browser_vault" in text_of(result) and PASSWORD not in json.dumps(result)
+    assert "vault_login" in text_of(result) and PASSWORD not in json.dumps(result)
     records = vault_records(bridge)
     login = next(r for r in records if r.get("kind") == "login")
     assert login["origin"] == "https://accounts.portail.example" and login["identifier"] == "compta@example.org"

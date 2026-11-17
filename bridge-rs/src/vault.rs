@@ -113,6 +113,10 @@ pub struct Item {
     pub kind: String,
     pub label: String,
     pub origin: Option<String>,
+    /// A login's own login page, as it was typed (`login_url_of`): on its origin only. The agent opens it; the login
+    /// fills on its origin's registrable domain (vault_match.rs), the page telling apart logins of one domain.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub login_url: Option<String>,
     pub identifier_type: Option<String>,
     pub identifier: Option<String>,
     pub has_otp: bool,
@@ -168,6 +172,9 @@ impl Item {
             map.insert("secret".into(), info.clone());
             return out;
         }
+        if let (true, Value::Object(map)) = (self.kind == "login", &mut out) {
+            map.insert("login_url".into(), json!(self.login_url));
+        }
         if let (Some(agent), Value::Object(map)) = (&self.created_by, &mut out) {
             map.insert("created_by".into(), json!(agent));
             map.insert("pending".into(), json!(self.pending));
@@ -202,6 +209,44 @@ pub fn normalize_origin(url: &str) -> Result<String, VaultError> {
         _ => String::new(),
     };
     Ok(format!("{}://{}{port}", parts.scheme, hostname.unwrap_or_default().to_lowercase()))
+}
+
+/// The longest login page address kept (`login_url`).
+pub const LOGIN_URL_MAX: usize = 2000;
+
+/// A login's own login page (`login_url`) from what was typed (« extranet.example.fr/V5/connexion.html »): kept when it
+/// says more than its site (a path, a query), on exactly `origin` (anything else is dropped, never kept), without a
+/// user name or password in it nor its fragment. None otherwise.
+pub fn login_url_of(typed: &str, origin: &str) -> Option<String> {
+    let raw = pyx::strip(typed).to_string();
+    if raw.is_empty() || raw.chars().count() > LOGIN_URL_MAX {
+        return None;
+    }
+    let raw = if raw.contains("://") { raw } else { format!("https://{raw}") };
+    if normalize_origin(&raw).ok()? != origin {
+        return None;
+    }
+    let mut url = url::Url::parse(&raw).ok()?;
+    if !matches!(url.scheme(), "https" | "http") {
+        return None;
+    }
+    // review R8: the site as the `url` crate (and Chrome) reads it, never another one behind a difference with
+    // `normalize_origin` (Python's urlsplit: `https://other.example\@site.example/` is site.example there, other.example
+    // here)
+    let same = |a: &crate::vault_match::Site, b: &crate::vault_match::Site| {
+        a.scheme == b.scheme && a.host == b.host && a.port == b.port
+    };
+    match (crate::vault_match::site_of(url.as_str()), crate::vault_match::site_of(origin)) {
+        (Some(here), Some(kept)) if same(&here, &kept) => {}
+        _ => return None,
+    }
+    let _ = url.set_username("");
+    let _ = url.set_password(None);
+    url.set_fragment(None);
+    if url.path() == "/" && url.query().is_none() {
+        return None;
+    }
+    Some(url.to_string())
 }
 
 pub fn in_hub(config: &Config, agent: &AgentConfig) -> bool {
@@ -618,7 +663,19 @@ impl Vault {
         if kind == "login" {
             if given(body, "site").is_some() || !truthy(&record, "origin") {
                 let site = body.get("site").filter(|v| crate::py::truthy(v)).map(crate::py::py_str).unwrap_or_default();
-                record.insert("origin".into(), json!(normalize_origin(&site)?));
+                let origin = normalize_origin(&site)?;
+                // the login page typed is kept beside its site (16/11: a shared extranet, a page per agency); the
+                // app sends the site back as its origin when the person changes something else: its page stays
+                let page = login_url_of(&site, &origin);
+                let same = record.get("origin").and_then(Value::as_str) == Some(origin.as_str());
+                record.insert("origin".into(), json!(origin));
+                if page.is_some() || !same || !record.contains_key("login_url") {
+                    record.insert("login_url".into(), json!(page));
+                }
+            }
+            if let (Some(page), Some(origin)) = (given(body, "login_url"), record.get("origin").and_then(Value::as_str)) {
+                let kept = login_url_of(&crate::py::py_str(page), origin);
+                record.insert("login_url".into(), json!(kept));
             }
             let id_type = body
                 .get("identifier_type")
@@ -1314,6 +1371,38 @@ impl Vault {
         Ok(zeroize::Zeroizing::new(password.to_string()))
     }
 
+    /// The logins given to `agent` (metadata), for `vault_login` to choose from (vault_match.rs).
+    /// An agent other people talk to: only the logins the person confirmed for it (`confirmed_for`, review R4), as
+    /// for « Coordonnées » (vault_contacts.rs `readable_by`).
+    pub fn logins_of(&self, config: &Config, agent: &str) -> anyhow::Result<Vec<Item>> {
+        let facing = others_facing(config, agent);
+        let confirmed = |r: &Dict| {
+            matches!(r.get("confirmed_for"), Some(Value::Array(a)) if a.iter().any(|v| v.as_str() == Some(agent)))
+        };
+        Ok(self
+            .read()?
+            .iter()
+            .filter(|r| !facing || confirmed(r))
+            .map(Self::item)
+            .filter(|i| i.kind == "login" && i.agents.contains_key(agent))
+            .collect())
+    }
+
+    /// The password of a login given to `agent`, for `vault_login` to type it into the agent's page: it stays in the
+    /// bridge (never in an answer, a log, the agent's Hermes).
+    pub fn login_password(&self, item_id: &str, agent: &str) -> anyhow::Result<zeroize::Zeroizing<String>> {
+        let records = self.read()?;
+        let Some(record) = records.iter().find(|r| r.get("id").and_then(Value::as_str) == Some(item_id)) else {
+            return Err(NoSuchItem(item_id.to_string()).into());
+        };
+        let item = Self::item(record);
+        if item.kind != "login" || !item.agents.contains_key(agent) {
+            return Err(NoSuchItem(item_id.to_string()).into());
+        }
+        let password = record.get("secret").and_then(|s| s.get("password")).and_then(Value::as_str).unwrap_or("");
+        Ok(zeroize::Zeroizing::new(password.to_string()))
+    }
+
     /// An agent deleted: its handles go (its own vault is deleted with it).
     pub async fn forget_agent(&self, _config: &Config, agent_id: &str) -> anyhow::Result<()> {
         let _lock = self.lock.lock().await;
@@ -1771,12 +1860,63 @@ mod tests {
     }
 
     #[test]
+    fn the_login_page_typed_is_kept_on_its_own_origin_only() {
+        let page = "https://extranet2.example.fr/V5/connexion-agence-a.html";
+        let parse = |body: Value, before: Option<&Dict>| Vault::parse(body.as_object().unwrap(), before).unwrap();
+        let login = |site: &str| json!({"label": "Agence A", "site": site, "identifier": "a@b.c", "password": "p"});
+        let record = parse(login(page), None);
+        assert_eq!(record["origin"], json!("https://extranet2.example.fr"));
+        assert_eq!(record["login_url"], json!(page));
+        // its fragment, a user name or password in it are never kept; the query is
+        let record = parse(login("https://me:pw@extranet2.example.fr/V5/connexion.html?groupe=a#top"), None);
+        assert_eq!(record["login_url"], json!("https://extranet2.example.fr/V5/connexion.html?groupe=a"));
+        // typed without its scheme, as the app's field allows
+        assert_eq!(parse(login("extranet2.example.fr/V5/c.html"), None)["login_url"], json!("https://extranet2.example.fr/V5/c.html"));
+        // the site alone says nothing more
+        for site in ["https://extranet2.example.fr", "https://extranet2.example.fr/", "extranet2.example.fr"] {
+            assert_eq!(parse(login(site), None)["login_url"], Value::Null, "{site}");
+        }
+        // one given apart: kept on the login's origin, dropped on any other (a subdomain, http, a look-alike)
+        let record = parse(login("https://extranet2.example.fr"), None);
+        let with = |url: &str| parse(json!({"login_url": url}), Some(&record))["login_url"].clone();
+        assert_eq!(with(page), json!(page));
+        for other in [
+            "https://www.extranet2.example.fr/V5/c.html",
+            "http://extranet2.example.fr/V5/c.html",
+            "https://extranet2.example.fr:8443/V5/c.html",
+            "https://extranet2.example.fr.evil.test/V5/c.html",
+            "javascript:alert(1)",
+        ] {
+            assert_eq!(with(other), Value::Null, "{other}");
+        }
+        // kept when the rest changes (the app sends the site back as its origin), replaced with the site
+        let changed = parse(json!({"label": "Agence A (nouveau)"}), Some(&parse(login(page), None)));
+        assert_eq!(changed["login_url"], json!(page));
+        let edited = parse(json!({"site": "https://extranet2.example.fr", "password": "q"}), Some(&changed));
+        assert_eq!(edited["login_url"], json!(page));
+        let other_site = parse(json!({"site": "https://autre.example.fr"}), Some(&changed));
+        assert_eq!(other_site["login_url"], Value::Null);
+        let moved = parse(json!({"site": "https://autre.example.fr/login"}), Some(&changed));
+        assert_eq!(moved["login_url"], json!("https://autre.example.fr/login"));
+        assert_eq!(login_url_of(&format!("{page}?{}", "x".repeat(LOGIN_URL_MAX)), "https://extranet2.example.fr"), None);
+        // the app's list shows it, for logins only
+        let item = Vault::item(&parse(login(page), None));
+        assert_eq!(item.public()["login_url"], json!(page));
+        let old = Vault::item(json!({"kind": "login", "label": "x", "origin": "https://a.example"}).as_object().unwrap());
+        assert_eq!(old.public()["login_url"], Value::Null);
+        assert!(old.public().as_object().unwrap().contains_key("login_url"));
+        let card = Vault::item(json!({"kind": "address", "label": "x"}).as_object().unwrap());
+        assert!(!card.public().as_object().unwrap().contains_key("login_url"));
+    }
+
+    #[test]
     fn the_record_keeps_python_s_order() {
         let body = json!({"label": "SNCF", "site": "sncf-connect.com/login", "identifier": "a@b.c", "password": "p", "otp_secret": " x "});
         let record = Vault::parse(body.as_object().unwrap(), None).unwrap();
         let keys: Vec<&String> = record.keys().collect();
-        assert_eq!(keys, ["kind", "label", "origin", "identifier_type", "identifier", "has_otp", "secret"]);
+        assert_eq!(keys, ["kind", "label", "origin", "login_url", "identifier_type", "identifier", "has_otp", "secret"]);
         assert_eq!(record["secret"], json!({"password": "p", "otp_secret": "x"}));
+        assert_eq!(record["login_url"], json!("https://sncf-connect.com/login"));
         let again = Vault::parse(json!({"otp_secret": ""}).as_object().unwrap(), Some(&record)).unwrap();
         assert_eq!(again["secret"], json!({"password": "p"}));
         assert_eq!(again["has_otp"], json!(false));

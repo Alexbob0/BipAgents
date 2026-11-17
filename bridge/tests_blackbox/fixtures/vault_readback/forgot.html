@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><title>Mot de passe oublié | Essai</title></head>
+<body>
+<!-- Fields whose names speak of passwords but hold none (vault-no-readback, 16/11): a « mot de passe oublié » e-mail,
+     a hint, and an address field that says autocomplete="new-password" to keep the browser's suggestions off. -->
+<h1>Mot de passe oublié</h1>
+<form id="oubli" action="/oubli" method="post">
+  <label for="forgot-password-email">Adresse e-mail</label>
+  <input type="email" id="forgot-password-email" name="forgot_password_email">
+  <label for="password-hint">Indice</label>
+  <input type="text" id="password-hint" name="password_hint">
+  <label for="adresse">Adresse</label>
+  <input type="text" id="adresse" name="adresse" autocomplete="new-password">
+  <button type="submit">Envoyer</button>
+</form>
+</body>
+</html>

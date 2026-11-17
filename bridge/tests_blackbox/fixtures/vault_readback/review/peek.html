@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><title>Connexion | Essai</title></head>
+<body>
+<!-- Review of vault-no-readback (16/11). The site's eye as some draw it: the password as text in a box over the
+     field, kept up to date as it is typed; the field itself stays a password field. Fake data only. -->
+<h1>Connexion</h1>
+<form id="login" action="/session" method="post">
+  <label for="ident">Identifiant</label>
+  <input type="text" name="login" id="ident" autocomplete="username">
+  <label for="mdp">Mot de passe</label>
+  <input type="password" name="mdp" id="mdp" autocomplete="current-password">
+  <button type="button" id="eye" aria-label="Afficher le mot de passe">Afficher</button>
+  <output id="peek" for="mdp" hidden></output>
+  <button type="submit" id="go">Se connecter</button>
+</form>
+<script>
+  const pw = document.getElementById('mdp'), peek = document.getElementById('peek');
+  pw.addEventListener('input', () => { peek.textContent = pw.value; });
+  document.getElementById('eye').addEventListener('click', () => { peek.hidden = !peek.hidden; });
+</script>
+</body>
+</html>

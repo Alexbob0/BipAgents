@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Espace agences | Essai</title>
+<style>
+  body { font-family: sans-serif; margin: 24px; }
+  label { display: block; margin-top: 10px; }
+  #mirror { display: none; }
+</style>
+</head>
+<body>
+<!-- A login page as many are built (vault-no-readback, 16/11). Fake data only. Like a React controlled input, the
+     page's own script mirrors the password into the field's « value » attribute and keeps it in its own world (props on
+     the element, a state object); a « shown » copy waits for the eye; an encoded copy goes in a hidden field. -->
+<h1>Espace agences</h1>
+<p id="info">Connectez-vous avec l'identifiant de votre agence.</p>
+<form id="login" action="/session" method="post">
+  <input type="hidden" name="csrf" value="c5rf-t0ken-3361">
+  <input type="hidden" name="enc" id="enc" value="">
+  <label for="ident">Identifiant</label>
+  <input type="text" name="login" id="ident" autocomplete="username">
+  <label for="mdp">Mot de passe</label>
+  <input type="password" name="mdp" id="mdp" autocomplete="current-password">
+  <input type="text" name="mdp_shown" id="mirror" tabindex="-1">
+  <button type="button" id="eye" aria-label="Afficher le mot de passe">Afficher</button>
+  <label for="agence">Agence</label>
+  <select id="agence" name="agence">
+    <option value="">Choisir</option>
+    <option value="a1">Agence Nord</option>
+    <option value="a2">Agence Sud</option>
+  </select>
+  <button type="submit" id="go">Se connecter</button>
+</form>
+<form action="/recherche" method="get"><label for="q">Rechercher</label><input type="search" id="q" name="q"></form>
+<label for="notes">Notes</label><textarea id="notes"></textarea>
+<iframe id="aide" srcdoc="<p>Aide</p><input id='inner' type='text'>"></iframe>
+<script>
+  const pw = document.getElementById('mdp');
+  window.__state = {password: ''};
+  pw.addEventListener('input', () => {
+    pw.setAttribute('value', pw.value);
+    pw.__reactProps$vnr = {value: pw.value, type: 'password'};
+    window.__state.password = pw.value;
+    document.getElementById('mirror').value = pw.value;
+    document.getElementById('enc').value = btoa(pw.value);
+  });
+  document.getElementById('eye').addEventListener('click', () => {
+    pw.type = pw.type === 'password' ? 'text' : 'password';
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><title>Code | Essai</title></head>
+<body>
+<!-- Review of vault-no-readback (16/11). A 4-digit code typed by the person, and a frame of the same site whose address
+     happens to hold the same 4 digits (a year): the frame keeps what the person wrote in it. Fake data only. -->
+<h1>Code d'accès</h1>
+<form id="acces" action="/acces" method="post">
+  <label for="code">Code</label>
+  <input type="password" name="code" id="code" autocomplete="off">
+  <button type="submit" id="ok">Valider</button>
+</form>
+<iframe id="aide" src="/review/notes.html?annee=1987" width="400" height="120"></iframe>
+</body>
+</html>

@@ -97,11 +97,17 @@ au commit testé avec BipAgents (`a7b9eea`, fixé dans le `Containerfile`), et a
 ## Limites
 
 - Linux seulement (l'écran est un serveur X dans le conteneur). Sur Mac, ça viendra avec un compte macOS séparé.
-- Avec ses outils de page (`execute_script`), un agent peut lire ce qu'une page affiche, y compris un champ rempli
-  par le coffre. Le coffre garde les mots de passe hors de la conversation et de la mémoire de l'agent : une réponse
-  d'outil de page qui contient un de ses mots de passe arrive au modèle « masquée » (patch Hermes 0013, à l'octet
-  près). Mais un agent qui veut un mot de passe peut encore le sortir du champ sous une autre forme (un script qui
-  l'encode). Ne donne un identifiant qu'aux agents à qui tu le confierais.
+- Un champ mot de passe reste hors de portée de l'agent (vault-no-readback, 16/11, `bridge-rs/src/browser_mcp.rs`) :
+  ses scripts tournent dans un monde à eux (aucune variable de la page, la copie d'un framework comprise), pendant que
+  chaque champ mot de passe, chaque copie de ce qu'il contient et ses codages courants (à l'envers, base64, hexa) sont
+  vidés, puis remis à l'identique ; avant chaque outil de page, un champ que l'œil du site affiche en clair est remasqué
+  et une copie dans ses attributs vidée (captures et arbre d'accessibilité : des points) ; un sélecteur qui teste une
+  partie de la valeur d'un champ est refusé ; une réponse qui en contiendrait encore un n'est pas transmise. Ce qui
+  n'est pas couvert : ce que le site déduit et affiche lui-même (le mot d'une jauge de force, une copie dans son
+  stockage), un champ que rien ne désigne comme mot de passe (ni type, ni nom, ni masque, jamais vu comme tel), les
+  racines d'ombre fermées (hors de portée des scripts de l'agent aussi). Les cadres d'autres sites sont remasqués de la
+  même façon avant chaque outil de page (les scripts de l'agent ne les atteignent pas). Le site reçoit toujours le mot
+  de passe, comme avec tout gestionnaire de mots de passe.
 - Le port DevTools demande un secret propre au navigateur (`cdp.token` à côté de `vnc.pass`, monté en lecture seule
   dans le conteneur ; le pont le montre en en-tête `X-Bip-Cdp`, l'adresse `browser.cdp_url` de Hermes le porte en
   `/t/<secret>/`) et refuse toute requête portant un `Origin` (celle d'une page web) : ni un autre compte d'une

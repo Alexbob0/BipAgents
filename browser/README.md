@@ -99,11 +99,16 @@ and keys. A flag older than 15 minutes (the app closed without handing it back) 
 ## Limits
 
 - Linux only (the screen is an X server in the container). On a Mac, this will come with a separate macOS account.
-- With its page tools (`execute_script`), an agent can read what a page shows, a field the vault filled included.
-  The vault keeps passwords out of the agent's conversation and memory: a page tool's answer holding one of its
-  passwords reaches the model as « redacted » (Hermes patch 0013, exact bytes). But an agent that wants a password can
-  still get it out of the field in another form (a script that encodes it). Give vault items only to agents you trust
-  with them.
+- A password field stays out of the agent's reach (vault-no-readback, 16/11, `bridge-rs/src/browser_mcp.rs`): its
+  scripts run in a world of their own (none of the page's variables, a framework's copy of the password included),
+  while every password field, every copy of what one holds and its usual codings (reversed, base64, hex) are emptied,
+  then put back as they were; before each page tool, a field the site's eye shows in clear is masked again and a copy in
+  its attributes is emptied (screenshots and the accessibility tree show dots); a selector testing part of a field's
+  value is refused; an answer still holding one is not passed on. Other sites' frames are masked the same way before
+  each page tool (the agent's scripts never reach them). What it does not cover: what the site itself derives and shows
+  (a strength meter's word, a copy in its storage), a field nothing marks as a password (no type, name or mask, never
+  seen as one), closed shadow roots (out of the agent's scripts' reach too). The site still gets the password, as with
+  any password manager.
 - The DevTools port asks for a secret of its own (`cdp.token` next to `vnc.pass`, mounted read-only in the container;
   the bridge shows it as `X-Bip-Cdp`, Hermes' `browser.cdp_url` as `/t/<secret>/`), and refuses any request carrying
   an `Origin` (a web page's): another account of a shared machine, or a page in the browser, can't drive it. The VNC

@@ -648,7 +648,11 @@ impl Page {
 
     /// The tab `target` (the one a card was typed into), whatever it shows now; `NoPage` when it is closed.
     pub async fn attach(port: u16, hold: Option<&str>, target: &str) -> Result<Page, FillError> {
-        let mut cdp = Cdp::connect(port, hold).await?;
+        Page::attach_with(Cdp::connect(port, hold).await?, target).await
+    }
+
+    /// `attach` through a connection already made (bip-browser-mcp's, with the browser's secret from its file).
+    pub async fn attach_with(mut cdp: Cdp, target: &str) -> Result<Page, FillError> {
         let attached = cdp
             .call("Target.attachToTarget", json!({"targetId": target, "flatten": true}), None)
             .await
@@ -845,6 +849,13 @@ impl Page {
     /// Every frame of the page, with the session that reaches it and the frame above it: the page's own, then each
     /// out-of-process frame's.
     pub async fn frames(&mut self) -> Result<Vec<FrameSeen>, FillError> {
+        self.frames_waiting(ATTACH_WAIT).await
+    }
+
+    /// `frames`, waiting `wait` for out-of-process frames to be reported after each session's auto-attach (Chrome
+    /// reports those already there before it answers; the wait is for frames still being made). bip-browser-mcp's
+    /// look before a page read (`conceal_frames`) waits for none.
+    pub async fn frames_waiting(&mut self, wait: Duration) -> Result<Vec<FrameSeen>, FillError> {
         let mut sessions = vec![self.session.clone()];
         sessions.extend(self.children.iter().map(|(s, _)| s.clone()));
         let mut gone = Vec::new();
@@ -865,7 +876,7 @@ impl Page {
             if self.cdp.call("Target.setAutoAttach", auto, Some(&session)).await.is_err() {
                 continue;
             }
-            self.cdp.drain(ATTACH_WAIT).await?;
+            self.cdp.drain(wait).await?;
             while let Some(event) = self.cdp.events.pop_front() {
                 if event.get("method").and_then(Value::as_str) != Some("Target.attachedToTarget") {
                     continue;

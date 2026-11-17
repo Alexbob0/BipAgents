@@ -937,7 +937,7 @@ pub fn tools() -> Vec<Value> {
                 "identifier": {"type": "string", "description": "the identifier, only if the person already gave it (prefilled; they can change it)"},
                 "reason": {"type": "string", "description": "why, in a few words the person understands"},
                 "connector": {"type": "string", "description": "the connector's name, if it exists already"},
-                "use": {"type": "string", "enum": ["connector", "browser"], "description": "browser: a login for your visible browser on this site (you then log in with browser_vault fill), e.g. a supplier's portal; connector (default): for a connector you build"},
+                "use": {"type": "string", "enum": ["connector", "browser"], "description": "browser: a login for your visible browser on this site (you then log in with vault_login), e.g. a supplier's portal; connector (default): for a connector you build"},
             }, "required": ["name", "site", "kind", "reason"]},
             "annotations": {"readOnlyHint": false, "destructiveHint": false, "openWorldHint": false},
         }),
@@ -1322,6 +1322,10 @@ async fn ask_secret_tool(state: &AppState, agent: &AgentConfig, arguments: &Dict
     let identifier = crate::cards::quoted(&arg(arguments, "identifier"), 200);
     let gave_identifier = !identifier.is_empty();
     let connector = Some(arg(arguments, "connector")).filter(|c| !c.is_empty());
+    let login_url = match kind == "password" && arg(arguments, "use") == "browser" {
+        true => crate::vault::login_url_of(&site, &origin),
+        false => None,
+    };
     let request = secrets::Request {
         name: name.clone(),
         origin,
@@ -1332,6 +1336,7 @@ async fn ask_secret_tool(state: &AppState, agent: &AgentConfig, arguments: &Dict
         edit: false,
         connector,
         browser_login: kind == "password" && arg(arguments, "use") == "browser",
+        login_url,
     };
     let lang = crate::names::agent_language(&config, &agent.name);
     let line = secrets::sentence_in(&lang, &shown_name(&config, &agent.name), &request);
@@ -1351,7 +1356,7 @@ async fn ask_secret_tool(state: &AppState, agent: &AgentConfig, arguments: &Dict
             if kind == "password" && arg(arguments, "use") == "browser" {
                 return Ok(text(&format!(
                     "Saved{with} in the vault as a login for your browser on {site}. You never see it: on that site's \
-                     login page, call browser_vault (list, then fill with its handle)."
+                     login page, call vault_login: it types the identifier and the password."
                 )));
             }
             let what = if kind == "code" { "held for the connector's next run, then gone" } else { "kept in the vault" };
@@ -1682,6 +1687,7 @@ async fn edit_secret_route(
         edit: true,
         connector: Some(conn.name.clone()),
         browser_login: false,
+        login_url: None,
     };
     let id = secrets::open(&agent.name, request).map_err(|why| HttpError::new(409, why))?;
     let card = secrets::item(&config, &id).unwrap_or_default();

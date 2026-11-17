@@ -12,6 +12,11 @@ fix-signup-hold: the same tools, output schemas and semantics where the guard of
   script declaring `const select` at the page's top level, its error never read (nodriver `Tab.evaluate` returns it),
   so True whatever happened: a page's second list is never set; a `text` typed into the list (`send_keys`: Chrome's
   type-ahead picks the first choice whose text starts with it, review of select-option-direct 14/11).
+- the page's readers (added for vault-no-readback, 16/11), as dom_handler reads: `get_page_content` (the document's
+  HTML, `document.body.innerText`, its address and title; with `include_frames`, the frames' src), `query_elements` and
+  `get_element_state` (each element's DOM attributes as nodriver's `attrs`, its text nodes as `text_all`; `value` is the
+  attribute's, never the field's live value), `wait_for_element` (True once the selector matches), `take_screenshot`
+  (the image as base64 text, inline).
 
     python3 stealth_cdp.py <page's DevTools websocket URL>
 """
@@ -35,6 +40,11 @@ TOOLS = [
     {"name": "paste_text", "inputSchema": {"type": "object"}, "outputSchema": WRAPPED_BOOL},
     {"name": "get_active_tab", "inputSchema": {"type": "object"}, "outputSchema": OBJECT},
     {"name": "select_option", "inputSchema": {"type": "object"}, "outputSchema": WRAPPED_BOOL},
+    {"name": "get_page_content", "inputSchema": {"type": "object"}, "outputSchema": OBJECT},
+    {"name": "query_elements", "inputSchema": {"type": "object"}},
+    {"name": "get_element_state", "inputSchema": {"type": "object"}, "outputSchema": OBJECT},
+    {"name": "wait_for_element", "inputSchema": {"type": "object"}, "outputSchema": WRAPPED_BOOL},
+    {"name": "take_screenshot", "inputSchema": {"type": "object"}},
 ]
 
 
@@ -78,6 +88,21 @@ FIND = """((t) => { let best = null, gap = Infinity;
     if (!own.toLowerCase().includes(t.toLowerCase())) continue;
     const d = Math.abs(own.length - t.length); if (d < gap) { gap = d; best = e; } }
   if (!best) return false; best.scrollIntoView(); best.click(); return true; })"""
+
+
+# an element as nodriver describes it (dom_handler.query_elements, get_element_state): its DOM attributes (`attrs`, from
+# DevTools' DOM.describeNode: the `value` attribute, never the live value) and the text of its text nodes (`text_all`)
+DESCRIBE = """((e) => ({tag_name: e.tagName.toLowerCase(),
+  text: [...e.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim(),
+  text_all: e.textContent.trim(), attributes: Object.fromEntries([...e.attributes].map((a) => [a.name, a.value]))}))"""
+
+
+def matching(selector):
+    if selector.startswith("//"):
+        return (f"(() => {{ const r = document.evaluate({json.dumps(selector)}, document, null, "
+                "XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null); return [...Array(r.snapshotLength).keys()].map((i) => "
+                "r.snapshotItem(i)); })()")
+    return f"[...document.querySelectorAll({json.dumps(selector)})]"
 
 
 def call(name, args):
@@ -146,6 +171,35 @@ def call(name, args):
                                                f" if (select) {{ {target} select.dispatchEvent(new Event('change', "
                                                f"{{bubbles: true}})); }}", "userGesture": True})
         return True
+    if name == "get_page_content":   # dom_handler.get_page_content: tab.get_content() is the document's HTML
+        root = cdp("DOM.getDocument", {"depth": 0})["root"]["nodeId"]
+        content = {"html": cdp("DOM.getOuterHTML", {"nodeId": root})["outerHTML"],
+                   "text": evaluate("document.body.innerText"), "url": evaluate("window.location.href"),
+                   "title": evaluate("document.title")}
+        if args.get("include_frames"):
+            content["frames"] = evaluate("[...document.querySelectorAll('iframe')].map((f, i) => ({index: i, "
+                                         "src: f.getAttribute('src'), id: f.id || null, name: f.name || null}))"
+                                         ".filter((f) => f.src)")
+        return content
+    if name == "query_elements":
+        found = evaluate(f"{matching(args['selector'])}.map({DESCRIBE})")
+        limit = args.get("limit")
+        return [{**f, "is_visible": True} for f in found][: int(limit) if limit else None]
+    if name == "get_element_state":
+        element = select(args["selector"], 10.0)
+        state = evaluate(f"{DESCRIBE}({element})")
+        attrs = state["attributes"]
+        return {**state, "is_visible": True, "is_clickable": False, "is_enabled": True, "value": attrs.get("value"),
+                "href": attrs.get("href"), "src": attrs.get("src"), "class": attrs.get("class"), "id": attrs.get("id")}
+    if name == "wait_for_element":
+        try:
+            select(args["selector"], float(args.get("timeout", 30000)) / 1000)
+            return True
+        except Exception:
+            return False
+    if name == "take_screenshot":   # server.take_screenshot: the image as base64 when small enough
+        shot = cdp("Page.captureScreenshot", {"format": args.get("format", "png")})
+        return shot["data"]
     raise Exception(f"Unknown tool: {name}")
 
 
@@ -164,7 +218,8 @@ for line in sys.stdin:
         try:
             value = call(name, args)
             structured = value if isinstance(value, dict) else {"result": value}
-            result = {"content": [{"type": "text", "text": json.dumps(value)}], "structuredContent": structured}
+            text = value if isinstance(value, str) else json.dumps(value)   # a str as FastMCP gives it: as is
+            result = {"content": [{"type": "text", "text": text}], "structuredContent": structured}
         except Exception as exc:
             result = {"content": [{"type": "text", "text": f"Error calling tool '{name}': {exc}"}], "isError": True}
     print(json.dumps({"jsonrpc": "2.0", "id": message["id"], "result": result}), flush=True)
