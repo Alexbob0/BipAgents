@@ -35,8 +35,8 @@ const B64URL: base64::engine::GeneralPurpose = base64::engine::general_purpose::
 
 // -- the key service ---------------------------------------------------------------------------------------------------
 
-/// One share, its answers scripted: « down » (unreachable), « no » (stopped), « held » (a rescue boot or the guichet
-/// out of reach), « other » (a share that isn't this place's), else the share.
+/// One share, its answers scripted: « down » (unreachable), « no » (stopped), « held » (a rescue boot), « unconfirmed »
+/// (the guichet out of reach), « other » (a share that isn't this place's), else the share.
 struct Service {
     share: Vec<u8>,
     script: Mutex<Vec<&'static str>>,
@@ -72,7 +72,10 @@ impl ShareSource for Service {
         match next {
             "down" => Err(ShareError::Unreachable("connection refused".into())),
             "no" => Err(ShareError::Refused("HTTP 403: stopped: abuse".into())),
-            "held" => Err(ShareError::Refused("HTTP 403: held: the guichet can't confirm this server's boot".into())),
+            "held" => Err(ShareError::Refused("HTTP 403: held: rescue system booted (guichet)".into())),
+            "unconfirmed" => {
+                Err(ShareError::Refused("HTTP 403: held: the guichet can't confirm this server's boot".into()))
+            }
             "other" => Ok(Zeroizing::new(space::new_share().to_vec())),
             _ => Ok(Zeroizing::new(self.share.clone())),
         }
@@ -593,7 +596,7 @@ async fn after_a_server_restart_the_vault_stays_closed_until_the_service_answers
     );
     for (path, tool) in VAULT_TOOLS {
         let text = tool_text(&app, path, tool).await;
-        assert!(sealed_keys::AGENT_TEXTS.contains(&text.as_str()), "{path} {tool}: {text}");
+        assert!(sealed_keys::SOON_TEXTS.contains(&text.as_str()), "{path} {tool}: {text}");
     }
     let (k, v) = auth();
     for route in ["/v1/vault", "/v1/mail/accounts"] {
@@ -635,15 +638,23 @@ async fn refused_held_or_unreachable_it_stays_closed_says_why_then_reopens() {
     h.reboot();
     sealed_keys::recover(&h.place).unwrap();
     let app = app(&h);
-    for (answer, reason) in [("down", "unreachable"), ("no", "refused"), ("held", "held"), ("other", "wrong_key")] {
+    for (answer, reason) in [
+        ("down", "unreachable"),
+        ("no", "refused"),
+        ("held", "held"),
+        ("unconfirmed", "unconfirmed"),
+        ("other", "wrong_key"),
+    ] {
         service.then(&[answer]);
         assert!(!sealed_keys::try_open(&h.place, &*service).await, "{answer}");
         let State::Closed(closed) = sealed_keys::state(h.data()) else { panic!("{answer}: not closed") };
         assert_eq!(closed.reason, reason);
         let body = health(&app).await;
         assert_eq!((body["vault"].as_str(), body["vault_reason"].as_str()), (Some("locked"), Some(reason)));
+        // « in a few minutes » only while the key service is out of reach and asked again; else no time promised
         let text = tool_text(&app, "/v1/agent-tools/vault", "vault_contact_details").await;
-        assert!(sealed_keys::AGENT_TEXTS.contains(&text.as_str()), "{answer}: {text}");
+        let expected = if reason == "unreachable" { sealed_keys::SOON_TEXTS } else { sealed_keys::CHECK_TEXTS };
+        assert!(expected.contains(&text.as_str()), "{answer}: {text}");
         assert!(h.vault().try_items().is_err());
     }
     // nothing of it reached the disk
@@ -660,6 +671,63 @@ async fn the_retries_wait_5_10_20_seconds_and_then_every_5_minutes() {
         (1..=9).map(sealed_keys::wait_after).collect::<Vec<_>>(),
         [5, 10, 20, 40, 80, 160, 300, 300, 300].map(Duration::from_secs)
     );
+    // what doesn't mend in minutes waits long: a share that doesn't open it (each try is one of the place's 24 daily
+    // releases, shared with the encrypted space), a place stopped or held after a rescue boot, a file unreadable
+    for tries in 1..=9 {
+        for reason in ["opening", "unreachable", "unconfirmed", "enrolling"] {
+            assert_eq!(sealed_keys::wait_for(reason, tries), sealed_keys::wait_after(tries), "{reason}");
+        }
+        for reason in ["refused", "held", "unreadable"] {
+            assert_eq!(sealed_keys::wait_for(reason, tries), Duration::from_secs(3600), "{reason}");
+        }
+        assert_eq!(sealed_keys::wait_for("wrong_key", tries), Duration::from_secs(6 * 3600));
+    }
+}
+
+#[tokio::test]
+async fn the_retries_never_burn_the_places_daily_releases() {
+    let _guard = SERIAL.lock().await;
+    let h = fixture();
+    let service = Service::new();
+    sealed_keys::enrol(&h.place, Some(key_service()), &*service).await.unwrap();
+    h.reboot();
+    // a second of the loop is a millisecond here: in 400 ms, a fast schedule tries 7 times (0, 5, 15, 35, 75, 155,
+    // 315), an hourly one once
+    let tries_in = |answer: &'static str| {
+        let (place, service) = (h.place.clone(), service.clone());
+        async move {
+            service.script.lock().unwrap().clear();
+            service.then(&[answer; 64]);
+            let asked = service.asked();
+            let source: Arc<dyn ShareSource> = service.clone();
+            let opened = tokio::time::timeout(
+                Duration::from_millis(400),
+                sealed_keys::reopen(place, source, Duration::from_millis(1)),
+            )
+            .await;
+            assert!(opened.is_err(), "{answer}: opened");
+            service.asked() - asked
+        }
+    };
+    for answer in ["other", "no", "held"] {
+        assert_eq!(tries_in(answer).await, 1, "{answer}");
+    }
+    for answer in ["down", "unconfirmed"] {
+        assert!(tries_in(answer).await >= 5, "{answer}");
+    }
+    // an operator's try (`bipbridge vault-keys open`, another process) reaches a bridge waiting an hour: it reads the
+    // place key from the tmpfs at once
+    service.script.lock().unwrap().clear();
+    service.then(&["held"]);
+    let source: Arc<dyn ShareSource> = service.clone();
+    let waiting = tokio::spawn(sealed_keys::reopen(h.place.clone(), source, Duration::from_millis(1)));
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let other_process = Place::new(h.data(), &h.place.space);
+    sealed_keys::forget_memory(h.data());
+    assert!(sealed_keys::try_open(&other_process, &*service).await);
+    sealed_keys::forget_memory(h.data()); // what the waiting bridge has: the tmpfs only
+    tokio::time::timeout(Duration::from_secs(5), waiting).await.expect("the waiting bridge sees it open").unwrap();
+    assert_eq!(sealed_keys::state(h.data()), State::Open);
 }
 
 #[tokio::test]
@@ -729,16 +797,164 @@ async fn a_place_that_is_not_enrolled_keeps_todays_layout_and_behaviour() {
 }
 
 #[test]
-fn the_agents_words_say_it_reopens_and_not_to_ask_for_the_password() {
+fn the_agents_words_never_ask_for_the_password_nor_promise_a_time_they_cant_keep() {
     for (lang, words) in
         [("fr", "ne demande pas le mot de passe"), ("en", "Don't ask"), ("de", "Frag"), ("es", "No pidas")]
     {
-        let text = sealed_keys::agent_text(lang);
-        assert!(text.contains(words), "{lang}: {text}");
-        assert!(sealed_keys::AGENT_TEXTS.contains(&text));
+        // the key service out of reach, asked again in a moment: it reopens in a few minutes
+        for reason in ["opening", "unreachable"] {
+            let text = sealed_keys::agent_text(lang, reason);
+            assert!(text.contains(words), "{lang}: {text}");
+            assert!(sealed_keys::SOON_TEXTS.contains(&text) && sealed_keys::AGENT_TEXTS.contains(&text));
+        }
+        // held, stopped, a wrong share, a file unreadable, the guichet that can't confirm, a sealing under way: no
+        // delay promised
+        for reason in ["held", "refused", "wrong_key", "unreadable", "unconfirmed", "enrolling"] {
+            let text = sealed_keys::agent_text(lang, reason);
+            assert!(text.contains(words), "{lang} {reason}: {text}");
+            assert!(sealed_keys::CHECK_TEXTS.contains(&text) && sealed_keys::AGENT_TEXTS.contains(&text));
+            for minutes in ["minute", "Minute", "minuto"] {
+                assert!(!text.contains(minutes), "{lang} {reason}: {text}");
+            }
+        }
     }
-    assert!(sealed_keys::agent_text("fr").contains("se rouvre dans quelques minutes"));
-    assert_eq!(sealed_keys::agent_text("it"), sealed_keys::agent_text("en"));
+    assert!(sealed_keys::agent_text("fr", "unreachable").contains("se rouvre dans quelques minutes"));
+    assert_eq!(sealed_keys::agent_text("it", "held"), sealed_keys::agent_text("en", "held"));
+}
+
+// -- the lock: no sealing while a bridge runs, no bridge while a sealing runs -------------------------------------------
+
+/// A lock on the data folder as another process holds it (its own open file).
+fn flock(dir: &Path, how: i32) -> std::fs::File {
+    use std::os::unix::io::AsRawFd;
+    let file = std::fs::File::open(dir).unwrap();
+    assert_eq!(unsafe { libc::flock(file.as_raw_fd(), how | libc::LOCK_NB) }, 0);
+    file
+}
+
+#[tokio::test]
+async fn enable_is_refused_while_a_bridge_holds_the_data_folder() {
+    let _guard = SERIAL.lock().await;
+    let h = fixture();
+    std::fs::create_dir_all(&h.place.space).unwrap();
+    let before = snapshot(&[h.data(), &h.place.space]);
+    let service = Service::new();
+    // a bridge running (another process): it holds the data folder, shared
+    let bridge = flock(h.data(), libc::LOCK_SH);
+    let e = sealed_keys::enrol(&h.place, Some(key_service()), &*service).await.unwrap_err();
+    assert!(format!("{e:#}").contains("the bridge is running"), "{e:#}");
+    assert_eq!(snapshot(&[h.data(), &h.place.space]), before);
+    assert_eq!(service.asked(), 0);
+    drop(bridge);
+    sealed_keys::enrol(&h.place, Some(key_service()), &*service).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_bridge_starting_while_enable_runs_waits_then_is_refused() {
+    let _guard = SERIAL.lock().await;
+    let h = fixture();
+    // `vault-keys enable` running (another process): it holds the data folder alone
+    let enable = flock(h.data(), libc::LOCK_EX);
+    let started = std::time::Instant::now();
+    let e = sealed_keys::hold_for_bridge(&h.place, Duration::from_millis(300)).unwrap_err();
+    assert!(started.elapsed() >= Duration::from_millis(300), "it waits first");
+    assert!(format!("{e:#}").contains("vault-keys enable"), "{e:#}");
+    drop(enable);
+    sealed_keys::hold_for_bridge(&h.place, Duration::from_millis(300)).unwrap();
+    // now held by this bridge: an enable of this very process is refused too
+    let service = Service::new();
+    let e = sealed_keys::enrol(&h.place, Some(key_service()), &*service).await.unwrap_err();
+    assert!(format!("{e:#}").contains("the bridge is running"), "{e:#}");
+    assert_eq!(service.asked(), 0);
+}
+
+#[tokio::test]
+async fn enable_refuses_settings_it_cant_read_and_a_data_folder_that_isnt_there() {
+    let _guard = SERIAL.lock().await;
+    let h = fixture();
+    std::fs::create_dir_all(&h.place.space).unwrap();
+    std::fs::write(h.place.space.join("keyservice.json"), "not json").unwrap();
+    let before = snapshot(&[h.data(), &h.place.space]);
+    let service = Service::new();
+    let e = sealed_keys::enrol(&h.place, Some(key_service()), &*service).await.unwrap_err();
+    assert!(format!("{e:#}").contains("keyservice.json"), "{e:#}");
+    assert_eq!(snapshot(&[h.data(), &h.place.space]), before);
+    // a data folder that isn't there (an encrypted space not open: its mount point empty): nothing made
+    let missing = Place::new(h.root.join("space-open/data"), &h.place.space);
+    let e = sealed_keys::enrol(&missing, Some(key_service()), &*service).await.unwrap_err();
+    assert!(format!("{e:#}").contains("no data folder"), "{e:#}");
+    assert!(!missing.data.exists());
+    assert_eq!(service.asked(), 0);
+}
+
+// -- the bridge's own reopening, through its key service over HTTP ------------------------------------------------------
+
+/// `BIPAGENTS_SPACE_DIR` for one test.
+struct SpaceDir;
+
+impl SpaceDir {
+    fn set(dir: &Path) -> SpaceDir {
+        std::env::set_var(space::DIR_ENV, dir);
+        SpaceDir
+    }
+}
+
+impl Drop for SpaceDir {
+    fn drop(&mut self) {
+        std::env::remove_var(space::DIR_ENV);
+    }
+}
+
+#[tokio::test]
+async fn a_closed_bridge_reopens_by_itself_with_its_key_service() {
+    let _guard = SERIAL.lock().await;
+    let h = fixture();
+    let before = contents(&h);
+    let _space = SpaceDir::set(&h.place.space);
+    // a key service as keys-rs answers: POST /v1/share with this place's token, down at first
+    let service = Service::new();
+    let token = "t".repeat(40);
+    let (answers, seen) = (service.clone(), Arc::new(Mutex::new(Vec::<String>::new())));
+    let heard = seen.clone();
+    let router = axum::Router::new().route(
+        "/v1/share",
+        axum::routing::post(move |headers: axum::http::HeaderMap| {
+            let (answers, heard) = (answers.clone(), heard.clone());
+            async move {
+                let bearer = headers.get("authorization").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+                heard.lock().unwrap().push(bearer);
+                match answers.share().await {
+                    Ok(share) => {
+                        (axum::http::StatusCode::OK, axum::Json(json!({"share": B64URL.encode(share.as_slice())})))
+                    }
+                    Err(ShareError::Unreachable(_)) => {
+                        (axum::http::StatusCode::SERVICE_UNAVAILABLE, axum::Json(json!({"detail": "down"})))
+                    }
+                    Err(ShareError::Refused(why)) => {
+                        (axum::http::StatusCode::FORBIDDEN, axum::Json(json!({"detail": why})))
+                    }
+                }
+            }
+        }),
+    );
+    let url = common::spawn_fake(router).await;
+    let settings = KeyService { url, token: token.clone(), grant: None, signature: None };
+    sealed_keys::enrol(&h.place, Some(settings), &*service).await.unwrap();
+    // the server restarts: the bridge starts closed, then reopens by itself (no one does anything)
+    h.reboot();
+    let app = app(&h);
+    assert_eq!(health(&app).await["vault"], "locked");
+    service.then(&["down"]);
+    let asked = service.asked();
+    sealed_keys::start(&app.app.state);
+    let opened =
+        common::fakes::wait_until(|| sealed_keys::state(h.data()) == State::Open, Duration::from_secs(20)).await;
+    assert!(opened, "reopened by itself");
+    assert_eq!(service.asked(), asked + 2, "down once, then answered after 5 s");
+    assert!(seen.lock().unwrap().iter().all(|b| *b == format!("Bearer {token}")));
+    assert_eq!(health(&app).await["vault"], "open");
+    assert_eq!(contents(&h), before);
+    app.shutdown().await;
 }
 
 // -- review (17/11, review-vault-sealed-keys): red tests of the blocking points, no fix ----------------------------------

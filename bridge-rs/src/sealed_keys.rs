@@ -1174,6 +1174,16 @@ mod tests {
     }
 
     #[test]
+    fn the_test_switch_never_lets_a_release_build_keep_the_key_on_a_disk() {
+        // (a folder in memory, the switch on, a debug build): only a debug build with the switch skips the check
+        assert!(!memory_folder_accepted(false, true, false), "release: the switch is ignored");
+        assert!(!memory_folder_accepted(false, false, false));
+        assert!(!memory_folder_accepted(false, false, true));
+        assert!(memory_folder_accepted(false, true, true), "tests (debug) with the switch");
+        assert!(memory_folder_accepted(true, false, false));
+    }
+
+    #[test]
     fn locked_is_found_through_context() {
         let e = anyhow::Error::from(Locked).context("reading the mailboxes");
         assert!(is_locked(&e));
