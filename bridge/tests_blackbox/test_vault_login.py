@@ -237,8 +237,12 @@ def test_one_login_fills_both_fields_of_the_extranet_page(bridges, fakes):
         assert page.values == {"login": IDENTIFIER_A, "mdp": PASSWORD_A}
         assert chrome.typed == [(PAGE_A, "login", IDENTIFIER_A), (PAGE_A, "mdp", PASSWORD_A)]
         assert "saved login typed into the agent's page" in (bridge.root / "bridge.log").read_text()
-        # the hidden mark the conversation's vault line is read from (vault_line.rs), at the end
-        assert said(result).endswith(f"<!--bip:filled {item['id']} extranet2.example.fr login-->")
+        # recorded by the bridge for the conversation's vault line (vault_line.rs), never written in the answer
+        assert "bip:" not in said(result)
+        [fill] = [json.loads(l) for l in (bridge.data / "vault-fills.jsonl").read_text().splitlines()]
+        assert {k: fill[k] for k in ("agent", "item", "host", "how")} == {
+            "agent": "vie", "item": item["id"], "host": "extranet2.example.fr", "how": "login"}
+        assert set(fill) == {"at", "agent", "session", "run", "item", "host", "how"}, "no identifier, no password"
         nowhere_but_the_page(bridge, [result], IDENTIFIER_A, PASSWORD_A)
         # the identifier already in its field: left as it is, the password typed again
         chrome.typed.clear()
@@ -350,7 +354,7 @@ def test_a_first_step_asking_for_the_identifier_alone(bridges, fakes):
         first = vault_login(bridge)
         assert first["isError"] is False
         assert said(first).startswith("Typed the identifier of « Amazon » on www.amazon.fr.")
-        assert "bip:filled" not in said(first), "no password typed: no vault line, no last use"
+        assert not (bridge.data / "vault-fills.jsonl").exists(), "no password typed: no vault line, no last use"
         assert "last_used_at" not in bridge.get("/v1/vault", headers=AUTH).json()["items"][0]
         assert "call vault_login again" in said(first)
         assert chrome.typed == [("https://www.amazon.fr/ap/signin", "login", "client@example.org")]

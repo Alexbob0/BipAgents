@@ -118,6 +118,9 @@ def hermes_holds(folder: Path, token: str) -> None:
     path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
 
 
+LOGIN_PAGE = "https://www.fournisseur.example/connexion"
+
+
 def journey_bridge(bridges, fakes, word_gap: float = 0.06, name: str = "journeys",
                    family_relay: Optional[str] = None, tool_asks: bool = False, browser: bool = False) -> Journey:
     from test_connectors import IMAGE, SERVER
@@ -149,11 +152,16 @@ def journey_bridge(bridges, fakes, word_gap: float = 0.06, name: str = "journeys
         bridge.config["family"] = {"relay_url": family_relay}
     if tool_asks:   # J59–J63: the agent asks for a tool it has off, on a card (tool_asks.rs)
         bridge.config["tools"] = {"ask_in_conversation": True}
-    if browser:   # J65: a visible browser of its own the person can take over (its container's ports, its desktop)
+    chrome = None
+    if browser:
+        # J64–J65: a visible browser of its own (its container's ports, its desktop the person can take over), its
+        # DevTools a fake Chrome on the supplier's login page (test_vault_login.py), for vault_login to type into
+        from test_vault_login import FakeChrome
+        chrome = FakeChrome(LOGIN_PAGE)
         agent["desktop_vnc"] = f"tcp://127.0.0.1:{free_port()}"
         folder = bridge.data / "browsers" / AGENT
         folder.mkdir(parents=True, exist_ok=True)
-        (folder / "ports.json").write_text(json.dumps({"cdp": free_port(), "vnc": free_port()}))
+        (folder / "ports.json").write_text(json.dumps({"cdp": chrome.port, "vnc": free_port()}))
     started(bridge, hub, [AGENT])
     token = TOKENS[AGENT]
     path = bridge.state_dir / "agent-tools.json"
@@ -198,19 +206,15 @@ def journey_bridge(bridges, fakes, word_gap: float = 0.06, name: str = "journeys
     kept: Dict[str, str] = {}
 
     def vault_login(words: str) -> str:
-        """`vault_login`'s answer on the supplier's login page, as the bridge gives it (vault_logins.rs `login`, its mark
-        last: vault_line.rs): the journeys' bridge has no Chrome to type into. The login is the person's, given to Vie."""
+        """The bridge's own `vault_login` as the agent calls it, on the supplier's login page of its (fake) Chrome: the
+        bridge types and records the fill (vault_line.rs). The login is the person's, given to Vie."""
         if "id" not in kept:
             made = bridge.post("/v1/vault", headers=AUTH, json={
                 "label": "Fournisseur", "site": "https://www.fournisseur.example", "identifier": "camille@example.org",
                 "password": "Fake-Pa55word-J64", "agents": [AGENT]})
             assert made.status_code == 201, made.text
             kept["id"] = made.json()["id"]
-        host = "www.fournisseur.example"
-        return (f"Typed the identifier and the password of « Fournisseur » into the login form of {host}. You never see "
-                f"the password: don't read the fields back. Now submit the form yourself (its button). If the site then "
-                f"asks for a verification code, use browser_vault action=enter_code."
-                f"<!--bip:filled {kept['id']} {host} login-->")
+        return journey.mcp("/v1/agent-tools/vault", "vault_login", {})
 
     def sites(words: str) -> str:
         return journey.mcp("/v1/agent-tools/files", "sandbox_sites_request",
