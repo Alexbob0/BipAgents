@@ -82,6 +82,14 @@
   [
    "CAMILLE.Pro@Example.org",
    "camille.pro@example.org"
+  ],
+  [
+   "École",
+   ""
+  ],
+  [
+   "Ｚone",
+   ""
   ]
  ],
  "vaults": {
@@ -752,6 +760,218 @@
      ],
      "created_at": "2026-11-01T10:00:00+00:00",
      "updated_at": "2026-11-01T10:00:00+00:00"
+    }
+   ]
+  },
+  "edges": {
+   "protected": true,
+   "items": [
+    {
+     "id": "item_000000000501",
+     "kind": "login",
+     "label": "🎵 Musique Plus",
+     "origin": "https://musiqueplus.example",
+     "login_url": null,
+     "identifier_type": "email",
+     "identifier": "camille@example.org",
+     "has_otp": false,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "musiqueplus.example"
+    },
+    {
+     "id": "item_000000000502",
+     "kind": "login",
+     "label": "École des arts",
+     "origin": "https://ecole-arts.example",
+     "login_url": null,
+     "identifier_type": "username",
+     "identifier": "camille.arts",
+     "has_otp": false,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "ecole-arts.example"
+    },
+    {
+     "id": "item_000000000503",
+     "kind": "login",
+     "label": "Ｚone Libre",
+     "origin": "https://zonelibre.example",
+     "login_url": null,
+     "identifier_type": "username",
+     "identifier": "camille.z",
+     "has_otp": false,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "zonelibre.example"
+    },
+    {
+     "id": "item_000000000504",
+     "kind": "login",
+     "label": "𝒜rt Studio",
+     "origin": "https://artstudio.example",
+     "login_url": null,
+     "identifier_type": "username",
+     "identifier": "camille.a",
+     "has_otp": false,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "artstudio.example"
+    },
+    {
+     "id": "item_000000000505",
+     "kind": "login",
+     "label": "  Zèbre Café ",
+     "origin": "https://zebre-cafe.example",
+     "login_url": null,
+     "identifier_type": "email",
+     "identifier": "camille@example.org",
+     "has_otp": false,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "zebre-cafe.example"
+    },
+    {
+     "id": "item_000000000506",
+     "kind": "login",
+     "label": "",
+     "origin": "https://sans-nom.example",
+     "login_url": null,
+     "identifier_type": "username",
+     "identifier": "camille.vide",
+     "has_otp": false,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "sans-nom.example"
+    },
+    {
+     "id": "item_000000000507",
+     "kind": "login",
+     "label": "***",
+     "origin": "https://etoiles.example",
+     "login_url": null,
+     "identifier_type": "username",
+     "identifier": "camille.etoiles",
+     "has_otp": false,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "etoiles.example"
+    },
+    {
+     "id": "item_000000000508",
+     "kind": "login",
+     "label": "Intranet",
+     "origin": "https://intra.exemple-port.example:8443",
+     "login_url": "https://intra.exemple-port.example:8443/Mon%20Espace/connexion?retour=%2Faccueil#haut",
+     "identifier_type": "username",
+     "identifier": "c.martin",
+     "has_otp": false,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "intra.exemple-port.example"
+    },
+    {
+     "id": "item_00000000050a",
+     "kind": "login",
+     "label": "Banque du temps B",
+     "origin": "https://temps-b.example",
+     "login_url": null,
+     "identifier_type": "username",
+     "identifier": "camille",
+     "has_otp": false,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "temps-b.example",
+     "last_used_at": "2026-11-17T08:00:00+00:00",
+     "last_used_by": "vie"
+    },
+    {
+     "id": "item_000000000509",
+     "kind": "login",
+     "label": "Banque du temps A",
+     "origin": "https://temps-a.example",
+     "login_url": null,
+     "identifier_type": "username",
+     "identifier": "camille",
+     "has_otp": false,
+     "agents": [
+      "paul",
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "temps-a.example",
+     "last_used_at": "2026-11-17T08:00:00+00:00",
+     "last_used_by": "paul"
+    },
+    {
+     "id": "item_000000000601",
+     "kind": "card",
+     "label": "Petits achats",
+     "origin": null,
+     "identifier_type": null,
+     "identifier": null,
+     "has_otp": false,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "card": {
+      "last4": "1003",
+      "brand": "visa",
+      "exp_month": 9,
+      "exp_year": 2029,
+      "single_use": false,
+      "used": false,
+      "sites": [],
+      "spent": {},
+      "payments": [],
+      "cap_cents": 30000
+     }
+    }
+   ],
+   "cards": true,
+   "cards_allowed": true,
+   "agents": [
+    {
+     "id": "vie",
+     "name": "Vie",
+     "can_hold": true,
+     "why": null
+    },
+    {
+     "id": "paul",
+     "name": "Paul",
+     "can_hold": true,
+     "why": null
     }
    ]
   }
@@ -2215,6 +2435,42 @@
      }
     ],
     "nothing_found": false
+   }
+  },
+  {
+   "name": "edges: first characters, code points, empty names, ties",
+   "vault": "edges",
+   "filter": {
+    "kind": "all",
+    "for": null,
+    "query": ""
+   }
+  },
+  {
+   "name": "edges: a search split on a no-break space",
+   "vault": "edges",
+   "filter": {
+    "kind": "all",
+    "for": null,
+    "query": "musique plus"
+   }
+  },
+  {
+   "name": "edges: a chosen chip gone with « Pour » falls back to « Tout »",
+   "vault": "edges",
+   "filter": {
+    "kind": "cards",
+    "for": "paul",
+    "query": ""
+   }
+  },
+  {
+   "name": "edges: a login page with a port and an encoded path",
+   "vault": "edges",
+   "filter": {
+    "kind": "all",
+    "for": null,
+    "query": "espace"
    }
   }
  ],

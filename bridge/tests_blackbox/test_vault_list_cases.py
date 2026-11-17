@@ -218,3 +218,37 @@ def test_the_cases_cover_what_the_design_asks():
     assert all(s["key"] != "recent" for s in older["sections"])
     assert "fournisseur.example" not in json.dumps(older)   # one login on its site: no group
     assert doc["palette"] and len(doc["palette"]) == PALETTE
+
+
+def test_the_edges_the_two_apps_must_agree_on():
+    """Review of 17/11: what Swift (graphemes, `first`), Kotlin (UTF-16 `Char`, `compareTo`, `\\s`) and Python would
+    each do their own way, pinned by hand: the initial is the first letter or digit by code point, the name trimmed and
+    in NFC; keys compare by code point; equal « Récents » by id; « Page : » as written with its port; a no-break space
+    splits a search; a chosen chip gone with « Pour » falls back to « Tout »; an empty name is « ? »."""
+    doc = json.loads(FILE.read_text(encoding="utf-8"))
+    by_name = {c["name"]: c["expect"] for c in doc["cases"]}
+    vault = doc["vaults"]["edges"]
+    label = {i["id"]: i["label"] for i in vault["items"]}
+    look = doc["looks"]["edges"]
+    initials = {label[i]: v["initial"] for i, v in look.items()}
+    assert initials["🎵 Musique Plus"] == "M" and initials["E\u0301cole des arts"] == "É"
+    assert initials["Ｚone Libre"] == "Ｚ" and initials["𝒜rt Studio"] == "𝒜" and initials["  Zèbre Café "] == "Z"
+    assert initials[""] == "?" and initials["***"] == "?"
+    first = by_name["edges: first characters, code points, empty names, ties"]
+    assert first["kind"] == "all"
+    recent = [s for s in first["sections"] if s["key"] == "recent"][0]["rows"]
+    assert [label[r["id"]] for r in recent] == ["Banque du temps A", "Banque du temps B"], "equal times: by id"
+    letters = {s["letter"]: [label[r["id"]] for r in s["rows"]] for s in first["sections"] if s["key"] == "letter"}
+    assert letters["E"] == ["E\u0301cole des arts"] and letters["Z"] == ["  Zèbre Café "]
+    # code points: the fullwidth Ｚ (U+FF3A) before the script 𝒜 (U+1D49C) before the emoji (U+1F3B5); in UTF-16
+    # units the order would be 𝒜, 🎵, Ｚ
+    assert letters["#"] == ["", "***", "Ｚone Libre", "𝒜rt Studio", "🎵 Musique Plus"], letters["#"]
+    page = [v for i, v in look.items() if label[i] == "Intranet"][0]
+    assert page["page"] == "intra.exemple-port.example:8443/Mon%20Espace/connexion?retour=%2Faccueil"
+    assert page["page_grouped"] == "…/Mon%20Espace/connexion?retour=%2Faccueil"
+    found = by_name["edges: a search split on a no-break space"]["sections"][0]["rows"]
+    assert [label[r["id"]] for r in found] == ["🎵 Musique Plus"]
+    gone = by_name["edges: a chosen chip gone with « Pour » falls back to « Tout »"]
+    assert gone["kind"] == "all" and [c["key"] for c in gone["chips"]] == ["all", "logins"]
+    assert [label[r["id"]] for s in gone["sections"] for r in s["rows"] if "id" in r] == ["Banque du temps A", "Banque du temps A"]
+    assert by_name["edges: a login page with a port and an encoded path"]["sections"][0]["count"] == 1

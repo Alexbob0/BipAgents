@@ -24,6 +24,7 @@ from bbkit.servers import free_port, wait_until
 from conftest import wait_registered
 from test_cards_resume import follow, none_for_a_while, once
 from test_connectors import IMAGE, TOKEN, cards, text, tool, wait_card
+from test_cards_inline import waiting_in
 from test_mail_cards import thread_of
 from test_notebook_v2 import in_french, tool_call
 from test_sandbox import isolated
@@ -121,8 +122,10 @@ def test_the_card_says_what_it_is_for_and_an_older_app_answers_it_as_before(brid
 def test_i_ll_type_it_myself_waits_for_the_browser_handed_back_then_the_agent_goes_on(bridges, fakes):
     bridge = setup(bridges, fakes)
     gate = in_a_turn(bridge, fakes, "api_self", "run_self")
+    thread = thread_of(bridge, "api_self", agent="vie")
     with ThreadPoolExecutor(1) as pool:
         asked = pool.submit(tool, bridge, "ask_secret", LOGIN)
+        assert wait_until(lambda: waiting_in(bridge, thread, "vie", "bip-secret-"), timeout=15)
         card = wait_card(bridge, "bip-secret-")
         chosen = answer(bridge, card, {"allow": False, "way": "self"})
         assert chosen.status_code == 200 and chosen.json() == {"ok": True, "choice": "self"}, chosen.text
@@ -140,6 +143,9 @@ def test_i_ll_type_it_myself_waits_for_the_browser_handed_back_then_the_agent_go
     no_login_kept(bridge)
     decided = answered(bridge, "vie")
     assert [(d["run_id"], d["choice"]) for d in decided] == [(card["run_id"], "self")]
+    # the answered card in the conversation it showed in (« ✋ Tapé par toi dans le Bureau »)
+    shown = [i["approval"] for i in page(bridge, thread, agent="vie")["items"] if i["kind"] == "approval"]
+    assert [(a["run_id"], a["choice"], a["topic"]) for a in shown] == [(card["run_id"], "self", "secret")], shown
     gate.set()
     none_for_a_while(fakes, "api_self")    # told by its call: no other turn
 
@@ -161,6 +167,30 @@ def test_still_held_after_the_wait_the_agent_stops_then_goes_on_once_handed_back
     told = once(fakes, "api_late")
     assert "signed in themselves in your browser and handed it back" in told and "ALLOWED" in told, told
     assert "Fournisseur" in told
+    no_login_kept(bridge)
+
+
+def test_never_taken_while_the_agent_waited_a_take_afterwards_resumes_nothing(bridges, fakes):
+    """Review of 17/11: a `self` answer whose browser nobody took while the agent waited is closed then (the agent
+    said it stops); a take of the desktop afterwards, unrelated, never tells the agent « signed in themselves »."""
+    bridge = setup(bridges, fakes, hand_wait=3)
+    gate = in_a_turn(bridge, fakes, "api_none", "run_none")
+    thread = thread_of(bridge, "api_none", agent="vie")
+    with ThreadPoolExecutor(1) as pool:
+        asked = pool.submit(tool, bridge, "ask_secret", LOGIN)
+        assert wait_until(lambda: waiting_in(bridge, thread, "vie", "bip-secret-"), timeout=15)
+        card = wait_card(bridge, "bip-secret-")
+        assert answer(bridge, card, {"allow": False, "way": "self"}).status_code == 200
+        result = asked.result(timeout=30)
+    assert result["isError"] is False and text(result) == NOT_BACK, result
+    gate.set()
+    time.sleep(2)
+    take(bridge, True)
+    time.sleep(3)
+    take(bridge, False)
+    none_for_a_while(fakes, "api_none")
+    places = json.loads((bridge.data / "card-places.json").read_text())
+    assert not places.get(card["run_id"], {}).get("decided"), places.get(card["run_id"])
     no_login_kept(bridge)
 
 

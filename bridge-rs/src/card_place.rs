@@ -931,7 +931,7 @@ async fn settle(state: &AppState) {
                 update(&config, &card, |p| p.decided.iter_mut().for_each(|d| d.held = true));
                 continue;
             }
-            Some(crate::secrets::Hand::Wait) => continue,
+            Some(crate::secrets::Hand::Wait | crate::secrets::Hand::Closed) => continue,
             Some(crate::secrets::Hand::Back) | None => {}
         }
         match turn_now(state, &card, &place, &decision).await {

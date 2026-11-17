@@ -331,6 +331,17 @@ pub enum Hand {
     Taken,
     /// Taken, then handed back: the agent goes on.
     Back,
+    /// Never taken by the time the agent stopped waiting, or kept too long: forgotten, nothing told.
+    Closed,
+}
+
+/// A `self` answer's longest wait for the hand, taken in time (review of 17/11: never days later).
+pub const SELF_KEEP: Duration = Duration::from_secs(2 * 3600);
+
+/// For an answer kept until the agent knows it (card_place.rs `settle`), `age` seconds after it was given: `hand_now`,
+/// or `Hand::Closed` when nobody took the browser by the time the agent stopped waiting, or `SELF_KEEP` passed.
+pub fn hand_after(holds: bool, held: bool, _age: f64) -> Hand {
+    hand_now(holds, held)
 }
 
 /// `holds`: the person holds the agent's browser now; `held`: they were seen holding it since their answer.
@@ -362,7 +373,7 @@ pub async fn wait_for_hand(state: &AppState, agent: &str) -> bool {
         match hand_now(person_holds(state, agent), held) {
             Hand::Back => return true,
             Hand::Taken => held = true,
-            Hand::Wait => {}
+            Hand::Wait | Hand::Closed => {}
         }
         if started.elapsed() >= wait {
             return false;
@@ -1042,6 +1053,27 @@ mod tests {
         let ask = tools.iter().find(|t| t["name"] == "ask_secret").unwrap();
         let use_ = ask["inputSchema"]["properties"]["use"]["description"].as_str().unwrap();
         assert!(use_.contains("from the site's login page") && use_.contains("sign in themselves"), "{use_}");
+    }
+
+    /// Review of 17/11: a `self` answer is closed when the hand comes back (told once), when nobody took the browser
+    /// by the time the agent stopped waiting, and `SELF_KEEP` after it at most: a take days later resumes nothing.
+    #[test]
+    fn a_self_answer_never_waits_for_days() {
+        let gave_up = HAND_WAIT.as_secs_f64() + 61.0;
+        let kept = SELF_KEEP.as_secs_f64() + 1.0;
+        assert_eq!(hand_after(false, false, 10.0), Hand::Wait);
+        assert_eq!(hand_after(true, false, 10.0), Hand::Taken);
+        assert_eq!(hand_after(true, true, 10.0), Hand::Wait);
+        assert_eq!(hand_after(false, true, 10.0), Hand::Back);
+        // nobody took it while the agent waited: closed, a take afterwards is another matter
+        assert_eq!(hand_after(false, false, gave_up), Hand::Closed);
+        assert_eq!(hand_after(true, false, gave_up), Hand::Closed);
+        // taken in time: back later goes on, never past SELF_KEEP
+        assert_eq!(hand_after(true, true, gave_up), Hand::Wait);
+        assert_eq!(hand_after(false, true, gave_up), Hand::Back);
+        assert_eq!(hand_after(true, true, kept), Hand::Closed);
+        assert_eq!(hand_after(false, true, kept), Hand::Closed);
+        assert!(SELF_KEEP > HAND_WAIT && SELF_KEEP.as_secs() <= 6 * 3600);
     }
 
     #[test]

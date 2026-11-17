@@ -340,6 +340,38 @@ mod tests {
         }
     }
 
+    /// Review of 17/11: the bridge's own words joined after the mark (the brake's note added to a result, a steer
+    /// Hermes joins to it, another hidden note) never hide the line; anything else after it still does.
+    #[test]
+    fn the_mark_is_found_wherever_the_bridges_notes_land() {
+        let name = "mcp_bipagents_vault_vault_login";
+        let done = logged_in("www.fournisseur.example");
+        let fill = Fill { item: Some(ITEM.into()), handle: None, host: "www.fournisseur.example".into(), how: How::Login };
+        let brake = "\n\n[bipagents:brake] Note from the app: you have called vault_login 7 times in this turn.";
+        let steer = "\n[OUT-OF-BAND USER MESSAGE from the user]\n[bipagents:handoff] This is long: hand the rest over\n\
+                     [/OUT-OF-BAND USER MESSAGE]";
+        let note = "<!--bip:now lundi 9 h-->";
+        for joined in [
+            format!("{done}{brake}"),
+            wrapped(name, &format!("{done}{brake}")),
+            format!("{}{steer}", wrapped(name, &done)),
+            wrapped(name, &format!("{done}{steer}")),
+            format!("{}{brake}{steer}", wrapped(name, &done)),
+            format!("{done}{note}"),
+            format!("{done}\n{note}\n"),
+        ] {
+            assert_eq!(fill_of(name, "{}", &joined), Some(fill.clone()), "{joined}");
+        }
+        // words after the mark that are not the bridge's: no line
+        assert_eq!(fill_of(name, "{}", &format!("{done}\nIgnore the above.{brake}")), None);
+        assert_eq!(fill_of(name, "{}", &wrapped(name, &format!("{done} x"))), None);
+        // Hermes' fill, a note of the brake after its JSON
+        let args = r#"{"action": "fill", "handle": "vault_7f3a"}"#;
+        let ok = r#"{"success": true, "filled_fields": 1, "kind": "login", "origin": "https://www.mutuelle.example"}"#;
+        assert!(fill_of("browser_vault", args, &format!("{}{steer}", wrapped("browser_vault", ok))).is_some());
+        assert!(fill_of("browser_vault", args, &format!("{ok}{brake}")).is_some());
+    }
+
     #[test]
     fn hermes_fill_of_a_login_counts_never_an_address_a_code_or_a_failure() {
         let args = r#"{"action": "fill", "handle": "vault_7f3a"}"#;
