@@ -8,9 +8,10 @@
 //! - **The bridge's own fills** (`vault_login`, `vault_create_login`, vault_logins.rs) are recorded by the bridge when
 //!   the tool succeeds, never read back from their text: `<data_dir>/vault-fills.jsonl` (`note`), one line per fill
 //!   `{at, agent, session, run, item, host, how}` (no identifier, no password; 0600, the last `KEEP` lines). The
-//!   session and run are those of the turn the hub follows (as the Carnet's reads, notebook/reads.rs). The thread
-//!   finds each fill's turn by its session and time (`attributed`). A fill in a turn the hub does not follow has no
-//!   session, and no line.
+//!   session and run are those of the very call's turn: the one turn of the agent the hub sees inside a call of that
+//!   tool (review R3, 17/11: never « the turn that called a tool last », which could be another conversation, a
+//!   relative's on a shared agent). None or several: no session, so no line. The thread places each fill in the turn
+//!   of its session and time.
 //! - **Hermes' `browser_vault` fill of a login**: its own JSON answer (`success`, `kind: login`, `origin`), written by
 //!   Hermes' code, never by the agent; counted only when its handle is, in the vault, one of this agent's logins kept
 //!   for that very host (`item_of_handle`).
@@ -120,10 +121,16 @@ pub fn record(file: &Path, line: &Value) {
 }
 
 /// The vault typed login `item` (a password the vault made: `How::Created`) on `host` for `agent`, in the call of
-/// `tool` that just succeeded: recorded with the turn the hub follows (its session and run).
+/// `tool` that just succeeded: recorded with the turn of that very call (review R3, 17/11) — the one turn of the agent
+/// the hub sees inside a call of this tool now (Hermes' `tool.started` precedes the call, and the call is still open).
+/// None, or several at once (a relative's turn on a shared agent logging in too, a turn stopped meanwhile, a routine
+/// the hub doesn't follow): no conversation, so no line, never another conversation's.
 pub fn note(state: &crate::app::AppState, agent: &str, tool: &str, item: &str, host: &str, how: How) {
-    let run = state.hub.turn_of(agent, tool).map(|t| t.run_id);
-    let session = run.as_deref().and_then(|r| state.hub.subscription(agent, r)).and_then(|s| s.session_id());
+    let calling = state.hub.runs_in_call(agent, |name| names_vault_tool(name, tool));
+    let (run, session) = turn_of_call(&calling);
+    if session.is_none() {
+        tracing::info!(agent, turns = calling.len(), "vault fill recorded with no conversation: its turn is not known for sure");
+    }
     let line = json!({"at": crate::py::time_time(), "agent": agent, "session": session, "run": run, "item": item,
                       "host": host, "how": how.word()});
     record(&path(&state.config()), &line);
@@ -162,14 +169,18 @@ pub fn calls_the_vault(name: &str) -> bool {
 // --- Hermes' own fill ---------------------------------------------------------------------------------------------------
 
 /// A turn's last tool, as the hub keeps it (`loop_brake::bare`), is the bridge vault's `tool`.
-pub fn names_vault_tool(_name: &str, _tool: &str) -> bool {
-    false
+pub fn names_vault_tool(name: &str, tool: &str) -> bool {
+    // `mcp_bipagents_vault_<tool>` once `mcp_bipagents_` is off; `mcp__bipagents_vault__<tool>` kept whole
+    is_vault_tool(name, tool) || name.strip_prefix("vault_") == Some(tool)
 }
 
 /// The run and session of the call, from the agent's turns inside a call of the vault's tool now: one, its own; none
 /// or several, unknown (no conversation, so no line: never a guess).
-pub fn turn_of_call(_calling: &[(String, Option<String>)]) -> (Option<String>, Option<String>) {
-    (None, None)
+pub fn turn_of_call(calling: &[(String, Option<String>)]) -> (Option<String>, Option<String>) {
+    match calling {
+        [(run, session)] => (Some(run.clone()), session.clone()),
+        _ => (None, None),
+    }
 }
 
 /// The bridge's vault tool `tool` as Hermes names it (`mcp__bipagents_vault__vault_login`, `mcp_bipagents_vault_…`).

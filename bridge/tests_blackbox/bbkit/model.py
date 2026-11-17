@@ -345,6 +345,8 @@ class ScriptedModel:
                 lines.append("Je vois la page : tu es connecté, je continue.")
             elif "hasn't handed it back" in told:
                 lines.append("Je continue dès que tu me rends la main.")
+            elif "didn't take it over" in told:
+                lines.append("Connecte-toi depuis mon Bureau dans l’app, puis dis-moi quand c’est fait.")
             elif "vault_login" in told:
                 lines.append("C’est enregistré dans le coffre, je me connecte.")
             else:

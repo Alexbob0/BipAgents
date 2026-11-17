@@ -2709,8 +2709,17 @@ impl RunHub {
     /// The agent's runs going on that are inside a call whose tool `is` says, right now (their last `tool.started`, not
     /// completed yet), with their Hermes session: whose call it is, from the call's own turn (vault_line.rs `note`),
     /// never « the run that called a tool last ».
-    pub fn runs_in_call(&self, _agent: &str, _is: impl Fn(&str) -> bool) -> Vec<(String, Option<String>)> {
-        Vec::new()
+    pub fn runs_in_call(&self, agent: &str, is: impl Fn(&str) -> bool) -> Vec<(String, Option<String>)> {
+        let inner = lock(&self.inner);
+        let mut out: Vec<(String, Option<String>)> = Vec::new();
+        for sub in inner.subs.values().filter(|sub| sub.agent.name == agent) {
+            let st = lock(&sub.state);
+            let inside = !st.finished && st.terminal.is_none() && st.tools_open > 0 && is(&st.last_tool);
+            if inside && !out.iter().any(|(run, _)| *run == sub.run_id) {
+                out.push((sub.run_id.clone(), st.session_id.clone()));
+            }
+        }
+        out
     }
 
     /// The turn a call of the bridge's tool `tool` by `agent` belongs to (loop_brake.rs, its MCP counts): the agent's

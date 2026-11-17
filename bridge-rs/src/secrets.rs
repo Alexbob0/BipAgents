@@ -310,7 +310,9 @@ in, go on; the sign-in page still there, tell them in one sentence what you see.
 ask for this site again in this conversation.";
 /// What it reads when nobody took its browser while it waited: the answer is closed, nothing tells it later (review,
 /// 17/11).
-pub const NOT_TAKEN: &str = "";
+pub const NOT_TAKEN: &str = "The person chose to sign in themselves in your browser but didn't take it over: nothing \
+was kept in the vault, and you won't be told if they do it later. Don't use your browser for this site now: tell them in \
+one sentence to sign in from your desktop in the app and to tell you once it's done, then stop.";
 /// What it reads when they still hold it after `HAND_WAIT`: it goes on in a later turn once they hand it back
 /// (card_place.rs `settle`, `resume_words`).
 pub const NOT_BACK: &str = "The person chose to sign in themselves in your browser and hasn't handed it back yet. Don't \

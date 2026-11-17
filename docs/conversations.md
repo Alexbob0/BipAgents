@@ -433,8 +433,9 @@ no `vault_line`, no `bip_secret_use` / `bip_secret_self` (so no « Je le taperai
 - **`vault_line`**: one per turn in which the vault typed a password, made when the thread is read, never from a
   result's words (review R2, 17/11: a forged mark quoted in a refusal made a false line). A success of the bridge's
   `vault_login` or `vault_create_login` is recorded by the bridge itself (`<data_dir>/vault-fills.jsonl`: agent,
-  session and run of the turn the hub follows, item, host, how; nothing secret), the thread placing each fill in the
-  turn of its session and time; Hermes' `browser_vault` fill of a login (its own JSON: `success`, `kind: login`,
+  session and run of that very call's turn — the one turn of the agent the hub sees inside a call of that tool, none
+  when it can't be sure (review R3) —, item, host, how; nothing secret), the thread placing each fill in the turn of
+  its session and time; Hermes' `browser_vault` fill of a login (its own JSON: `success`, `kind: login`,
   `origin`) counts only when its handle is one of this agent's logins kept for that very host. An older conversation,
   or a turn the hub did not follow, has none.
   Never for a refusal, a failure, a code or « Coordonnées ». Words: « Rempli par le coffre sur [a] et [b], sans le

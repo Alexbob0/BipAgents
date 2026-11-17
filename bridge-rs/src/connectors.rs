@@ -1383,9 +1383,10 @@ async fn ask_secret_tool(state: &AppState, agent: &AgentConfig, arguments: &Dict
                     text(secrets::NOT_BACK)
                 }
                 secrets::HandEnd::NeverTaken => {
-                    // nothing to wait for any more: a take of the browser afterwards is another matter (review 17/11)
+                    // nothing to wait for any more: a take of the browser afterwards is another matter, and the agent
+                    // is told so (reviews of 17/11)
                     crate::card_place::taken(&state.config(), &run_id);
-                    text(secrets::NOT_BACK)
+                    text(secrets::NOT_TAKEN)
                 }
             }
         }
