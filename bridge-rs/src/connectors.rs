@@ -1365,6 +1365,7 @@ async fn ask_secret_tool(state: &AppState, agent: &AgentConfig, arguments: &Dict
         Some(secrets::Outcome::Refused) => refusal(&format!(
             "The person refused to give « {name} »: don't ask again unless they tell you to."
         )),
+        Some(secrets::Outcome::TypedByPerson) => text(secrets::NOT_BACK),
         None => refusal(&format!(
             "The person did not answer yet: nothing is kept so far. Tell them a card waits for « {name} » in the app; \
              once they answer it, you're told in this conversation and go on from there. Don't ask again."

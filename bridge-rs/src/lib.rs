@@ -245,8 +245,10 @@ pub mod used;
 pub mod place_import;
 pub mod vault;
 pub mod vault_contacts;
+pub mod vault_line;
 pub mod vault_logins;
 pub mod vault_match;
+pub mod vault_used;
 // connectors an agent makes on request (2026-10-28): their secrets, their store and approval, their runs
 pub mod connectors;
 pub mod connectors_run;

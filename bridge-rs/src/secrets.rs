@@ -286,6 +286,65 @@ pub enum Outcome {
     /// Kept (a code: held for the next run), with the identifier the person confirmed.
     Saved { identifier: String },
     Refused,
+    /// « Je le taperai moi-même »: nothing kept, the person signs in themselves in the agent's browser.
+    TypedByPerson,
+}
+
+/// The choice kept for « Je le taperai moi-même » (approvals_log.rs, the answered card).
+pub const SELF: &str = "self";
+/// How long the agent's call waits for the person to take its browser and hand it back (as « Payer dans le
+/// navigateur de l'agent », handover.rs).
+pub const HAND_WAIT: Duration = Duration::from_secs(600);
+/// What the agent reads once the person signed in themselves and handed its browser back (design §1.5).
+pub const HANDED_BACK: &str = "";
+/// What it reads when they still hold it after `HAND_WAIT`, or never took it.
+pub const NOT_BACK: &str = "";
+
+/// `HAND_WAIT`, shorter in the black-box tests (`BIP_TEST_HAND_WAIT_SECONDS`).
+pub fn hand_wait() -> Duration {
+    HAND_WAIT
+}
+
+/// Where the person's hand is, for an answer « Je le taperai moi-même » not told to the agent yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Hand {
+    /// Not taken yet, or held now: wait.
+    Wait,
+    /// Held now, seen for the first time: note it, and wait.
+    Taken,
+    /// Taken, then handed back: the agent goes on.
+    Back,
+}
+
+/// `holds`: the person holds the agent's browser now; `held`: they were seen holding it since their answer.
+pub fn hand_now(_holds: bool, _held: bool) -> Hand {
+    Hand::Back
+}
+
+/// Whether the person may type it themselves in the agent's browser: a site's login for its visible browser, asked
+/// by the agent (not opened from the app), and a browser they can take over.
+pub fn may_type_self(_config: &Config, _agent: &str, _request: &Request) -> bool {
+    false
+}
+
+/// Why « Je le taperai moi-même » can't be taken.
+#[derive(Debug, PartialEq, Eq)]
+pub enum SelfError {
+    /// No such card waiting (answered already, gone).
+    NoCard,
+    /// Not a site's login, or no browser to take over (`bip_secret_self` false).
+    NotHere,
+}
+
+/// « Je le taperai moi-même » (`{"allow": false, "way": "self"}`): nothing kept, the agent's call waits for the
+/// browser handed back (`wait_for_hand`).
+pub fn choose_self(_config: &Config, _agent: Option<&str>, _id: &str, _via: &str) -> Result<(), SelfError> {
+    Err(SelfError::NoCard)
+}
+
+/// What the agent reads of an answer it learns in a later turn (card_place.rs `resume`): « self » only.
+pub fn resume_words(_card: &str, _choice: &str, _summary: &str) -> Option<String> {
+    None
 }
 
 struct Card {
@@ -755,6 +814,136 @@ mod tests {
         cards().get_mut(&c).unwrap().at -= LEFT_TTL;
         assert_eq!(mine(), 0);
         cards().retain(|_, c| c.agent != "unit-left");
+    }
+
+    fn config_in(dir: &tempfile::TempDir) -> Config {
+        crate::config::parse_config(&json!({"bridge_key": "k".repeat(32), "data_dir": dir.path().to_string_lossy()}), None)
+            .unwrap()
+    }
+
+    fn site_login(name: &str) -> Request {
+        Request {
+            name: name.into(),
+            origin: "https://www.fournisseur.example".into(),
+            kind: "password".into(),
+            identifier_label: "Identifiant".into(),
+            reason: "Pour tes commandes".into(),
+            browser_login: true,
+            ..Default::default()
+        }
+    }
+
+    fn with_browser(config: &Config, agent: &str) {
+        let folder = crate::browsers::folder(config, agent);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("ports.json"), r#"{"cdp": 9600, "vnc": 9601}"#).unwrap();
+    }
+
+    /// design-coffre-rassurer §4: `bip_secret_use` (browser | connector) and `bip_secret_self` (the person may type it
+    /// in the agent's browser: a site's login, asked by the agent, a browser to take over). The card's other fields
+    /// stay as an older app reads them.
+    #[test]
+    fn a_card_says_what_it_is_for_and_whether_the_person_may_type_it_themselves() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(&dir);
+        let login = open("unit-use", site_login("fournisseur")).unwrap();
+        let connector =
+            open("unit-use", Request { name: "garmin".into(), kind: "password".into(), ..Default::default() }).unwrap();
+        let card = |id: &str| item(&config, id).unwrap();
+        assert_eq!((card(&login)["bip_secret_use"].clone(), card(&login)["bip_secret_self"].clone()), (json!("browser"), json!(false)));
+        with_browser(&config, "unit-use");
+        assert_eq!(card(&login)["bip_secret_self"], json!(true));
+        assert_eq!((card(&connector)["bip_secret_use"].clone(), card(&connector)["bip_secret_self"].clone()), (json!("connector"), json!(false)));
+        // what an older app reads, unchanged
+        let shown = card(&login);
+        assert_eq!(shown["choices"], json!(["once", "deny"]));
+        assert_eq!(shown["bip_secret_kind"], json!("password"));
+        assert_eq!(shown["bip_secret_site"], json!("www.fournisseur.example"));
+        // a token, a code, a card the person opened from the app: never
+        let token = Request { kind: "token".into(), browser_login: false, ..site_login("ovh") };
+        assert!(!may_type_self(&config, "unit-use", &token));
+        assert!(!may_type_self(&config, "unit-use", &Request { edit: true, ..site_login("x1") }));
+        assert!(may_type_self(&config, "unit-use", &site_login("x2")));
+        assert!(!may_type_self(&config, "unit-other", &site_login("x3")), "no browser of its own");
+        cards().retain(|_, c| c.agent != "unit-use");
+    }
+
+    #[test]
+    fn the_person_types_it_themselves_only_where_they_can_take_the_browser() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(&dir);
+        let connector =
+            open("unit-self", Request { name: "garmin".into(), kind: "password".into(), ..Default::default() }).unwrap();
+        let login = open("unit-self", site_login("fournisseur")).unwrap();
+        assert_eq!(choose_self(&config, None, &login, "app"), Err(SelfError::NotHere), "no browser yet");
+        with_browser(&config, "unit-self");
+        assert_eq!(choose_self(&config, None, &connector, "app"), Err(SelfError::NotHere));
+        assert_eq!(choose_self(&config, Some("someone-else"), &login, "app"), Err(SelfError::NoCard));
+        assert_eq!(choose_self(&config, None, "nope", "app"), Err(SelfError::NoCard));
+        assert_eq!(choose_self(&config, None, &login, "app"), Ok(()));
+        assert_eq!(cards().get(&login).unwrap().answer, Some(Outcome::TypedByPerson));
+        assert_eq!(choose_self(&config, None, &login, "app"), Err(SelfError::NoCard), "answered already");
+        assert!(!deny(&config, None, &login, "app"));
+        // kept as the person's choice, nothing in the vault
+        let kept = crate::approvals_log::list(&config, "unit-self", None);
+        assert_eq!(kept.last().unwrap()["choice"], json!(SELF));
+        assert_eq!(kept.last().unwrap()["run_id"], json!(format!("{RUN_PREFIX}{login}")));
+        // no longer waiting for the person
+        assert!(pending_items(&config, Some("unit-self")).iter().all(|c| c["request_id"] != json!(login)));
+        cards().retain(|_, c| c.agent != "unit-self");
+    }
+
+    #[tokio::test]
+    async fn the_agents_call_learns_the_person_types_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(&dir);
+        with_browser(&config, "unit-wait");
+        let id = open("unit-wait", site_login("fournisseur")).unwrap();
+        let waiting = tokio::spawn({
+            let id = id.clone();
+            async move { wait(&id).await }
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        choose_self(&config, None, &id, "app").unwrap();
+        assert_eq!(waiting.await.unwrap(), Some(Outcome::TypedByPerson));
+        assert!(cards().get(&id).is_none());
+    }
+
+    /// design §1.5: the hand given back, or not yet after 10 minutes.
+    #[test]
+    fn the_agent_reads_where_the_person_is() {
+        assert_eq!(
+            HANDED_BACK,
+            "The person signed in themselves in your browser and handed it back. Read the page: signed in, go on; the \
+             sign-in page still there, tell them in one sentence what you see. Nothing was kept in the vault: don't \
+             ask for this site again in this conversation."
+        );
+        assert_eq!(
+            NOT_BACK,
+            "The person chose to sign in themselves in your browser and hasn't handed it back yet. Don't use your \
+             browser: say you'll go on once they hand it back, then stop."
+        );
+        // told in a later turn, once the hand is back (card_place.rs)
+        let late = resume_words("bip-secret-abc", SELF, "Vie a besoin de ton accès Fournisseur (fournisseur.example)").unwrap();
+        assert!(late.starts_with("« Vie a besoin de ton accès Fournisseur (fournisseur.example) » — "), "{late}");
+        assert!(late.contains("signed in themselves in your browser and handed it back"), "{late}");
+        assert!(late.contains("don't ask for this site again"), "{late}");
+        assert_eq!(resume_words("bip-secret-abc", "once", "x"), None);
+        assert_eq!(resume_words("bip-site-abc", SELF, "x"), None);
+        // the hand: taken, then given back; never « back » before it was taken
+        assert_eq!(hand_now(false, false), Hand::Wait);
+        assert_eq!(hand_now(true, false), Hand::Taken);
+        assert_eq!(hand_now(true, true), Hand::Wait);
+        assert_eq!(hand_now(false, true), Hand::Back);
+        // Hermes waits for the call long enough: the card's answer, then the hand
+        let waits = ASK_TIMEOUT + HAND_WAIT + Duration::from_secs(30);
+        assert!(u64::from(crate::connectors::TOOL_TIMEOUT) >= waits.as_secs(), "connectors.rs TOOL_TIMEOUT");
+        assert_eq!(hand_wait(), HAND_WAIT);
+        // the tool says where to ask from
+        let tools = crate::connectors::tools();
+        let ask = tools.iter().find(|t| t["name"] == "ask_secret").unwrap();
+        let use_ = ask["inputSchema"]["properties"]["use"]["description"].as_str().unwrap();
+        assert!(use_.contains("from the site's login page") && use_.contains("sign in themselves"), "{use_}");
     }
 
     #[test]

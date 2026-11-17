@@ -263,6 +263,10 @@ def test_a_card_first_then_the_password_typed_into_password_fields_only_never_re
             "kind": "login", "label": "shop.example", "origin": "https://shop.example", "identifier": "alex@example.org",
             "identifier_type": "email", "agents": ["vie"], "created_by": "vie", "pending": True}
         assert password.encode() not in (bridge.state_dir / "vault" / "vault.json.enc").read_bytes()
+        # the conversation's vault line (« Mot de passe créé par le coffre… ») is read from this hidden mark, and the
+        # vault list's « Récents » from the use kept (le coffre rassure, 17/11)
+        assert text.endswith(f"<!--bip:filled {item['id']} shop.example created-->"), text
+        assert item["last_used_by"] == "vie" and item["last_used_at"] and item["domain"] == "shop.example"
         assert vault_records(bridge)[0]["secret"] == {"password": password}
         [add] = [json.loads(e["stdin"]) for e in bridge.commands.entries("podman") if e["argv"][:3] == ["exec", "-i", "hermes-vie"]]
         assert add["op"] == "add" and add["origin"] == "https://shop.example" and add["secret"]["password"] == password

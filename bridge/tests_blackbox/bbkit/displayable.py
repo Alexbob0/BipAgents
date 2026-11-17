@@ -9,7 +9,7 @@ the whole page is lost; Android `conv/Conversations.kt`, kotlinx), then what eac
 - a person's document: its `size` (> 0, a number) and its `path`, downloadable (`/v1/media`);
 - an agent's file, page, map, audio, picture: its `path`, downloadable, not empty;
 - a tool step its name and status, a notice its words, a Boîte message its words or files, an answered approval its
-  command and choice, a call its record;
+  command and choice, a call its record, the vault's line its words and sites;
 - `pending`: each card the fields it draws (its id, run, request; a sites card its hosts, a secret card what it asks,
   a question its words), the queue's messages their words or files.
 
@@ -188,6 +188,16 @@ def _item(bridge, item: Dict[str, Any], agent: Optional[str], out: List[str], fe
         for page in item.get("pages") or []:
             if not (isinstance(page, dict) and page.get("title")):
                 out.append(f"{where}: a Carnet line page without a title: {page!r}")
+    elif kind == "vault_line":
+        # « Rempli par le coffre sur …, sans le donner à l'agent » (le coffre rassure, 17/11): its words, its sites; its
+        # item (the vault opens on it) a string when there is one
+        if not (item.get("text") or "").strip():
+            out.append(f"{where}: a vault line with no words")
+        sites = item.get("sites")
+        if not (isinstance(sites, list) and sites and all(isinstance(s, str) and s for s in sites)):
+            out.append(f"{where}: a vault line without its sites ({sites!r})")
+        if "item" in item and not (isinstance(item["item"], str) and item["item"]):
+            out.append(f"{where}: a vault line's item is {item['item']!r}")
     elif kind == "carnet_card":
         # the Carnet's cards (question of the day, follow-up, « Oublie ça »): open with what to tap, else folded words
         card, state = item.get("card"), item.get("state")

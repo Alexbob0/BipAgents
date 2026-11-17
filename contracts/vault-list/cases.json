@@ -1,0 +1,2508 @@
+{
+ "about": "The vault list's rule (passation-pro briefs/design-coffre-rassurer.md §7; Alex's D6 A « Récents » and D7 A, 16/11), shared by HermesKit and Android: given `vaults` (each a `GET /v1/vault` answer, fake data) and a case's `filter` (`kind`: all | logins | cards | contacts | connectors; `for`: an agent id or null; `query`), the app draws `expect`. Written once in plain Python by bridge/tests_blackbox/test_vault_list_cases.py, which checks this file (VAULT_LIST_WRITE=1 rewrites the expected parts); bridge-rs checks the logins' `domain` is the bridge's (vault_used.rs).",
+ "rules": {
+  "fold": "Lower case without accents: Unicode NFD, every non-spacing mark (category Mn) dropped, then lower case, no locale. Sorting and search compare folded texts; folded keys compare by Unicode code points (no collation).",
+  "kinds": "login → Identifiants (logins), card and payment → Cartes (cards), address → Coordonnées (contacts), secret → Connecteurs (connectors, the accesses given through a connector's card). Any other kind is left out.",
+  "for": "« Pour : <agent> »: only the items whose `agents` hold that agent. Its menu (`for_menu`): the vault's `agents` that hold at least one item, by their folded name.",
+  "chips": "« Tout » then the four kinds, each with the number of items after « Pour » (never after the search or the chosen kind). A kind at 0 is not shown; « Tout » always is.",
+  "site": "A login's site: its `domain` (the bridge's, 17/11), else, from an older bridge, its origin's host without a leading « www. ».",
+  "sort": "By the folded name (`label`), then the folded identifier, then the id. A group of a site sorts by its folded site.",
+  "groups": "Two logins or more on one site (after « Pour », the kind and the search) are one group: `{group: <site>, count, rows}` (« reseau-agences.fr · 3 identifiants »), unfolded by default, its rows sorted. A site's only login is a plain row.",
+  "letters": "Without a search: the logins (and groups) by letter, the folded key's first character A-Z, anything else under « # », last. Letters only with the kind « all » or « logins ».",
+  "recent": "« Récents » (D6 A), first, without a search, with the kind « all » or « logins »: the 3 logins (after « Pour ») whose `last_used_at` is the latest, newest first, each with `used_by` (`last_used_by`, an agent id) and `used_at`. They stay in their letter too. None from a bridge without `last_used_at`.",
+  "sections": "After the letters: « Cartes », « Coordonnées », « Connecteurs », each sorted, each only when not empty and only with the kind « all » or its own.",
+  "search": "Trimmed and folded, split on spaces: every word must be found in at least one field of the item. A login: its name, its origin's host, its identifier, its login page (`login_url` without its scheme). A card: its name and `card.last4`. Contact details: their name and `contact.city`. A connector's access: its name, its origin's host, its identifier. Results: one section `results` with their count, no letters, no « Récents »: the logins (groups kept, two or more found on one site), then cards, contact details, connectors. The chips apply (a kind searches only that kind).",
+  "nothing_found": "A search that finds nothing: no section, `nothing_found` true (« Rien pour « … » », what the search looks at, « Ajouter un identifiant » with the name already written).",
+  "looks": "Each login's square (D7 A, nothing leaves the server): `initial`, its name's first character in capitals (accents kept: « É »), on the colour `color` of its site (0-6, the palette's index: the sum of the folded site's code points modulo 7; its folded name when it has no site). A group's square: its site's first character and colour. `page`: « Page : … », only when `login_url` is not the site's root: its host and path (and query); `page_grouped`, in a group: « … » and its path. Null: no line.",
+  "installs": "Several servers: one list per server, as today; the search runs in each."
+ },
+ "palette": [
+  {
+   "background": "#FBEFEA",
+   "ink": "#8C4632"
+  },
+  {
+   "background": "#ECF0FD",
+   "ink": "#3B5294"
+  },
+  {
+   "background": "#EEF6EA",
+   "ink": "#2F6338"
+  },
+  {
+   "background": "#FAF3E3",
+   "ink": "#6E5214"
+  },
+  {
+   "background": "#F2EFFB",
+   "ink": "#5E4A9E"
+  },
+  {
+   "background": "#E9F5F4",
+   "ink": "#1E5F60"
+  },
+  {
+   "background": "#FBEDF2",
+   "ink": "#8E3F62"
+  }
+ ],
+ "fold": [
+  [
+   "École",
+   "ecole"
+  ],
+  [
+   "Électricité Nova",
+   "electricite nova"
+  ],
+  [
+   "zèbre Kids",
+   "zebre kids"
+  ],
+  [
+   "  ÉCOLE ",
+   "  ecole "
+  ],
+  [
+   "Ciné Lux",
+   "cine lux"
+  ],
+  [
+   "Covoit' Plus",
+   "covoit' plus"
+  ],
+  [
+   "Ångström",
+   "angstrom"
+  ],
+  [
+   "Noël",
+   "noel"
+  ],
+  [
+   "CAMILLE.Pro@Example.org",
+   "camille.pro@example.org"
+  ]
+ ],
+ "vaults": {
+  "camille": {
+   "protected": true,
+   "items": [
+    {
+     "id": "item_000000000101",
+     "kind": "login",
+     "label": "Agence Lumen",
+     "origin": "https://www.agence-lumen.example",
+     "login_url": null,
+     "identifier_type": "email",
+     "identifier": "camille@example.org",
+     "has_otp": false,
+     "agents": [
+      "paul",
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "agence-lumen.example"
+    },
+    {
+     "id": "item_000000000102",
+     "kind": "login",
+     "label": "Alto Énergie",
+     "origin": "https://espace.alto-energie.example",
+     "login_url": null,
+     "identifier_type": "username",
+     "identifier": "camille.martin",
+     "has_otp": true,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "espace.alto-energie.example"
+    },
+    {
+     "id": "item_000000000103",
+     "kind": "login",
+     "label": "Atelier Brume",
+     "origin": "https://atelierbrume.example",
+     "login_url": null,
+     "identifier_type": "email",
+     "identifier": "camille@example.org",
+     "has_otp": false,
+     "agents": [],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "atelierbrume.example"
+    },
+    {
+     "id": "item_000000000104",
+     "kind": "login",
+     "label": "Biblio Ville",
+     "origin": "https://biblio.ville.example",
+     "login_url": "https://biblio.ville.example/lecteur/connexion",
+     "identifier_type": "username",
+     "identifier": "lecteur 00421187",
+     "has_otp": false,
+     "agents": [
+      "maison"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "biblio.ville.example"
+    },
+    {
+     "id": "item_000000000105",
+     "kind": "login",
+     "label": "Ciné Lux",
+     "origin": "https://cinelux.example",
+     "login_url": null,
+     "identifier_type": "email",
+     "identifier": "camille@example.org",
+     "has_otp": false,
+     "agents": [],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "cinelux.example"
+    },
+    {
+     "id": "item_000000000106",
+     "kind": "login",
+     "label": "Covoit' Plus",
+     "origin": "https://www.covoitplus.example",
+     "login_url": null,
+     "identifier_type": "username",
+     "identifier": "camille.m",
+     "has_otp": false,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "covoitplus.example"
+    },
+    {
+     "id": "item_000000000107",
+     "kind": "login",
+     "label": "école primaire",
+     "origin": "https://ent.ecole-primaire.example",
+     "login_url": "https://ent.ecole-primaire.example/portail-familles",
+     "identifier_type": "username",
+     "identifier": "camille.martin2",
+     "has_otp": false,
+     "agents": [
+      "maison"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "ent.ecole-primaire.example"
+    },
+    {
+     "id": "item_000000000108",
+     "kind": "login",
+     "label": "Écho Radio",
+     "origin": "https://www.echoradio.example",
+     "login_url": null,
+     "identifier_type": "email",
+     "identifier": "camille@example.org",
+     "has_otp": false,
+     "agents": [
+      "maison"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "echoradio.example"
+    },
+    {
+     "id": "item_000000000109",
+     "kind": "login",
+     "label": "Électricité Nova",
+     "origin": "https://client.nova-elec.example",
+     "login_url": null,
+     "identifier_type": "email",
+     "identifier": "camille@example.org",
+     "has_otp": false,
+     "agents": [
+      "maison",
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "client.nova-elec.example"
+    },
+    {
+     "id": "item_00000000010a",
+     "kind": "login",
+     "label": "Energie Plus",
+     "origin": "https://energieplus.example",
+     "login_url": null,
+     "identifier_type": "username",
+     "identifier": "camille.martin",
+     "has_otp": false,
+     "agents": [
+      "paul"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "energieplus.example"
+    },
+    {
+     "id": "item_00000000010b",
+     "kind": "login",
+     "label": "Fournisseur",
+     "origin": "https://www.fournisseur.example",
+     "login_url": null,
+     "identifier_type": "email",
+     "identifier": "camille@example.org",
+     "has_otp": false,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "fournisseur.example",
+     "last_used_at": "2026-11-17T08:00:00+00:00",
+     "last_used_by": "vie"
+    },
+    {
+     "id": "item_00000000010c",
+     "kind": "login",
+     "label": "Forum Jardin",
+     "origin": "https://forum-jardin.example",
+     "login_url": null,
+     "identifier_type": "username",
+     "identifier": "camille_j",
+     "has_otp": false,
+     "agents": [],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "forum-jardin.example"
+    },
+    {
+     "id": "item_00000000010d",
+     "kind": "login",
+     "label": "Agence Lyon",
+     "origin": "https://extranet.reseau-agences.fr",
+     "login_url": "https://extranet.reseau-agences.fr/V5/agence-lyon",
+     "identifier_type": "username",
+     "identifier": "c.martin.lyon",
+     "has_otp": false,
+     "agents": [
+      "paul"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "reseau-agences.fr"
+    },
+    {
+     "id": "item_00000000010e",
+     "kind": "login",
+     "label": "Agence Nantes",
+     "origin": "https://extranet.reseau-agences.fr",
+     "login_url": "https://extranet.reseau-agences.fr/V5/agence-nantes",
+     "identifier_type": "username",
+     "identifier": "c.martin.nantes",
+     "has_otp": false,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "reseau-agences.fr"
+    },
+    {
+     "id": "item_00000000010f",
+     "kind": "login",
+     "label": "Agence Rennes",
+     "origin": "https://extranet.reseau-agences.fr",
+     "login_url": "https://extranet.reseau-agences.fr/V5/agence-rennes",
+     "identifier_type": "username",
+     "identifier": "c.martin.rennes",
+     "has_otp": false,
+     "agents": [
+      "paul",
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "reseau-agences.fr",
+     "created_by": "paul",
+     "pending": false,
+     "confirmed_at": "2026-11-02T09:00:00+00:00"
+    },
+    {
+     "id": "item_000000000110",
+     "kind": "login",
+     "label": "Mutuelle",
+     "origin": "https://espace.mutuelle.example",
+     "login_url": null,
+     "identifier_type": "username",
+     "identifier": "adherent 0042",
+     "has_otp": false,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "espace.mutuelle.example",
+     "last_used_at": "2026-11-16T09:30:00+00:00",
+     "last_used_by": "vie"
+    },
+    {
+     "id": "item_000000000111",
+     "kind": "login",
+     "label": "Net Box",
+     "origin": "https://client.netbox.example",
+     "login_url": null,
+     "identifier_type": "username",
+     "identifier": "camille.m",
+     "has_otp": false,
+     "agents": [
+      "maison"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "client.netbox.example",
+     "last_used_at": "2026-11-15T20:00:00+00:00",
+     "last_used_by": "maison"
+    },
+    {
+     "id": "item_000000000112",
+     "kind": "login",
+     "label": "Rail Express",
+     "origin": "https://www.rail-express.fr",
+     "login_url": "https://www.rail-express.fr/connexion",
+     "identifier_type": "email",
+     "identifier": "camille@example.org",
+     "has_otp": false,
+     "agents": [
+      "paul",
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "rail-express.fr",
+     "last_used_at": "2026-11-17T06:00:00+00:00",
+     "last_used_by": "paul"
+    },
+    {
+     "id": "item_000000000113",
+     "kind": "login",
+     "label": "Rail Express Pro",
+     "origin": "https://connexion.rail-express.fr",
+     "login_url": null,
+     "identifier_type": "email",
+     "identifier": "camille.pro@example.org",
+     "has_otp": false,
+     "agents": [
+      "paul"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "rail-express.fr"
+    },
+    {
+     "id": "item_000000000114",
+     "kind": "login",
+     "label": "Tellia Mobile",
+     "origin": "https://www.tellia.example",
+     "login_url": null,
+     "identifier_type": "username",
+     "identifier": "0600000001",
+     "has_otp": false,
+     "agents": [
+      "paul"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "tellia.example"
+    },
+    {
+     "id": "item_000000000115",
+     "kind": "login",
+     "label": "24h Courses",
+     "origin": "https://24h-courses.example",
+     "login_url": null,
+     "identifier_type": "email",
+     "identifier": "camille@example.org",
+     "has_otp": false,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "24h-courses.example"
+    },
+    {
+     "id": "item_000000000116",
+     "kind": "login",
+     "label": "zèbre Kids",
+     "origin": "https://zebre-kids.example",
+     "login_url": null,
+     "identifier_type": "email",
+     "identifier": "camille@example.org",
+     "has_otp": false,
+     "agents": [
+      "maison"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "zebre-kids.example"
+    },
+    {
+     "id": "item_000000000117",
+     "kind": "login",
+     "label": "Gaz Ouest",
+     "origin": "https://gazouest.example",
+     "login_url": null,
+     "identifier_type": "username",
+     "identifier": "camille.martin",
+     "has_otp": false,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "domain": "gazouest.example",
+     "last_used_at": "2026-11-10T12:00:00+00:00",
+     "last_used_by": "vie"
+    },
+    {
+     "id": "item_000000000201",
+     "kind": "card",
+     "label": "Carte pro",
+     "origin": null,
+     "identifier_type": null,
+     "identifier": null,
+     "has_otp": false,
+     "agents": [
+      "paul",
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "card": {
+      "last4": "4821",
+      "brand": "visa",
+      "exp_month": 9,
+      "exp_year": 2029,
+      "single_use": false,
+      "used": false,
+      "sites": [],
+      "spent": {},
+      "payments": [],
+      "cap_cents": 30000
+     }
+    },
+    {
+     "id": "item_000000000202",
+     "kind": "card",
+     "label": "Petits achats",
+     "origin": null,
+     "identifier_type": null,
+     "identifier": null,
+     "has_otp": false,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "card": {
+      "last4": "1003",
+      "brand": "visa",
+      "exp_month": 9,
+      "exp_year": 2029,
+      "single_use": false,
+      "used": false,
+      "sites": [],
+      "spent": {},
+      "payments": [],
+      "cap_cents": 30000
+     }
+    },
+    {
+     "id": "item_000000000301",
+     "kind": "address",
+     "label": "Camille (pro)",
+     "origin": null,
+     "identifier_type": null,
+     "identifier": null,
+     "has_otp": false,
+     "agents": [
+      "paul",
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "hint": "",
+     "contact": {
+      "full_name": "Camille Martin",
+      "birth_date": "",
+      "address_line1": "12 rue des Lilas",
+      "address_line2": "",
+      "city": "Lyon",
+      "state": "",
+      "postal_code": "00000",
+      "country": "FR",
+      "phones": [],
+      "emails": []
+     }
+    },
+    {
+     "id": "item_000000000302",
+     "kind": "address",
+     "label": "Camille",
+     "origin": null,
+     "identifier_type": null,
+     "identifier": null,
+     "has_otp": false,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "hint": "",
+     "contact": {
+      "full_name": "Camille Martin",
+      "birth_date": "",
+      "address_line1": "12 rue des Lilas",
+      "address_line2": "",
+      "city": "Nantes",
+      "state": "",
+      "postal_code": "00000",
+      "country": "FR",
+      "phones": [],
+      "emails": []
+     }
+    },
+    {
+     "id": "item_000000000303",
+     "kind": "address",
+     "label": "Maison",
+     "origin": null,
+     "identifier_type": null,
+     "identifier": null,
+     "has_otp": false,
+     "agents": [
+      "maison"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "hint": "",
+     "contact": {
+      "full_name": "Camille Martin",
+      "birth_date": "",
+      "address_line1": "12 rue des Lilas",
+      "address_line2": "",
+      "city": "Rennes",
+      "state": "",
+      "postal_code": "00000",
+      "country": "FR",
+      "phones": [],
+      "emails": []
+     }
+    },
+    {
+     "id": "item_000000000401",
+     "kind": "secret",
+     "label": "garmin",
+     "origin": "https://connect.garmin.com",
+     "identifier_type": "email",
+     "identifier": "camille@example.org",
+     "has_otp": false,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00",
+     "created_by": "vie",
+     "secret": {
+      "kind": "password",
+      "identifier_label": "E-mail de ton compte Garmin",
+      "last_used_at": null,
+      "used_by": [
+       {
+        "id": "c_000000000001",
+        "name": "Garmin"
+       }
+      ]
+     }
+    }
+   ],
+   "agents": [
+    {
+     "id": "vie",
+     "name": "Vie",
+     "can_hold": true,
+     "why": null
+    },
+    {
+     "id": "paul",
+     "name": "Paul",
+     "can_hold": true,
+     "why": null
+    },
+    {
+     "id": "maison",
+     "name": "Maison",
+     "can_hold": true,
+     "why": null
+    },
+    {
+     "id": "budget",
+     "name": "Budget",
+     "can_hold": true,
+     "why": null
+    }
+   ],
+   "cards": true,
+   "cards_allowed": true
+  },
+  "older": {
+   "protected": true,
+   "agents": [
+    {
+     "id": "vie",
+     "name": "Vie",
+     "can_hold": true,
+     "why": null
+    },
+    {
+     "id": "paul",
+     "name": "Paul",
+     "can_hold": true,
+     "why": null
+    }
+   ],
+   "cards": true,
+   "cards_allowed": true,
+   "items": [
+    {
+     "id": "item_00000000010b",
+     "kind": "login",
+     "label": "Fournisseur",
+     "origin": "https://www.fournisseur.example",
+     "login_url": null,
+     "identifier_type": "email",
+     "identifier": "camille@example.org",
+     "has_otp": false,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00"
+    },
+    {
+     "id": "item_00000000010d",
+     "kind": "login",
+     "label": "Agence Lyon",
+     "origin": "https://extranet.reseau-agences.fr",
+     "login_url": "https://extranet.reseau-agences.fr/V5/agence-lyon",
+     "identifier_type": "username",
+     "identifier": "c.martin.lyon",
+     "has_otp": false,
+     "agents": [
+      "paul"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00"
+    },
+    {
+     "id": "item_00000000010e",
+     "kind": "login",
+     "label": "Agence Nantes",
+     "origin": "https://extranet.reseau-agences.fr",
+     "login_url": "https://extranet.reseau-agences.fr/V5/agence-nantes",
+     "identifier_type": "username",
+     "identifier": "c.martin.nantes",
+     "has_otp": false,
+     "agents": [
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00"
+    },
+    {
+     "id": "item_000000000112",
+     "kind": "login",
+     "label": "Rail Express",
+     "origin": "https://www.rail-express.fr",
+     "login_url": "https://www.rail-express.fr/connexion",
+     "identifier_type": "email",
+     "identifier": "camille@example.org",
+     "has_otp": false,
+     "agents": [
+      "paul",
+      "vie"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00"
+    },
+    {
+     "id": "item_000000000113",
+     "kind": "login",
+     "label": "Rail Express Pro",
+     "origin": "https://connexion.rail-express.fr",
+     "login_url": null,
+     "identifier_type": "email",
+     "identifier": "camille.pro@example.org",
+     "has_otp": false,
+     "agents": [
+      "paul"
+     ],
+     "created_at": "2026-11-01T10:00:00+00:00",
+     "updated_at": "2026-11-01T10:00:00+00:00"
+    }
+   ]
+  }
+ },
+ "cases": [
+  {
+   "name": "everything, as the vault opens",
+   "vault": "camille",
+   "filter": {
+    "kind": "all",
+    "for": null,
+    "query": ""
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 29
+     },
+     {
+      "key": "logins",
+      "count": 23
+     },
+     {
+      "key": "cards",
+      "count": 2
+     },
+     {
+      "key": "contacts",
+      "count": 3
+     },
+     {
+      "key": "connectors",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "recent",
+      "rows": [
+       {
+        "id": "item_00000000010b",
+        "used_by": "vie",
+        "used_at": "2026-11-17T08:00:00+00:00"
+       },
+       {
+        "id": "item_000000000112",
+        "used_by": "paul",
+        "used_at": "2026-11-17T06:00:00+00:00"
+       },
+       {
+        "id": "item_000000000110",
+        "used_by": "vie",
+        "used_at": "2026-11-16T09:30:00+00:00"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "A",
+      "rows": [
+       {
+        "id": "item_000000000101"
+       },
+       {
+        "id": "item_000000000102"
+       },
+       {
+        "id": "item_000000000103"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "B",
+      "rows": [
+       {
+        "id": "item_000000000104"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "C",
+      "rows": [
+       {
+        "id": "item_000000000105"
+       },
+       {
+        "id": "item_000000000106"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "E",
+      "rows": [
+       {
+        "id": "item_000000000108"
+       },
+       {
+        "id": "item_000000000107"
+       },
+       {
+        "id": "item_000000000109"
+       },
+       {
+        "id": "item_00000000010a"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "F",
+      "rows": [
+       {
+        "id": "item_00000000010c"
+       },
+       {
+        "id": "item_00000000010b"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "G",
+      "rows": [
+       {
+        "id": "item_000000000117"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "M",
+      "rows": [
+       {
+        "id": "item_000000000110"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "N",
+      "rows": [
+       {
+        "id": "item_000000000111"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "R",
+      "rows": [
+       {
+        "group": "rail-express.fr",
+        "count": 2,
+        "rows": [
+         {
+          "id": "item_000000000112"
+         },
+         {
+          "id": "item_000000000113"
+         }
+        ]
+       },
+       {
+        "group": "reseau-agences.fr",
+        "count": 3,
+        "rows": [
+         {
+          "id": "item_00000000010d"
+         },
+         {
+          "id": "item_00000000010e"
+         },
+         {
+          "id": "item_00000000010f"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "T",
+      "rows": [
+       {
+        "id": "item_000000000114"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "Z",
+      "rows": [
+       {
+        "id": "item_000000000116"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "#",
+      "rows": [
+       {
+        "id": "item_000000000115"
+       }
+      ]
+     },
+     {
+      "key": "cards",
+      "rows": [
+       {
+        "id": "item_000000000201"
+       },
+       {
+        "id": "item_000000000202"
+       }
+      ]
+     },
+     {
+      "key": "contacts",
+      "rows": [
+       {
+        "id": "item_000000000302"
+       },
+       {
+        "id": "item_000000000301"
+       },
+       {
+        "id": "item_000000000303"
+       }
+      ]
+     },
+     {
+      "key": "connectors",
+      "rows": [
+       {
+        "id": "item_000000000401"
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
+   }
+  },
+  {
+   "name": "Identifiants only",
+   "vault": "camille",
+   "filter": {
+    "kind": "logins",
+    "for": null,
+    "query": ""
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 29
+     },
+     {
+      "key": "logins",
+      "count": 23
+     },
+     {
+      "key": "cards",
+      "count": 2
+     },
+     {
+      "key": "contacts",
+      "count": 3
+     },
+     {
+      "key": "connectors",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "recent",
+      "rows": [
+       {
+        "id": "item_00000000010b",
+        "used_by": "vie",
+        "used_at": "2026-11-17T08:00:00+00:00"
+       },
+       {
+        "id": "item_000000000112",
+        "used_by": "paul",
+        "used_at": "2026-11-17T06:00:00+00:00"
+       },
+       {
+        "id": "item_000000000110",
+        "used_by": "vie",
+        "used_at": "2026-11-16T09:30:00+00:00"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "A",
+      "rows": [
+       {
+        "id": "item_000000000101"
+       },
+       {
+        "id": "item_000000000102"
+       },
+       {
+        "id": "item_000000000103"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "B",
+      "rows": [
+       {
+        "id": "item_000000000104"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "C",
+      "rows": [
+       {
+        "id": "item_000000000105"
+       },
+       {
+        "id": "item_000000000106"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "E",
+      "rows": [
+       {
+        "id": "item_000000000108"
+       },
+       {
+        "id": "item_000000000107"
+       },
+       {
+        "id": "item_000000000109"
+       },
+       {
+        "id": "item_00000000010a"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "F",
+      "rows": [
+       {
+        "id": "item_00000000010c"
+       },
+       {
+        "id": "item_00000000010b"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "G",
+      "rows": [
+       {
+        "id": "item_000000000117"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "M",
+      "rows": [
+       {
+        "id": "item_000000000110"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "N",
+      "rows": [
+       {
+        "id": "item_000000000111"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "R",
+      "rows": [
+       {
+        "group": "rail-express.fr",
+        "count": 2,
+        "rows": [
+         {
+          "id": "item_000000000112"
+         },
+         {
+          "id": "item_000000000113"
+         }
+        ]
+       },
+       {
+        "group": "reseau-agences.fr",
+        "count": 3,
+        "rows": [
+         {
+          "id": "item_00000000010d"
+         },
+         {
+          "id": "item_00000000010e"
+         },
+         {
+          "id": "item_00000000010f"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "T",
+      "rows": [
+       {
+        "id": "item_000000000114"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "Z",
+      "rows": [
+       {
+        "id": "item_000000000116"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "#",
+      "rows": [
+       {
+        "id": "item_000000000115"
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
+   }
+  },
+  {
+   "name": "Cartes only",
+   "vault": "camille",
+   "filter": {
+    "kind": "cards",
+    "for": null,
+    "query": ""
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 29
+     },
+     {
+      "key": "logins",
+      "count": 23
+     },
+     {
+      "key": "cards",
+      "count": 2
+     },
+     {
+      "key": "contacts",
+      "count": 3
+     },
+     {
+      "key": "connectors",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "cards",
+      "rows": [
+       {
+        "id": "item_000000000201"
+       },
+       {
+        "id": "item_000000000202"
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
+   }
+  },
+  {
+   "name": "Connecteurs only",
+   "vault": "camille",
+   "filter": {
+    "kind": "connectors",
+    "for": null,
+    "query": ""
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 29
+     },
+     {
+      "key": "logins",
+      "count": 23
+     },
+     {
+      "key": "cards",
+      "count": 2
+     },
+     {
+      "key": "contacts",
+      "count": 3
+     },
+     {
+      "key": "connectors",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "connectors",
+      "rows": [
+       {
+        "id": "item_000000000401"
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
+   }
+  },
+  {
+   "name": "Pour : Paul",
+   "vault": "camille",
+   "filter": {
+    "kind": "all",
+    "for": "paul",
+    "query": ""
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 9
+     },
+     {
+      "key": "logins",
+      "count": 7
+     },
+     {
+      "key": "cards",
+      "count": 1
+     },
+     {
+      "key": "contacts",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "recent",
+      "rows": [
+       {
+        "id": "item_000000000112",
+        "used_by": "paul",
+        "used_at": "2026-11-17T06:00:00+00:00"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "A",
+      "rows": [
+       {
+        "id": "item_000000000101"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "E",
+      "rows": [
+       {
+        "id": "item_00000000010a"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "R",
+      "rows": [
+       {
+        "group": "rail-express.fr",
+        "count": 2,
+        "rows": [
+         {
+          "id": "item_000000000112"
+         },
+         {
+          "id": "item_000000000113"
+         }
+        ]
+       },
+       {
+        "group": "reseau-agences.fr",
+        "count": 2,
+        "rows": [
+         {
+          "id": "item_00000000010d"
+         },
+         {
+          "id": "item_00000000010f"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "T",
+      "rows": [
+       {
+        "id": "item_000000000114"
+       }
+      ]
+     },
+     {
+      "key": "cards",
+      "rows": [
+       {
+        "id": "item_000000000201"
+       }
+      ]
+     },
+     {
+      "key": "contacts",
+      "rows": [
+       {
+        "id": "item_000000000301"
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
+   }
+  },
+  {
+   "name": "Pour : Maison (no card, no connector: their chips go)",
+   "vault": "camille",
+   "filter": {
+    "kind": "all",
+    "for": "maison",
+    "query": ""
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 7
+     },
+     {
+      "key": "logins",
+      "count": 6
+     },
+     {
+      "key": "contacts",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "recent",
+      "rows": [
+       {
+        "id": "item_000000000111",
+        "used_by": "maison",
+        "used_at": "2026-11-15T20:00:00+00:00"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "B",
+      "rows": [
+       {
+        "id": "item_000000000104"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "E",
+      "rows": [
+       {
+        "id": "item_000000000108"
+       },
+       {
+        "id": "item_000000000107"
+       },
+       {
+        "id": "item_000000000109"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "N",
+      "rows": [
+       {
+        "id": "item_000000000111"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "Z",
+      "rows": [
+       {
+        "id": "item_000000000116"
+       }
+      ]
+     },
+     {
+      "key": "contacts",
+      "rows": [
+       {
+        "id": "item_000000000303"
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
+   }
+  },
+  {
+   "name": "Pour : Budget (nothing given to it)",
+   "vault": "camille",
+   "filter": {
+    "kind": "all",
+    "for": "budget",
+    "query": ""
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 0
+     }
+    ],
+    "sections": [],
+    "nothing_found": false
+   }
+  },
+  {
+   "name": "search without accents finds « école »",
+   "vault": "camille",
+   "filter": {
+    "kind": "all",
+    "for": null,
+    "query": "ecole"
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 29
+     },
+     {
+      "key": "logins",
+      "count": 23
+     },
+     {
+      "key": "cards",
+      "count": 2
+     },
+     {
+      "key": "contacts",
+      "count": 3
+     },
+     {
+      "key": "connectors",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "results",
+      "count": 1,
+      "rows": [
+       {
+        "id": "item_000000000107"
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
+   }
+  },
+  {
+   "name": "search in capitals with accents",
+   "vault": "camille",
+   "filter": {
+    "kind": "all",
+    "for": null,
+    "query": "  ÉCOLE "
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 29
+     },
+     {
+      "key": "logins",
+      "count": 23
+     },
+     {
+      "key": "cards",
+      "count": 2
+     },
+     {
+      "key": "contacts",
+      "count": 3
+     },
+     {
+      "key": "connectors",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "results",
+      "count": 1,
+      "rows": [
+       {
+        "id": "item_000000000107"
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
+   }
+  },
+  {
+   "name": "search keeps a site's group",
+   "vault": "camille",
+   "filter": {
+    "kind": "all",
+    "for": null,
+    "query": "agence"
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 29
+     },
+     {
+      "key": "logins",
+      "count": 23
+     },
+     {
+      "key": "cards",
+      "count": 2
+     },
+     {
+      "key": "contacts",
+      "count": 3
+     },
+     {
+      "key": "connectors",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "results",
+      "count": 4,
+      "rows": [
+       {
+        "id": "item_000000000101"
+       },
+       {
+        "group": "reseau-agences.fr",
+        "count": 3,
+        "rows": [
+         {
+          "id": "item_00000000010d"
+         },
+         {
+          "id": "item_00000000010e"
+         },
+         {
+          "id": "item_00000000010f"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
+   }
+  },
+  {
+   "name": "one login of a group found alone: a plain row",
+   "vault": "camille",
+   "filter": {
+    "kind": "all",
+    "for": null,
+    "query": "c.martin.lyon"
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 29
+     },
+     {
+      "key": "logins",
+      "count": 23
+     },
+     {
+      "key": "cards",
+      "count": 2
+     },
+     {
+      "key": "contacts",
+      "count": 3
+     },
+     {
+      "key": "connectors",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "results",
+      "count": 1,
+      "rows": [
+       {
+        "id": "item_00000000010d"
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
+   }
+  },
+  {
+   "name": "search on the login page",
+   "vault": "camille",
+   "filter": {
+    "kind": "all",
+    "for": null,
+    "query": "portail"
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 29
+     },
+     {
+      "key": "logins",
+      "count": 23
+     },
+     {
+      "key": "cards",
+      "count": 2
+     },
+     {
+      "key": "contacts",
+      "count": 3
+     },
+     {
+      "key": "connectors",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "results",
+      "count": 1,
+      "rows": [
+       {
+        "id": "item_000000000107"
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
+   }
+  },
+  {
+   "name": "search on the site",
+   "vault": "camille",
+   "filter": {
+    "kind": "all",
+    "for": null,
+    "query": "mutuelle"
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 29
+     },
+     {
+      "key": "logins",
+      "count": 23
+     },
+     {
+      "key": "cards",
+      "count": 2
+     },
+     {
+      "key": "contacts",
+      "count": 3
+     },
+     {
+      "key": "connectors",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "results",
+      "count": 1,
+      "rows": [
+       {
+        "id": "item_000000000110"
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
+   }
+  },
+  {
+   "name": "search on the identifier",
+   "vault": "camille",
+   "filter": {
+    "kind": "all",
+    "for": null,
+    "query": "camille.pro"
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 29
+     },
+     {
+      "key": "logins",
+      "count": 23
+     },
+     {
+      "key": "cards",
+      "count": 2
+     },
+     {
+      "key": "contacts",
+      "count": 3
+     },
+     {
+      "key": "connectors",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "results",
+      "count": 1,
+      "rows": [
+       {
+        "id": "item_000000000113"
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
+   }
+  },
+  {
+   "name": "search on a card's last 4 digits",
+   "vault": "camille",
+   "filter": {
+    "kind": "all",
+    "for": null,
+    "query": "4821"
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 29
+     },
+     {
+      "key": "logins",
+      "count": 23
+     },
+     {
+      "key": "cards",
+      "count": 2
+     },
+     {
+      "key": "contacts",
+      "count": 3
+     },
+     {
+      "key": "connectors",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "results",
+      "count": 1,
+      "rows": [
+       {
+        "id": "item_000000000201"
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
+   }
+  },
+  {
+   "name": "search on a contact's city",
+   "vault": "camille",
+   "filter": {
+    "kind": "all",
+    "for": null,
+    "query": "lyon"
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 29
+     },
+     {
+      "key": "logins",
+      "count": 23
+     },
+     {
+      "key": "cards",
+      "count": 2
+     },
+     {
+      "key": "contacts",
+      "count": 3
+     },
+     {
+      "key": "connectors",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "results",
+      "count": 2,
+      "rows": [
+       {
+        "id": "item_00000000010d"
+       },
+       {
+        "id": "item_000000000301"
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
+   }
+  },
+  {
+   "name": "every word must be found",
+   "vault": "camille",
+   "filter": {
+    "kind": "all",
+    "for": null,
+    "query": "agence nantes"
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 29
+     },
+     {
+      "key": "logins",
+      "count": 23
+     },
+     {
+      "key": "cards",
+      "count": 2
+     },
+     {
+      "key": "contacts",
+      "count": 3
+     },
+     {
+      "key": "connectors",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "results",
+      "count": 1,
+      "rows": [
+       {
+        "id": "item_00000000010e"
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
+   }
+  },
+  {
+   "name": "search on a connector",
+   "vault": "camille",
+   "filter": {
+    "kind": "all",
+    "for": null,
+    "query": "garmin"
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 29
+     },
+     {
+      "key": "logins",
+      "count": 23
+     },
+     {
+      "key": "cards",
+      "count": 2
+     },
+     {
+      "key": "contacts",
+      "count": 3
+     },
+     {
+      "key": "connectors",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "results",
+      "count": 1,
+      "rows": [
+       {
+        "id": "item_000000000401"
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
+   }
+  },
+  {
+   "name": "the chips apply to the search",
+   "vault": "camille",
+   "filter": {
+    "kind": "cards",
+    "for": null,
+    "query": "agence"
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 29
+     },
+     {
+      "key": "logins",
+      "count": 23
+     },
+     {
+      "key": "cards",
+      "count": 2
+     },
+     {
+      "key": "contacts",
+      "count": 3
+     },
+     {
+      "key": "connectors",
+      "count": 1
+     }
+    ],
+    "sections": [],
+    "nothing_found": true
+   }
+  },
+  {
+   "name": "search and « Pour » together",
+   "vault": "camille",
+   "filter": {
+    "kind": "all",
+    "for": "paul",
+    "query": "rail"
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 9
+     },
+     {
+      "key": "logins",
+      "count": 7
+     },
+     {
+      "key": "cards",
+      "count": 1
+     },
+     {
+      "key": "contacts",
+      "count": 1
+     }
+    ],
+    "sections": [
+     {
+      "key": "results",
+      "count": 2,
+      "rows": [
+       {
+        "group": "rail-express.fr",
+        "count": 2,
+        "rows": [
+         {
+          "id": "item_000000000112"
+         },
+         {
+          "id": "item_000000000113"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
+   }
+  },
+  {
+   "name": "nothing found",
+   "vault": "camille",
+   "filter": {
+    "kind": "all",
+    "for": null,
+    "query": "piscine"
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 29
+     },
+     {
+      "key": "logins",
+      "count": 23
+     },
+     {
+      "key": "cards",
+      "count": 2
+     },
+     {
+      "key": "contacts",
+      "count": 3
+     },
+     {
+      "key": "connectors",
+      "count": 1
+     }
+    ],
+    "sections": [],
+    "nothing_found": true
+   }
+  },
+  {
+   "name": "an older bridge: grouped by host without www., no « Récents »",
+   "vault": "older",
+   "filter": {
+    "kind": "all",
+    "for": null,
+    "query": ""
+   },
+   "expect": {
+    "chips": [
+     {
+      "key": "all",
+      "count": 5
+     },
+     {
+      "key": "logins",
+      "count": 5
+     }
+    ],
+    "sections": [
+     {
+      "key": "letter",
+      "letter": "E",
+      "rows": [
+       {
+        "group": "extranet.reseau-agences.fr",
+        "count": 2,
+        "rows": [
+         {
+          "id": "item_00000000010d"
+         },
+         {
+          "id": "item_00000000010e"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "F",
+      "rows": [
+       {
+        "id": "item_00000000010b"
+       }
+      ]
+     },
+     {
+      "key": "letter",
+      "letter": "R",
+      "rows": [
+       {
+        "id": "item_000000000112"
+       },
+       {
+        "id": "item_000000000113"
+       }
+      ]
+     }
+    ],
+    "nothing_found": false
+   }
+  }
+ ],
+ "looks": {
+  "camille": {
+   "item_000000000101": {
+    "initial": "A",
+    "color": 0,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_000000000102": {
+    "initial": "A",
+    "color": 3,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_000000000103": {
+    "initial": "A",
+    "color": 3,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_000000000104": {
+    "initial": "B",
+    "color": 3,
+    "page": "biblio.ville.example/lecteur/connexion",
+    "page_grouped": "…/lecteur/connexion"
+   },
+   "item_000000000105": {
+    "initial": "C",
+    "color": 0,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_000000000106": {
+    "initial": "C",
+    "color": 2,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_000000000107": {
+    "initial": "É",
+    "color": 6,
+    "page": "ent.ecole-primaire.example/portail-familles",
+    "page_grouped": "…/portail-familles"
+   },
+   "item_000000000108": {
+    "initial": "É",
+    "color": 0,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_000000000109": {
+    "initial": "É",
+    "color": 3,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_00000000010a": {
+    "initial": "E",
+    "color": 0,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_00000000010b": {
+    "initial": "F",
+    "color": 6,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_00000000010c": {
+    "initial": "F",
+    "color": 1,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_00000000010d": {
+    "initial": "A",
+    "color": 5,
+    "page": "extranet.reseau-agences.fr/V5/agence-lyon",
+    "page_grouped": "…/V5/agence-lyon"
+   },
+   "item_00000000010e": {
+    "initial": "A",
+    "color": 5,
+    "page": "extranet.reseau-agences.fr/V5/agence-nantes",
+    "page_grouped": "…/V5/agence-nantes"
+   },
+   "item_00000000010f": {
+    "initial": "A",
+    "color": 5,
+    "page": "extranet.reseau-agences.fr/V5/agence-rennes",
+    "page_grouped": "…/V5/agence-rennes"
+   },
+   "item_000000000110": {
+    "initial": "M",
+    "color": 4,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_000000000111": {
+    "initial": "N",
+    "color": 0,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_000000000112": {
+    "initial": "R",
+    "color": 4,
+    "page": "www.rail-express.fr/connexion",
+    "page_grouped": "…/connexion"
+   },
+   "item_000000000113": {
+    "initial": "R",
+    "color": 4,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_000000000114": {
+    "initial": "T",
+    "color": 1,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_000000000115": {
+    "initial": "2",
+    "color": 4,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_000000000116": {
+    "initial": "Z",
+    "color": 3,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_000000000117": {
+    "initial": "G",
+    "color": 3,
+    "page": null,
+    "page_grouped": null
+   }
+  },
+  "older": {
+   "item_00000000010b": {
+    "initial": "F",
+    "color": 6,
+    "page": null,
+    "page_grouped": null
+   },
+   "item_00000000010d": {
+    "initial": "A",
+    "color": 2,
+    "page": "extranet.reseau-agences.fr/V5/agence-lyon",
+    "page_grouped": "…/V5/agence-lyon"
+   },
+   "item_00000000010e": {
+    "initial": "A",
+    "color": 2,
+    "page": "extranet.reseau-agences.fr/V5/agence-nantes",
+    "page_grouped": "…/V5/agence-nantes"
+   },
+   "item_000000000112": {
+    "initial": "R",
+    "color": 4,
+    "page": "www.rail-express.fr/connexion",
+    "page_grouped": "…/connexion"
+   },
+   "item_000000000113": {
+    "initial": "R",
+    "color": 5,
+    "page": null,
+    "page_grouped": null
+   }
+  }
+ },
+ "group_looks": {
+  "camille": {
+   "agence-lumen.example": {
+    "initial": "A",
+    "color": 0
+   },
+   "espace.alto-energie.example": {
+    "initial": "E",
+    "color": 3
+   },
+   "atelierbrume.example": {
+    "initial": "A",
+    "color": 3
+   },
+   "biblio.ville.example": {
+    "initial": "B",
+    "color": 3
+   },
+   "cinelux.example": {
+    "initial": "C",
+    "color": 0
+   },
+   "covoitplus.example": {
+    "initial": "C",
+    "color": 2
+   },
+   "ent.ecole-primaire.example": {
+    "initial": "E",
+    "color": 6
+   },
+   "echoradio.example": {
+    "initial": "E",
+    "color": 0
+   },
+   "client.nova-elec.example": {
+    "initial": "C",
+    "color": 3
+   },
+   "energieplus.example": {
+    "initial": "E",
+    "color": 0
+   },
+   "fournisseur.example": {
+    "initial": "F",
+    "color": 6
+   },
+   "forum-jardin.example": {
+    "initial": "F",
+    "color": 1
+   },
+   "reseau-agences.fr": {
+    "initial": "R",
+    "color": 5
+   },
+   "espace.mutuelle.example": {
+    "initial": "E",
+    "color": 4
+   },
+   "client.netbox.example": {
+    "initial": "C",
+    "color": 0
+   },
+   "rail-express.fr": {
+    "initial": "R",
+    "color": 4
+   },
+   "tellia.example": {
+    "initial": "T",
+    "color": 1
+   },
+   "24h-courses.example": {
+    "initial": "2",
+    "color": 4
+   },
+   "zebre-kids.example": {
+    "initial": "Z",
+    "color": 3
+   },
+   "gazouest.example": {
+    "initial": "G",
+    "color": 3
+   }
+  },
+  "older": {
+   "fournisseur.example": {
+    "initial": "F",
+    "color": 6
+   },
+   "extranet.reseau-agences.fr": {
+    "initial": "E",
+    "color": 2
+   },
+   "rail-express.fr": {
+    "initial": "R",
+    "color": 4
+   },
+   "connexion.rail-express.fr": {
+    "initial": "C",
+    "color": 5
+   }
+  }
+ },
+ "for_menu": {
+  "camille": [
+   "maison",
+   "paul",
+   "vie"
+  ],
+  "older": [
+   "paul",
+   "vie"
+  ]
+ }
+}

@@ -237,6 +237,8 @@ def test_one_login_fills_both_fields_of_the_extranet_page(bridges, fakes):
         assert page.values == {"login": IDENTIFIER_A, "mdp": PASSWORD_A}
         assert chrome.typed == [(PAGE_A, "login", IDENTIFIER_A), (PAGE_A, "mdp", PASSWORD_A)]
         assert "saved login typed into the agent's page" in (bridge.root / "bridge.log").read_text()
+        # the hidden mark the conversation's vault line is read from (vault_line.rs), at the end
+        assert said(result).endswith(f"<!--bip:filled {item['id']} extranet2.example.fr login-->")
         nowhere_but_the_page(bridge, [result], IDENTIFIER_A, PASSWORD_A)
         # the identifier already in its field: left as it is, the password typed again
         chrome.typed.clear()
@@ -348,6 +350,8 @@ def test_a_first_step_asking_for_the_identifier_alone(bridges, fakes):
         first = vault_login(bridge)
         assert first["isError"] is False
         assert said(first).startswith("Typed the identifier of « Amazon » on www.amazon.fr.")
+        assert "bip:filled" not in said(first), "no password typed: no vault line, no last use"
+        assert "last_used_at" not in bridge.get("/v1/vault", headers=AUTH).json()["items"][0]
         assert "call vault_login again" in said(first)
         assert chrome.typed == [("https://www.amazon.fr/ap/signin", "login", "client@example.org")]
         nowhere_but_the_page(bridge, [first], "client@example.org", "Fake-shop-pw-1!")
@@ -417,5 +421,44 @@ def test_on_another_host_of_the_site_nothing_is_typed_and_the_person_is_told_wha
         several = said(vault_login(bridge))
         assert a["id"] in several and b["id"] in several and other["id"] not in several
         nowhere_but_the_page(bridge, [refused, by_id], IDENTIFIER_A, IDENTIFIER_B, PASSWORD_A, PASSWORD_B)
+    finally:
+        chrome.stop()
+
+
+def test_the_vault_list_says_each_logins_site_and_when_an_agent_last_used_it(bridges, fakes):
+    """Le coffre rassure (17/11), the vault list: `domain` on every login (the site the vault fills on), and « Récents »
+    (D6 A): `last_used_at` / `last_used_by` once the vault typed it for an agent, kept beside the vault without a
+    secret."""
+    from datetime import datetime, timezone
+    chrome = FakeChrome(PAGE_A)
+    try:
+        bridge = login_bridge(bridges, fakes, chrome)
+        a = keep(bridge, "Extranet agence A", PAGE_A, IDENTIFIER_A, PASSWORD_A)
+        b = keep(bridge, "Extranet agence B", PAGE_B, IDENTIFIER_B, PASSWORD_B)
+        shop = keep(bridge, "Boutique", "https://www.boutique.example/connexion", "client@example.org", "Fake-pw-5!")
+        assert (a["domain"], b["domain"], shop["domain"]) == ("example.fr", "example.fr", "boutique.example")
+
+        def listed():
+            return {i["id"]: i for i in bridge.get("/v1/vault", headers=AUTH).json()["items"]}
+
+        assert all("last_used_at" not in i and "last_used_by" not in i for i in listed().values())
+        before = datetime.now(timezone.utc).replace(microsecond=0)
+        assert vault_login(bridge)["isError"] is False
+        now = listed()
+        assert now[a["id"]]["last_used_by"] == "vie"
+        used = datetime.fromisoformat(now[a["id"]]["last_used_at"])
+        assert before <= used <= datetime.now(timezone.utc), used
+        assert "last_used_at" not in now[b["id"]] and "last_used_at" not in now[shop["id"]]
+        assert now[a["id"]]["domain"] == "example.fr"
+        kept = bridge.state_dir / "vault" / "vault_used.json"
+        assert stat.S_IMODE(os.stat(kept).st_mode) == 0o600
+        assert json.loads(kept.read_text()) == {a["id"]: {"at": now[a["id"]]["last_used_at"], "by": "vie"}}
+        nowhere_but_the_page(bridge, [kept.read_text()], IDENTIFIER_A, PASSWORD_A)
+        # a fill refused (another site's page): no use
+        chrome.frames = [Frame("https://www.amazon.com/ap/signin")]
+        assert vault_login(bridge, {"id": b["id"]})["isError"] is True
+        assert "last_used_at" not in listed()[b["id"]]
+        # an older app reads the list as before: the same fields, two more it ignores
+        assert set(now[b["id"]]) == set(b)
     finally:
         chrome.stop()

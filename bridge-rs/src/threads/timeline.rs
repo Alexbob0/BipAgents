@@ -1123,6 +1123,45 @@ mod tests {
         );
     }
 
+    /// Le coffre rassure (17/11): a password the vault typed is read from the call's result (vault_line.rs), its hidden
+    /// mark never shown; the apps draw the line after the turn's answer (threads/mod.rs `with_vault_lines`).
+    #[test]
+    fn a_vault_fill_is_read_from_its_call_and_its_mark_never_shown() {
+        use crate::vault_line::{mark, How, STASH};
+        let done = format!(
+            "Typed the identifier and the password of « Fournisseur » into the login form of www.fournisseur.example.{}",
+            mark("item_0123456789ab", "www.fournisseur.example", How::Login)
+        );
+        let mut rows = vec![
+            row(1, "user", json!("Connecte-toi au fournisseur")),
+            row(2, "assistant", json!("J'ouvre la page.")),
+            row(3, "tool", json!(done)),
+            row(4, "tool", json!("No login form of x on this page: nothing was typed.")),
+            row(5, "assistant", json!("C'est fait.")),
+        ];
+        rows[1].tool_calls = Some(json!([
+            {"id": "a", "function": {"name": "mcp_bipagents_vault_vault_login", "arguments": "{}"}},
+            {"id": "b", "function": {"name": "mcp_bipagents_vault_vault_login", "arguments": "{}"}}]));
+        rows[2].tool_call_id = Some("a".into());
+        rows[3].tool_call_id = Some("b".into());
+        let got = items(&rows);
+        let kinds: Vec<&str> = got.iter().map(Item::kind).collect();
+        assert_eq!(kinds, ["message", "message", "tool", "tool", "message"]);
+        let result = got[2].body["tool"]["result"].as_str().unwrap();
+        assert!(result.ends_with("www.fournisseur.example.") && !result.contains("bip:"), "{result}");
+        assert_eq!(got[2].body[STASH]["item"], "item_0123456789ab");
+        assert_eq!(got[2].body[STASH]["host"], "www.fournisseur.example");
+        assert!(got[3].body.get(STASH).is_none(), "nothing typed: no fill");
+        let mut lines = got;
+        crate::vault_line::with_vault_lines(&mut lines, "fr", |_| None);
+        let shown: Vec<&str> = lines.iter().map(|i| if i.kind() == "tool" { "tool" } else { i.text() }).collect();
+        assert_eq!(
+            shown,
+            ["Connecte-toi au fournisseur", "J'ouvre la page.", "tool", "tool", "C'est fait.",
+             "Rempli par le coffre sur fournisseur.example, sans le donner à l'agent"]
+        );
+    }
+
     #[test]
     fn a_turns_todo_calls_are_one_steps_item_where_its_last_call_is() {
         let list = |s1: &str, s2: &str| {
