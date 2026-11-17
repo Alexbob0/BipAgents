@@ -239,6 +239,12 @@ fn bookkeeping(kind: &str) -> bool {
     crate::tool_kinds::BOOKKEEPING.contains(&kind)
 }
 
+/// A call that waits on a card for the person (`ask_secret`, `ask_for_tool`: up to 330 s): the person's wait, never a
+/// slow tool (the line steps aside for the card).
+fn asks_person(kind: &str) -> bool {
+    matches!(kind, "askSecret" | "askTool")
+}
+
 /// One run's status, as its events come (the hub's run state keeps it: `SubscriptionState::status`).
 #[derive(Debug, Clone)]
 pub struct Tracker {
@@ -437,7 +443,7 @@ impl Tracker {
         if d == 0.0 {
             return;
         }
-        if self.waiting_person > 0 {
+        if self.waiting_person > 0 || self.open.last().is_some_and(|o| asks_person(o.kind)) {
             self.spent[2] += d;
         } else if let Some(open) = self.open.last() {
             if open.kind == "messageAgent" {
@@ -521,7 +527,7 @@ impl Tracker {
     fn settle(&mut self, now: f64) {
         let state = if self.unreachable {
             State::Unreachable
-        } else if self.waiting_person > 0 {
+        } else if self.waiting_person > 0 || self.open.last().is_some_and(|o| asks_person(o.kind)) {
             State::WaitingPerson
         } else if self.looping.is_some() {
             State::Looping

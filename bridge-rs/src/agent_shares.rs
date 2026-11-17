@@ -947,6 +947,7 @@ pub(crate) fn turn_words(state: &AppState, agent: &AgentConfig, run_id: &str, pr
                     // what the agent does now: a member who asks reads it reduced (no site, no step, no buttons)
                     if status && prompts && kind == crate::turn_status::EVENT {
                         let reduced = Value::Object(crate::turn_status::reduced(&event.data));
+                        due = tokio::time::Instant::now() + every;
                         yield Ok(event_line(kind, &reduced));
                         continue;
                     }
