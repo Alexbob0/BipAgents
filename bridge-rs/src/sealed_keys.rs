@@ -524,7 +524,8 @@ impl Drop for DirLock {
 /// update asks nothing). Not enrolled: the hold only (no file, nothing else).
 pub fn hold_for_bridge(place: &Place, wait: Duration) -> Result<()> {
     let key = id(&place.data);
-    if !bridge_locks().contains_key(&key) {
+    let held = bridge_locks().contains_key(&key); // (not kept locked while it waits)
+    if !held {
         let Ok(file) = std::fs::File::open(&place.data) else { return Ok(()) }; // no data yet: nothing to hold
         let deadline = std::time::Instant::now() + wait;
         while !flock(&file, libc::LOCK_SH) {
@@ -533,7 +534,7 @@ pub fn hold_for_bridge(place: &Place, wait: Duration) -> Result<()> {
             }
             std::thread::sleep(Duration::from_millis(100).min(wait));
         }
-        bridge_locks().insert(key, file);
+        bridge_locks().entry(key).or_insert(file);
     }
     if !place.journal_dir().exists() && !place.sealed().exists() {
         return Ok(());
