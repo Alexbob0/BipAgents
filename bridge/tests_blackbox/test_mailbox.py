@@ -149,7 +149,7 @@ def test_the_agent_searches_reads_and_drafts_in_its_mailboxes_only(bridges, fake
     assert "Content-Type" not in every
     search = next(c for c in fakes.imap.commands if c.startswith("UID SEARCH") and "TEXT" in c)
     assert "CHARSET UTF-8" in search and "SINCE" in search and '"relevé"' in search
-    assert all(c.startswith(("EXAMINE", "UID", "LOGIN", "LOGOUT", "CAPABILITY", "STARTTLS", "LIST", "APPEND"))
+    assert all(c.startswith(("EXAMINE", "UID", "LOGIN", "LOGOUT", "CAPABILITY", "STARTTLS", "LIST", "APPEND", "NOOP"))
                for c in fakes.imap.commands)                              # read-only: never SELECT, STORE or EXPUNGE
     read = text_of(call(bridge, "mail_read", {"id": f"{account}|INBOX|101"}, token=TOKEN))
     assert "Votre relevé est prêt." in read and "steal()" not in read and "p{}" not in read
@@ -162,8 +162,8 @@ def test_the_agent_searches_reads_and_drafts_in_its_mailboxes_only(bridges, fake
     drafted = text_of(call(bridge, "mail_draft", {"to": "sam@example.com", "subject": "Re: Repas dimanche",
                                                   "body": "Oui, avec plaisir !", "reply_to_id": f"{account}|INBOX|102"},
                            token=TOKEN))
-    assert drafted == ("Draft saved in Proton (Proton Mail Bridge / hydroxide) › Brouillons. Tell the person: they read "
-                       "it and send it themselves.")
+    assert drafted == ("Draft saved in Proton (Proton Mail Bridge / hydroxide) › Brouillons, to sam@example.com. Tell "
+                       "the person: they read it and send it themselves.")
     folder, flags, raw = fakes.imap.appended[-1]
     sent = email.message_from_bytes(raw, policy=email.policy.default)
     assert folder == "Brouillons" and flags == "(\\Draft)" and sent["In-Reply-To"] == "<s1@example.com>"
