@@ -2,11 +2,17 @@
 //! default, `[limits] upload_retention_days` until they choose), a year, or always. They count in the place's 5 GB
 //! (place_backup.rs: the backups measure them, and uploads are refused once it is full).
 //!
-//!     GET   /v1/files/settings     {kept_days, choices, used_bytes, allowance_bytes}   (kept_days 0: always)
+//!     GET   /v1/files/settings     {kept_days, choices, used_bytes, measured_at, allowance_bytes}   (kept_days 0:
+//!                                  always; used_bytes and measured_at null before the place's first measure;
+//!                                  allowance_bytes on the offer only)
 //!     PATCH /v1/files/settings     {kept_days} → the same
 //!     data_dir/files.json          {"kept_days": N}
 //!     data_dir/sent-photos.json    [{agent, path, at}]: the photos sent in a conversation (threads/send.rs
 //!                                  `keep_photos`), each erased after `PHOTO_DAYS` unless the Carnet holds it
+//!
+//! The size comes from the place's last measure (storage_watch.rs, its `received` kind: the same folders), never from a
+//! walk of the uploads inside the request: on a full self-install that took longer than the app waits and the row
+//! vanished (Alex, 17/11). Before the first measure it is null, and one is asked of the background loop.
 //!
 //! A photo sent in a conversation and never filed is erased after 30 days whatever the choice (Carnet v2, Alex 9/11):
 //! « filed » is a photo the Carnet names (a page holds its file's name) or one under `notebook/` (the Papiers, B3).
@@ -149,30 +155,27 @@ pub fn purge_photos(config: &Config, now: f64) -> (usize, Vec<String>) {
     (removed, agents)
 }
 
-fn size_of(dir: &Path) -> u64 {
-    let Ok(entries) = std::fs::read_dir(dir) else { return 0 };
-    entries
-        .flatten()
-        .map(|entry| match entry.file_type() {
-            Ok(t) if t.is_dir() => size_of(&entry.path()),
-            Ok(t) if t.is_file() => entry.metadata().map(|m| m.len()).unwrap_or(0),
-            _ => 0, // links are not followed
-        })
-        .sum()
+/// The body of both routes: the choice, and what the files sent take by the place's last measure (`usage`, None before
+/// the first: null); the allowance only on the offer (`offer`: « Ils comptent dans tes 5 Go » nowhere else).
+pub fn settings_body(kept_days: i64, usage: Option<&crate::storage_watch::Usage>, offer: bool) -> Value {
+    let used = usage.map(|u| u.agents.iter().map(|a| a.kinds.get("received").copied().unwrap_or(0)).sum::<u64>());
+    let mut out = json!({"kept_days": kept_days, "choices": CHOICES, "used_bytes": used,
+                         "measured_at": usage.map(|u| u.measured_at)});
+    if offer {
+        out["allowance_bytes"] = json!(crate::place_backup::ALLOWANCE_BYTES);
+    }
+    out
 }
 
-/// What the files sent to this place's agents take now.
-pub fn used_bytes(config: &Config) -> u64 {
-    let mut roots: Vec<&str> =
-        config.agents.values().filter_map(|a| a.upload_dir_host.as_deref()).filter(|r| !r.is_empty()).collect();
-    roots.sort();
-    roots.dedup();
-    roots.into_iter().map(|r| size_of(Path::new(r))).sum()
-}
-
+/// Never walks the uploads: the last measure, or none (then one is asked of the background loop).
 fn settings(config: &Config) -> Value {
-    json!({"kept_days": kept_days(config), "choices": CHOICES, "used_bytes": used_bytes(config),
-           "allowance_bytes": crate::place_backup::ALLOWANCE_BYTES})
+    let usage = crate::storage_watch::last_usage(config);
+    if usage.is_none() {
+        crate::storage_watch::mark_dirty();
+    }
+    let backup = crate::place_backup::status(&crate::place_backup::home());
+    let offer = backup.get("enabled").map(py::truthy).unwrap_or(false);
+    settings_body(kept_days(config), usage.as_ref(), offer)
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -234,6 +237,49 @@ mod tests {
         assert_eq!(kept_days(&config), 0);
         std::fs::write(path(&config), r#"{"kept_days": 12}"#).unwrap(); // not a choice: the default
         assert_eq!(kept_days(&config), 30);
+    }
+
+    /// 17/11 (Alex: « Garder les fichiers » vanished on a full self-install): the settings answer at once, the size
+    /// from the place's last measure (storage_watch.rs, its `received` kind), never by walking the uploads.
+    #[test]
+    fn the_settings_answer_from_the_last_measure_without_walking_the_uploads() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.path().join("bridge.db").to_string_lossy().into_owned();
+        let uploads = dir.path().join("uploads");
+        std::fs::create_dir_all(uploads.join("2026-11")).unwrap();
+        std::fs::write(uploads.join("2026-11").join("a.txt"), b"12345").unwrap();
+        config.agents.insert("vie".into(), crate::config::AgentConfig {
+            name: "vie".into(),
+            upload_dir_host: Some(uploads.to_string_lossy().into_owned()),
+            upload_dir_container: Some("/uploads".into()),
+            ..Default::default()
+        });
+        // before any measure: the choice at once, the size unknown
+        let first = settings(&config);
+        assert_eq!((first["kept_days"].as_i64(), first["choices"].clone()), (Some(30), json!([30, 365, 0])));
+        assert!(first["used_bytes"].is_null(), "{first}");
+        assert!(first.get("measured_at").is_some_and(Value::is_null), "{first}");
+        // measured (every 30 minutes and after a big write)
+        crate::storage_watch::usage(&config, true);
+        let measured = settings(&config);
+        assert_eq!(measured["used_bytes"], json!(5));
+        assert!(measured["measured_at"].as_f64().is_some_and(|at| at > 0.0), "{measured}");
+        // a file more: still the measure's figure, the request walks nothing
+        std::fs::write(uploads.join("2026-11").join("b.bin"), vec![0u8; 1000]).unwrap();
+        assert_eq!(settings(&config)["used_bytes"], json!(5));
+    }
+
+    /// « Ils comptent dans tes 5 Go » only where there are 5 GB: the offer's places.
+    #[test]
+    fn the_allowance_only_on_the_offer() {
+        let usage = crate::storage_watch::Usage { used: 10, allowance: None, measured_at: 1.0, agents: vec![], other: 10 };
+        let home = settings_body(30, Some(&usage), false);
+        assert!(home.get("allowance_bytes").is_none(), "{home}");
+        assert_eq!(home["used_bytes"], json!(0));
+        let offer = settings_body(0, None, true);
+        assert_eq!(offer["allowance_bytes"], json!(crate::place_backup::ALLOWANCE_BYTES));
+        assert!(offer["used_bytes"].is_null() && offer["measured_at"].is_null(), "{offer}");
     }
 
     #[test]

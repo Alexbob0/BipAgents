@@ -34,7 +34,8 @@
 //! The routes (bridge key):
 //!
 //!     GET   /v1/storage            {used, allowance, percent, measured_at, by_agent, other, kept_rules, rule_kinds,
-//!                                   files_kept_days, paused}
+//!                                   files_kept_days, paused}: the last measure at once, however old (an old one is
+//!                                   measured again in the background); measured in the request only before the first
 //!     POST  /v1/storage/measure    the same, measured now (and the thresholds checked)
 //!     PATCH /v1/storage/rules      {agent, kind, keep_last} (null/0 removes it) → the same
 //!     data_dir/storage.json        rules, thresholds told, cards, notes, pauses, history
@@ -328,6 +329,24 @@ pub fn measure(config: &Config) -> Usage {
         measured_at: py::time_time(),
         agents,
         other: used - sum,
+    }
+}
+
+/// The last measure, however old (None before the first one); nothing measured.
+pub fn last_usage(config: &Config) -> Option<Usage> {
+    CACHE.lock().unwrap_or_else(|e| e.into_inner()).get(&config.data_dir()).cloned()
+}
+
+/// What a request answers with (17/11: no folder walk inside a request, a full self-install took longer than the app
+/// waits): the last measure as it is, and whether it is old (then the caller asks the background loop for a new one,
+/// `mark_dirty`). Measured here only when there is none yet (the first minute after a start).
+pub fn usage_for_request(config: &Config) -> (Usage, bool) {
+    match last_usage(config) {
+        Some(found) => {
+            let stale = py::time_time() - found.measured_at >= MEASURE_EVERY;
+            (found, stale)
+        }
+        None => (usage(config, true), false),
     }
 }
 
@@ -1392,11 +1411,19 @@ pub async fn approve(state: &AppState, agent: &AgentConfig, id: &str, choice: &s
     Ok(web::ok(done.json()))
 }
 
+/// The last measure at once, however old; an old one is measured again by the background loop (`run_forever`, within
+/// a minute). « Mesurer maintenant » is `POST /v1/storage/measure`.
 async fn get_storage(State(state): State<AppState>) -> ApiResult<Response> {
     let config = state.config();
-    let out = tokio::task::spawn_blocking(move || body(&config, &usage(&config, false)))
-        .await
-        .map_err(anyhow::Error::from)?;
+    let out = tokio::task::spawn_blocking(move || {
+        let (usage, stale) = usage_for_request(&config);
+        if stale {
+            mark_dirty();
+        }
+        body(&config, &usage)
+    })
+    .await
+    .map_err(anyhow::Error::from)?;
     Ok(web::ok(out))
 }
 
@@ -1506,6 +1533,34 @@ mod tests {
         let b = body(&config, &u);
         assert_eq!(b["by_agent"][0]["kinds"]["audio"], json!(6000));
         assert_eq!(b["percent"], Value::Null);
+    }
+
+    /// 17/11 (settings clean-up): a request never walks the place's folders once a measure is there; an old one is
+    /// given as it is, and a new one asked of the background loop.
+    #[test]
+    fn a_request_gets_the_last_measure_at_once_however_old() {
+        let (_dir, config) = setup();
+        audio(&config, "vie", 2, 1000);
+        assert!(last_usage(&config).is_none());
+        // none yet (a bridge just started): measured once
+        let (first, stale) = usage_for_request(&config);
+        assert!(!stale);
+        assert_eq!(first.agents[0].kinds["audio"], 2000);
+        assert_eq!(last_usage(&config).map(|u| u.measured_at), Some(first.measured_at));
+        // an old measure: given at once, a new one asked of the background loop
+        let mut old = first.clone();
+        old.measured_at -= 2.0 * MEASURE_EVERY;
+        CACHE.lock().unwrap().insert(config.data_dir(), old.clone());
+        audio(&config, "vie", 5, 1000);
+        let (given, stale) = usage_for_request(&config);
+        assert!(stale, "an old measure is not asked again");
+        assert_eq!(given.measured_at, old.measured_at);
+        assert_eq!(given.agents[0].kinds["audio"], 2000, "the request walked the folders");
+        // a recent one: as it is, nothing asked
+        CACHE.lock().unwrap().insert(config.data_dir(), first.clone());
+        let (given, stale) = usage_for_request(&config);
+        assert!(!stale);
+        assert_eq!(given.agents[0].kinds["audio"], 2000);
     }
 
     #[test]
