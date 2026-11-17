@@ -480,7 +480,8 @@ fn hydroxide_in_clear_on_this_machine_is_a_normal_mailbox() {
     assert_eq!(std::fs::read(&files[0]).unwrap(), b"%PDF-1.4\n%\xc3\xa4\xc3\xbc");
     let commands = commands.lock().unwrap();
     assert!(commands.iter().all(|c| !c.starts_with("STARTTLS") && !c.starts_with("SELECT")), "{commands:?}");
-    let known = ["CAPABILITY", "LOGIN", "EXAMINE", "UID", "LOGOUT"];
+    // NOOP after EXAMINE: hydroxide polls its Proton events then (support mail, 17/11)
+    let known = ["CAPABILITY", "LOGIN", "EXAMINE", "NOOP", "UID", "LOGOUT"];
     assert!(commands.iter().all(|c| known.iter().any(|k| c.starts_with(k))), "{commands:?}");
 }
 

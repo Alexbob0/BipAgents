@@ -288,13 +288,12 @@ fn numbers(data: &[Data]) -> Vec<u32> {
     out
 }
 
-/// The headers of the folder's newest messages.
+/// The headers of the folder's newest messages; the folder as a person says it (`mailbox::open_folder`: two it
+/// could be, or none, named).
 pub fn scan(conn: &mut Connection, folder: &str, budget: Duration) -> anyhow::Result<Scan> {
     let started = Instant::now();
-    let (status, data) = conn.select(&mailbox::quote_box(folder), true)?;
-    if status != "OK" {
-        return Err(MailError(format!("no folder {folder}")).into());
-    }
+    let (folder, data) = mailbox::open_folder_with(conn, folder, true)?;
+    let folder = folder.as_str();
     let exists = numbers(&data).first().copied().unwrap_or(0) as usize;
     let uid_validity = conn.uid_validity();
     let mut uids = search_all(conn)?;
@@ -366,6 +365,22 @@ const TRASH_NAMES: [&str; 9] = [
     "papierkorb",
 ];
 
+/// A folder name as a person says it: any case, Latin accents or not (« traite » for « Traité »). Only a letter whose
+/// decomposition starts with an ASCII letter loses its marks: an Indic vowel sign or a Japanese dakuten makes another
+/// word, kept as it is.
+pub fn folded(name: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    let mut out = String::new();
+    for c in name.trim().to_lowercase().chars() {
+        let parts: String = std::iter::once(c).nfkd().collect();
+        match parts.chars().next() {
+            Some(base) if base.is_ascii() => out.extend(parts.chars().filter(char::is_ascii)),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 /// The hydroxide build that sees today's Proton folders (internal/notes/hydroxide-folders): what the agent points to.
 const HYDROXIDE_FIXED: &str = "https://github.com/Alexbob0/hydroxide/releases";
 
@@ -394,32 +409,83 @@ impl Folders {
         self.0.iter().any(|(_, n)| n == name)
     }
 
-    /// The listed folder meant by `wanted`: the same name, else the same in another case, else under Proton Mail
-    /// Bridge's « Folders/ » (or without it), else the one folder whose last part it is (« Parent/Child » or
-    /// « Child »). None: no such folder.
+    /// The listed folder meant by `wanted` (`find`). None: no such folder, or several it could be.
     pub fn resolve(&self, wanted: &str) -> Option<String> {
+        self.find(wanted).ok()
+    }
+
+    /// The listed folder meant by `wanted`, as a person says it (Alex 17/11: « Traité » for « Support/Traité »): the
+    /// same name, else the same in any case and with or without accents (`folded`), else under Proton Mail Bridge's
+    /// « Folders/ » (or without it), else the one folder whose last part it is (« Parent/Child » or « Child »).
+    /// Err: the folders it could be when there are several (never one of them at random), empty when none.
+    pub fn find(&self, wanted: &str) -> Result<String, Vec<String>> {
         let wanted = wanted.trim();
         if self.exists(wanted) {
-            return Some(wanted.to_string());
+            return Ok(wanted.to_string());
         }
-        let lower = wanted.to_lowercase();
+        let said = folded(wanted);
         let bare = |n: &str| {
-            let l = n.to_lowercase();
+            let l = folded(n);
             ["folders/", "labels/", "inbox."].iter().find_map(|p| l.strip_prefix(p).map(str::to_string)).unwrap_or(l)
         };
         let names = || self.0.iter().map(|(_, n)| n);
-        if let Some(n) =
-            names().find(|n| n.to_lowercase() == lower).or_else(|| names().find(|n| bare(n) == bare(&lower)))
-        {
-            return Some(n.clone());
+        let leaf = |n: &str| folded(n).rsplit(['/', '.']).next().unwrap_or("").to_string();
+        let wanted_leaf = leaf(wanted);
+        // each way of saying it in turn: one folder is it, two or more are named (never the first listed)
+        let steps: [&dyn Fn(&String) -> bool; 3] =
+            [&|n| folded(n) == said, &|n| bare(n) == bare(&said), &|n| leaf(n) == wanted_leaf];
+        for step in steps {
+            let mut same: Vec<String> = Vec::new();
+            for n in names().filter(|n| step(n)) {
+                if !same.contains(n) {
+                    same.push(n.clone());
+                }
+            }
+            match same.len() {
+                0 => continue,
+                1 => return Ok(same.remove(0)),
+                _ => return Err(same),
+            }
         }
-        let leaf = |n: &str| n.rsplit(['/', '.']).next().unwrap_or(n).to_lowercase();
-        let wanted_leaf = leaf(&lower);
-        let same: Vec<&String> = names().filter(|n| leaf(n) == wanted_leaf).collect();
-        match same.as_slice() {
-            [one] => Some((*one).clone()),
-            _ => None,
+        Err(Vec::new())
+    }
+
+    /// Every folder that can be opened, as listed (at most 40), for the agent's answers.
+    pub fn listed(&self) -> String {
+        let skip = ["\\noselect", "\\nonexistent"];
+        let names: Vec<String> = self
+            .0
+            .iter()
+            .filter(|(f, _)| !skip.iter().any(|s| f.to_lowercase().contains(s)))
+            .take(40)
+            .map(|(_, n)| format!("« {n} »"))
+            .collect();
+        if names.is_empty() {
+            "(the mailbox did not list them)".into()
+        } else {
+            names.join(", ")
         }
+    }
+
+    /// Plain words for the agent when `wanted` names no folder, or several (`find`'s Err): never another folder
+    /// searched instead.
+    pub fn unknown(&self, wanted: &str, candidates: &[String]) -> String {
+        if candidates.len() > 1 {
+            let list = candidates.iter().map(|n| format!("« {n} »")).collect::<Vec<_>>().join(" or ");
+            return format!("« {wanted} » could be {list}: give the folder's full name.");
+        }
+        let stock = if self.hydroxide() {
+            format!(
+                " This is stock hydroxide (the Proton connection): it shows none of today's Proton folders. The fixed \
+build ({HYDROXIDE_FIXED}) shows them, sub-folders too; tell the person."
+            )
+        } else {
+            String::new()
+        };
+        format!(
+            "This mailbox has no folder « {wanted} ». Its folders: {}. Give one of these names.{stock}",
+            self.listed()
+        )
     }
 
     /// hydroxide (Proton without Proton Mail Bridge): every folder `\Noinferiors`, « All Mail » `\All` and « Starred »
@@ -487,10 +553,12 @@ Propose one of those."
     /// Where a move goes: the listed folder, or the name to make (false: it exists). Err: plain words (hydroxide makes
     /// no folder: the card would only fail after the person's Oui).
     pub fn destination(&self, wanted: &str) -> Result<(String, bool), String> {
-        match self.resolve(wanted) {
-            Some(real) => Ok((real, false)),
-            None if self.hydroxide() => Err(self.missing(wanted)),
-            None => Ok((wanted.trim().to_string(), true)),
+        match self.find(wanted) {
+            Ok(real) => Ok((real, false)),
+            // two it could be: named, never a new folder of that name made beside them (review B1, 17/11)
+            Err(candidates) if candidates.len() > 1 => Err(self.unknown(wanted, &candidates)),
+            Err(_) if self.hydroxide() => Err(self.missing(wanted)),
+            Err(_) => Ok((wanted.trim().to_string(), true)),
         }
     }
 
@@ -954,9 +1022,27 @@ pub fn shown_agent(config: &Config, agent: &str) -> String {
 fn mails(lang: &str, c: usize) -> String {
     let one = c == 1;
     let noun = match lang {
-        "de" => if one { "E-Mail" } else { "E-Mails" },
-        "es" => if one { "correo" } else { "correos" },
-        _ => if one { "e-mail" } else { "e-mails" },
+        "de" => {
+            if one {
+                "E-Mail"
+            } else {
+                "E-Mails"
+            }
+        }
+        "es" => {
+            if one {
+                "correo"
+            } else {
+                "correos"
+            }
+        }
+        _ => {
+            if one {
+                "e-mail"
+            } else {
+                "e-mails"
+            }
+        }
     };
     format!("{c} {noun}")
 }
@@ -1417,9 +1503,17 @@ pub fn undo(config: &Config, agent: &str, job_id: &str) -> Result<Job, String> {
         };
         if action == Action::MarkRead {
             back.folder = job.folder.clone();
-            back.uid_validity = job.uid_validity;
             back.action = Some(Action::MarkUnread);
-            back.uids = job.acted.clone();
+            // by Message-ID, as a move's undo: the uids may name other mails by now (hydroxide, review B2 17/11);
+            // only a job whose mails had none keeps its uids
+            let found: Vec<String> =
+                job.acted.iter().filter_map(|u| ids.get(u)).filter(|m| !m.is_empty()).map(|m| m.to_string()).collect();
+            if found.len() == job.acted.len() {
+                back.find_ids = found;
+            } else {
+                back.uid_validity = job.uid_validity;
+                back.uids = job.acted.clone();
+            }
         } else {
             back.folder = job.dest.clone();
             back.find_ids =
@@ -1539,8 +1633,11 @@ pub fn act(conn: &mut Connection, action: &Action, set: &str, dest: &str) -> any
 /// makes folders). Err: plain words for the agent with the server's answer (hydroxide: no such folder, none made).
 pub fn ready_dest(conn: &mut Connection, dest: &str, make: bool) -> anyhow::Result<Result<String, String>> {
     let folders = Folders::of(conn)?;
-    if let Some(real) = folders.resolve(dest) {
-        return Ok(Ok(real));
+    match folders.find(dest) {
+        Ok(real) => return Ok(Ok(real)),
+        // two it could be by now (made since the card): named, none made (review B1, 17/11)
+        Err(candidates) if candidates.len() > 1 => return Ok(Err(folders.unknown(dest, &candidates))),
+        Err(_) => {}
     }
     if folders.0.is_empty() && !make {
         return Ok(Ok(dest.to_string())); // no LIST answer: the MOVE itself tells
@@ -1582,6 +1679,49 @@ pub fn find_by_ids(conn: &mut Connection, ids: &[String]) -> anyhow::Result<Vec<
     Ok(found)
 }
 
+const MESSAGE_ID_ITEMS: &str = "(UID BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])";
+
+/// The Message-ID at each of `uids` in the selected folder.
+fn ids_at(conn: &mut Connection, uids: &[u32]) -> anyhow::Result<Vec<Row>> {
+    let (status, data) = conn.uid("FETCH", &[&uid_set(uids), MESSAGE_ID_ITEMS])?;
+    Ok(if status == "OK" { parse_fetch(&data) } else { Vec::new() })
+}
+
+/// Where the messages of a card's `batch` are now: (uid on the card, uid now), each checked by its Message-ID
+/// (`expected`) and found again by it when its uid names another message. hydroxide numbers a folder again from UID 1
+/// after each new login and keeps UIDVALIDITY 1 (measured 17/11, internal/notes/hydroxide-folders/results/support-
+/// *.txt): between the card and the job a new mail or a move shifts them, and the job moved another mail than the
+/// card's (Alex's support routine). Messages gone from the folder are left out; one without a Message-ID keeps its uid.
+pub fn place(conn: &mut Connection, batch: &[u32], expected: &HashMap<u32, String>) -> anyhow::Result<Vec<(u32, u32)>> {
+    if batch.iter().all(|u| !expected.contains_key(u)) {
+        return Ok(batch.iter().map(|u| (*u, *u)).collect());
+    }
+    let at: HashMap<u32, String> = ids_at(conn, batch)?.into_iter().map(|r| (r.uid, r.message_id)).collect();
+    let mut placed = Vec::new();
+    let mut lost: Vec<(u32, String)> = Vec::new();
+    for uid in batch {
+        match expected.get(uid) {
+            Some(id) if at.get(uid) != Some(id) => lost.push((*uid, id.clone())),
+            _ => placed.push((*uid, *uid)),
+        }
+    }
+    if !lost.is_empty() {
+        let ids: Vec<String> = lost.iter().map(|(_, id)| id.clone()).collect();
+        let found = find_by_ids(conn, &ids)?;
+        if !found.is_empty() {
+            for row in ids_at(conn, &found)? {
+                if let Some((card, _)) = lost.iter().find(|(_, id)| *id == row.message_id) {
+                    if !placed.iter().any(|(c, _)| c == card) {
+                        placed.push((*card, row.uid));
+                    }
+                }
+            }
+        }
+        tracing::info!(target: "mail_tidy", lost = lost.len(), found = found.len(), "card uids found again by Message-ID");
+    }
+    Ok(placed)
+}
+
 /// Does (or goes on with) a job: `ACT_BATCH` messages at a time, its progress kept after each.
 pub fn run_job(config: &Config, id: &str, opener: &Connect) -> anyhow::Result<()> {
     let Some(mut job) = load(config).jobs.into_iter().find(|j| j.id == id) else { return Ok(()) };
@@ -1606,7 +1746,12 @@ pub fn run_job(config: &Config, id: &str, opener: &Connect) -> anyhow::Result<()
             }
         }
         if !job.find_ids.is_empty() && job.uids.is_empty() {
-            job.uids = find_by_ids(&mut conn, &job.find_ids)?;
+            // found by Message-ID, kept with it: a run resumed in another session checks them again (`place`)
+            let found = find_by_ids(&mut conn, &job.find_ids)?;
+            let rows = if found.is_empty() { Vec::new() } else { ids_at(&mut conn, &found)? };
+            let rows: Vec<Row> = rows.into_iter().filter(|r| job.find_ids.contains(&r.message_id)).collect();
+            job.uids = rows.iter().map(|r| r.uid).collect();
+            job.message_ids = rows.into_iter().map(|r| r.message_id).collect();
             save_job(config, &job)?;
         }
         let action = job.action.clone().unwrap_or(Action::Archive);
@@ -1621,25 +1766,39 @@ pub fn run_job(config: &Config, id: &str, opener: &Connect) -> anyhow::Result<()
             }
         }
         let undoing = !job.undo_of.is_empty();
+        let expected: HashMap<u32, String> =
+            job.uids.iter().copied().zip(job.message_ids.iter().cloned()).filter(|(_, id)| !id.is_empty()).collect();
         while job.done < job.uids.len() {
             if started.elapsed() > Duration::from_secs(RUN_SECONDS) {
                 return Ok(()); // the rest at the next tick
             }
             let end = (job.done + ACT_BATCH).min(job.uids.len());
             let batch: Vec<u32> = job.uids[job.done..end].to_vec();
-            // flags again: a message starred since the card is left alone
-            let keep: Vec<u32> = if undoing {
-                batch.clone()
+            // (uid on the card, uid now) for every job, undos too (review B2, 17/11); then flags again: a message
+            // starred since the card is left alone (an undo puts back whatever it moved)
+            let placed = place(&mut conn, &batch, &expected)?;
+            let keep: Vec<(u32, u32)> = if undoing {
+                placed
             } else {
-                let (status, data) = conn.uid("FETCH", &[&uid_set(&batch), "(UID FLAGS)"])?;
-                let rows = if status == "OK" { parse_fetch(&data) } else { Vec::new() };
+                let now: Vec<u32> = placed.iter().map(|(_, u)| *u).collect();
+                let rows = if now.is_empty() {
+                    Vec::new()
+                } else {
+                    let (status, data) = conn.uid("FETCH", &[&uid_set(&now), "(UID FLAGS)"])?;
+                    if status == "OK" {
+                        parse_fetch(&data)
+                    } else {
+                        Vec::new()
+                    }
+                };
                 let fine: HashSet<u32> = rows.iter().filter(|r| !r.flagged && !r.draft).map(|r| r.uid).collect();
-                batch.iter().copied().filter(|u| fine.contains(u)).collect()
+                placed.into_iter().filter(|(_, u)| fine.contains(u)).collect()
             };
             job.skipped += batch.len() - keep.len();
             if !keep.is_empty() {
-                match act(&mut conn, &action, &uid_set(&keep), &job.dest)? {
-                    Ok(()) => job.acted.extend(&keep),
+                let now: Vec<u32> = keep.iter().map(|(_, u)| *u).collect();
+                match act(&mut conn, &action, &uid_set(&now), &job.dest)? {
+                    Ok(()) => job.acted.extend(keep.iter().map(|(card, _)| *card)),
                     Err(reply) => {
                         job.error = format!("the mailbox refused {} of them: « {reply} »", keep.len());
                         job.skipped += keep.len();
@@ -1825,6 +1984,39 @@ mod tests {
     }
 
     #[test]
+    fn a_folder_is_found_as_a_person_says_it() {
+        // Alex 17/11: « Traité » meant « Support/Traité »; any case, accents or not; never one of two at random
+        let names = |n: &[&str]| Folders(n.iter().map(|n| ("\\HasNoChildren".to_string(), n.to_string())).collect());
+        let support = names(&["INBOX", "Support", "Support/En attente", "Support/Traité", "Admin"]);
+        for (said, real) in [
+            ("Traité", "Support/Traité"),
+            ("traite", "Support/Traité"),
+            ("SUPPORT/TRAITE", "Support/Traité"),
+            ("en attente", "Support/En attente"),
+            ("support", "Support"),
+            ("inbox", "INBOX"),
+        ] {
+            assert_eq!(support.resolve(said).as_deref(), Some(real), "{said}");
+        }
+        let two = names(&["Support/Traité", "Factures/Traité"]);
+        assert_eq!(two.resolve("traite"), None);
+        assert_eq!(two.resolve("factures/traite").as_deref(), Some("Factures/Traité"));
+        // names in other scripts are not folded away into one another
+        let cjk = names(&["台北", "日本語"]);
+        assert_eq!(cjk.resolve("日本語").as_deref(), Some("日本語"));
+        assert_eq!(cjk.resolve("中文"), None);
+        // two names the same once folded: the exact one, else both named (never the first listed)
+        let twins = names(&["Traité", "Traite", "Factures", "factures"]);
+        assert_eq!(twins.resolve("Traite").as_deref(), Some("Traite"));
+        assert_eq!(twins.find("TRAITE"), Err(vec!["Traité".to_string(), "Traite".to_string()]));
+        assert_eq!(twins.find("FACTURES"), Err(vec!["Factures".to_string(), "factures".to_string()]));
+        // only Latin accents fold: an Indic vowel sign or a Japanese dakuten keeps a word apart
+        assert_ne!(folded("कि"), folded("क"));
+        assert_ne!(folded("が"), folded("か"));
+        assert_eq!(folded(" Ÿvette ÉTÉ "), "yvette ete");
+    }
+
+    #[test]
     fn hydroxide_without_the_folder_says_why_before_any_card() {
         let hx = hydroxide_folders(&[]);
         let why = hx.destination("Copro St Ex").unwrap_err();
@@ -1883,7 +2075,9 @@ mod tests {
         assert!(Selector::from_args(&args(json!({"unread_only": true}))).check(&any).is_err());
         assert!(Selector::from_args(&args(json!({"everything": true}))).check(&any).is_ok());
         // a group id written in the field: the field's value (5/11)
-        let s = Selector::from_args(&args(json!({"domain": "domain:Qonto.example", "list_id": "list:<news.shop.example>"})));
+        let s = Selector::from_args(&args(
+            json!({"domain": "domain:Qonto.example", "list_id": "list:<news.shop.example>"}),
+        ));
         assert_eq!((s.domain.as_str(), s.list_id.as_str()), ("qonto.example", "news.shop.example"));
         assert!(Selector::from_args(&args(json!({"older_than_days": 0}))).check(&any).is_err());
         assert!(Selector::from_args(&args(json!({"older_than_days": 365}))).check(&any).is_ok());
