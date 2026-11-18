@@ -357,4 +357,42 @@ mod tests {
         assert!(!allowed("checkout.shop.example"));
         assert!(!sends_without_card(&config, "vie", "checkout.shop.example"));
     }
+
+    /// Review 18/11 (fix-cards-lab-rehearsal): a shop `clean_host` refuses as `*.` falls back to the raw text, unchecked:
+    /// a purchase.site that is itself a wildcard (`parse_purchase` accepts it: it only asks for a dot) lands in the
+    /// browser's file as a wildcard, opening every .com or every Shopify shop. A bare shared-hosting registrable domain
+    /// (myshopify.com, not in SHARED_HOSTING) opens every tenant.
+    #[test]
+    fn review_a_purchase_site_never_opens_more_than_one_shop() {
+        use crate::connectors::{self, Connector, Watch};
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.path().join("bridge.db").to_string_lossy().into_owned();
+        config.browser.root = dir.path().join("browsers").to_string_lossy().into_owned();
+        config.agents.insert("vie".into(), AgentConfig { name: "vie".into(), ..Default::default() });
+        std::fs::create_dir_all(crate::browsers::folder(&config, "vie")).unwrap();
+        let watcher = |id: &str, site: &str| {
+            let given = serde_json::json!({"site": site, "what": "Billet", "price": "4,50"});
+            let purchase = crate::watchers::parse_purchase(given.as_object().unwrap())
+                .unwrap_or_else(|why| panic!("{site}: refused at registration ({why})"));
+            Connector {
+                id: id.into(),
+                name: format!("Billets {id}"),
+                sites: vec!["api.tickets.example".into()],
+                status: connectors::APPROVED.into(),
+                enabled: true,
+                watch: Some(Watch { every: "15m".into(), notify: "on_change".into(), purchase: Some(purchase) }),
+                ..Default::default()
+            }
+        };
+        let list = vec![watcher("a", "*.com"), watcher("b", "https://*.myshopify.com/"), watcher("c", "myshopify.com")];
+        connectors::change(&config, |store| store.agents.insert("vie".into(), list)).unwrap();
+        let path = file_of(&config, "vie");
+        let used = std::collections::HashSet::new();
+        let allowed = |host: &str| crate::browser_mcp::send_allowed(&path, host, &used, py::time_time()) == Some(None);
+        for host in ["evil.com", "attacker.myshopify.com"] {
+            assert!(!allowed(host), "{host}: opened by a watcher's purchase site {:?}", purchase_sites(&config, "vie"));
+            assert!(!sends_without_card(&config, "vie", host), "{host}: no card");
+        }
+    }
 }
