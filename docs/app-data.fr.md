@@ -24,8 +24,8 @@ d’après le contrat d’interface du bridge, avant le code des apps qui s’en
 
 ## 0. Bibliothèques : aucun traceur de Kerfy Studio
 
-- **iOS** (`BipAgents.xcodeproj/.../Package.resolved`, `Packages/*/Package.swift`) : un seul paquet externe,
-  `onnxruntime-swift-package-manager` 1.24.2, qui fait tourner les voix des Bips sur le téléphone. Aucun SDK de mesure
+- **iOS** (`Packages/*/Package.swift`) : un seul paquet externe, le paquet Swift d’ONNX Runtime 1.24.2, copié dans
+  `Packages/OnnxRuntimeSPM`, qui fait tourner les voix des Bips sur le téléphone. Aucun SDK de mesure
   d’audience, de plantage, de publicité ou d’attribution. Ni MetricKit, ni AdSupport, ni AppTrackingTransparency (pas
   d’IDFA, pas de question « Autoriser le suivi ? »). L’app utilise une fois le framework AdServices d’Apple
   (`AAAttribution.attributionToken()`, ci-dessous).
