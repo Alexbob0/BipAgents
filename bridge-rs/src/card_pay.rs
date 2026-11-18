@@ -49,8 +49,9 @@
 //! checks them against the card (that device, its last 4 digits). They are held in memory for that one fill
 //! (`CardValues`, wiped on drop) and dropped when the payment is typed, refused, suspended or timed out; a bridge
 //! restart loses them. Another device's approval is refused (409 `card_on_other_device`, with the phone's name). The
-//! card's cap (euros, spent so far included) is checked before the person is asked. The person's own typing into card
-//! fields in the live view stays blocked there (desktop_page.rs): only this fill, the browser held, writes into them.
+//! card's cap (euros, for each payment: not a total) is checked before the person is asked. The person's own typing
+//! into card fields in the live view stays blocked there (desktop_page.rs): only this fill, the browser held, writes
+//! into them.
 
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
@@ -740,8 +741,8 @@ async fn release_entry(config: &Config, agent: &str, outcome: &str, entry: Held)
     if let Some(folder) = &entry.lease {
         let _ = crate::desktop::set_lease(folder, false, "");
     }
-    // Never pressed, nor taken over by the person, and given up (review 18/11, R1): nothing was paid, the card's cap
-    // whole again (a single-use card stays used: the page saw its number).
+    // Never pressed, nor taken over by the person, and given up (review 18/11, R1): nothing was paid, taken off what
+    // the card shows as spent (a single-use card stays used: the page saw its number).
     if !entry.clicked && !entry.taken_over && matches!(outcome, "amount_differs" | "cancelled" | "suspended") {
         if let Some((vault, card)) = &entry.spent_on {
             match vault.unrecord_card_payment(card, &entry.payment).await {
@@ -1497,9 +1498,9 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
             return Ok(give_up(&config, &agent.name, token, "failed", &say).await);
         }
     };
-    // The amount kept aside on the card, the card read again (audit 17/11, 2.3): another agent's payment with the same
-    // card, approved meanwhile, may have taken what was left under its cap. Ends with the card typed (counted in
-    // `spent` then) or with the payment.
+    // The payment kept on the card, the card read again (audit 17/11, 2.3): removed or its cap lowered meanwhile, or a
+    // single-use card taken by another agent's payment approved meanwhile. Ends with the card typed (counted in `spent`
+    // then) or with the payment.
     let reservation = match state.vault.reserve_card_payment(&card.id, &entry.payment, cents, &currency).await? {
         Ok(reservation) => reservation,
         Err(why) => {

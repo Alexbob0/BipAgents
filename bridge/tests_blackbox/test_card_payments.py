@@ -830,10 +830,17 @@ def test_on_a_place_of_the_offer_only_when_switched_on_and_the_number_stays_on_t
         assert ("F-psp", "number", NUMBER) in chrome.typed and ("F-psp", "exp", "12/30") in chrome.typed
         assert tool(bridge, "confirm_payment", {"button": "Payer 12,50 €"})["isError"] is False
         assert bridge.get("/v1/vault", headers=AUTH).json()["items"][0]["card"]["spent"] == {"EUR": 1250}
-        # The cap (20 €, 12.50 already paid): refused before asking.
+        # The cap is for each payment (Alex 18/11): a second 12.50 goes through, 25 € in all over a 20 € cap.
         chrome.url = "https://shop.example/checkout"
-        over = tool(bridge, "pay_with_card", ARGS)
-        assert over["isError"] is True and "cap of 20.00 EUR" in over["content"][0]["text"]
+        again, _, answers = pay_from_phone(bridge, ARGS, [FROM_PHONE_A])
+        assert answers == [(204, "")] and again["isError"] is False, again
+        assert tool(bridge, "confirm_payment", {"button": "Payer 12,50 €"})["isError"] is False
+        assert bridge.get("/v1/vault", headers=AUTH).json()["items"][0]["card"]["spent"] == {"EUR": 2500}
+        # One payment over the cap (25 € with a 20 € cap): refused before asking.
+        chrome.url = "https://shop.example/checkout"
+        over = tool(bridge, "pay_with_card", {**ARGS, "amount": "25,00"})
+        text = over["content"][0]["text"]
+        assert over["isError"] is True and "at most 20.00 EUR per payment: 25.00 EUR is over it" in text, text
         journal = bridge.get("/v1/vault/payments", headers=AUTH).json()["journal"]
         assert journal[0]["outcome"] == "refused_cap"
         records = vault_records(bridge)

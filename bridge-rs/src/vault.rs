@@ -1118,10 +1118,10 @@ impl Vault {
             .collect()
     }
 
-    /// The payment `payment` of `cents` in `currency` with card `item_id` kept aside on it, its card about to be typed
-    /// (audit 17/11, 2.3): under the vault's lock, the card read again and its cap checked with every payment of it in
-    /// flight, so that two agents sharing a card, both approved, never pay over its cap together; a single-use card
-    /// used meanwhile, or being used, is refused too. Err: what to tell the agent (nothing is typed).
+    /// The payment `payment` of `cents` in `currency` with card `item_id` kept on it, its card about to be typed
+    /// (audit 17/11, 2.3): under the vault's lock, the card read again (removed, or its cap lowered, meanwhile) and its
+    /// cap checked for this payment alone (a limit per payment, Alex 18/11); a single-use card used meanwhile, or being
+    /// used by another payment, is refused. Err: what to tell the agent (nothing is typed).
     pub async fn reserve_card_payment(
         &self,
         item_id: &str,
@@ -1136,7 +1136,7 @@ impl Vault {
         };
         let label = record.get("label").map(crate::py::py_str).unwrap_or_default();
         let meta = record.get("card").cloned().unwrap_or(Value::Null);
-        let (in_flight, others) = crate::cards::in_flight_on(item_id, currency);
+        let others = crate::cards::in_flight_on(item_id);
         let single_use = meta.get("single_use").and_then(Value::as_bool) == Some(true);
         if single_use && (meta.get("used").and_then(Value::as_bool) == Some(true) || others > 0) {
             return Ok(Err(format!(
@@ -1144,14 +1144,14 @@ impl Vault {
                  tell the person."
             )));
         }
-        if let Some(why) = crate::cards::over_cap_with(&meta, &label, cents, currency, in_flight) {
+        if let Some(why) = crate::cards::over_cap(&meta, &label, cents, currency) {
             return Ok(Err(format!("Nothing was typed. {why}")));
         }
-        Ok(Ok(crate::cards::Reservation::take(payment, item_id, cents, currency)))
+        Ok(Ok(crate::cards::Reservation::take(payment, item_id)))
     }
 
     /// A payment made with card `item_id`, kept on it (a single-use card is then used); its reservation
-    /// (`reserve_card_payment`) ends under the same lock, counted in `spent` from now on.
+    /// (`reserve_card_payment`) ends under the same lock, counted in `spent` (shown in the app) from now on.
     pub async fn record_card_payment(
         &self,
         item_id: &str,
