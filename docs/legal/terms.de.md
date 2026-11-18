@@ -2,7 +2,7 @@
 
 # Nutzungsbedingungen von BipAgents
 
-> Zuletzt aktualisiert: 12. November 2026.
+> Zuletzt aktualisiert: 18. November 2026.
 
 ## 1. Gegenstand
 
@@ -155,6 +155,10 @@ Dienste, die du mit deinen Agenten verbindest, und für das, was du per SSH tust
 - Die E-Mails und Nachrichten, die deine Agenten an andere Personen schicken, geben standardmäßig an, dass ein
   KI-Agent sie verfasst hat, und für wen. Entferne diesen Hinweis nicht, um glauben zu machen, ein Mensch habe sie
   geschrieben.
+- **Zahlungen durch deine Agenten** (standardmäßig ausgeschaltet, beim Alles-inklusive-Angebot experimentell während der
+  Beta): Ein Agent bezahlt nur mit einer virtuellen Karte mit Limit, die du ihm anvertraut hast, auf den Websites, die
+  du erlaubst, und jede Zahlung wird dir vorgelegt. Da du sie bestätigst, kann deine Bank eine Erstattung als Betrug
+  verweigern. Nutze nie deine Hauptkarte.
 
 ## 10. Zulässige Nutzung
 

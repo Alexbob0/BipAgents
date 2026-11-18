@@ -2,7 +2,7 @@
 
 # Politique de confidentialité de BipAgents
 
-> Dernière mise à jour : 16 novembre 2026.
+> Dernière mise à jour : 18 novembre 2026.
 
 ## En bref
 
@@ -545,7 +545,8 @@ crédit faisant partie du forfait Duo ou Famille. La limite fixée est gardée t
 
 **Une seule semaine gratuite par personne.** Pour savoir si tu as déjà eu un abonnement BipAgents, nous comparons aussi
 l'adresse e-mail donnée à la commande, ton compte BipAgents et ton identifiant client Stripe avec nos abonnements passés.
-Nous ne gardons aucune donnée de ta carte : elle est saisie chez Stripe et ne passe pas par nos serveurs.
+Nous ne gardons aucune donnée de la carte de ton abonnement : elle est saisie chez Stripe et ne passe pas par nos
+serveurs (pour une carte confiée à tes agents, voir la section 5.10).
 
 **Une seule semaine gratuite par appareil.**
 
@@ -743,6 +744,9 @@ lui confies, sur les sites que tu autorises :
   l'as ajoutée**, dans son stockage protégé (Trousseau d'iOS, Keystore d'Android), derrière Face ID, ton empreinte ou
   ton code. Ta place ne garde que le nom que tu as donné à la carte, son réseau, ses 4 derniers chiffres, le plafond
   que tu as fixé, les sites et les agents autorisés, et les paiements faits avec (montant, site, agent, date).
+- Avant d'ajouter une carte, tu fixes un plafond par paiement, en euros, et tu confirmes en cochant une case qu'il
+  s'agit d'une carte virtuelle avec un plafond, pas de ta carte principale : le plafond de ta banque reste la vraie
+  limite, celui de l'app en est un second.
 - **À chaque paiement que tu valides** dans l'app, ton téléphone envoie ces données et le code de sécurité de la carte
   (tapé, ou retenu sur ce téléphone si tu l'as choisi) à ta place, par la connexion chiffrée de l'app. Le logiciel de ta place les garde en mémoire
   le temps de remplir le formulaire de paiement dans le navigateur de l'agent, puis les efface. Elles ne sont jamais
@@ -751,9 +755,10 @@ lui confies, sur les sites que tu autorises :
 - Finalité : faire l'achat que tu as demandé et validé (exécution du contrat, article 6.1.b du RGPD). Tu peux tout
   suspendre à tout moment, et supprimer la carte dans l'app (elle est alors effacée du téléphone et de ta place).
 
-C'est une fonction expérimentale : certaines banques considèrent que confier les données de sa carte à un service est
-une négligence et peuvent refuser un remboursement en cas de litige. C'est pourquoi l'app demande une carte virtuelle
-avec un plafond, jamais ta carte principale.
+C'est une fonction expérimentale pendant la bêta, désactivée par défaut : l'app t'en montre les risques avant que tu
+l'actives. Comme c'est toi qui valides chaque paiement, ta banque peut considérer qu'il n'est pas frauduleux et refuser
+de le rembourser ; certaines banques considèrent aussi que confier les données de sa carte à un service est une
+négligence. C'est pourquoi l'app demande une carte virtuelle avec un plafond, jamais ta carte principale.
 
 ### 5.11 D'où tu nous as connus (mesure de nos campagnes)
 
@@ -1004,6 +1009,8 @@ l'Union. Tu peux nous demander une copie des garanties applicables.
 | Adresse e-mail et identifiant de compte après la fin du contrat (obligation des hébergeurs) | 5 ans pour l'e-mail, 1 an pour l'identifiant, gardés à part |
 | Abonnement et achats | Pendant l'abonnement, puis 5 ans en archive |
 | Achat sur le site (adresse e-mail donnée au paiement, identifiants Stripe, forfait et période, pays de facturation, langue) | Pendant l'abonnement, puis 5 ans en archive |
+| Paiements par tes agents : numéro, date d'expiration, titulaire, code postal et code de sécurité de la carte (offre tout compris) | Sur ton téléphone ; sur ta place, en mémoire seulement le temps de remplir un paiement que tu as validé |
+| Journal des paiements par tes agents (montant, site, agent, date, sans numéro de carte) | 3 ans sur ta place |
 | Factures et pièces de paiement d'un achat sur le site | 10 ans (article L123-22 du Code de commerce) ; factures gardées par Stripe |
 | Code bêta jamais utilisé | Jusqu'à ce qu'il ne puisse plus servir |
 | Code bêta utilisé et son lien à ton compte | Jusqu'à la fin de ta place bêta ou son passage à un abonnement payant |

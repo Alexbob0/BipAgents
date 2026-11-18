@@ -2,7 +2,7 @@ English · [Français](terms.fr.md) · [Deutsch](terms.de.md) · [Español](term
 
 # BipAgents terms of use
 
-> Last updated: 12 November 2026.
+> Last updated: 18 November 2026.
 
 ## 1. Purpose
 
@@ -138,6 +138,9 @@ and what you do over SSH ([terms of the offer](offer.en.md)).
   approvals on and give each agent only the access it needs.
 - The emails and messages your agents send to other people state by default that they were written by an AI agent,
   and on whose behalf. Do not remove this statement to make people believe a human wrote them.
+- **Payments by your agents** (off by default, experimental during the beta on the all-included offer): an agent pays
+  only with a virtual card with a cap you gave it, on the sites you allow, and each payment asks you. Since you approve
+  it, your bank may refuse to refund it as fraud. Never use your main card.
 
 ## 10. Acceptable use
 

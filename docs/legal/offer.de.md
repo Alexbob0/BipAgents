@@ -2,7 +2,7 @@
 
 # Allgemeine Verkaufsbedingungen des Alles-inklusive-Angebots
 
-> Zuletzt aktualisiert: 12. November 2026.
+> Zuletzt aktualisiert: 18. November 2026.
 
 ## 1. Gegenstand
 
@@ -50,7 +50,7 @@ diese Bedingungen.
   dort: Der Store stellt die Rechnung, kassiert den Preis und die Mehrwertsteuer und erstattet nach seinen eigenen
   Regeln. Im App Store handelt Apple als Vertreter von Kerfy Studio, und für die Europäische Union ist der Verkäufer
   Apple Distribution International Ltd. (Irland); bei Google Play ist der Verkäufer Google Commerce Limited (Irland).
-  Für die Zahlung gelten ihre Bedingungen. Kerfy Studio erhält nie deine Zahlungsdaten.
+  Für die Zahlung gelten ihre Bedingungen. Kerfy Studio erhält nie die Zahlungsdaten deines Abos.
 - **Auf der Website bipagents.com verkauft Kerfy Studio selbst.** Kerfy Studio ist dann der Verkäufer: Es stellt dir die
   Rechnung und kassiert den Preis und die Mehrwertsteuer oder Verkaufssteuern, die Stripe Tax für dein Land berechnet.
   Die Zahlung wickelt Stripe ab (Stripe Payments Europe, Ltd., Irland); Kerfy Studio erhält nie deine vollständige
@@ -110,6 +110,12 @@ storniert und erstattet. Die besonderen Regeln für Personen, die außerhalb der
 
 **Nicht enthalten**: dein Telefon und dein Internetzugang; die Nutzung des KI-Modells über dein Guthaben hinaus (du
 kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten verbindest, und deren eigene Abos.
+
+**Zahlungen durch deine Agenten** (experimentell während der Beta, standardmäßig ausgeschaltet): Wenn Kerfy Studio die
+Funktion geöffnet hat, kannst du sie einschalten und einem Agenten eine virtuelle Karte mit Limit anvertrauen, nie deine
+Hauptkarte. Ihre Nummer bleibt auf deinem Telefon; sie wird nur mit jeder Zahlung, die du bestätigst, an deinen Platz
+gesendet, im Arbeitsspeicher gehalten, bis sie ausgefüllt ist, und dann gelöscht ([Datenschutzerklärung](privacy.de.md),
+Abschnitt 5.10).
 
 **Kompatibilität**: Die App läuft auf iPhone und iPad mit iOS 18 oder neuer und auf Android 10 oder neuer.
 
@@ -414,6 +420,9 @@ Kerfy Studio haftet insbesondere nicht:
 - für das, was das KI-Modell erzeugt und was falsch sein kann, noch für die Entscheidungen, die du darauf stützt;
 - für Aktionen deiner Agenten, die du freigegeben hast oder die deine Konfiguration erlaubt, es sei denn, sie beruhen
   auf einem Fehler des Dienstes;
+- für eine Zahlung, die ein Agent mit deiner Karte getätigt und du bestätigt hast, noch für eine verweigerte Erstattung
+  durch deine Bank, es sei denn, die Zahlung beruht auf einem Fehler des Dienstes (ein anderer Betrag, eine andere
+  Website oder Karte als die von dir bestätigte);
 - für das, was du selbst auf deinem Platz tust, insbesondere per SSH;
 - für einen Verlust des Zugangs, weil du alle deine Geräte und deinen Wiederherstellungscode verloren hast;
 - für die Dienste Dritter, die du mit deinen Agenten verbindest (E-Mail, Websites, Online-Konten).

@@ -2,7 +2,7 @@
 
 # Conditions générales de vente de l'offre tout compris
 
-> Dernière mise à jour : 12 novembre 2026.
+> Dernière mise à jour : 18 novembre 2026.
 
 ## 1. Objet
 
@@ -49,7 +49,7 @@ conditions.
   compte chez eux : le store facture, encaisse le prix et la TVA, et rembourse selon ses propres règles. Sur l'App
   Store, Apple agit comme mandataire de Kerfy Studio et, pour l'Union européenne, le vendeur est Apple Distribution
   International Ltd. (Irlande) ; sur Google Play, le vendeur est Google Commerce Limited (Irlande). Leurs conditions
-  s'appliquent au paiement. Kerfy Studio ne reçoit jamais tes moyens de paiement.
+  s'appliquent au paiement. Kerfy Studio ne reçoit jamais les moyens de paiement de ton abonnement.
 - **Sur le site bipagents.com, Kerfy Studio vend lui-même.** Kerfy Studio est alors le vendeur : il te facture et
   encaisse le prix et la TVA ou les taxes de vente, calculées selon ton pays par Stripe Tax. Le paiement est traité par
   Stripe (Stripe Payments Europe, Ltd., Irlande) ; Kerfy Studio ne reçoit jamais le numéro complet de ta carte. Les apps
@@ -108,6 +108,11 @@ aussitôt. Les règles propres aux personnes qui vivent hors de l'Union sont à 
 
 **Ce qui n'est pas compris** : ton téléphone et ton accès à Internet ; l'utilisation du modèle d'IA au-delà de ton
 crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agents et leurs propres abonnements.
+
+**Les paiements par tes agents** (expérimental pendant la bêta, désactivé par défaut) : quand Kerfy Studio a ouvert la
+fonction, tu peux l'activer et confier à un agent une carte virtuelle avec un plafond, jamais ta carte principale. Son
+numéro reste sur ton téléphone ; il n'est envoyé à ta place qu'avec chaque paiement que tu valides, gardé en mémoire le
+temps de le remplir, puis effacé ([politique de confidentialité](privacy.fr.md), section 5.10).
 
 **Compatibilité** : l'app fonctionne sur iPhone et iPad avec iOS 18 ou plus récent, et sur Android 10 ou plus récent.
 
@@ -402,6 +407,8 @@ Kerfy Studio ne répond notamment pas :
 - de ce que produit le modèle d'IA, qui peut se tromper, ni des décisions que tu prends sur cette base ;
 - des actions de tes agents que tu as approuvées ou que ta configuration autorise, sauf si elles résultent d'un défaut
   du service ;
+- d'un paiement fait par un agent avec ta carte et que tu as validé, ni d'un refus de remboursement par ta banque, sauf
+  si le paiement résulte d'un défaut du service (montant, site ou carte différents de ce que tu as validé) ;
 - de ce que tu fais toi-même sur ta place, notamment par SSH ;
 - d'une perte d'accès due à la perte de tous tes appareils et de ton code de récupération ;
 - des services tiers que tu relies à tes agents (messagerie, sites, comptes en ligne).

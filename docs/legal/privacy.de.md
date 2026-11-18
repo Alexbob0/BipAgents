@@ -2,7 +2,7 @@
 
 # Datenschutzerklärung von BipAgents
 
-> Zuletzt aktualisiert: 16. November 2026.
+> Zuletzt aktualisiert: 18. November 2026.
 
 ## Kurz gesagt
 
@@ -578,7 +578,8 @@ aufbewahrt, solange das Abo läuft.
 
 **Nur eine kostenlose Woche pro Person.** Um zu wissen, ob du schon ein BipAgents-Abo hattest, vergleichen wir auch die
 bei der Bestellung angegebene E-Mail-Adresse, dein BipAgents-Konto und deine Kundenkennung bei Stripe mit unseren
-früheren Abos. Wir speichern keine Daten deiner Karte: Sie wird bei Stripe eingegeben und läuft nie über unsere Server.
+früheren Abos. Wir speichern keine Daten der Karte, mit der du dein Abo bezahlst: Sie wird bei Stripe eingegeben und
+läuft nie über unsere Server (zu einer Karte für deine Agenten siehe Abschnitt 5.10).
 
 **Nur eine kostenlose Woche pro Gerät.**
 
@@ -783,6 +784,9 @@ kleinen Einkauf mit einer Karte bezahlen, die du ihm anvertraust, auf den Websit
   Fingerabdruck oder deinem Code. Dein Platz speichert nur den Namen, den du der Karte gegeben hast, ihr Netzwerk, die
   letzten 4 Ziffern, das von dir gesetzte Limit, die erlaubten Websites und Agenten und die damit getätigten Zahlungen
   (Betrag, Website, Agent, Datum).
+- Bevor du eine Karte hinzufügst, legst du ein Limit pro Zahlung in Euro fest und bestätigst mit einem Häkchen, dass es
+  eine virtuelle Karte mit Limit ist, nicht deine Hauptkarte: Das Limit deiner Bank bleibt die eigentliche Grenze, das
+  der App ist eine zweite.
 - **Bei jeder Zahlung, die du in der App bestätigst**, sendet dein Telefon diese Daten und den Sicherheitscode (eingetippt,
   oder auf diesem Telefon gemerkt, wenn du es gewählt hast) über die verschlüsselte Verbindung der App an deinen Platz. Die Software deines Platzes hält sie im
   Arbeitsspeicher, bis das Zahlungsformular im Browser des Agenten ausgefüllt ist, und löscht sie dann. Sie werden nie
@@ -792,9 +796,10 @@ kleinen Einkauf mit einer Karte bezahlen, die du ihm anvertraust, auf den Websit
   Du kannst jederzeit alles aussetzen und die Karte in der App löschen (sie wird dann vom Telefon und von deinem Platz
   gelöscht).
 
-Dies ist eine experimentelle Funktion: Manche Banken sehen es als Fahrlässigkeit an, Kartendaten einem Dienst
-anzuvertrauen, und können im Streitfall eine Erstattung verweigern. Deshalb verlangt die App eine virtuelle Karte mit
-Limit, nie deine Hauptkarte.
+Dies ist eine experimentelle Funktion während der Beta, standardmäßig ausgeschaltet: Die App zeigt dir ihre Risiken,
+bevor du sie einschaltest. Da du jede Zahlung selbst bestätigst, kann deine Bank sie als nicht betrügerisch ansehen und
+eine Erstattung verweigern; manche Banken sehen es auch als Fahrlässigkeit an, Kartendaten einem Dienst anzuvertrauen.
+Deshalb verlangt die App eine virtuelle Karte mit Limit, nie deine Hauptkarte.
 
 ### 5.11 Wie du uns gefunden hast (Messung unserer Kampagnen)
 
@@ -1041,6 +1046,8 @@ des Guichets und des Relays: OVHcloud, in Frankreich. Hoster der Sicherungen: Sc
 | E-Mail-Adresse und Kontokennung nach dem Ende des Vertrags (Pflicht der Hoster) | 5 Jahre für die E-Mail, 1 Jahr für die Kennung, getrennt aufbewahrt |
 | Abo und Käufe | Während des Abos, dann 5 Jahre im Archiv |
 | Kauf auf der Website (bei der Zahlung angegebene E-Mail-Adresse, Kennungen bei Stripe, Tarif und Zeitraum, Rechnungsland, Sprache) | Während des Abos, dann 5 Jahre im Archiv |
+| Zahlungen durch deine Agenten: Nummer, Ablaufdatum, Inhaber, Postleitzahl und Sicherheitscode der Karte (Alles-inklusive-Angebot) | Auf deinem Telefon; auf deinem Platz nur im Arbeitsspeicher, während eine von dir bestätigte Zahlung ausgefüllt wird |
+| Protokoll der Zahlungen durch deine Agenten (Betrag, Website, Agent, Datum, ohne Kartennummer) | 3 Jahre auf deinem Platz |
 | Rechnungen und Zahlungsbelege eines Kaufs auf der Website | 10 Jahre (Art. L123-22 des französischen Handelsgesetzbuchs); Rechnungen bei Stripe aufbewahrt |
 | Nie eingelöster Beta-Code | Bis er nicht mehr eingelöst werden kann |
 | Eingelöster Beta-Code und seine Verknüpfung zu deinem Konto | Bis dein Beta-Platz endet oder in ein bezahltes Abo übergeht |
