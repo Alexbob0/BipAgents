@@ -1985,4 +1985,52 @@ mod tests {
         assert_eq!(again["secret"], json!({"password": "p"}));
         assert_eq!(again["has_otp"], json!(false));
     }
+
+    // review offer-cap-per-payment (18/11): what `reserve_card_payment` still guards once the cap is per payment.
+    fn card_record(id: &str, card: Value) -> Dict {
+        json!({"id": id, "kind": "card", "label": "Petits achats", "card": card}).as_object().unwrap().clone()
+    }
+
+    #[tokio::test]
+    async fn review_cap_per_payment_two_payments_at_the_cap_at_once_but_a_single_use_card_never_twice() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = Vault::new(&dir.path().to_string_lossy());
+        // per payment: two at the cap at once, a big `spent` ignored
+        vault.write(&[card_record("item_rv_multi", json!({"cap_cents": 2000, "spent": {"EUR": 90000}}))]).unwrap();
+        let a = vault.reserve_card_payment("item_rv_multi", "pay_rv_m1", 2000, "EUR").await.unwrap().unwrap();
+        let b = vault.reserve_card_payment("item_rv_multi", "pay_rv_m2", 2000, "EUR").await.unwrap().unwrap();
+        let over = vault.reserve_card_payment("item_rv_multi", "pay_rv_m3", 2001, "EUR").await.unwrap().unwrap_err();
+        assert!(over.contains("at most 20.00 EUR per payment"), "{over}");
+        drop((a, b));
+        // single use: the second payment approved meanwhile is refused while the first one is in flight
+        vault.write(&[card_record("item_rv_single", json!({"cap_cents": 2000, "single_use": true}))]).unwrap();
+        let first = vault.reserve_card_payment("item_rv_single", "pay_rv_s1", 1000, "EUR").await.unwrap().unwrap();
+        let second = vault.reserve_card_payment("item_rv_single", "pay_rv_s2", 1000, "EUR").await.unwrap().unwrap_err();
+        assert!(second.contains("used by another payment meanwhile"), "{second}");
+        // typed: used from now on, the reservation gone with it
+        vault.record_card_payment("item_rv_single", json!({"cents": 1000, "currency": "EUR", "payment": "pay_rv_s1"}),
+                                  Some(first)).await.unwrap();
+        assert_eq!(crate::cards::in_flight_on("item_rv_single"), 0);
+        let third = vault.reserve_card_payment("item_rv_single", "pay_rv_s3", 1000, "EUR").await.unwrap().unwrap_err();
+        assert!(third.contains("used by another payment meanwhile"), "{third}");
+        // an error path (give_up, timeout, stop_all): the reservation dropped, nothing stays in flight
+        vault.write(&[card_record("item_rv_single2", json!({"cap_cents": 2000, "single_use": true}))]).unwrap();
+        drop(vault.reserve_card_payment("item_rv_single2", "pay_rv_t1", 1000, "EUR").await.unwrap().unwrap());
+        assert_eq!(crate::cards::in_flight_on("item_rv_single2"), 0);
+        let again = vault.reserve_card_payment("item_rv_single2", "pay_rv_t2", 1000, "EUR").await.unwrap();
+        assert!(again.is_ok(), "never typed: the single-use card is still free");
+    }
+
+    #[tokio::test]
+    async fn review_cap_per_payment_card_removed_or_cap_lowered_after_approval_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = Vault::new(&dir.path().to_string_lossy());
+        vault.write(&[card_record("item_rv_low", json!({"cap_cents": 1000}))]).unwrap();
+        let low = vault.reserve_card_payment("item_rv_low", "pay_rv_l1", 1500, "EUR").await.unwrap().unwrap_err();
+        assert!(low.starts_with("Nothing was typed.") && low.contains("at most 10.00 EUR per payment"), "{low}");
+        assert_eq!(crate::cards::in_flight_on("item_rv_low"), 0);
+        vault.write(&[]).unwrap();
+        let gone = vault.reserve_card_payment("item_rv_low", "pay_rv_l2", 500, "EUR").await.unwrap().unwrap_err();
+        assert!(gone.contains("removed from the vault meanwhile"), "{gone}");
+    }
 }
