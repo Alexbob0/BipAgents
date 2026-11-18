@@ -529,12 +529,7 @@ fn db_rows(path: &PathBuf, session: &str) -> anyhow::Result<Vec<Row>> {
     let rows = statement
         .query_map([session], |r| {
             let content: Option<String> = r.get(2)?;
-            let content = match content {
-                // a message with photos: Hermes keeps its parts as JSON
-                Some(text) if text.starts_with("[{") => serde_json::from_str(&text).unwrap_or(Value::String(text)),
-                Some(text) => Value::String(text),
-                None => Value::Null,
-            };
+            let content = content.map_or(Value::Null, stored_content);
             let calls: Option<String> = r.get(5)?;
             let timestamp = match r.get_ref(3)? {
                 rusqlite::types::ValueRef::Real(f) => f,
@@ -562,6 +557,25 @@ fn db_rows(path: &PathBuf, session: &str) -> anyhow::Result<Vec<Row>> {
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
+}
+
+/// Hermes' mark of a content kept as JSON (hermes_state_messages.py `_CONTENT_JSON_PREFIX`, v0.22.5 and v0.23.1).
+pub const CONTENT_JSON_PREFIX: &str = "\u{0}json:";
+
+/// A row's `content` column as Hermes reads it back (`_decode_content`): parts kept as `\x00json:` + JSON (a list,
+/// or a literal text that began with the mark), else the text itself; an older store's bare `[{…}]` list too. 18/11
+/// (Alex, Vie): a photo sent on a turn whose preflight compaction ran in place keeps its raw parts there, data URL
+/// included (agent/turn_context.py); read as words, the iPhone drew a giant black bubble and « Pas envoyé ».
+pub fn stored_content(text: String) -> Value {
+    let json = match text.strip_prefix(CONTENT_JSON_PREFIX) {
+        Some(json) => json,
+        None if text.starts_with("[{") => text.as_str(),
+        None => return Value::String(text),
+    };
+    match serde_json::from_str::<Value>(json) {
+        Ok(value) => value,
+        Err(_) => Value::String(text),
+    }
 }
 
 /// Whether row `m` is a later copy of an archived tool result: 1 or 0. Hermes v0.23 (#144938, commit 109a8f7c03,
@@ -652,6 +666,53 @@ mod tests {
         exact.execute_batch("ALTER TABLE sessions DROP COLUMN hidden; ALTER TABLE messages DROP COLUMN message_uid;").unwrap();
         assert_eq!(missing_columns(&exact).unwrap(), ["sessions.hidden", "messages.message_uid"]);
         assert_eq!(db_rows(&path, "a").unwrap()[0].uid, None, "still read, with a neutral value");
+    }
+
+    /// 18/11 (Alex, Vie, iPhone): a photo sent on a turn whose preflight compaction ran in place. Hermes then keeps the
+    /// person's row with its raw parts (agent/turn_context.py: « compaction inserted the raw parts »), written as
+    /// `\x00json:` + JSON (hermes_state_messages.py `_encode_content`), the photo's data URL inside. Read as words,
+    /// the row was a text of hundreds of thousands of characters (a giant black bubble on the iPhone) with no photo,
+    /// so the message sent never matched it (« Pas envoyé · Toucher pour réessayer » under the photo it answered).
+    #[test]
+    fn a_row_hermes_kept_as_raw_parts_reads_as_its_parts() {
+        use serde_json::json;
+        let golden = include_str!("../../tests/golden/hermes_state_schema.sql")
+            .replace("REFERENCES system_prompts(hash)", "REFERENCES sessions(id)");
+        let dir = std::env::temp_dir().join(format!("state-raw-parts-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("state.db");
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(&golden).unwrap();
+        conn.execute("INSERT INTO sessions (id, source, started_at) VALUES ('a', 'api_server', 1)", []).unwrap();
+        let photo = "/home/alex/.hermes/profiles/vie/native-inputs/ab12/api_ab12.jpg";
+        let parts = json!([
+            {"type": "text", "text": format!("<!--bip:now mercredi 18 novembre 2026, 11:44-->\n\n[Image attached at: {photo}]")},
+            {"type": "image_url", "image_url": {"url": format!("data:image/jpeg;base64,{}", "A".repeat(4000))}},
+        ]);
+        let stored = format!("\u{0}json:{parts}");
+        let mut insert = conn
+            .prepare(
+                "INSERT INTO messages (id, session_id, role, content, timestamp, active, compacted, _compressed_summary, \
+                 display_order, message_uid) VALUES (?1, 'a', ?2, ?3, ?4, 1, 0, 0, ?1, ?5)",
+            )
+            .unwrap();
+        insert.execute(rusqlite::params![1, "user", stored, 10.0, "u1"]).unwrap();
+        insert.execute(rusqlite::params![2, "assistant", "Hy4 flash gagne le rapport qualité-prix.", 20.0, "a1"]).unwrap();
+        // a literal text starting with the marker is kept JSON-string-wrapped by Hermes: decoded back to that text
+        let literal = format!("\u{0}json:{}", json!("\u{0}json: pas une photo"));
+        insert.execute(rusqlite::params![3, "user", literal, 30.0, "u2"]).unwrap();
+        let read = db_rows(&path, "a").unwrap();
+        assert_eq!(read[0].content, parts, "the row's parts, as Hermes decodes them");
+        assert_eq!(read[2].content, json!("\u{0}json: pas une photo"));
+        let items = crate::threads::timeline::segment_items("vie", 0, "a", &read, &Default::default(), &mut String::new());
+        let person = &items[0];
+        assert_eq!(person.body["role"], "person");
+        assert_eq!(person.body["text"], "", "no data URL, no hint, no note in the words");
+        let files = person.body["attachments"].as_array().unwrap();
+        assert_eq!(files.len(), 1, "{files:?}");
+        assert_eq!(files[0]["kind"], "image");
+        // the search reads its words too, never the data URL
+        assert!(!crate::message_search::message_text(&format!("\u{0}json:{parts}")).contains("base64"));
     }
 
     /// Hermes #144938 (v0.23): a compaction's shortened copy of a tool result (same uid and timestamp, a later slot)

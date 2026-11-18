@@ -243,23 +243,29 @@ pub(crate) fn message_text(content: &str) -> String {
 }
 
 fn row_text(content: &str) -> String {
-    let trimmed = content.trim_start();
-    if trimmed.starts_with('[') {
-        if let Ok(Value::Array(items)) = serde_json::from_str::<Value>(trimmed) {
-            let texts: Vec<&str> = items
-                .iter()
-                .filter_map(|i| match i {
-                    Value::String(s) => Some(s.as_str()),
-                    Value::Object(o) if o.get("type").and_then(Value::as_str) == Some("text") => {
-                        o.get("text").and_then(Value::as_str)
-                    }
-                    _ => None,
-                })
-                .collect();
-            return texts.join(" ");
-        }
-    }
-    content.to_string()
+    // a row Hermes kept as JSON (`\x00json:`, a photo's data URL inside: source.rs `stored_content`): its parts
+    let items = match crate::threads::source::stored_content(content.to_string()) {
+        Value::Array(items) => items,
+        Value::String(text) => match text.trim_start().starts_with('[') {
+            true => match serde_json::from_str::<Value>(text.trim_start()) {
+                Ok(Value::Array(items)) => items,
+                _ => return text,
+            },
+            false => return text,
+        },
+        _ => return content.to_string(),
+    };
+    let texts: Vec<&str> = items
+        .iter()
+        .filter_map(|i| match i {
+            Value::String(s) => Some(s.as_str()),
+            Value::Object(o) if o.get("type").and_then(Value::as_str) == Some("text") => {
+                o.get("text").and_then(Value::as_str)
+            }
+            _ => None,
+        })
+        .collect();
+    texts.join(" ")
 }
 
 // -- the store --------------------------------------------------------------------------------------------------
