@@ -103,6 +103,11 @@ pub fn purchase_sites(config: &Config, agent: &str) -> Vec<String> {
         }
         let base = site.strip_prefix("www.").unwrap_or(&site).to_string();
         let hosts = match crate::sandbox_sites::clean_host(&format!("*.{base}"), true) {
+            // a public suffix (the PSL: readthedocs.io…): that host and its www. only (review pass 2, 18/11)
+            Ok(_) if crate::cards::is_public_suffix(&base) => {
+                let www = format!("www.{base}");
+                vec![base, www]
+            }
             Ok(wide) => vec![wide],
             // an address: that one only
             Err(_) if base.parse::<std::net::IpAddr>().is_ok() => vec![base],
