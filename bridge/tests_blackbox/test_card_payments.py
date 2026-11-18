@@ -802,15 +802,15 @@ def test_on_a_place_of_the_offer_only_when_switched_on_and_the_number_stays_on_t
                             change=lambda c: c.update({"payments": {"offer_cards": True}}))
         listing = bridge.get("/v1/vault", headers=AUTH).json()
         assert listing["cards_allowed"] is True and listing["cards_on_phone"] is True
-        assert listing["card_cap_max_eur"] == 150
+        assert listing["card_cap_max_eur"] == 1000
         overview = turn_on(bridge)
-        assert overview["numbers_on_phone"] is True and overview["cap_max_eur"] == 150
+        assert overview["numbers_on_phone"] is True and overview["cap_max_eur"] == 1000
         # Never a number to keep here, and a capped virtual card only.
         with_number = bridge.post("/v1/vault", headers=AUTH, json={**PHONE_CARD, "number": NUMBER, "expiry": "12/30"})
         assert with_number.status_code == 400 and "stays on your phone" in with_number.json()["detail"]
         no_cap = bridge.post("/v1/vault", headers=AUTH, json={k: v for k, v in PHONE_CARD.items() if k != "cap_eur"})
         assert no_cap.status_code == 400 and no_cap.json() == {"detail": "a cap in euros is required"}
-        assert bridge.post("/v1/vault", headers=AUTH, json={**PHONE_CARD, "cap_eur": 500}).status_code == 400
+        assert bridge.post("/v1/vault", headers=AUTH, json={**PHONE_CARD, "cap_eur": 1001}).status_code == 400
         assert bridge.post("/v1/vault", headers=AUTH, json={**PHONE_CARD, "virtual_card": False}).status_code == 400
         made = bridge.post("/v1/vault", headers=AUTH, json=PHONE_CARD)
         assert made.status_code == 201, made.text

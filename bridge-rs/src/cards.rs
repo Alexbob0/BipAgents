@@ -994,7 +994,7 @@ mod tests {
         assert_eq!(phone_rules_on(&config, false), None);
         config.payments.offer_cards = true;
         assert!(allowed_on(&config, true));
-        assert_eq!(phone_rules_on(&config, true), Some(PhoneRules { cap_max_cents: 15_000 }));
+        assert_eq!(phone_rules_on(&config, true), Some(PhoneRules { cap_max_cents: 100_000 }));
         config.cards = "off".into();
         assert!(!allowed_on(&config, true) && !allowed_on(&config, false));
     }

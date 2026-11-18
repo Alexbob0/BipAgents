@@ -839,13 +839,13 @@ pub struct PaymentsConfig {
     /// `offer_cards`: false by default. Off: the apps don't show card payments on the offer's places, and no agent
     /// pays with a card there (the hand-over, handover.rs, stays).
     pub offer_cards: bool,
-    /// `offer_cap_max_eur`: the highest cap a person may set on a card there (150 € by default, 1 to 1000).
+    /// `offer_cap_max_eur`: the highest cap a person may set on a card there (1 000 € by default: Alex 18/11, a concert ticket at 160 € must go through; 1 to 1000).
     pub offer_cap_max_eur: i64,
 }
 
 impl Default for PaymentsConfig {
     fn default() -> Self {
-        PaymentsConfig { offer_cards: false, offer_cap_max_eur: 150 }
+        PaymentsConfig { offer_cards: false, offer_cap_max_eur: 1000 }
     }
 }
 
