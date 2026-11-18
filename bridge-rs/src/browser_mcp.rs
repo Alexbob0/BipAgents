@@ -1119,16 +1119,20 @@ pub fn presses_space(args: &Dict) -> bool {
 }
 
 /// The script that tells which hosts a click by `text` (click_element's `text_match`) may send a form to: every send
-/// button of a form (a `button` or `input[type=submit|image]`, or what is inside one) whose own text or `value`
-/// holds that text, as `target_script` reads a send button (`SEND_JS`). Read only; the text passed as a JSON string.
+/// button of a form (a `button` or `input[type=submit|image]`, or what is inside one) whose own text or any
+/// attribute's value holds that text (an icon button named by its `aria-label`: re-check R1b, 18/11, as nodriver's
+/// `tab.find` / DOM.performSearch matches), in the page and its same-origin frames (R1c), as `target_script` reads a
+/// send button (`SEND_JS`). Read only; the text passed as a JSON string.
 pub fn text_target_script(text: &str) -> String {
     let text = serde_json::to_string(&text.to_lowercase()).unwrap_or_else(|_| "\"\"".into());
     format!(
-        "(() => {{ const t = {text}; {SEND_JS}const hosts = []; \
-for (const e of document.querySelectorAll('*')) {{ \
+        "(() => {{ const t = {text}; {SEND_JS}const hosts = []; const docs = []; \
+const walk = (d, n) => {{ docs.push(d); if (n > 4) return; for (const f of d.querySelectorAll('iframe, frame')) {{ \
+let c = null; try {{ c = f.contentDocument; }} catch (x) {{}} if (c && c.documentElement) walk(c, n + 1); }} }}; walk(document, 0); \
+for (const doc of docs) for (const e of doc.querySelectorAll('*')) {{ \
 const own = [...e.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(' ').toLowerCase(); \
-const value = ((e.getAttribute && e.getAttribute('value')) || '').toLowerCase(); \
-if (!own.includes(t) && !value.includes(t)) continue; \
+const named = [...(e.attributes || [])].some((a) => String(a.value).toLowerCase().includes(t)); \
+if (!own.includes(t) && !named) continue; \
 const ctl = e.closest ? e.closest('button, input') : null; if (!ctl || !ctl.form) continue; \
 const tp = (ctl.getAttribute('type') || (ctl.tagName === 'BUTTON' ? 'submit' : 'text')).toLowerCase(); \
 if (tp !== 'submit' && tp !== 'image') continue; \

@@ -1,0 +1,6 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>JS</title></head><body>
+<!-- a form sent by a script on a non-submit element (known open: JS without a send button) -->
+<form id="c" action="send" method="post"><input type="text" name="message" id="message" value="x"></form>
+<div role="button" id="go" onclick="document.getElementById('c').submit()">Envoyer</div>
+</body></html>
