@@ -1173,6 +1173,23 @@ impl Vault {
         self.write(&records)
     }
 
+    /// The payment `payment` of card `item_id` taken off its `spent` and its payments, under the vault's lock: its pay
+    /// button was never pressed (review 18/11, R1). A single-use card stays used. False: no such payment on it.
+    pub async fn unrecord_card_payment(&self, item_id: &str, payment: &str) -> anyhow::Result<bool> {
+        let _lock = self.lock.lock().await;
+        let mut records = self.read()?;
+        let Some(record) = records.iter_mut().find(|r| r.get("id").and_then(Value::as_str) == Some(item_id)) else {
+            return Ok(false);
+        };
+        let Some(Value::Object(mut meta)) = record.get("card").cloned() else { return Ok(false) };
+        if !crate::cards::unrecord_payment(&mut meta, payment) {
+            return Ok(false);
+        }
+        record.insert("card".into(), Value::Object(meta));
+        self.write(&records)?;
+        Ok(true)
+    }
+
     // -- « Coordonnées » (vault_contacts.rs) ------------------------------------------------------------------
 
     /// The « Coordonnées » entries `agent` may read (`vault_contacts::readable_by`), fields included.

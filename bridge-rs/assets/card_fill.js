@@ -200,8 +200,34 @@
         if (score > bestScore) { best = el; bestScore = score; }
       }
       this.button = best;
+      // the form's other controls that would send it too (review 18/11, R4: « Valider » beside « Payer 1 250,00 € »)
+      this.others = [...new Set(pool)].filter((el) => el !== best && !el.disabled && el.getClientRects().length > 0);
       // whole (120 characters at most, as scored): the bridge checks the amount it shows before pressing it
-      return best ? norm(best.innerText || best.value || best.getAttribute("aria-label")).slice(0, 120) : null;
+      return best ? this.shown(best) : null;
+    },
+    // A control's visible text, lower case, spaces collapsed, 120 characters at most; read node by node so that
+    // « 12<sup>50</sup> € » reads « 12,50 € » (review 18/11, R3) and digits of two elements are never glued, hidden
+    // text left out (a hidden « 12,50 € » would make a second amount).
+    shown(el) {
+      const norm = (t) => (t || "").toLowerCase().replace(/\s+/g, " ").trim();
+      if (el.matches("input")) return norm(el.value || el.getAttribute("aria-label")).slice(0, 120);
+      let out = "", last = null;
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const at = node.parentElement, text = node.nodeValue || "";
+        if (!text || (at && at.checkVisibility && !at.checkVisibility({opacityProperty: true, visibilityProperty: true}))) continue;
+        if (last && at !== last && /\d$/.test(out) && /^\d/.test(text)) {
+          const sup = at && at.closest("sup");
+          out += sup && el.contains(sup) && !(last.closest && last.closest("sup")) ? "," : " ";
+        }
+        out += text;
+        last = at;
+      }
+      return norm(out || el.getAttribute("aria-label")).slice(0, 120);
+    },
+    // The texts of the form's other controls (`findButton`'s `others`), for the bridge's amount check.
+    otherTexts() {
+      return (this.others || []).map((el) => this.shown(el)).filter((t) => t).slice(0, 30);
     },
     clickButton() {
       if (!this.button) return false;

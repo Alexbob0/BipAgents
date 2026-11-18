@@ -686,11 +686,14 @@ fn amount_of(number: &str) -> Option<i64> {
 /// amount, several, one in another currency, an instalment (« 3 x 4,17 € »), or a number next to a mark that can't be
 /// read for sure: the button is then pressed as before (never a refusal on « 12,5 € » for 12.50, nor on « Payer »).
 pub fn button_amount(text: &str, currency: &str) -> Option<i64> {
-    static NUMBER: std::sync::LazyLock<regex::Regex> =
-        std::sync::LazyLock::new(|| regex::Regex::new(r"\d(?:[\d.,'\x{a0}\x{202f} ]*\d)?").expect("number pattern"));
+    // the Swiss apostrophe in its typographic forms too (review 18/11, R2: « CHF 1’250.00 »)
+    static NUMBER: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"\d(?:[\d.,'\x{2019}\x{02bc}\x{a0}\x{202f} ]*\d)?").expect("number pattern")
+    });
     static INSTALMENT: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        // whole words only (review 18/11: « mall », « timeslot » are none)
         regex::Regex::new(
-            r"(?i)\d\s*[x×]\s*\d|\b(fois|times|mal|raten|cuotas|plazos|installments?|instalments?|mensualit)|/\s*(mois|month|monat|mes)\b",
+            r"(?i)\d\s*[x×]\s*\d|\b(fois|times|mal|raten|cuotas|plazos|installments?|instalments?)\b|\bmensualit|/\s*(mois|month|monat|mes)\b",
         )
         .expect("instalment pattern")
     });
@@ -817,6 +820,24 @@ pub fn record_payment(meta: &mut Dict, payment: Value) {
     if meta.get("single_use").and_then(Value::as_bool).unwrap_or(false) {
         meta.insert("used".into(), json!(true));
     }
+}
+
+/// The payment `payment` (its id, `record_payment`'s « payment ») taken off the card: out of its payments, its cents
+/// out of `spent`. `used` is left as it is (a single-use card's number was seen by the page). False when it isn't there.
+pub fn unrecord_payment(meta: &mut Dict, payment: &str) -> bool {
+    let Some(Value::Array(payments)) = meta.get_mut("payments") else { return false };
+    let Some(at) = payments.iter().rposition(|p| p.get("payment").and_then(Value::as_str) == Some(payment)) else {
+        return false;
+    };
+    let gone = payments.remove(at);
+    let cents = gone.get("cents").and_then(Value::as_i64);
+    let (Some(cents), Some(cur)) = (cents, gone.get("currency").and_then(Value::as_str)) else { return true };
+    if let Some(Value::Object(spent)) = meta.get_mut("spent") {
+        if let Some(left) = spent.get(cur).and_then(Value::as_i64) {
+            spent.insert(cur.to_string(), json!((left - cents).max(0)));
+        }
+    }
+    true
 }
 
 /// What the person reads when asked, and what the apps parse to show their payment card (both apps:
@@ -1139,6 +1160,12 @@ mod tests {
         ] {
             assert_eq!(button_amount(text, "EUR"), Some(cents), "{text}");
         }
+        // review 18/11: the Swiss apostrophe in every form, « mall » and « timeslot » are no instalments
+        assert_eq!(button_amount("bezahlen chf 1’250.00", "CHF"), Some(125_000));
+        assert_eq!(button_amount("bezahlen chf 1ʼ250.00", "CHF"), Some(125_000));
+        assert_eq!(button_amount("bezahlen chf 1'250.00", "CHF"), Some(125_000));
+        assert_eq!(button_amount("pay at the mall 12.50 eur", "EUR"), Some(1250));
+        assert_eq!(button_amount("book timeslot, pay €12.50", "EUR"), Some(1250));
         assert_eq!(button_amount("pay us$12.50", "USD"), Some(1250));
         assert_eq!(button_amount("pay $12.50", "USD"), Some(1250));
         assert_eq!(button_amount("pay $12.50", "CAD"), Some(1250));
@@ -1178,6 +1205,20 @@ mod tests {
             assert!(site_host(site).is_ok(), "{site}");
         }
         assert!(site_host("http://127.0.0.1:8080").is_ok());
+    }
+
+    #[test]
+    fn a_payment_never_pressed_is_taken_off_the_card_but_a_single_use_card_stays_used() {
+        // review 18/11, R1
+        let mut meta = json!({"cap_cents": 2000, "single_use": true}).as_object().unwrap().clone();
+        record_payment(&mut meta, json!({"cents": 1250, "currency": "EUR", "payment": "pay_a"}));
+        record_payment(&mut meta, json!({"cents": 300, "currency": "EUR", "payment": "pay_b"}));
+        assert_eq!(meta["spent"], json!({"EUR": 1550}));
+        assert!(unrecord_payment(&mut meta, "pay_a"));
+        assert!(!unrecord_payment(&mut meta, "pay_a"), "once");
+        assert_eq!(meta["spent"], json!({"EUR": 300}));
+        assert_eq!(meta["payments"].as_array().unwrap().len(), 1);
+        assert_eq!(meta["used"], json!(true));
     }
 
     #[test]

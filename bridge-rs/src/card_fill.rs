@@ -276,6 +276,8 @@ fn protocol(text: impl Into<String>) -> FillError {
 pub struct PayButton {
     /// Its text (120 characters at most), as the card script read it: lower case, spaces collapsed.
     pub text: String,
+    /// The texts of the other controls of its form that would send it too (« Valider » beside « Payer 1 250,00 € »).
+    pub others: Vec<String>,
     session: String,
     context: i64,
 }
@@ -1140,15 +1142,26 @@ impl Page {
             serde_json::to_string(amount_digits).unwrap_or_default()
         );
         if let Value::String(text) = self.cdp.evaluate(&session, context, &find).await? {
-            return Ok(Some(PayButton { text, session, context }));
+            let others = self.other_texts(&session, context).await;
+            return Ok(Some(PayButton { text, others, session, context }));
         }
         // A provider whose pay button is in its own frame, with the card's number (its world found the fields).
         for field in card.iter().filter(|f| f.kind == "number" && f.frame != main) {
             if let Ok(Value::String(text)) = self.cdp.evaluate(&field.session, field.context, &find).await {
-                return Ok(Some(PayButton { text, session: field.session.clone(), context: field.context }));
+                let others = self.other_texts(&field.session, field.context).await;
+                return Ok(Some(PayButton { text, others, session: field.session.clone(), context: field.context }));
             }
         }
         Ok(None)
+    }
+
+    /// The texts of the other controls of the pay button's form (`findButton` just ran in that world): none when they
+    /// can't be read.
+    async fn other_texts(&mut self, session: &str, context: i64) -> Vec<String> {
+        match self.cdp.evaluate(session, context, "globalThis.__bipPay.otherTexts()").await {
+            Ok(Value::Array(texts)) => texts.iter().filter_map(Value::as_str).map(str::to_string).collect(),
+            _ => Vec::new(),
+        }
     }
 
     /// The pay button `find_pay` found, pressed (in the world that found it).

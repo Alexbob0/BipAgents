@@ -413,6 +413,11 @@ struct Held {
     clicked: bool,
     /// `SUSPENDS` read before the hold was asked: another value means « Suspendre tous les paiements » came since.
     epoch: u64,
+    /// The vault and the card's id (a card of the vault): a payment whose button was never pressed, nor the browser
+    /// taken over, is taken off the card's `spent` when it ends (review 18/11, R1).
+    spent_on: Option<(Arc<crate::vault::Vault>, String)>,
+    /// The person took the browser over during the payment (they may have paid in the page themselves).
+    taken_over: bool,
 }
 
 /// « Suspendre tous les paiements » so far (`stop_all`). A payment reads it before its hold is asked and stops at its
@@ -462,6 +467,9 @@ fn person_in(agent: &str) -> bool {
 pub fn person_holds(agent: &str, on: bool) -> bool {
     let mut people = PERSON.lock().unwrap_or_else(|e| e.into_inner());
     if on {
+        if let Some(entry) = held().get_mut(agent) {
+            entry.taken_over = true;
+        }
         people.insert(agent.to_string());
     } else {
         people.remove(agent);
@@ -731,6 +739,17 @@ async fn release_entry(config: &Config, agent: &str, outcome: &str, entry: Held)
     }
     if let Some(folder) = &entry.lease {
         let _ = crate::desktop::set_lease(folder, false, "");
+    }
+    // Never pressed, nor taken over by the person, and given up (review 18/11, R1): nothing was paid, the card's cap
+    // whole again (a single-use card stays used: the page saw its number).
+    if !entry.clicked && !entry.taken_over && matches!(outcome, "amount_differs" | "cancelled" | "suspended") {
+        if let Some((vault, card)) = &entry.spent_on {
+            match vault.unrecord_card_payment(card, &entry.payment).await {
+                Ok(true) => tracing::info!(agent = %agent, "card payment: never pressed, taken off the card's spent"),
+                Ok(false) => {}
+                Err(exc) => tracing::warn!(agent = %agent, exc = %exc, "card payment: spent not corrected"),
+            }
+        }
     }
     journal(config, &entry, agent, outcome);
     tracing::info!(agent = %agent, outcome = outcome, blanked = blanked, "card payment: browser given back");
@@ -1345,6 +1364,8 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
         vault: true,
         clicked: false,
         epoch: 0,
+        spent_on: Some((state.vault.clone(), card.id.clone())),
+        taken_over: false,
     };
     if let Some(why) = cards::over_cap(&meta, &card.label, cents, &currency) {
         journal(&config, &entry, &agent.name, "refused_cap");
@@ -1502,7 +1523,7 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
         Err(say) => return Ok(give_up(&config, &agent.name, token, "failed", &say).await),
     };
     let mut payment = json!({"at": entry.since_text, "site": shown, "cents": cents, "amount": cards::format_cents(cents),
-                             "currency": currency, "agent": agent.name, "for": merchant});
+                             "currency": currency, "agent": agent.name, "for": merchant, "payment": entry.payment});
     if entry.hosted.is_some() {
         payment["via"] = json!(host);
     }
@@ -1861,13 +1882,33 @@ async fn confirm(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> any
     };
     // The amount the button shows, read by the bridge in the page reloaded under the hold (audit 17/11, 2.2): one clear
     // amount in the payment's currency other than the one approved, and the button is never pressed.
-    if let Some(shown) = cards::button_amount(&button.text, &entry.currency).filter(|c| *c != entry.cents) {
+    // The form's other controls too (review 18/11, R4): « Valider » beside « Payer 1 250,00 € » sends the same form.
+    let other = std::iter::once(&button.text).chain(&button.others);
+    if let Some(shown) = other.filter_map(|t| cards::button_amount(t, &entry.currency)).find(|c| *c != entry.cents) {
         drop(page);
         return Ok(amount_differs(state, agent, &entry, shown).await);
     }
-    match held().get_mut(&agent.name) {
-        Some(e) if e.token == entry.token && e.stop.is_none() => e.clicked = true,
-        _ => return Ok(refusal(STOPPED)),
+    // The switch read again right before the press (review 18/11): a « Suspendre » meanwhile wins.
+    let switched_off = entry.vault && !cards::enabled(&config);
+    let pressing = {
+        let mut table = held();
+        match table.get_mut(&agent.name).filter(|e| e.token == entry.token) {
+            Some(e) => {
+                suspended(e);
+                if switched_off && e.stop.is_none() {
+                    e.stop = Some("suspended");
+                }
+                let ok = e.stop.is_none();
+                e.clicked = ok;
+                ok
+            }
+            None => false,
+        }
+    };
+    if !pressing {
+        let why = stopped(&agent.name, &entry.token).unwrap_or("suspended");
+        release(&config, &agent.name, why).await;
+        return Ok(refusal(STOPPED));
     }
     if let Err(exc) = page.press(&button).await {
         return Ok(refusal(&unreachable_text(&exc)));
@@ -1978,6 +2019,8 @@ pub(crate) async fn pay_with_values(
         vault: false,
         clicked: false,
         epoch: suspends(),
+        spent_on: None,
+        taken_over: false,
     };
     if let Some(folder) = crate::desktop::desktop_dir(&config, agent).filter(|f| f.is_dir()) {
         if crate::desktop::app_holds(&folder) {
