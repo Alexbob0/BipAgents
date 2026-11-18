@@ -128,6 +128,8 @@ def bridge_toml(inst: Install) -> str:
     lines += ["", "[lan]", f"enabled = {'true' if inst.lan_address else 'false'}", f"port = {door}"]
     if inst.lan_address:
         lines.append(f"address = {_q(inst.lan_address)}")
+    if inst.cloud:   # agent card payments on the offer's places, numbers on the phone (Alex 18/11; migrations.py)
+        lines += ["", "[payments]", "offer_cards = true"]
     if inst.cloud and inst.setup_file and inst.progress_file:
         lines += ["", "[setup]", f"file = {_q(str(inst.setup_file))}", f"progress = {_q(str(inst.progress_file))}"]
     for agent in inst.agents:
