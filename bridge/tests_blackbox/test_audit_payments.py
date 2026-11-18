@@ -136,7 +136,8 @@ def pay_held(bridge, token, arguments, asked, go, out):
         out["error"] = repr(exc)
 
 
-def test_2_3_two_agents_never_pay_over_the_cards_cap_together(bridges, fakes):
+def test_2_3_two_agents_sharing_a_card_each_pay_under_its_cap_for_each_payment(bridges, fakes):
+    # Alex 18/11: the cap is a limit for each payment, not a total (12.50 + 12.50 with a 20 € cap: both go through)
     vie, lea = FakeChrome(), FakeChrome()
 
     def change(config):
@@ -169,10 +170,9 @@ def test_2_3_two_agents_never_pay_over_the_cards_cap_together(bridges, fakes):
         assert card_of(bridge)["spent"] == {"EUR": 1250}
         runs["lea"]["go"].set()
         runs["lea"]["thread"].join(60)
-        spent = card_of(bridge)["spent"]
+        assert runs["lea"]["out"]["result"]["isError"] is False, runs["lea"]["out"]
         typed = [k for _, k, _ in lea.typed]
-        assert spent.get("EUR", 0) <= 2000 and "number" not in typed, (
-            f"cap 20 EUR: spent {spent}, the 2nd agent's card typed ({typed}); its answer: {runs['lea']['out']}")
+        assert "number" in typed and card_of(bridge)["spent"] == {"EUR": 2500}, (typed, card_of(bridge))
     finally:
         for r in locals().get("runs", {}).values():
             r["go"].set()

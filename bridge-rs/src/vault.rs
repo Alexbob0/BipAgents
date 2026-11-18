@@ -1118,10 +1118,10 @@ impl Vault {
             .collect()
     }
 
-    /// The payment `payment` of `cents` in `currency` with card `item_id` kept aside on it, its card about to be typed
-    /// (audit 17/11, 2.3): under the vault's lock, the card read again and its cap checked with every payment of it in
-    /// flight, so that two agents sharing a card, both approved, never pay over its cap together; a single-use card
-    /// used meanwhile, or being used, is refused too. Err: what to tell the agent (nothing is typed).
+    /// The payment `payment` of `cents` in `currency` with card `item_id` kept on it, its card about to be typed
+    /// (audit 17/11, 2.3): under the vault's lock, the card read again (removed, or its cap lowered, meanwhile) and its
+    /// cap checked for this payment alone (a limit per payment, Alex 18/11); a single-use card used meanwhile, or being
+    /// used by another payment, is refused. Err: what to tell the agent (nothing is typed).
     pub async fn reserve_card_payment(
         &self,
         item_id: &str,
@@ -1136,7 +1136,7 @@ impl Vault {
         };
         let label = record.get("label").map(crate::py::py_str).unwrap_or_default();
         let meta = record.get("card").cloned().unwrap_or(Value::Null);
-        let (in_flight, others) = crate::cards::in_flight_on(item_id, currency);
+        let others = crate::cards::in_flight_on(item_id);
         let single_use = meta.get("single_use").and_then(Value::as_bool) == Some(true);
         if single_use && (meta.get("used").and_then(Value::as_bool) == Some(true) || others > 0) {
             return Ok(Err(format!(
@@ -1144,14 +1144,14 @@ impl Vault {
                  tell the person."
             )));
         }
-        if let Some(why) = crate::cards::over_cap_with(&meta, &label, cents, currency, in_flight) {
+        if let Some(why) = crate::cards::over_cap(&meta, &label, cents, currency) {
             return Ok(Err(format!("Nothing was typed. {why}")));
         }
-        Ok(Ok(crate::cards::Reservation::take(payment, item_id, cents, currency)))
+        Ok(Ok(crate::cards::Reservation::take(payment, item_id)))
     }
 
     /// A payment made with card `item_id`, kept on it (a single-use card is then used); its reservation
-    /// (`reserve_card_payment`) ends under the same lock, counted in `spent` from now on.
+    /// (`reserve_card_payment`) ends under the same lock, counted in `spent` (shown in the app) from now on.
     pub async fn record_card_payment(
         &self,
         item_id: &str,
@@ -1984,5 +1984,53 @@ mod tests {
         let again = Vault::parse(json!({"otp_secret": ""}).as_object().unwrap(), Some(&record)).unwrap();
         assert_eq!(again["secret"], json!({"password": "p"}));
         assert_eq!(again["has_otp"], json!(false));
+    }
+
+    // review offer-cap-per-payment (18/11): what `reserve_card_payment` still guards once the cap is per payment.
+    fn card_record(id: &str, card: Value) -> Dict {
+        json!({"id": id, "kind": "card", "label": "Petits achats", "card": card}).as_object().unwrap().clone()
+    }
+
+    #[tokio::test]
+    async fn review_cap_per_payment_two_payments_at_the_cap_at_once_but_a_single_use_card_never_twice() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = Vault::new(&dir.path().to_string_lossy());
+        // per payment: two at the cap at once, a big `spent` ignored
+        vault.write(&[card_record("item_rv_multi", json!({"cap_cents": 2000, "spent": {"EUR": 90000}}))]).unwrap();
+        let a = vault.reserve_card_payment("item_rv_multi", "pay_rv_m1", 2000, "EUR").await.unwrap().unwrap();
+        let b = vault.reserve_card_payment("item_rv_multi", "pay_rv_m2", 2000, "EUR").await.unwrap().unwrap();
+        let over = vault.reserve_card_payment("item_rv_multi", "pay_rv_m3", 2001, "EUR").await.unwrap().unwrap_err();
+        assert!(over.contains("at most 20.00 EUR per payment"), "{over}");
+        drop((a, b));
+        // single use: the second payment approved meanwhile is refused while the first one is in flight
+        vault.write(&[card_record("item_rv_single", json!({"cap_cents": 2000, "single_use": true}))]).unwrap();
+        let first = vault.reserve_card_payment("item_rv_single", "pay_rv_s1", 1000, "EUR").await.unwrap().unwrap();
+        let second = vault.reserve_card_payment("item_rv_single", "pay_rv_s2", 1000, "EUR").await.unwrap().unwrap_err();
+        assert!(second.contains("used by another payment meanwhile"), "{second}");
+        // typed: used from now on, the reservation gone with it
+        vault.record_card_payment("item_rv_single", json!({"cents": 1000, "currency": "EUR", "payment": "pay_rv_s1"}),
+                                  Some(first)).await.unwrap();
+        assert_eq!(crate::cards::in_flight_on("item_rv_single"), 0);
+        let third = vault.reserve_card_payment("item_rv_single", "pay_rv_s3", 1000, "EUR").await.unwrap().unwrap_err();
+        assert!(third.contains("used by another payment meanwhile"), "{third}");
+        // an error path (give_up, timeout, stop_all): the reservation dropped, nothing stays in flight
+        vault.write(&[card_record("item_rv_single2", json!({"cap_cents": 2000, "single_use": true}))]).unwrap();
+        drop(vault.reserve_card_payment("item_rv_single2", "pay_rv_t1", 1000, "EUR").await.unwrap().unwrap());
+        assert_eq!(crate::cards::in_flight_on("item_rv_single2"), 0);
+        let again = vault.reserve_card_payment("item_rv_single2", "pay_rv_t2", 1000, "EUR").await.unwrap();
+        assert!(again.is_ok(), "never typed: the single-use card is still free");
+    }
+
+    #[tokio::test]
+    async fn review_cap_per_payment_card_removed_or_cap_lowered_after_approval_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = Vault::new(&dir.path().to_string_lossy());
+        vault.write(&[card_record("item_rv_low", json!({"cap_cents": 1000}))]).unwrap();
+        let low = vault.reserve_card_payment("item_rv_low", "pay_rv_l1", 1500, "EUR").await.unwrap().unwrap_err();
+        assert!(low.starts_with("Nothing was typed.") && low.contains("at most 10.00 EUR per payment"), "{low}");
+        assert_eq!(crate::cards::in_flight_on("item_rv_low"), 0);
+        vault.write(&[]).unwrap();
+        let gone = vault.reserve_card_payment("item_rv_low", "pay_rv_l2", 500, "EUR").await.unwrap().unwrap_err();
+        assert!(gone.contains("removed from the vault meanwhile"), "{gone}");
     }
 }

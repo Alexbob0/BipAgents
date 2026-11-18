@@ -19,10 +19,11 @@
 //! switched it on there (`[payments] offer_cards`, off by default), and with the numbers on the phone: the card's
 //! number, expiry, cardholder name and postcode stay on the device that added it (iOS Keychain / Android Keystore,
 //! behind Face ID or the phone's lock). The bridge keeps a record without them (`on_phone`): label, brand, last 4
-//! digits, a cap in euros the person must set (`[payments] offer_cap_max_eur` at most), allowed sites, agents, spent,
-//! single-use state, and which device holds it. At each payment the person approves, that device sends them with the
-//! security code (card_pay.rs `approve`), held in memory for that one fill and wiped when it ends. The person also
-//! ticks that it is a virtual card with a cap, not their main card: the bank's cap is the real limit, ours a second.
+//! digits, a cap in euros the person must set (`[payments] offer_cap_max_eur` at most; a limit for each payment, not
+//! a total: Alex 18/11), allowed sites, agents, spent, single-use state, and which device holds it. At each payment
+//! the person approves, that device sends them with the security code (card_pay.rs `approve`), held in memory for
+//! that one fill and wiped when it ends. The person also ticks that it is a virtual card with a cap, not their main
+//! card: the bank's cap is the real limit, ours a second.
 
 use indexmap::IndexMap;
 use serde_json::{json, Value};
@@ -33,7 +34,7 @@ use crate::vault::VaultError;
 use crate::Dict;
 
 pub const KIND: &str = "card";
-/// The payments kept on a card (the newest; older ones still count in « spent so far » through `spent`).
+/// The payments kept on a card (the newest; `spent` keeps the totals per currency, shown in the app: not a limit).
 pub const PAYMENTS_KEPT: usize = 50;
 /// The largest amount an agent may ask for at once (the card's own limit, set at the bank, is the real one).
 pub const MAX_AMOUNT_CENTS: i64 = 10_000_000;
@@ -519,15 +520,10 @@ pub fn is_on_phone(meta: &Value) -> bool {
     meta.get("on_phone").and_then(Value::as_bool) == Some(true)
 }
 
-/// Why a payment of `cents` in `currency` goes over the card's cap (spent so far included), in plain words for the
-/// agent; None when the card has no cap or the payment fits.
+/// Why a payment of `cents` in `currency` goes over the card's cap, in plain words for the agent; None when the card
+/// has no cap or the payment fits. The cap is a limit for each payment (Alex 18/11), not a total: what was paid with
+/// the card before, or is being paid with it, doesn't count. The same on a self-hosted install, where a cap is optional.
 pub fn over_cap(meta: &Value, label: &str, cents: i64, currency: &str) -> Option<String> {
-    over_cap_with(meta, label, cents, currency, 0)
-}
-
-/// `over_cap`, with `in_flight` cents of the card's other payments being made (approved, their card about to be typed:
-/// `Vault::reserve_card_payment`) counted as spent.
-pub fn over_cap_with(meta: &Value, label: &str, cents: i64, currency: &str, in_flight: i64) -> Option<String> {
     let cap = meta.get("cap_cents").and_then(Value::as_i64)?;
     if currency != "EUR" {
         return Some(format!(
@@ -535,19 +531,11 @@ pub fn over_cap_with(meta: &Value, label: &str, cents: i64, currency: &str, in_f
              person with hand_over_payment."
         ));
     }
-    let spent = meta.get("spent").and_then(|s| s.get("EUR")).and_then(Value::as_i64).unwrap_or(0);
-    (spent.saturating_add(in_flight).saturating_add(cents) > cap).then(|| {
-        let paying = if in_flight > 0 {
-            format!(" and {} EUR are being paid with it right now", format_cents(in_flight))
-        } else {
-            String::new()
-        };
+    (cents > cap).then(|| {
         format!(
-            "The card « {label} » has a cap of {} EUR and {} EUR were already paid with it{paying}: {} EUR is over \
-             it. Don't pay; tell the person (they can raise the cap in the app, up to what their bank allows) or hand \
-             the payment over with hand_over_payment.",
+            "The card « {label} » allows at most {} EUR per payment: {} EUR is over it. Don't pay; tell the person \
+             (they can raise the card's cap in the app) or hand the payment over with hand_over_payment.",
             format_cents(cap),
-            format_cents(spent),
             format_cents(cents)
         )
     })
@@ -555,33 +543,30 @@ pub fn over_cap_with(meta: &Value, label: &str, cents: i64, currency: &str, in_f
 
 // --- payments in flight (audit 17/11, 2.3) ---------------------------------------------------------------------------
 
-type InFlight = std::collections::HashMap<String, (String, i64, String)>;
+/// The approved payments whose card is about to be typed: payment id → card id. Taken and counted only under the
+/// vault's lock (`Vault::reserve_card_payment`), so that a single-use card is never typed for two payments at once. A
+/// reservation ends when its card is typed (`Vault::record_card_payment`, the card then used) or when its payment ends
+/// before that (`Reservation`'s drop). The cap is per payment: what is in flight doesn't count against it.
+static IN_FLIGHT: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, String>>> =
+    std::sync::LazyLock::new(Default::default);
 
-/// The approved payments whose card is about to be typed, by payment id: (card id, cents, currency). Taken and counted
-/// only under the vault's lock (`Vault::reserve_card_payment`), so that two agents sharing a card never both fit under
-/// its cap. A reservation ends when its card is typed (counted in `spent` then, `Vault::record_card_payment`) or when
-/// its payment ends before that (`Reservation`'s drop).
-static IN_FLIGHT: std::sync::LazyLock<std::sync::Mutex<InFlight>> = std::sync::LazyLock::new(Default::default);
-
-fn in_flight() -> std::sync::MutexGuard<'static, InFlight> {
+fn in_flight() -> std::sync::MutexGuard<'static, std::collections::HashMap<String, String>> {
     IN_FLIGHT.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// What the card `card` has in flight: (cents in `currency`, payments in any currency).
-pub fn in_flight_on(card: &str, currency: &str) -> (i64, usize) {
-    in_flight().values().filter(|(c, _, _)| c == card).fold((0i64, 0usize), |(cents, n), (_, c, cur)| {
-        (if cur == currency { cents.saturating_add(*c) } else { cents }, n + 1)
-    })
+/// How many payments with the card `card` are in flight.
+pub fn in_flight_on(card: &str) -> usize {
+    in_flight().values().filter(|c| *c == card).count()
 }
 
-/// A payment's amount kept aside on its card until its card is typed or it ends (`Vault::reserve_card_payment`).
+/// A payment kept on its card until its card is typed or it ends (`Vault::reserve_card_payment`).
 #[derive(Debug)]
 pub struct Reservation(String);
 
 impl Reservation {
-    /// Only under the vault's lock, once the cap was checked with what is in flight.
-    pub fn take(payment: &str, card: &str, cents: i64, currency: &str) -> Reservation {
-        in_flight().insert(payment.to_string(), (card.to_string(), cents, currency.to_string()));
+    /// Only under the vault's lock, once the card was checked (single use, cap).
+    pub fn take(payment: &str, card: &str) -> Reservation {
+        in_flight().insert(payment.to_string(), card.to_string());
         Reservation(payment.to_string())
     }
 }
@@ -994,7 +979,7 @@ mod tests {
         assert_eq!(phone_rules_on(&config, false), None);
         config.payments.offer_cards = true;
         assert!(allowed_on(&config, true));
-        assert_eq!(phone_rules_on(&config, true), Some(PhoneRules { cap_max_cents: 15_000 }));
+        assert_eq!(phone_rules_on(&config, true), Some(PhoneRules { cap_max_cents: 100_000 }));
         config.cards = "off".into();
         assert!(!allowed_on(&config, true) && !allowed_on(&config, false));
     }
@@ -1066,11 +1051,13 @@ mod tests {
     }
 
     #[test]
-    fn the_cap_counts_what_was_already_paid() {
-        let mut meta = json!({"cap_cents": 5000, "spent": {"EUR": 4000}});
-        assert_eq!(over_cap(&meta, "Petits achats", 1000, "EUR"), None);
-        let over = over_cap(&meta, "Petits achats", 1001, "EUR").unwrap();
-        assert!(over.contains("cap of 50.00 EUR") && over.contains("40.00 EUR were already paid"), "{over}");
+    fn the_cap_is_for_each_payment_not_a_total() {
+        // Alex 18/11: what was paid with the card before doesn't count
+        let mut meta = json!({"cap_cents": 5000, "spent": {"EUR": 40000}});
+        assert_eq!(over_cap(&meta, "Petits achats", 5000, "EUR"), None);
+        let over = over_cap(&meta, "Petits achats", 5001, "EUR").unwrap();
+        assert!(over.contains("allows at most 50.00 EUR per payment: 50.01 EUR is over it"), "{over}");
+        assert!(!over.contains("already paid"), "{over}");
         assert!(over_cap(&meta, "Petits achats", 100, "USD").unwrap().contains("only pays in EUR"));
         meta.as_object_mut().unwrap().remove("cap_cents");
         assert_eq!(over_cap(&meta, "x", 9_999_999, "USD"), None); // no cap (self-hosted): as before
@@ -1234,14 +1221,12 @@ mod tests {
     }
 
     #[test]
-    fn payments_in_flight_count_against_the_cap_until_they_end() {
+    fn payments_in_flight_are_counted_until_they_end_but_not_against_the_cap() {
         let meta = json!({"cap_cents": 2000, "spent": {"EUR": 0}});
-        let first = Reservation::take("pay_test_flight_a", "item_test_flight", 1250, "EUR");
-        assert_eq!(in_flight_on("item_test_flight", "EUR"), (1250, 1));
-        let over = over_cap_with(&meta, "Petits achats", 1250, "EUR", in_flight_on("item_test_flight", "EUR").0);
-        assert!(over.unwrap().contains("12.50 EUR are being paid with it right now"));
+        let first = Reservation::take("pay_test_flight_a", "item_test_flight");
+        assert_eq!(in_flight_on("item_test_flight"), 1);
+        assert_eq!(over_cap(&meta, "Petits achats", 1250, "EUR"), None, "per payment: the one in flight doesn't count");
         drop(first);
-        assert_eq!(in_flight_on("item_test_flight", "EUR"), (0, 0));
-        assert_eq!(over_cap_with(&meta, "Petits achats", 1250, "EUR", 0), None);
+        assert_eq!(in_flight_on("item_test_flight"), 0);
     }
 }
