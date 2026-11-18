@@ -153,6 +153,11 @@ pub const HELD: &str = "Your person is not here now (this turn runs on its own):
 that site; it was not refused. When they say yes you will be told: then call ask_to_send again for the same site and \
 do the step again. Don't send it another way meanwhile; end with your report saying what waits for their OK.";
 
+/// The agent may send to `host` with no card (`call`: « do the step again »).
+pub fn sends_without_card(config: &Config, agent: &str, host: &str) -> bool {
+    crate::sandbox_sites::validated(config, agent, host)
+}
+
 /// `ask_to_send` for `agent` (see the module's comment).
 pub async fn call(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> Dict {
     if crate::shared_pages::who(state, &agent.name, TOOL) != crate::shared_pages::Who::Owner {
@@ -167,7 +172,7 @@ pub async fn call(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> Di
         return tool_text(NO_BROWSER, true);
     }
     refresh(&config, &agent.name);
-    if crate::sandbox_sites::validated(&config, &agent.name, &host) {
+    if sends_without_card(&config, &agent.name, &host) {
         return tool_text(&format!("{host} is allowed for sending already: do the step again."), false);
     }
     let what: String = crate::cards::quoted(&arg(arguments, "what"), 200);
@@ -253,5 +258,62 @@ mod tests {
         assert_eq!(crate::browser_mcp::send_allowed(&path, "contact.example", &Default::default(), now + 601.0), None);
         let mode = std::os::unix::fs::PermissionsExt::mode(&std::fs::metadata(&path).unwrap().permissions());
         assert_eq!(mode & 0o777, 0o600);
+    }
+
+    /// The release battery's cards lab, 18/11 (rc-1119): the rehearsal of a purchase watcher stopped at its first cart
+    /// form, its browser asking « Envoyer sur ce site ? » for the very shop the person approved it to buy on (the
+    /// watcher's card: « Il achètera … sur … »), in a turn nobody follows (the card held, the rehearsal « bloquée »).
+    /// The real wake-up buys there at once, unattended too (watchers.rs `purchase_rule`): the shop the person approved
+    /// is allowed for sending while its watcher is approved and on — the shop and its subdomains (cart, checkout,
+    /// login), an address or a shared host's site that host only; never another site.
+    #[test]
+    fn a_purchase_watchers_shop_is_allowed_for_sending_while_it_is_on() {
+        use crate::connectors::{self, Connector, Purchase, Watch};
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.path().join("bridge.db").to_string_lossy().into_owned();
+        config.browser.root = dir.path().join("browsers").to_string_lossy().into_owned();
+        config.agents.insert("vie".into(), AgentConfig { name: "vie".into(), ..Default::default() });
+        std::fs::create_dir_all(crate::browsers::folder(&config, "vie")).unwrap();
+        let watcher = |id: &str, site: &str, status: &str, enabled: bool| Connector {
+            id: id.into(),
+            name: format!("Billets {id}"),
+            sites: vec!["api.tickets.example".into()],
+            status: status.into(),
+            enabled,
+            watch: Some(Watch {
+                every: "15m".into(),
+                notify: "on_change".into(),
+                purchase: Some(Purchase { site: site.into(), what: "Billet".into(), cents: 4500, currency: "EUR".into() }),
+            }),
+            ..Default::default()
+        };
+        connectors::change(&config, |store| {
+            store.agents.insert("vie".into(), vec![
+                watcher("a", "www.shop.example", connectors::APPROVED, true),
+                watcher("b", "127.0.0.1", connectors::APPROVED, true),
+                watcher("c", "maboutique.myshopify.com", connectors::APPROVED, true),
+                watcher("d", "off.example", connectors::APPROVED, false),
+                watcher("e", "waiting.example", "pending", true),
+            ]);
+        })
+        .unwrap();
+        let path = file_of(&config, "vie");
+        let used = std::collections::HashSet::new();
+        let allowed = |host: &str| crate::browser_mcp::send_allowed(&path, host, &used, py::time_time()) == Some(None);
+        for host in ["www.shop.example", "shop.example", "checkout.shop.example", "127.0.0.1", "maboutique.myshopify.com"] {
+            assert!(allowed(host), "{host}: the shop its person approved the watcher to buy on");
+        }
+        for host in ["evil.example", "shop.example.evil.example", "other.myshopify.com", "off.example", "waiting.example"] {
+            assert!(!allowed(host), "{host}: never approved for a purchase");
+        }
+        assert!(allowed("api.tickets.example"), "the connector's own sites, as before");
+        // the agent's ask_to_send for that shop: no card, « do the step again » (`call`)
+        assert!(sends_without_card(&config, "vie", "checkout.shop.example"));
+        assert!(!sends_without_card(&config, "vie", "evil.example"));
+        // the watcher switched off: its shop asks again
+        connectors::change(&config, |store| store.agents.get_mut("vie").unwrap()[0].enabled = false).unwrap();
+        assert!(!allowed("checkout.shop.example"));
+        assert!(!sends_without_card(&config, "vie", "checkout.shop.example"));
     }
 }
