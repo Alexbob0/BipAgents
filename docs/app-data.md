@@ -23,8 +23,8 @@ the bridge's interface contract, before the apps' code for it.
 
 ## 0. Libraries: no trackers of Kerfy Studio's
 
-- **iOS** (`BipAgents.xcodeproj/.../Package.resolved`, `Packages/*/Package.swift`): one outside package,
-  `onnxruntime-swift-package-manager` 1.24.2 (it runs the Bips' voices on the phone). There are no analytics, crash,
+- **iOS** (`Packages/*/Package.swift`): one outside package, ONNX Runtime's Swift package 1.24.2, vendored in
+  `Packages/OnnxRuntimeSPM` (it runs the Bips' voices on the phone). There are no analytics, crash,
   advertising or attribution SDKs. The app does not use MetricKit, AdSupport or AppTrackingTransparency (no IDFA, no
   « Allow tracking? » prompt). It uses Apple's AdServices framework once (`AAAttribution.attributionToken()`, below).
 - **Android** (`android/app/build.gradle.kts`, `android/gradle/libs.versions.toml`): AndroidX/Compose, OkHttp,
