@@ -200,8 +200,12 @@
         if (score > bestScore) { best = el; bestScore = score; }
       }
       this.button = best;
-      // the form's other controls that would send it too (review 18/11, R4: « Valider » beside « Payer 1 250,00 € »)
-      this.others = [...new Set(pool)].filter((el) => el !== best && !el.disabled && el.getClientRects().length > 0);
+      // the form's other controls that would send it too (review 18/11, R4: « Valider » beside « Payer 1 250,00 € »):
+      // those that submit it, and the others only when they read as a pay button; never a tip or an option
+      // (« Ajouter 2,00 € », re-check 18/11, R5)
+      const submits = (el) => el.matches("input[type=submit], input[type=image]") || (el.tagName === "BUTTON" && el.type === "submit");
+      this.others = [...new Set(pool)].filter((el) => el !== best && !el.disabled && el.getClientRects().length > 0
+        && (submits(el) || PAY.test(this.shown(el))));
       // whole (120 characters at most, as scored): the bridge checks the amount it shows before pressing it
       return best ? this.shown(best) : null;
     },

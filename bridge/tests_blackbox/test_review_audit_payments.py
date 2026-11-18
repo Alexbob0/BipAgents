@@ -217,3 +217,23 @@ def test_r2_a_swiss_written_total_is_not_taken_for_another_amount_html_chromium(
                                     "Bezahlen")
     assert "moved on" in confirmed and pages == ["done.html"], (
         f"approved 1250.00 CHF, « Bezahlen CHF 1’250.00 » not pressed: {confirmed}; pages {pages}")
+
+
+# -- R5 (re-check 18/11): a button of the form that sends nothing (a tip, an option) shows another amount ------------
+
+TIP = """<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Paiement</title></head><body>
+<form onsubmit="event.preventDefault(); location.href='done.html'">
+  <p><label>Numéro de carte <input id="numero" autocomplete="cc-number"></label></p>
+  <p><label>Expiration <input id="exp" autocomplete="cc-exp" placeholder="MM/AA"></label></p>
+  <p><label>Cryptogramme <input id="crypto" autocomplete="cc-csc"></label></p>
+  <p><label>Titulaire <input id="titulaire" autocomplete="cc-name"></label></p>
+  <p>Pourboire : <button type="button" onclick="this.textContent='Pourboire ajouté'">Ajouter 2,00 €</button></p>
+  <p><button type="submit">Payer 12,50 €</button></p>
+</form></body></html>"""
+
+
+def test_r5_a_button_that_sends_nothing_never_blocks_the_approved_payment_chromium(bridges, fakes, tmp_path):
+    confirmed, pages = chromium_pay(bridges, fakes, tmp_path, TIP, ARGS, "Payer 12,50 €")
+    assert "moved on" in confirmed and pages == ["done.html"], (
+        f"approved 12.50 EUR, « Payer 12,50 € » not pressed because of a tip button « Ajouter 2,00 € »: "
+        f"{confirmed}; pages {pages}")
