@@ -272,6 +272,9 @@ pub fn change<T>(config: &Config, f: impl FnOnce(&mut Store) -> T) -> std::io::R
     if let Err(exc) = crate::sandbox_sites::ensure_policy(config) {
         tracing::warn!(target: "bipbridge::connectors", error = %exc, "proxy policy not written");
     }
+    // what the agents' browsers may send forms to: their connectors' sites, their purchase watchers' shops
+    // (form_send.rs)
+    crate::form_send::refresh_all(config, &crate::sandbox_sites::load(config));
     Ok(out)
 }
 
