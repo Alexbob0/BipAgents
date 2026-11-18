@@ -6,7 +6,9 @@
 //!   (form_send.rs) and the card asks « Envoyer sur ce site ? » with « Oui » (this time) and « Toujours pour ce site »
 //!   (kept in « Sites autorisés »);
 //! - **an event deleted from the person's calendar** (audit 1.3, Alex: `calendar_delete` critical, as `mail_trash`):
-//!   the phone's calendar or a mailbox's (CalDAV, deleted at once there, no trash).
+//!   the phone's calendar or a mailbox's (CalDAV, deleted at once there, no trash). A family agent's deletion asks the
+//!   calendar's OWNER instead (Alex 18/11, family_calendar.rs `owner_card`): `ask_owner`, a card under one of her own
+//!   agents that holds no call, waits a day at most and, on her « Oui », does its `Then` itself.
 //!
 //! Each card is listed with the approvals (`GET /v1/approvals`, run id `bip-ok-<id>`, choices `once` / `deny`, its
 //! kind in `bip_ok.kind`, the plain sentence in `bip_summary`, what it is about in `bip_detail`, and when « Toujours »
@@ -65,6 +67,14 @@ pub enum Answer {
     Held,
 }
 
+/// What the bridge does itself on the person's « Oui » to a card that holds no call (`ask_owner`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum Then {
+    /// The event `id` of the phone's calendar deleted, as `agent`'s request there (calendar.rs `call`: its rights
+    /// checked again then).
+    DeleteEvent { agent: String, id: String },
+}
+
 struct Ask {
     /// The bridge whose card it is (its data folder: one per process, but tests run several in one).
     place: String,
@@ -73,6 +83,9 @@ struct Ask {
     at: f64,
     answer: Option<Answer>,
     notify: Arc<Notify>,
+    /// A card that holds no call (`ask_owner`): what its « Oui » does, and until when it waits.
+    then: Option<Then>,
+    until: f64,
 }
 
 static ASKS: LazyLock<Mutex<HashMap<String, Ask>>> = LazyLock::new(Default::default);
@@ -100,7 +113,10 @@ fn data_of(card: &Card) -> Dict {
 /// The cards waiting, in Hermes' approvals' shape (`GET /v1/approvals`), oldest first.
 pub fn pending_items(config: &Config, agent: Option<&str>) -> Vec<Dict> {
     let place = config.data_dir();
-    let mut items: Vec<(f64, Dict)> = asks()
+    let now = py::time_time();
+    let mut table = asks();
+    table.retain(|_, a| a.until > now); // an owner's card nobody answered in time: gone, nothing done
+    let mut items: Vec<(f64, Dict)> = table
         .iter()
         .filter(|(_, a)| a.place == place && a.answer.is_none() && agent.is_none_or(|n| n == a.agent))
         .filter_map(|(id, a)| {
@@ -133,21 +149,33 @@ fn answer_of(choice: &str, offers_always: bool) -> Answer {
     }
 }
 
-/// A card answered (`POST /v1/approve`): the choice it was taken as, None when no such card waits.
-pub fn answer(config: &Config, agent: &str, id: &str, choice: &str, via: &str) -> Option<&'static str> {
-    let (card, taken) = {
+/// A card answered (`POST /v1/approve`): the choice it was taken as and whether its `Then` was done, None when no
+/// such card waits.
+pub fn answer(config: &Config, agent: &str, id: &str, choice: &str, via: &str) -> Option<(&'static str, bool)> {
+    let (card, taken, then) = {
         let mut table = asks();
         let place = config.data_dir();
-        let ask = table.get_mut(id).filter(|a| a.place == place && a.agent == agent && a.answer.is_none())?;
+        let now = py::time_time();
+        let ask = table
+            .get_mut(id)
+            .filter(|a| a.place == place && a.agent == agent && a.answer.is_none() && a.until > now)?;
         let taken = answer_of(choice, ask.card.always.is_some());
         ask.answer = Some(taken);
         ask.notify.notify_waiters();
-        (ask.card.clone(), taken)
+        let found = (ask.card.clone(), taken, ask.then.clone());
+        if found.2.is_some() {
+            table.remove(id); // nobody waits on it: answered, gone
+        }
+        found
     };
     let word = match taken {
         Answer::Always => "always",
         Answer::Once => "once",
         _ => "deny",
+    };
+    let done = match (&then, taken) {
+        (Some(then), Answer::Once | Answer::Always) => run(config, then),
+        _ => false,
     };
     let fields = json!({
         "session_id": null, "run_id": format!("{RUN_PREFIX}{id}"), "request_id": id, "command": card.command,
@@ -158,8 +186,41 @@ pub fn answer(config: &Config, agent: &str, id: &str, choice: &str, via: &str) -
             tracing::warn!(agent, error = %exc, "card decision not kept");
         }
     }
-    tracing::info!(agent, kind = card.kind, choice = word, "person's card answered");
-    Some(word)
+    tracing::info!(agent, kind = card.kind, choice = word, done, "person's card answered");
+    Some((word, done))
+}
+
+/// A `Then` done on the person's « Oui »: whether it was.
+fn run(config: &Config, then: &Then) -> bool {
+    match then {
+        Then::DeleteEvent { agent, id } => {
+            let mut arguments = Dict::new();
+            arguments.insert("id".into(), json!(id));
+            let result = crate::calendar::call(config, agent, "calendar_delete", &arguments, None,
+                                               &crate::caldav::Remote::default());
+            let failed = result.as_ref().map_or(true, |r| r.get("isError").is_some_and(py::truthy));
+            tracing::info!(agent = %agent, failed, "event deletion asked of the phone, with its owner's « Oui »");
+            !failed
+        }
+    }
+}
+
+/// A card for the person who owns what an agent's call would change (Alex 18/11: the family agent deletes an event
+/// only with the « Oui » of the person whose calendar it is, never of whoever asked): listed under `owner` (one of
+/// her own agents, so her phone shows it), holding no call: the call goes on at once, the card waits for her
+/// `held_approvals::KEEP_SECONDS` at most, its « Oui » does `then`, « Non » or no answer nothing. Its run id (the
+/// caller pushes it).
+pub fn ask_owner(config: &Config, owner: &str, card: Card, then: Then) -> String {
+    let id = py::uuid4_hex()[..12].to_string();
+    let now = py::time_time();
+    let mut table = asks();
+    table.retain(|_, a| a.until > now);
+    table.insert(
+        id.clone(),
+        Ask { place: config.data_dir(), agent: owner.to_string(), card, at: now, answer: None,
+              notify: Arc::new(Notify::new()), then: Some(then), until: now + crate::held_approvals::KEEP_SECONDS },
+    );
+    format!("{RUN_PREFIX}{id}")
 }
 
 /// Takes the card away when the call ends, whatever way.
@@ -198,7 +259,7 @@ pub async fn ask(state: &AppState, agent: &AgentConfig, card: Card) -> Answer {
     asks().insert(
         id.clone(),
         Ask { place: config.data_dir(), agent: agent.name.clone(), card, at: py::time_time(), answer: None,
-              notify: notify.clone() },
+              notify: notify.clone(), then: None, until: f64::INFINITY },
     );
     let _gone = CardGone(id.clone());
     let run = format!("{RUN_PREFIX}{id}");
@@ -283,7 +344,8 @@ mod tests {
                           summary: "Envoyer sur ce site ? Vie veut envoyer un formulaire à shop.example".into(),
                           detail: "message".into(), always: Some("Toujours pour ce site".into()) };
         asks().insert("t1abc".into(), Ask { place: config.data_dir(), agent: "vie".into(), card, at: 1.0,
-                                            answer: None, notify: Arc::new(Notify::new()) });
+                                            answer: None, notify: Arc::new(Notify::new()), then: None,
+                                            until: f64::INFINITY });
         let mut elsewhere = Config::with_key("k");
         elsewhere.outbox.db_path = dir.path().join("other").join("bridge.db").to_string_lossy().into_owned();
         assert!(pending_items(&elsewhere, None).iter().all(|i| i["request_id"] != "t1abc"), "another bridge's");
@@ -297,8 +359,37 @@ mod tests {
         assert!(crate::approval_level::rule_of(SITE_FORM).critical);
         assert!(pending_items(&config, Some("coach")).iter().all(|i| i["request_id"] != "t1abc"));
         assert_eq!(answer(&config, "coach", "t1abc", "always", "test"), None, "another agent's card");
-        assert_eq!(answer(&config, "vie", "t1abc", "always", "test"), Some("always"));
+        assert_eq!(answer(&config, "vie", "t1abc", "always", "test"), Some(("always", false)));
         assert_eq!(answer(&config, "vie", "t1abc", "once", "test"), None, "answered once");
         asks().remove("t1abc");
+    }
+
+    /// Alex 18/11: an owner's card holds no call, waits for her alone, and only her « Oui » does what it says.
+    #[test]
+    fn an_owners_card_waits_for_her_and_only_her_yes_does_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.path().join("bridge.db").to_string_lossy().into_owned();
+        let card = |title: &str| Card { kind: CALENDAR_DELETE, tool: "calendar_delete", command: format!("x {title}"),
+                                        summary: format!("Famille veut supprimer « {title} » de ton agenda ?"),
+                                        detail: String::new(), always: None };
+        let then = Then::DeleteEvent { agent: "famille__alex".into(), id: "m1".into() };
+        let run = ask_owner(&config, "vie", card("Dentiste"), then.clone());
+        let id = run.strip_prefix(RUN_PREFIX).unwrap().to_string();
+        let items = pending_items(&config, None);
+        let item = items.iter().find(|i| i["run_id"] == json!(run)).unwrap();
+        assert_eq!((item["agent"].as_str(), item["bip_ok"]["kind"].as_str()), (Some("vie"), Some(CALENDAR_DELETE)));
+        assert!(item.get("bip_always").is_none());
+        assert!(crate::approval_level::rule_of(CALENDAR_DELETE).critical);
+        // only her agent's card answers it; « Non »: nothing done, gone
+        assert_eq!(answer(&config, "coach", &id, "once", "test"), None);
+        assert_eq!(answer(&config, "vie", &id, "deny", "test"), Some(("deny", false)));
+        assert!(pending_items(&config, None).iter().all(|i| i["run_id"] != json!(run)));
+        // past its time: gone, a late « Oui » does nothing
+        let late = ask_owner(&config, "vie", card("Garage"), then);
+        let late_id = late.strip_prefix(RUN_PREFIX).unwrap().to_string();
+        asks().get_mut(&late_id).unwrap().until = py::time_time() - 1.0;
+        assert!(pending_items(&config, None).iter().all(|i| i["run_id"] != json!(late)));
+        assert_eq!(answer(&config, "vie", &late_id, "once", "test"), None);
     }
 }

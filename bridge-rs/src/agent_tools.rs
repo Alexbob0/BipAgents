@@ -1464,15 +1464,11 @@ fn carnet_turn(state: &AppState, agent: &str, turn: Option<&crate::loop_brake::T
 
 /// Before `calendar_delete` (audit 1.3, Alex 17/11: critical, as `mail_trash`): the person's card « Oui / Non » for
 /// an event that would be deleted now (the phone's copy, a mailbox's calendar: deleted at once there, no trash). None:
-/// go on (« Oui », or nothing to delete: the tool says why). A family agent never deletes one (its members' calendars
-/// are theirs: no card of theirs reaches here).
+/// go on (« Oui », or nothing to delete: the tool says why). A family agent's: the card goes to the calendar's owner
+/// instead, never to whoever asked (family_calendar.rs `owner_card`, Alex 18/11).
 async fn delete_card(state: &AppState, agent: &AgentConfig, arguments: &Dict, family: bool) -> Option<Dict> {
     if family {
-        return Some(tool_text(
-            "A family agent never deletes an event: tell the person whose calendar it is to delete it in their calendar \
-             app (or the phone's).",
-            true,
-        ));
+        return None;
     }
     let config = state.config();
     let id = tk::strip(&tk::str_or_empty(arguments.get("id"))).to_string();
