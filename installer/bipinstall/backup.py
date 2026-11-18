@@ -729,6 +729,28 @@ FRESH_WINS = (("", "public_url"), ("browser", "first_port"), ("browser", "ports"
               ("payments", "offer_cards"))
 
 
+CARD_SWITCH = ("payments", "offer_cards")
+
+
+def _card_switch(text: str, value: Optional[str], stuck: List[str]) -> str:
+    """The fresh install's card switch on the restored text, whatever the old `[payments]` looks like (a comment in
+    its header, an inline table: migrations.py `_with_offer_cards`, checked with tomllib). A shape it can't change
+    safely: the restored text as it is, noted in `stuck`. No switch on the fresh install: the restored one stays."""
+    if value != "true":
+        return text
+    from . import migrations
+    if migrations._offer_cards(text):
+        return text
+    try:
+        changed = migrations._with_offer_cards(text)
+    except Exception:   # never a stopped restore for this key
+        changed = text
+    if migrations._offer_cards(changed):
+        return changed
+    stuck.append("payments")
+    return text
+
+
 def _toml_value(text: str, section: str, key: str) -> Optional[str]:
     """A setting's raw value (as written) in a section ("": before the first one)."""
     import re
@@ -827,11 +849,21 @@ def settle(info: Dict, base: Path, repo: Path, address: Optional[str], fresh: Di
         [(re.compile(re.escape(mark)), str(mapping[old])) for old, mark in marks.items()])
     moving.adjust_bridge(config, info, target, old_toml)
 
+    stuck = []
+
     def own_values(text: str) -> str:
         for section, key, value in fresh["own"]:
-            text = _set_toml(text, section, key, value)
+            if (section, key) == CARD_SWITCH:
+                text = _card_switch(text, value, stuck)
+            else:
+                text = _set_toml(text, section, key, value)
         return text
     bridgeconf.update(config, own_values)
+    if stuck:   # the restore goes on; the next update tries again (migrations.json is the fresh install's: all done)
+        from . import migrations
+        print(f"bipinstall: {config}: [payments] has a shape the restore can't change safely, card payments left as "
+              "the backup had them; the next update tries again", file=sys.stderr)
+        migrations.unmark([migrations.OFFER_CARDS_ON])
     if own_backup.get("url"):   # this seat's token, the person's key
         write_private(base / SETTINGS, {**own_backup, "password": settings(base).get("password")
                                         or own_backup.get("password")})

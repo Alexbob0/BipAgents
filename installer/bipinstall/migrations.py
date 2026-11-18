@@ -306,6 +306,8 @@ def offer_cards_on(runner: hermes.Runner, home: Path) -> str:
             "kept on their phone (bridge restarted)")
 
 
+OFFER_CARDS_ON = "2026-11-18-offer-cards-on"
+
 # In order; an id never changes once released. The ones from 2026-10-15 to 2026-11-02 left on 2026-11-04 (every
 # install had them from that day's release): their code is in git history.
 MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
@@ -313,7 +315,7 @@ MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
     ("2026-11-10-clarify-hour", clarify_hour),
     ("2026-11-12-push-service-everywhere", push_service_everywhere),
     ("2026-11-13-hub-key", hub_key),
-    ("2026-11-18-offer-cards-on", offer_cards_on),
+    (OFFER_CARDS_ON, offer_cards_on),
 ]
 
 # BipAgents' own settings (bridge.toml), never the person's Hermes: applied on an install over their own Hermes too.
@@ -333,6 +335,13 @@ def mark(ids: List[str], runner: hermes.Runner) -> None:
         return
     STATE.parent.mkdir(parents=True, exist_ok=True)
     STATE.write_text(json.dumps({"done": sorted(set(done()) | set(ids))}, indent=2) + "\n", encoding="utf-8")
+
+
+def unmark(ids: List[str]) -> None:
+    """These ids to do again at the next update (a restore that couldn't apply what one sets: backup.py settle)."""
+    if not STATE.is_file():
+        return
+    STATE.write_text(json.dumps({"done": sorted(set(done()) - set(ids))}, indent=2) + "\n", encoding="utf-8")
 
 
 def pending() -> List[str]:
