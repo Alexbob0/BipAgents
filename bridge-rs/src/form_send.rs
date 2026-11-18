@@ -16,7 +16,10 @@
 //!    connectors') are in the file too, written again whenever that list changes (sandbox_sites.rs `change`), when the
 //!    browser is set up and at each call;
 //! 5. the vault's fills grant their site's next sending (`after_vault_fill`: the login or sign-up form the person
-//!    approved), and a card payment's button is pressed by the bridge itself (card_pay.rs): no card here for them.
+//!    approved), and a card payment's button is pressed by the bridge itself (card_pay.rs): no card here for them;
+//! 6. the shop a purchase watcher buys on (`purchase_sites`: the person approved « Il achètera … sur ce site » on its
+//!    card) is allowed while that watcher is approved and on: its rehearsal and its wake-up run with nobody to answer
+//!    a card (the cards lab of 18/11: the rehearsal held at its first cart form).
 //!
 //! Not a Python module.
 
@@ -82,9 +85,72 @@ fn write(config: &Config, agent: &str, always: Vec<String>, grant: Option<&str>)
     std::fs::rename(&partial, &path)
 }
 
+/// The shops `agent`'s purchase watchers buy on (connectors.rs `watch.purchase`), each while its watcher is approved
+/// and on: the shop and its subdomains (cart, checkout, login: `*.shop`, a leading `www.` aside); an address that
+/// address only; a shop of a shared platform (sandbox_sites.rs `SHARED_HOSTING`: `x.myshopify.com`, or the bare
+/// `myshopify.com`) or a name of this machine that host and its `www.` only; anything else (a wildcard, a character no
+/// host name has) nothing, its card comes back.
+pub fn purchase_sites(config: &Config, agent: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for conn in crate::connectors::of_agent(config, agent) {
+        if conn.status != crate::connectors::APPROVED || !conn.enabled {
+            continue;
+        }
+        let Some(purchase) = conn.watch.and_then(|w| w.purchase) else { continue };
+        let site = purchase.site.trim().trim_end_matches('.').to_lowercase();
+        if site.is_empty() {
+            continue;
+        }
+        let base = site.strip_prefix("www.").unwrap_or(&site).to_string();
+        let hosts = match crate::sandbox_sites::clean_host(&format!("*.{base}"), true) {
+            // a public suffix (the PSL: readthedocs.io…): that host and its www. only (review pass 2, 18/11)
+            Ok(_) if crate::cards::is_public_suffix(&base) => {
+                let www = format!("www.{base}");
+                vec![base, www]
+            }
+            Ok(wide) => vec![wide],
+            // an address: that one only
+            Err(_) if base.parse::<std::net::IpAddr>().is_ok() => vec![base],
+            // a shared platform's shop, a name of this machine: that host (and its www.) only (review F1/F2, 18/11)
+            Err(_) if plain_host(&base) => {
+                let www = format!("www.{base}");
+                vec![base, www]
+            }
+            // a wildcard, a character no host name has: never written (its card comes back)
+            Err(_) => Vec::new(),
+        };
+        for host in hosts {
+            if !out.contains(&host) {
+                out.push(host);
+            }
+        }
+    }
+    out
+}
+
+/// A host name with nothing else: ASCII letters, digits, dashes and dots between non-empty labels (never a `*`).
+pub fn plain_host(host: &str) -> bool {
+    host.contains('.')
+        && host.split('.').all(|label| {
+            !label.is_empty() && label.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        })
+}
+
+/// What the agent's browser may send forms to for good: `always` (sandbox_sites.rs `send_hosts`) and its purchase
+/// watchers' shops.
+fn with_shops(config: &Config, agent: &str, mut always: Vec<String>) -> Vec<String> {
+    for host in purchase_sites(config, agent) {
+        if !always.contains(&host) {
+            always.push(host);
+        }
+    }
+    always
+}
+
 /// The agent's file written again from what is validated now (at its browser's setup, and at each call).
 pub fn refresh(config: &Config, agent: &str) {
-    if let Err(exc) = write(config, agent, crate::sandbox_sites::send_hosts(config, agent), None) {
+    let always = with_shops(config, agent, crate::sandbox_sites::send_hosts(config, agent));
+    if let Err(exc) = write(config, agent, always, None) {
         tracing::warn!(agent, error = %exc, "the browser's allowed sites not written");
     }
 }
@@ -92,7 +158,7 @@ pub fn refresh(config: &Config, agent: &str) {
 /// Every agent's file written again from `store` (sandbox_sites.rs `change`: the list just changed).
 pub fn refresh_all(config: &Config, store: &crate::sandbox_sites::Store) {
     for agent in config.agents.keys() {
-        let always = crate::sandbox_sites::send_hosts_in(config, store, agent);
+        let always = with_shops(config, agent, crate::sandbox_sites::send_hosts_in(config, store, agent));
         if let Err(exc) = write(config, agent, always, None) {
             tracing::warn!(agent = %agent, error = %exc, "the browser's allowed sites not written");
         }
@@ -101,7 +167,7 @@ pub fn refresh_all(config: &Config, store: &crate::sandbox_sites::Store) {
 
 /// One sending to `host` granted (a « Oui », a vault fill).
 pub fn grant_once(config: &Config, agent: &str, host: &str) -> std::io::Result<()> {
-    write(config, agent, crate::sandbox_sites::send_hosts(config, agent), Some(host))
+    write(config, agent, with_shops(config, agent, crate::sandbox_sites::send_hosts(config, agent)), Some(host))
 }
 
 /// The vault typed a login or a new account's password into the agent's page on `host` (vault_logins.rs): the form
@@ -153,6 +219,13 @@ pub const HELD: &str = "Your person is not here now (this turn runs on its own):
 that site; it was not refused. When they say yes you will be told: then call ask_to_send again for the same site and \
 do the step again. Don't send it another way meanwhile; end with your report saying what waits for their OK.";
 
+/// The agent may send to `host` with no card (`call`: « do the step again »): a validated site, or one of its purchase
+/// watchers' shops.
+pub fn sends_without_card(config: &Config, agent: &str, host: &str) -> bool {
+    crate::sandbox_sites::validated(config, agent, host)
+        || crate::browser_mcp::send_covered(&purchase_sites(config, agent), host)
+}
+
 /// `ask_to_send` for `agent` (see the module's comment).
 pub async fn call(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> Dict {
     if crate::shared_pages::who(state, &agent.name, TOOL) != crate::shared_pages::Who::Owner {
@@ -167,7 +240,7 @@ pub async fn call(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> Di
         return tool_text(NO_BROWSER, true);
     }
     refresh(&config, &agent.name);
-    if crate::sandbox_sites::validated(&config, &agent.name, &host) {
+    if sends_without_card(&config, &agent.name, &host) {
         return tool_text(&format!("{host} is allowed for sending already: do the step again."), false);
     }
     let what: String = crate::cards::quoted(&arg(arguments, "what"), 200);
@@ -253,5 +326,144 @@ mod tests {
         assert_eq!(crate::browser_mcp::send_allowed(&path, "contact.example", &Default::default(), now + 601.0), None);
         let mode = std::os::unix::fs::PermissionsExt::mode(&std::fs::metadata(&path).unwrap().permissions());
         assert_eq!(mode & 0o777, 0o600);
+    }
+
+    /// The release battery's cards lab, 18/11 (rc-1119): the rehearsal of a purchase watcher stopped at its first cart
+    /// form, its browser asking « Envoyer sur ce site ? » for the very shop the person approved it to buy on (the
+    /// watcher's card: « Il achètera … sur … »), in a turn nobody follows (the card held, the rehearsal « bloquée »).
+    /// The real wake-up buys there at once, unattended too (watchers.rs `purchase_rule`): the shop the person approved
+    /// is allowed for sending while its watcher is approved and on — the shop and its subdomains (cart, checkout,
+    /// login), an address or a shared host's site that host only; never another site.
+    #[test]
+    fn a_purchase_watchers_shop_is_allowed_for_sending_while_it_is_on() {
+        use crate::connectors::{self, Connector, Purchase, Watch};
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.path().join("bridge.db").to_string_lossy().into_owned();
+        config.browser.root = dir.path().join("browsers").to_string_lossy().into_owned();
+        config.agents.insert("vie".into(), AgentConfig { name: "vie".into(), ..Default::default() });
+        std::fs::create_dir_all(crate::browsers::folder(&config, "vie")).unwrap();
+        let watcher = |id: &str, site: &str, status: &str, enabled: bool| Connector {
+            id: id.into(),
+            name: format!("Billets {id}"),
+            sites: vec!["api.tickets.example".into()],
+            status: status.into(),
+            enabled,
+            watch: Some(Watch {
+                every: "15m".into(),
+                notify: "on_change".into(),
+                purchase: Some(Purchase { site: site.into(), what: "Billet".into(), cents: 450, ..Default::default() }),
+            }),
+            ..Default::default()
+        };
+        let ok = connectors::APPROVED;
+        let list = vec![
+            watcher("a", "www.shop.example", ok, true),
+            watcher("b", "127.0.0.1", ok, true),
+            watcher("c", "maboutique.myshopify.com", ok, true),
+            watcher("d", "off.example", ok, false),
+            watcher("e", "waiting.example", "pending", true),
+        ];
+        connectors::change(&config, |store| store.agents.insert("vie".into(), list)).unwrap();
+        let path = file_of(&config, "vie");
+        let used = std::collections::HashSet::new();
+        let allowed = |host: &str| crate::browser_mcp::send_allowed(&path, host, &used, py::time_time()) == Some(None);
+        let shops = ["www.shop.example", "shop.example", "checkout.shop.example", "127.0.0.1", "maboutique.myshopify.com"];
+        for host in shops {
+            assert!(allowed(host), "{host}: the shop its person approved the watcher to buy on");
+        }
+        let others = ["evil.example", "shop.example.evil.example", "other.myshopify.com", "off.example", "waiting.example"];
+        for host in others {
+            assert!(!allowed(host), "{host}: never approved for a purchase");
+        }
+        assert!(allowed("api.tickets.example"), "the connector's own sites, as before");
+        // the agent's ask_to_send for that shop: no card, « do the step again » (`call`)
+        assert!(sends_without_card(&config, "vie", "checkout.shop.example"));
+        assert!(!sends_without_card(&config, "vie", "evil.example"));
+        // the watcher switched off: its shop asks again
+        connectors::change(&config, |store| store.agents.get_mut("vie").unwrap()[0].enabled = false).unwrap();
+        assert!(!allowed("checkout.shop.example"));
+        assert!(!sends_without_card(&config, "vie", "checkout.shop.example"));
+    }
+
+    /// Review 18/11 (fix-cards-lab-rehearsal): a shop `clean_host` refuses as `*.` falls back to the raw text, unchecked:
+    /// a purchase.site that is itself a wildcard (`parse_purchase` accepts it: it only asks for a dot) lands in the
+    /// browser's file as a wildcard, opening every .com or every Shopify shop. A bare shared-hosting registrable domain
+    /// (myshopify.com, not in SHARED_HOSTING) opens every tenant.
+    #[test]
+    fn review_a_purchase_site_never_opens_more_than_one_shop() {
+        use crate::connectors::{self, Connector, Watch};
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.path().join("bridge.db").to_string_lossy().into_owned();
+        config.browser.root = dir.path().join("browsers").to_string_lossy().into_owned();
+        config.agents.insert("vie".into(), AgentConfig { name: "vie".into(), ..Default::default() });
+        std::fs::create_dir_all(crate::browsers::folder(&config, "vie")).unwrap();
+        // a wildcard or a character no host name has: refused at registration (connector_register)
+        let parse = |site: &str| {
+            let given = serde_json::json!({"site": site, "what": "Billet", "price": "4,50"});
+            crate::watchers::parse_purchase(given.as_object().unwrap())
+        };
+        for site in ["*.com", "https://*.myshopify.com/", "shop example.com", "shop_x.example", "évil.example"] {
+            assert!(parse(site).is_err(), "{site}: accepted at registration");
+        }
+        assert_eq!(parse("https://www.Shop.example:443/p").unwrap().site, "shop.example");
+        assert_eq!(parse("127.0.0.1:8765").unwrap().site, "127.0.0.1");
+        // one stored before that check (or written by hand): never a wildcard in the browser's file either
+        let watcher = |id: &str, site: &str| {
+            let purchase = parse(site).unwrap_or_else(|_| crate::connectors::Purchase {
+                site: site.into(),
+                what: "Billet".into(),
+                ..Default::default()
+            });
+            Connector {
+                id: id.into(),
+                name: format!("Billets {id}"),
+                sites: vec!["api.tickets.example".into()],
+                status: connectors::APPROVED.into(),
+                enabled: true,
+                watch: Some(Watch { every: "15m".into(), notify: "on_change".into(), purchase: Some(purchase) }),
+                ..Default::default()
+            }
+        };
+        let list = vec![watcher("a", "*.com"), watcher("b", "https://*.myshopify.com/"), watcher("c", "myshopify.com")];
+        connectors::change(&config, |store| store.agents.insert("vie".into(), list)).unwrap();
+        let path = file_of(&config, "vie");
+        let used = std::collections::HashSet::new();
+        let allowed = |host: &str| crate::browser_mcp::send_allowed(&path, host, &used, py::time_time()) == Some(None);
+        for host in ["evil.com", "attacker.myshopify.com"] {
+            assert!(!allowed(host), "{host}: opened by a watcher's purchase site {:?}", purchase_sites(&config, "vie"));
+            assert!(!sends_without_card(&config, "vie", host), "{host}: no card");
+        }
+        // a shared platform's bare domain: that host and its www. only
+        assert_eq!(purchase_sites(&config, "vie"), ["myshopify.com", "www.myshopify.com"]);
+    }
+
+    /// Review 18/11, pass 2: a bare public suffix the Public Suffix List knows but SHARED_HOSTING doesn't (cards.rs
+    /// `is_public_suffix`, used for the card's sites already) still opens every site under it.
+    #[test]
+    fn review_pass2_a_bare_public_suffix_opens_that_host_only() {
+        use crate::connectors::{self, Connector, Watch};
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.path().join("bridge.db").to_string_lossy().into_owned();
+        config.browser.root = dir.path().join("browsers").to_string_lossy().into_owned();
+        config.agents.insert("vie".into(), AgentConfig { name: "vie".into(), ..Default::default() });
+        std::fs::create_dir_all(crate::browsers::folder(&config, "vie")).unwrap();
+        let site = "readthedocs.io";
+        assert!(crate::cards::is_public_suffix(site));
+        let given = serde_json::json!({"site": site, "what": "Billet", "price": "4,50"});
+        let purchase = crate::watchers::parse_purchase(given.as_object().unwrap()).unwrap();
+        let conn = Connector {
+            id: "a".into(),
+            name: "Billets".into(),
+            sites: vec!["api.tickets.example".into()],
+            status: connectors::APPROVED.into(),
+            enabled: true,
+            watch: Some(Watch { every: "15m".into(), notify: "on_change".into(), purchase: Some(purchase) }),
+            ..Default::default()
+        };
+        connectors::change(&config, |store| store.agents.insert("vie".into(), vec![conn])).unwrap();
+        assert!(!sends_without_card(&config, "vie", "attacker.readthedocs.io"), "{:?}", purchase_sites(&config, "vie"));
     }
 }
