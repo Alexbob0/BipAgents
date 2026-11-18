@@ -2,7 +2,7 @@
 
 # Política de privacidad de BipAgents
 
-> Última actualización: 16 de noviembre de 2026.
+> Última actualización: 18 de noviembre de 2026.
 
 ## En resumen
 
@@ -535,8 +535,8 @@ límite fijado se conserva mientras dure la suscripción.
 
 **Solo una semana gratis por persona.** Para saber si ya has tenido una suscripción a BipAgents, también comparamos el
 correo electrónico dado en el pedido, tu cuenta BipAgents y tu identificador de cliente en Stripe con nuestras
-suscripciones anteriores. No guardamos ningún dato de tu tarjeta: se introduce en Stripe y nunca pasa por nuestros
-servidores.
+suscripciones anteriores. No guardamos ningún dato de la tarjeta con la que pagas tu suscripción: se introduce en Stripe
+y nunca pasa por nuestros servidores (para una tarjeta confiada a tus agentes, ver la sección 5.10).
 
 **Solo una semana gratis por dispositivo.**
 
@@ -729,6 +729,8 @@ en los sitios que permitas:
   donde la añadiste**, en su almacenamiento protegido (Llavero de iOS, Keystore de Android), tras Face ID, tu huella o
   tu código. Tu plaza solo guarda el nombre que le diste a la tarjeta, su red, sus 4 últimos dígitos, el límite que
   fijaste, los sitios y agentes permitidos y los pagos hechos con ella (importe, sitio, agente, fecha).
+- Antes de añadir una tarjeta, fijas un límite por pago, en euros, y confirmas marcando una casilla que es una tarjeta
+  virtual con límite, no tu tarjeta principal: el límite de tu banco sigue siendo el verdadero, el de la app es uno más.
 - **En cada pago que apruebas** en la app, tu teléfono envía estos datos y el código de seguridad (escrito, o
   recordado en ese teléfono si lo elegiste) a tu plaza, por la conexión cifrada de la app. El software de tu plaza los guarda en memoria el tiempo de
   rellenar el formulario de pago en el navegador del agente y luego los borra. Nunca se escriben en el disco, en los
@@ -737,9 +739,10 @@ en los sitios que permitas:
 - Finalidad: hacer la compra que pediste y aprobaste (ejecución del contrato, artículo 6.1.b del RGPD). Puedes
   suspenderlo todo en cualquier momento y borrar la tarjeta en la app (se borra entonces del teléfono y de tu plaza).
 
-Es una función experimental: algunos bancos consideran que confiar los datos de la tarjeta a un servicio es una
-negligencia y pueden negarse a reembolsar en caso de disputa. Por eso la app pide una tarjeta virtual con límite,
-nunca tu tarjeta principal.
+Es una función experimental durante la beta, desactivada por defecto: la app te muestra sus riesgos antes de que la
+actives. Como eres tú quien aprueba cada pago, tu banco puede considerar que no es un fraude y negarse a reembolsarlo;
+algunos bancos consideran también que confiar los datos de la tarjeta a un servicio es una negligencia. Por eso la app
+pide una tarjeta virtual con límite, nunca tu tarjeta principal.
 
 ### 5.11 Cómo nos conociste (medición de nuestras campañas)
 
@@ -976,6 +979,8 @@ Scaleway, en Francia, sin transferencia fuera de la Unión. Puedes pedirnos una 
 | Dirección de correo e identificador de cuenta después del fin del contrato (obligación de los proveedores de alojamiento) | 5 años para el correo, 1 año para el identificador, conservados aparte |
 | Suscripción y compras | Durante la suscripción y después 5 años archivados |
 | Compra en el sitio (dirección de correo dada al pagar, identificadores de Stripe, plan y periodo, país de facturación, idioma) | Durante la suscripción y después 5 años archivados |
+| Pagos de tus agentes: número, fecha de caducidad, titular, código postal y código de seguridad de la tarjeta (oferta todo incluido) | En tu teléfono; en tu plaza, solo en memoria mientras se rellena un pago que aprobaste |
+| Registro de pagos de tus agentes (importe, sitio, agente, fecha, sin número de tarjeta) | 3 años en tu plaza |
 | Facturas y justificantes de pago de una compra en el sitio | 10 años (artículo L123-22 del Código de Comercio francés); facturas guardadas por Stripe |
 | Código beta nunca usado | Hasta que ya no pueda usarse |
 | Código beta usado y su vínculo a tu cuenta | Hasta el final de tu plaza beta o su paso a una suscripción de pago |

@@ -2,7 +2,7 @@
 
 # Condiciones generales de venta de la oferta todo incluido
 
-> Última actualización: 12 de noviembre de 2026.
+> Última actualización: 18 de noviembre de 2026.
 
 ## 1. Objeto
 
@@ -49,7 +49,7 @@ condiciones.
   en ellos: la tienda factura, cobra el precio y el IVA, y reembolsa según sus propias reglas. En el App Store, Apple
   actúa como mandatario de Kerfy Studio y, para la Unión Europea, el vendedor es Apple Distribution International Ltd.
   (Irlanda); en Google Play, el vendedor es Google Commerce Limited (Irlanda). Sus condiciones se aplican al pago. Kerfy
-  Studio nunca recibe tus medios de pago.
+  Studio nunca recibe los medios de pago de tu suscripción.
 - **En el sitio bipagents.com, Kerfy Studio vende directamente.** Kerfy Studio es entonces el vendedor: te factura y
   cobra el precio y el IVA o los impuestos sobre las ventas, calculados según tu país por Stripe Tax. El pago lo procesa
   Stripe (Stripe Payments Europe, Ltd., Irlanda); Kerfy Studio nunca recibe el número completo de tu tarjeta. Las apps
@@ -108,6 +108,11 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
 
 **Lo que no está incluido**: tu teléfono y tu acceso a Internet; el uso del modelo de IA más allá de tu crédito
 (puedes añadir más, sección 6); los servicios que conectas a tus agentes y sus propias suscripciones.
+
+**Los pagos de tus agentes** (experimental durante la beta, desactivado por defecto): cuando Kerfy Studio ha abierto la
+función, puedes activarla y confiar a un agente una tarjeta virtual con límite, nunca tu tarjeta principal. Su número se
+queda en tu teléfono; solo se envía a tu plaza con cada pago que apruebas, se guarda en memoria el tiempo de rellenarlo
+y luego se borra ([política de privacidad](privacy.es.md), sección 5.10).
 
 **Compatibilidad**: la app funciona en iPhone y iPad con iOS 18 o posterior, y en Android 10 o posterior.
 
@@ -397,6 +402,8 @@ En particular, Kerfy Studio no responde:
 - de lo que produce el modelo de IA, que puede equivocarse, ni de las decisiones que tomes basándote en ello;
 - de las acciones de tus agentes que hayas aprobado o que tu configuración permita, salvo si se deben a un defecto del
   servicio;
+- de un pago hecho por un agente con tu tarjeta y que hayas aprobado, ni de una negativa de tu banco a reembolsarlo,
+  salvo si el pago se debe a un defecto del servicio (importe, sitio o tarjeta distintos de lo que aprobaste);
 - de lo que hagas tú mismo en tu plaza, en particular por SSH;
 - de una pérdida de acceso por haber perdido todos tus dispositivos y tu código de recuperación;
 - de los servicios de terceros que conectes a tus agentes (correo, sitios web, cuentas en línea).

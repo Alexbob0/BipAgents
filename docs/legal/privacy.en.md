@@ -2,7 +2,7 @@ English · [Français](privacy.fr.md) · [Deutsch](privacy.de.md) · [Español](
 
 # BipAgents privacy policy
 
-> Last updated: 16 November 2026.
+> Last updated: 18 November 2026.
 
 ## In short
 
@@ -518,7 +518,8 @@ long as the subscription lasts.
 
 **Only one free week per person.** To know whether you have already had a BipAgents subscription, we also compare the
 email address given with the order, your BipAgents account and your Stripe customer identifier with our past
-subscriptions. We keep no data of your card: it is entered at Stripe and never goes through our servers.
+subscriptions. We keep no data of the card you pay your subscription with: it is entered at Stripe and never goes
+through our servers (for a card you give your agents, see section 5.10).
 
 **Only one free week per device.**
 
@@ -706,6 +707,8 @@ it, on the sites you allow:
   protected storage (iOS Keychain, Android Keystore), behind Face ID, your fingerprint or your passcode. Your place
   keeps only the name you gave the card, its network, its last 4 digits, the cap you set, the sites and agents
   allowed, and the payments made with it (amount, site, agent, date).
+- Before adding a card, you set a cap per payment, in euros, and you tick a box confirming it is a virtual card with a
+  cap, not your main card: your bank's cap remains the real limit, the app's is a second one.
 - **For each payment you approve** in the app, your phone sends this data and the security code (typed, or remembered on that phone if you chose
   so) to your place, over the app's encrypted connection. Your place's software keeps them in memory just long enough to fill
   in the payment form in the agent's browser, then erases them. They are never written to disk, logs or backups, and
@@ -714,8 +717,10 @@ it, on the sites you allow:
 - Purpose: making the purchase you asked for and approved (performance of the contract, GDPR Article 6(1)(b)). You can
   suspend everything at any time, and delete the card in the app (it is then erased from the phone and your place).
 
-This is an experimental feature: some banks consider that giving your card details to a service is negligence and may
-refuse a refund in a dispute. That is why the app asks for a virtual card with a cap, never your main card.
+This is an experimental feature during the beta, off by default: the app shows you its risks before you turn it on.
+Since you approve each payment yourself, your bank may consider it is not fraud and refuse to refund it; some banks also
+consider that giving your card details to a service is negligence. That is why the app asks for a virtual card with a
+cap, never your main card.
 
 ### 5.11 How you found us (measuring our campaigns)
 
@@ -952,6 +957,8 @@ of the applicable safeguards.
 | Email address and account identifier after the end of the contract (obligation of hosting providers) | 5 years for the email, 1 year for the identifier, kept apart |
 | Subscription and purchases | During the subscription, then 5 years in archive |
 | Purchase on the website (email address given at payment, Stripe identifiers, plan and period, billing country, language) | During the subscription, then 5 years in archive |
+| Payments by your agents: the card's number, expiry date, holder, postcode and security code (all-included offer) | On your phone; on your place, in memory only while filling a payment you approved |
+| Log of payments by your agents (amount, site, agent, date, no card number) | 3 years on your place |
 | Invoices and payment records of a purchase on the website | 10 years (article L123-22 of the French Commercial Code); invoices kept by Stripe |
 | Beta code never used | Until it can no longer be redeemed |
 | Used beta code and its link to your account | Until your beta place ends or moves to a paid subscription |

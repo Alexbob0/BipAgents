@@ -2,7 +2,7 @@
 
 # Beta-Bedingungen
 
-> Zuletzt aktualisiert: 12. November 2026.
+> Zuletzt aktualisiert: 18. November 2026.
 
 Mit der öffentlichen Beta von BipAgents kannst du die App und das Alles-inklusive-Angebot ausprobieren, bevor die Abos
 starten. Sie wird von Kerfy Studio angeboten, dem Herausgeber von BipAgents.
@@ -10,7 +10,8 @@ starten. Sie wird von Kerfy Studio angeboten, dem Herausgeber von BipAgents.
 - **Auf Einladung.** Die öffentliche Beta öffnet sich mit einem Einladungscode, der nur einmal gilt, im Rahmen von
   100 Plätzen.
 - **Kostenlos.** Die Beta kostet nichts: Es wird kein Zahlungsmittel verlangt, und während der Beta ist in der App kein
-  Kauf möglich.
+  Kauf möglich. (Wenn du Zahlungen durch deine Agenten einschaltest, sind das deine eigenen Einkäufe, mit deiner Karte
+  bezahlt: siehe [Datenschutzerklärung](privacy.de.md), Abschnitt 5.10.)
 - **Das geschenkte KI-Guthaben.** 2 € Nutzung des Modells pro Person und pro Monat, mit einer festen Obergrenze. Ist
   dieses Guthaben verbraucht, rufen deine Agenten das Modell bis zum nächsten Monat nicht mehr auf: Dir wird nichts
   berechnet. Es kann weder verkauft noch erstattet werden.

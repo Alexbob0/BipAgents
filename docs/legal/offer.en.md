@@ -2,7 +2,7 @@ English · [Français](offer.fr.md) · [Deutsch](offer.de.md) · [Español](offe
 
 # Terms of sale of the all-included offer
 
-> Last updated: 12 November 2026.
+> Last updated: 18 November 2026.
 
 ## 1. Purpose
 
@@ -45,7 +45,7 @@ Using BipAgents with your own computer or your own server stays free and is not 
   the store bills you, collects the price and the VAT, and refunds under its own rules. On the App Store, Apple acts as
   Kerfy Studio's agent and, for the European Union, the seller is Apple Distribution International Ltd. (Ireland); on
   Google Play, the seller is Google Commerce Limited (Ireland). Their terms apply to the payment. Kerfy Studio never
-  receives your payment details.
+  receives the payment details of your subscription.
 - **On the bipagents.com website, Kerfy Studio sells directly.** Kerfy Studio is then the seller: it bills you and
   collects the price and the VAT or sales taxes, calculated for your country by Stripe Tax. The payment is processed by
   Stripe (Stripe Payments Europe, Ltd., Ireland); Kerfy Studio never receives your full card number. The apps never sell
@@ -103,6 +103,11 @@ once. The rules specific to people who live outside the Union are in section 17.
 
 **What is not included**: your phone and your Internet access; AI model use beyond your credit (you can add some,
 section 6); the services you connect to your agents and their own subscriptions.
+
+**Payments by your agents** (experimental during the beta, off by default): when Kerfy Studio has opened the feature,
+you can turn it on and give an agent a virtual card with a cap, never your main card. Its number stays on your phone; it
+is sent to your place only with each payment you approve, kept in memory while it is filled in, then erased ([privacy
+policy](privacy.en.md), section 5.10).
 
 **Compatibility**: the app works on iPhone and iPad with iOS 18 or later, and on Android 10 or later.
 
@@ -388,6 +393,8 @@ In particular, Kerfy Studio is not liable for:
 - what the AI model produces, which can be wrong, nor for the decisions you make on that basis;
 - your agents' actions that you approved or that your configuration allows, unless they result from a defect of the
   service;
+- a payment made by an agent with your card that you approved, nor a refusal by your bank to refund it, unless the
+  payment results from a defect of the service (an amount, site or card different from what you approved);
 - what you do yourself on your place, in particular over SSH;
 - a loss of access due to the loss of all your devices and of your recovery code;
 - the third-party services you connect to your agents (email, websites, online accounts).

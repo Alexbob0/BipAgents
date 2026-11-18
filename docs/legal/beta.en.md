@@ -2,14 +2,15 @@ English · [Français](beta.fr.md) · [Deutsch](beta.de.md) · [Español](beta.e
 
 # Beta terms
 
-> Last updated: 12 November 2026.
+> Last updated: 18 November 2026.
 
 The BipAgents public beta lets you try the app and the all-included offer before subscriptions open. It is provided by
 Kerfy Studio, the publisher of BipAgents.
 
 - **By invitation.** The public beta opens with an invitation code, valid once, within the limit of 100 places.
 - **Free.** The beta costs nothing: no payment method is asked for and no purchase is possible in the app during the
-  beta.
+  beta. (If you turn on payments by your agents, those are your own purchases, paid with your card: see the [privacy
+  policy](privacy.en.md), section 5.10.)
 - **The AI credit offered.** 2 € of model use per person and per month, with a strict cap. Once this credit is used,
   your agents no longer call the model until the next month: nothing is charged to you. It cannot be sold or refunded.
 - **Unused place.** Beta places are limited. If nobody writes to your agents for 7 days, your place is freed for
