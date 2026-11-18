@@ -86,8 +86,10 @@ fn write(config: &Config, agent: &str, always: Vec<String>, grant: Option<&str>)
 }
 
 /// The shops `agent`'s purchase watchers buy on (connectors.rs `watch.purchase`), each while its watcher is approved
-/// and on: the shop and its subdomains (cart, checkout, login: `*.shop`, a leading `www.` aside), or that host only
-/// when no such name may be given (an address, a name of this machine: sandbox_sites.rs `clean_host`).
+/// and on: the shop and its subdomains (cart, checkout, login: `*.shop`, a leading `www.` aside); an address that
+/// address only; a shop of a shared platform (sandbox_sites.rs `SHARED_HOSTING`: `x.myshopify.com`, or the bare
+/// `myshopify.com`) or a name of this machine that host and its `www.` only; anything else (a wildcard, a character no
+/// host name has) nothing, its card comes back.
 pub fn purchase_sites(config: &Config, agent: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for conn in crate::connectors::of_agent(config, agent) {
@@ -99,13 +101,34 @@ pub fn purchase_sites(config: &Config, agent: &str) -> Vec<String> {
         if site.is_empty() {
             continue;
         }
-        let base = site.strip_prefix("www.").unwrap_or(&site);
-        let host = crate::sandbox_sites::clean_host(&format!("*.{base}"), true).unwrap_or(site.clone());
-        if !out.contains(&host) {
-            out.push(host);
+        let base = site.strip_prefix("www.").unwrap_or(&site).to_string();
+        let hosts = match crate::sandbox_sites::clean_host(&format!("*.{base}"), true) {
+            Ok(wide) => vec![wide],
+            // an address: that one only
+            Err(_) if base.parse::<std::net::IpAddr>().is_ok() => vec![base],
+            // a shared platform's shop, a name of this machine: that host (and its www.) only (review F1/F2, 18/11)
+            Err(_) if plain_host(&base) => {
+                let www = format!("www.{base}");
+                vec![base, www]
+            }
+            // a wildcard, a character no host name has: never written (its card comes back)
+            Err(_) => Vec::new(),
+        };
+        for host in hosts {
+            if !out.contains(&host) {
+                out.push(host);
+            }
         }
     }
     out
+}
+
+/// A host name with nothing else: ASCII letters, digits, dashes and dots between non-empty labels (never a `*`).
+pub fn plain_host(host: &str) -> bool {
+    host.contains('.')
+        && host.split('.').all(|label| {
+            !label.is_empty() && label.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        })
 }
 
 /// What the agent's browser may send forms to for good: `always` (sandbox_sites.rs `send_hosts`) and its purchase
@@ -371,10 +394,23 @@ mod tests {
         config.browser.root = dir.path().join("browsers").to_string_lossy().into_owned();
         config.agents.insert("vie".into(), AgentConfig { name: "vie".into(), ..Default::default() });
         std::fs::create_dir_all(crate::browsers::folder(&config, "vie")).unwrap();
-        let watcher = |id: &str, site: &str| {
+        // a wildcard or a character no host name has: refused at registration (connector_register)
+        let parse = |site: &str| {
             let given = serde_json::json!({"site": site, "what": "Billet", "price": "4,50"});
-            let purchase = crate::watchers::parse_purchase(given.as_object().unwrap())
-                .unwrap_or_else(|why| panic!("{site}: refused at registration ({why})"));
+            crate::watchers::parse_purchase(given.as_object().unwrap())
+        };
+        for site in ["*.com", "https://*.myshopify.com/", "shop example.com", "shop_x.example", "évil.example"] {
+            assert!(parse(site).is_err(), "{site}: accepted at registration");
+        }
+        assert_eq!(parse("https://www.Shop.example:443/p").unwrap().site, "shop.example");
+        assert_eq!(parse("127.0.0.1:8765").unwrap().site, "127.0.0.1");
+        // one stored before that check (or written by hand): never a wildcard in the browser's file either
+        let watcher = |id: &str, site: &str| {
+            let purchase = parse(site).unwrap_or_else(|_| crate::connectors::Purchase {
+                site: site.into(),
+                what: "Billet".into(),
+                ..Default::default()
+            });
             Connector {
                 id: id.into(),
                 name: format!("Billets {id}"),
@@ -394,5 +430,7 @@ mod tests {
             assert!(!allowed(host), "{host}: opened by a watcher's purchase site {:?}", purchase_sites(&config, "vie"));
             assert!(!sends_without_card(&config, "vie", host), "{host}: no card");
         }
+        // a shared platform's bare domain: that host and its www. only
+        assert_eq!(purchase_sites(&config, "vie"), ["myshopify.com", "www.myshopify.com"]);
     }
 }

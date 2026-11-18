@@ -80,7 +80,11 @@ const REPORTS_MAX: u64 = 512 * 1024;
 /// Generic second levels under which a `*.` would open anybody's domain.
 const OPEN_SECOND_LEVELS: [&str; 10] = ["co", "com", "net", "org", "edu", "ac", "ltd", "plc", "me", "nom"];
 /// Hosting where anybody gets a subdomain: never under a `*.`.
-const SHARED_HOSTING: [&str; 24] = [
+/// The shop platforms (review of fix-cards-lab-rehearsal, 18/11: a purchase watcher's shop) are those where each
+/// merchant's shop is a subdomain of the platform's own: myshopify.com (Shopify), wixsite.com (Wix), square.site
+/// (Square Online), mybigcartel.com (Big Cartel), company.site (Ecwid), sumupstore.com (SumUp), squarespace.com,
+/// webflow.io, wordpress.com. Not etsy.com nor amazon: one company's site, shops under paths.
+const SHARED_HOSTING: [&str; 33] = [
     "github.io",
     "githubusercontent.com",
     "gitlab.io",
@@ -105,6 +109,15 @@ const SHARED_HOSTING: [&str; 24] = [
     "ngrok-free.app",
     "glitch.me",
     "repl.co",
+    "myshopify.com",
+    "wixsite.com",
+    "square.site",
+    "mybigcartel.com",
+    "company.site",
+    "sumupstore.com",
+    "squarespace.com",
+    "webflow.io",
+    "wordpress.com",
 ];
 /// Names of this machine or its networks.
 const LOCAL_SUFFIXES: [&str; 9] =
