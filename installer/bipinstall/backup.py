@@ -723,7 +723,10 @@ def _copy(src: Path, dst: Path) -> None:
 
 
 FRESH_WINS = (("", "public_url"), ("browser", "first_port"), ("browser", "ports"), ("lan", "enabled"),
-              ("lan", "port"), ("lan", "address"), ("setup", "file"), ("setup", "progress"))
+              ("lan", "port"), ("lan", "address"), ("setup", "file"), ("setup", "progress"),
+              # the offer's card switch as this install wrote it (stack.py, 18/11): a backup from before the wave has
+              # none, and migrations.json isn't in the backup, so the migration would never come back for it
+              ("payments", "offer_cards"))
 
 
 def _toml_value(text: str, section: str, key: str) -> Optional[str]:

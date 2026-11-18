@@ -748,7 +748,7 @@ def test_card_payments_open_on_the_offers_places_only(tmp_path, monkeypatch):
     """Alex 18/11: `[payments] offer_cards = true` on the offer's places (guichet token in backup.json, as the bridge
     tells them), the rest of bridge.toml kept, the bridge restarted only when it changed; self-hosted never touched."""
     import json as _json
-    from bipinstall import drain, migrations
+    from bipinstall import bridgeconf, drain, migrations
     config = tmp_path / ".config" / "bipagents" / "bridge.toml"
     config.parent.mkdir(parents=True)
     runner = hermes.Runner()
@@ -784,6 +784,36 @@ def test_card_payments_open_on_the_offers_places_only(tmp_path, monkeypatch):
         migrations.offer_cards_on(runner, tmp_path)
     assert "doesn't parse" in str(said.value) and any("offer-cards-on" in line for line in runner.log)
     assert config.read_text() == 'bridge_key = "k"\n[payments\n' and ran == []
+    # review 18/11 (R2): headers with comments or spaces, an inline table, an array after it: one [payments], true
+    settings.write_text(_json.dumps({"url": "https://g.example", "token": "t"}))
+    for given in ('bridge_key = "k"\n\n[ payments ]  # Kerfy\noffer_cards = false\n\n[[x]]\nn = 1\n',
+                  'bridge_key = "k"\npayments = { offer_cap_max_eur = 80 }\n\n[cron]\nwatch = true\n',
+                  'bridge_key = "k"\npayments = {offer_cards = false}  # off\n',
+                  'bridge_key = "k"\n\n[[x]]\npayments = { a = 1 }\n'):
+        config.write_text(given)
+        migrations.offer_cards_on(runner, tmp_path)
+        doc = bridgeconf.tomllib.loads(config.read_text())
+        assert doc["payments"]["offer_cards"] is True, given
+        assert config.read_text().count("offer_cards") == 1, given
+    # a shape the edit can't change (dotted key): NotYet, the file kept, the update goes on
+    config.write_text('bridge_key = "k"\npayments.offer_cards = false\n')
+    with pytest.raises(migrations.NotYet):
+        migrations.offer_cards_on(runner, tmp_path)
+    assert config.read_text() == 'bridge_key = "k"\npayments.offer_cards = false\n'
+    # a refusal by bridgeconf (e.g. the agents' addresses lost) becomes NotYet too, never a stopped update
+    monkeypatch.setattr(bridgeconf, "update", lambda *a, **k: (_ for _ in ()).throw(bridgeconf.BridgeConfigError("refused")))
+    config.write_text('bridge_key = "k"\n')
+    with pytest.raises(migrations.NotYet):
+        migrations.offer_cards_on(runner, tmp_path)
+    monkeypatch.undo()
+    # a token made of spaces is no token: a home install, untouched
+    settings.write_text(_json.dumps({"url": "https://g.example", "token": "   "}))
+    assert "not a place" in migrations.offer_cards_on(runner, tmp_path)
+    # a home install without [payments] (no backup.json at all): stays without it
+    settings.unlink()
+    home_body = 'bridge_key = "k"\n\n[vault]\ncards = "auto"\n'
+    config.write_text(home_body)
+    assert "not a place" in migrations.offer_cards_on(runner, tmp_path) and config.read_text() == home_body
     assert "2026-11-18-offer-cards-on" in [mid for mid, _ in migrations.MIGRATIONS]
     assert "2026-11-18-offer-cards-on" in migrations.BRIDGE_ONLY
 
