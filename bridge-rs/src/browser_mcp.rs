@@ -1112,6 +1112,31 @@ pub fn presses_enter(args: &Dict) -> bool {
     matches!(key.as_str(), "enter" | "return" | "numpadenter" | "\r" | "\n")
 }
 
+/// `press_key` pressing Space (on a button it clicks it).
+pub fn presses_space(args: &Dict) -> bool {
+    let key = args.get("key").and_then(Value::as_str).unwrap_or("");
+    key == " " || matches!(key.trim().to_lowercase().as_str(), "space" | "spacebar")
+}
+
+/// The script that tells which hosts a click by `text` (click_element's `text_match`) may send a form to: every send
+/// button of a form (a `button` or `input[type=submit|image]`, or what is inside one) whose own text or `value`
+/// holds that text, as `target_script` reads a send button (`SEND_JS`). Read only; the text passed as a JSON string.
+pub fn text_target_script(text: &str) -> String {
+    let text = serde_json::to_string(&text.to_lowercase()).unwrap_or_else(|_| "\"\"".into());
+    format!(
+        "(() => {{ const t = {text}; {SEND_JS}const hosts = []; \
+for (const e of document.querySelectorAll('*')) {{ \
+const own = [...e.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(' ').toLowerCase(); \
+const value = ((e.getAttribute && e.getAttribute('value')) || '').toLowerCase(); \
+if (!own.includes(t) && !value.includes(t)) continue; \
+const ctl = e.closest ? e.closest('button, input') : null; if (!ctl || !ctl.form) continue; \
+const tp = (ctl.getAttribute('type') || (ctl.tagName === 'BUTTON' ? 'submit' : 'text')).toLowerCase(); \
+if (tp !== 'submit' && tp !== 'image') continue; \
+const h = sendHost(ctl.form, ctl); if (h && !hosts.includes(h)) hosts.push(h); }} \
+return JSON.stringify({{hosts: hosts}}); }})()"
+    )
+}
+
 /// `press_key` typing a character (« a », « P » with Shift), not a key (« Enter », « Tab ») nor a shortcut.
 pub fn presses_a_character(args: &Dict) -> bool {
     let key = args.get("key").and_then(Value::as_str).unwrap_or("");
@@ -1273,10 +1298,12 @@ pub fn send_allowed(path: &Path, host: &str, used: &std::collections::HashSet<St
 }
 
 /// The page's side, in `target_script`: whether a form is a search (`searchForm`), and the host a form sends to
-/// (`sendHost`: its button's `formaction`, else its `action`, else the page; '' for a search).
-const SEND_JS: &str = "const searchForm = (f) => { if ((f.getAttribute('role') || '').toLowerCase() === 'search' || f.querySelector('input[type=search]')) return true; \
+/// (`sendHost`: its button's `formaction`, else its `action`, else the page; '' for a search). A search is a `get` form
+/// only (review R4, 18/11: a POST message form whose recipient picker is a search field sends).
+const SEND_JS: &str = "const searchForm = (f) => { const get = ['', 'get'].includes((f.getAttribute('method') || '').toLowerCase()); \
+if (get && ((f.getAttribute('role') || '').toLowerCase() === 'search' || f.querySelector('input[type=search]'))) return true; \
 const texts = [...f.querySelectorAll('input, textarea')].filter((i) => i.tagName === 'TEXTAREA' || !['hidden', 'submit', 'button', 'image', 'reset', 'checkbox', 'radio'].includes((i.getAttribute('type') || 'text').toLowerCase())); \
-return ['', 'get'].includes((f.getAttribute('method') || '').toLowerCase()) && texts.length <= 1 \
+return get && texts.length <= 1 \
 && !f.querySelector('textarea, input[type=password], input[type=email], input[type=tel], input[type=file]'); }; \
 const sendHost = (f, b) => { if (!f || searchForm(f)) return ''; const d = f.ownerDocument; \
 const a = (b && b.getAttribute && b.getAttribute('formaction')) || f.getAttribute('action') || ''; \
@@ -2761,12 +2788,33 @@ impl Proxy {
         let ticking = tool == "click_element" && !selector.is_empty();
         // Enter in a form's field sends it (audit 1.2): the first time to a site, the person's OK
         let entering = tool == "press_key" && presses_enter(args);
+        // and Space on its send button (review R2, 18/11)
+        let spacing = tool == "press_key" && presses_space(args);
         // a card's number is never typed, wherever (unless the field says it's something else: a SIRET…)
         let card_number = typing && crate::card_details::holds_card_number(&typed_text(tool, args));
         if card_number && instance.is_empty() {
             return Some(refused(CARD_REFUSED));
         }
-        if !(typing || ticking || choosing || entering) || instance.is_empty() {
+        // a click by its text (review R1, 18/11): the real server clicks what has that text, whatever the selector;
+        // any send button of a form with that text, to a host not allowed yet, asks first
+        let text_match = args.get("text_match").and_then(Value::as_str).unwrap_or("").trim();
+        if tool == "click_element" && !text_match.is_empty() && !instance.is_empty() {
+            let read = match self.look(instance, &text_target_script(text_match)).await {
+                Some(Value::String(text)) => serde_json::from_str::<Value>(&text).ok(),
+                other => other,
+            };
+            let hosts: Vec<String> = read
+                .as_ref()
+                .and_then(|r| r.get("hosts"))
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(|h| h.as_str().map(str::to_lowercase)).collect())
+                .unwrap_or_default();
+            if let Some(host) = self.first_refused(&hosts) {
+                log(&format!("click_element: a click by text would send a form to {host}, not allowed yet: the person's OK asked"));
+                return Some(refused(&send_ask_text(&host)));
+            }
+        }
+        if !(typing || ticking || choosing || entering || spacing) || instance.is_empty() {
             return None;
         }
         let script = target_script(selector);
@@ -2805,6 +2853,7 @@ impl Proxy {
         let sends = match (ticking, entering) {
             (true, _) => host("send"),
             (_, true) => Some(host("send")).filter(|h| !h.is_empty()).unwrap_or_else(|| host("enter")),
+            _ if spacing => host("send"),
             _ => String::new(),
         };
         if sends.is_empty() {

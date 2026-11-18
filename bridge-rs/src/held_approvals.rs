@@ -161,10 +161,25 @@ fn text(data: &Map<String, Value>, key: &str) -> String {
 /// The hash of the call approval `data` shows the person: its command, its sentence (`bip_summary`, else
 /// `description`) and its detail (`bip_detail`: for the MCP gate the server, the tool and the arguments the run's
 /// `tool.started` gave, approval_text.rs). The same tool with other arguments: another hash, another card.
+///
+/// For the MCP gate, the arguments hashed are those Hermes previews in `tool.started` (one argument, cut): two calls
+/// that differ only by another argument share a grant, used once (it is what the card showed). The bridge's own
+/// cards (`ask_to_send`, `calendar_delete`, `accept_terms`) name the whole call in their command (the site, the event,
+/// the box): only it is hashed, never the agent's own words in the detail, so a retry in other words finds its grant
+/// (review R5, 18/11).
 pub fn args_sha(data: &Map<String, Value>) -> String {
     use sha2::{Digest, Sha256};
-    let summary = Some(text(data, "bip_summary")).filter(|s| !s.is_empty()).unwrap_or_else(|| text(data, "description"));
-    let shown = [text(data, "command"), summary, text(data, "bip_detail")].join("\u{0}");
+    let command = text(data, "command");
+    let own = [crate::form_send::TOOL, "calendar_delete", crate::terms_consent::TOOL]
+        .iter()
+        .any(|tool| command.starts_with(&format!("{tool} ")));
+    let shown = if own {
+        command
+    } else {
+        let summary =
+            Some(text(data, "bip_summary")).filter(|s| !s.is_empty()).unwrap_or_else(|| text(data, "description"));
+        [command, summary, text(data, "bip_detail")].join("\u{0}")
+    };
     hex::encode(Sha256::digest(shown.as_bytes()))
 }
 
@@ -186,7 +201,13 @@ pub fn hold(
     let fresh = Held {
         id: py::token_hex(6),
         agent: agent.to_string(),
-        kind: crate::approval_level::classify_hermes(data).to_string(),
+        // the bridge's own cards say their kind (`bip_kind`: person_ok.rs, terms_consent.rs; review R3, 18/11)
+        kind: data
+            .get("bip_kind")
+            .and_then(Value::as_str)
+            .filter(|k| !k.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| crate::approval_level::classify_hermes(data).to_string()),
         run: run.to_string(),
         session: session.map(str::to_string),
         command: command.clone(),

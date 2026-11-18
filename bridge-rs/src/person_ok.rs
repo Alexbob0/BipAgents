@@ -104,7 +104,7 @@ pub fn kind_of(item: &Dict) -> &'static str {
 
 fn data_of(card: &Card) -> Dict {
     json!({"command": card.command, "description": card.summary, "bip_summary": card.summary,
-           "bip_detail": card.detail})
+           "bip_detail": card.detail, "bip_kind": card.kind})
     .as_object()
     .cloned()
     .unwrap_or_default()

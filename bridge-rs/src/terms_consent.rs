@@ -393,7 +393,8 @@ pub async fn call(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> Di
 /// What a held card for this box shows (held_approvals.rs): its grant answers the same box on the same site only.
 fn held_data(config: &Config, agent: &str, host: &str, label: &str, terms_url: &str, key: &str) -> Dict {
     let summary = sentence(&shown_name(config, agent), host, label);
-    let data = json!({"command": key, "description": summary, "bip_summary": summary, "bip_detail": terms_url});
+    let data = json!({"command": key, "description": summary, "bip_summary": summary, "bip_detail": terms_url,
+                      "bip_kind": "terms_consent"});
     data.as_object().cloned().unwrap_or_default()
 }
 

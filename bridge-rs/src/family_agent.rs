@@ -1293,12 +1293,13 @@ async fn served_usage(State(state): State<AppState>, headers: HeaderMap) -> ApiR
 }
 
 /// The creator left: what is the family's, kept here until this person takes it over. Only from the household that
-/// holds the family agents this person uses (`known`): another linked household can't plant a personality here.
+/// holds family agents this person uses (`known_all`): another linked household can't plant a personality here.
 async fn handed_over(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> ApiResult<Response> {
     let household = household_of(&state, &headers)?;
     let body = body_json(&body)?;
     let config = state.config();
-    if known(&config).is_none_or(|(_, entry)| str_of(&entry, "household") != household) {
+    // any household whose family agents she uses (a person in two families: either may hand hers over)
+    if !known_all(&config).iter().any(|(_, entry)| str_of(entry, "household") == household) {
         return Err(HttpError::new(403, "this household doesn't hold your family's agents"));
     }
     if own(&config).is_some() {
