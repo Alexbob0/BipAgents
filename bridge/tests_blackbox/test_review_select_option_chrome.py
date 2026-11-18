@@ -216,6 +216,8 @@ class HeldSession(Session):
                   "cache": str(self.dir / "cache.json"), "busy": str(self.dir / "busy"),
                   "credit": str(self.dir / "credit.json"), "cdp_port": free_port(), "idle": 600}
         (self.dir / "config.json").write_text(json.dumps(config))
+        # these pages' own site may get the forms (form_send.rs, audit 1.2: its own test asks otherwise)
+        (self.dir / "send-sites.json").write_text(json.dumps({"always": ["127.0.0.1", "localhost"], "once": []}))
         self.proxy = subprocess.Popen([guard.PROXY, str(self.dir / "config.json")], stdin=subprocess.PIPE,
                                       stdout=subprocess.PIPE, stderr=open(self.dir / "proxy.log", "wb"))
         self.answers = queue.Queue()

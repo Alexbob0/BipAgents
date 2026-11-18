@@ -3402,9 +3402,11 @@ touche « Démarrer » pour reprendre."
         // not critical, and the person validates only what is: answered « once » at once, nothing pushed, a line in the
         // Boîte (approval_level.rs); kept waiting until Hermes settles it, so a failed answer still shows in the Boîte
         let elsewhere = self.someone_elses(&sub.run_id);
-        // exactly what the person approved on a held card (held_approvals.rs): answered « once », used up
+        // exactly what the person approved on a held card (held_approvals.rs): answered « once », used up; the same
+        // call only (its arguments as the card showed them, audit 1.5)
         let granted = self.config.as_ref().map(|c| c.get()).filter(|_| !elsewhere).and_then(|config| {
-            let grant = crate::held_approvals::take_grant(&config, &sub.agent.name, command.as_deref().unwrap_or(""))?;
+            let (command, sha) = (command.as_deref().unwrap_or(""), crate::held_approvals::args_sha(&item));
+            let grant = crate::held_approvals::take_grant(&config, &sub.agent.name, command, &sha)?;
             Some((config, crate::approval_level::classify_hermes(data), Auto::Held(grant.card)))
         });
         let auto = granted.or_else(|| {

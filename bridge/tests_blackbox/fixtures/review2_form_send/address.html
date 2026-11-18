@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Livraison</title></head><body>
+<!-- a checkout's delivery address with an address autocomplete: autocomplete="new-password" is the usual way to keep
+     Chrome's own autofill list from covering the suggestions (the field is a plain text field) -->
+<form id="delivery">
+  <label for="address">Adresse de livraison</label>
+  <input type="text" id="address" name="address" autocomplete="new-password" placeholder="Commencez à saisir votre adresse">
+  <label for="city">Ville</label><input type="text" id="city" name="city" autocomplete="address-level2">
+</form>
+</body></html>

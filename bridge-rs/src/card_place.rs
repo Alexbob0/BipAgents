@@ -160,6 +160,7 @@ pub fn bridge_cards(state: &AppState, config: &Config, agent: Option<&str>) -> V
     items.extend(crate::sandbox_sites::pending_items(config, agent));
     items.extend(crate::vault_logins::pending_items(config, agent));
     items.extend(crate::terms_consent::pending_items(config, agent));
+    items.extend(crate::person_ok::pending_items(config, agent));
     items.extend(crate::secrets::pending_items(config, agent));
     items.extend(crate::connectors::pending_items(state, config, agent));
     items.extend(crate::storage_watch::pending_items(config, agent));
@@ -209,8 +210,12 @@ fn fold_key(item: &Dict) -> Option<String> {
         return Some(format!("{agent}\u{1f}mailrule\u{1f}{action}\u{1f}{mailbox}"));
     }
     if run.starts_with(crate::held_approvals::RUN_PREFIX) {
-        // what a turn nobody followed asked, of the same kind (held_approvals.rs): one card
+        // what a turn nobody followed asked, of the same kind (held_approvals.rs): one card; a critical kind never
+        // (review R3, 18/11: one « Oui » must not delete an event, send a form and run a command at once)
         let kind = field("bip_held", "kind")?;
+        if crate::approval_level::rule_of(&kind).critical {
+            return None;
+        }
         return Some(format!("{agent}\u{1f}held\u{1f}{kind}"));
     }
     None

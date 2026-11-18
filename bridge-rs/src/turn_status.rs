@@ -276,6 +276,7 @@ pub const HOLDING: &[(&str, &[&str])] = &[
     ("tool_asks", crate::tool_asks::HOLDS_THE_CALL),
     ("vault_logins", crate::vault_logins::HOLDS_THE_CALL),
     ("terms_consent", crate::terms_consent::HOLDS_THE_CALL),
+    ("person_ok", crate::person_ok::HOLDS_THE_CALL),
     ("connectors", crate::connectors::HOLDS_THE_CALL),
     ("card_pay", crate::card_pay::HOLDS_THE_CALL),
 ];

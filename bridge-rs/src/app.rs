@@ -1236,6 +1236,20 @@ async fn bridge_card(
             Err(HttpError::new(404, "no such request (answered already?)"))
         }?));
     }
+    // a form to a site not allowed yet, an event deleted (person_ok.rs): « Oui », « Toujours pour ce site », « Non »
+    if let Some(id) = run_id.strip_prefix(crate::person_ok::RUN_PREFIX) {
+        return Ok(Some(match crate::person_ok::answer(&state.config(), &agent.name, id, &body.choice, "notification") {
+            Some((choice, done)) => {
+                if done {
+                    // an owner's « Oui » asked her phone to delete an event: woken to do it now
+                    let (push, to) = (state.push.clone(), agent.name.clone());
+                    tokio::spawn(async move { push.notify_silent(&to, "calendar", crate::Dict::new()).await });
+                }
+                Ok(web::ok(json!({"ok": true, "choice": choice})))
+            }
+            None => Err(HttpError::new(404, "no such request (answered already?)")),
+        }?));
+    }
     // a tool asked in the conversation (tool_asks.rs): an older app's « Oui, vas-y » turns on what the bridge can alone
     if let Some(id) = run_id.strip_prefix(crate::tool_asks::RUN_PREFIX) {
         return Ok(Some(crate::tool_asks::approve(state, id, &body.choice).await?));

@@ -13,7 +13,7 @@
 //! - **writing** (`calendar_add`, `_update`, `_delete`): only on the calendar of a person who gave it the right to
 //!   change it; `who` names her (default: the person writing in this turn, when she allows it). A member's request is
 //!   queued on HER bridge under the agent's id there and her phone does it, as for her own agents (no extra approval:
-//!   she granted it).
+//!   she granted it). A deletion is the exception (Alex 18/11): a card on the owner's own phone first (`owner_card`).
 //! - **the tools** are listed for the family agent only while someone allows it: the creator's calendar.json, and for
 //!   members the flags their bridges send at each change (`POST /family/fa/calendar`, below; off, she leaves or is taken
 //!   out: the flag goes at once). The flags only say who allows what; each call asks her bridge, which decides.
@@ -157,6 +157,14 @@ async fn served(
     if !on {
         return Ok(web::ok(json!({"allowed": false, "read": false, "write": false})));
     }
+    if name == "calendar_delete" {
+        // her own « Oui » first, on her phone, never the asker's (Alex 18/11)
+        let shown = family_name(&config, &id).unwrap_or_else(|| agent.clone());
+        if let Some(result) = owner_card(&state, &id, &shown, &arguments).await {
+            tracing::info!(agent = %id, "family calendar: a deletion waits for her own « Oui »");
+            return Ok(web::ok(json!({"allowed": true, "read": read, "write": write, "result": result})));
+        }
+    }
     let (config_c, id_c, name_c) = (config.clone(), id.clone(), name.clone());
     let result = tokio::task::spawn_blocking(move || {
         crate::calendar::call(&config_c, &id_c, &name_c, &arguments, None, &crate::caldav::Remote::default())
@@ -174,6 +182,74 @@ async fn served(
     }
     tracing::info!(agent = %id, tool = %name, "family calendar: used by the family agent");
     Ok(web::ok(json!({"allowed": true, "read": read, "write": write, "result": result})))
+}
+
+// -- the calendar's owner's card (Alex 18/11) -------------------------------------------------------------------------
+//
+// A family agent deletes an event only with the « Oui » of the person whose calendar it is (security audit 1.3: a
+// deletion is critical, as mail_trash): the card goes to HER phone, listed under one of her own agents (`owner_agent`,
+// her app shows its cards), never to whoever asked in the family conversation nor to another member (her bridge makes
+// it: the creator's for his own calendar, hers for hers). It holds no call (person_ok.rs `ask_owner`): the agent is
+// told at once that it waits for her, the card waits a day at most, her « Oui » asks her phone to delete it (rights
+// checked again then), « Non » or no answer does nothing.
+
+/// The person's own agent her cards about her calendar are listed under: one that may use it first, never a family
+/// agent. None: she has none.
+fn owner_agent(config: &Config) -> Option<String> {
+    let mut names: Vec<&String> =
+        config.agents.keys().filter(|n| !crate::family_agent::is_family(config, n)).collect();
+    names.sort();
+    names.iter().find(|n| crate::calendar::enabled(config, n)).or(names.first()).map(|n| n.to_string())
+}
+
+/// A family agent's name as this person's app shows it (`<agent>__<household>`: the creator's offer).
+fn family_name(config: &Config, id: &str) -> Option<String> {
+    crate::agent_shares::shared_with_me(config)
+        .into_iter()
+        .find(|a| str_of(a, "id") == id)
+        .map(|a| str_of(&a, "name"))
+        .filter(|n| !n.is_empty())
+}
+
+/// The owner's card's sentence, in her language.
+pub fn owner_sentence(lang: &str, shown: &str, title: &str) -> String {
+    let title = crate::cards::quoted(title, 120);
+    crate::person_ok::pick(lang, "{n} veut supprimer « {t} » de ton agenda ?", "{n} wants to delete « {t} » from your calendar?",
+                           "{n} möchte « {t} » aus deinem Kalender löschen?", "¿{n} quiere borrar « {t} » de tu calendario?")
+        .replace("{n}", shown)
+        .replace("{t}", &title)
+}
+
+/// What the agent reads (« the person's phone »: the creator's bridge names her, `call`).
+pub const OWNER_ASKED: &str = "Not deleted yet: a card asks the person's phone for their OK. It is deleted only if they \
+say yes; nothing is deleted if they say no or don't answer. Tell whoever asked, in one short sentence, and don't ask \
+again.";
+
+/// `calendar_delete` of this place's calendar as `agent_id` (the family agent on its creator's place, `<agent>__<household>`
+/// on a member's): a card for this place's person when the event would be deleted now (calendar.rs `deletable`), the
+/// call answered at once. None: nothing to ask (calendar.rs says why).
+async fn owner_card(state: &AppState, agent_id: &str, shown: &str, arguments: &Dict) -> Option<Dict> {
+    let config = state.config();
+    let id = tk::strip(&tk::str_or_empty(arguments.get("id"))).to_string();
+    let (c, a, i) = (config.clone(), agent_id.to_string(), id.clone());
+    let (title, when) = tokio::task::spawn_blocking(move || crate::calendar::deletable(&c, &a, &i)).await.ok()??;
+    let Some(owner) = owner_agent(&config) else {
+        return Some(tool_text("Nobody here can say yes to it on their phone: nothing was deleted.", true));
+    };
+    let lang = crate::mail_tidy::language(&config, &owner);
+    let summary = owner_sentence(&lang, shown, &title);
+    let card = crate::person_ok::Card {
+        kind: crate::person_ok::CALENDAR_DELETE,
+        tool: "calendar_delete",
+        command: format!("calendar_delete {agent_id} {id}"),
+        summary: summary.clone(),
+        detail: format!("{when}\n{}", crate::cards::quoted(&title, 300)),
+        always: None,
+    };
+    let then = crate::person_ok::Then::DeleteEvent { agent: agent_id.to_string(), id };
+    let run = crate::person_ok::ask_owner(&config, &owner, card, then);
+    state.push.notify_bridge_card(&owner, &summary, "mail_request", &run).await;
+    Some(tool_text(OWNER_ASKED, false))
 }
 
 // -- the creator's side ---------------------------------------------------------------------------------------------
@@ -422,6 +498,14 @@ Calendars you may change: {}. Say whose with who.",
             })
         }
         _ => {
+            if name == "calendar_delete" {
+                // the creator's own « Oui », on his phone (Alex 18/11)
+                let shown = if agent.display_name.trim().is_empty() { &agent.name } else { &agent.display_name };
+                if let Some(result) = owner_card(state, &agent.name, shown, &arguments).await {
+                    let text = text_of(&result).replace("the person's phone", &format!("{creator}'s phone"));
+                    return Ok(tool_text(&text, failed(&result)));
+                }
+            }
             let (c, a, n, args) = (config.clone(), agent.name.clone(), name.to_string(), arguments.clone());
             let result = tokio::task::spawn_blocking(move || {
                 crate::calendar::call(&c, &a, &n, &args, None, &crate::caldav::Remote::default())
@@ -492,6 +576,20 @@ pub fn household_router() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_owners_card_says_it_plainly_and_goes_under_her_own_agent() {
+        assert_eq!(owner_sentence("fr", "Famille", "Dentiste"), "Famille veut supprimer « Dentiste » de ton agenda ?");
+        assert_eq!(owner_sentence("en", "Famille", "Dentiste"), "Famille wants to delete « Dentiste » from your calendar?");
+        assert!(owner_sentence("de", "Famille", "x").starts_with("Famille möchte « x »"));
+        assert!(owner_sentence("es", "Famille", "x").starts_with("¿Famille quiere borrar"));
+        let mut config = Config::with_key("k");
+        assert_eq!(owner_agent(&config), None);
+        for name in ["vie", "budget"] {
+            config.agents.insert(name.into(), AgentConfig { name: name.into(), ..Default::default() });
+        }
+        assert_eq!(owner_agent(&config).as_deref(), Some("budget"), "her first own agent");
+    }
 
     #[test]
     fn who_by_first_name_any_case_or_accent() {

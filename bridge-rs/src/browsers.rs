@@ -1232,6 +1232,8 @@ pub async fn setup_with(
     let secret = ensure_cdp_secret(&place)?;
     let ports_value = Value::Object(ports.iter().map(|(k, v)| (k.clone(), json!(v))).collect());
     std::fs::write(place.join("ports.json"), format!("{}\n", crate::py::dumps(&ports_value)))?;
+    // what its browser may send forms to (form_send.rs, audit 1.2)
+    crate::form_send::refresh(config, name);
 
     // through the agents' proxy where the sandboxes are isolated (send_guard.rs): its network and the proxy up first,
     // else straight out as before

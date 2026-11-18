@@ -103,6 +103,8 @@ pub const TABLE: &[Rule] = &[
     rule("vault_login", true, false, "bip-login-", "uses one of the person's logins and passwords"),
     rule("connector", true, false, "bip-conn-", "runs new code with the person's secrets"),
     rule("mail_trash", true, false, "bip-mail- trash", "deletes (to the trash, then gone)"),
+    rule("calendar_delete", true, false, "bip-ok- calendar_delete", "audit 1.3, Alex 17/11: deletes an event of the person's calendar (a mailbox's at once, no trash), like mail_trash"),
+    rule("site_form", true, false, "bip-ok- site_form (ask_to_send)", "audit 1.2, Alex 17/11 « Oui, 1re fois par site »: the agent's browser sends a form to a site not allowed yet for it; « Toujours pour ce site » keeps it in « Sites autorisés »"),
     rule("mail_rule_trash", true, false, "bip-mailrule- trash", "deletes every new matching mail"),
     rule("held_mail", true, false, "agent_email held", "sends an e-mail in the person's name to a new address"),
     rule("family_send", true, false, "tell_family", "sends a message to the family"),
@@ -161,6 +163,9 @@ pub fn classify_card(item: &Dict) -> &'static str {
         let known = action.split('+').all(|a| a == "archive" || a == "mark_read" || a.starts_with("move:"));
         return if known && !action.is_empty() { "mail_rule" } else { "mail_rule_trash" };
     }
+    if run.starts_with(crate::person_ok::RUN_PREFIX) {
+        return crate::person_ok::kind_of(item); // a form to a new site, an event deleted (person_ok.rs)
+    }
     if run.starts_with(crate::routines::RUN_PREFIX) && item.get("bip_routine").is_none() {
         return "routine_change"; // an agent's proposal for a routine (routines.rs): asked at every level
     }
@@ -185,22 +190,34 @@ static TRUST_GATE: LazyLock<Regex> =
 static WORDS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[^a-z0-9]+").expect("valid regex"));
 
 /// A tool that only creates or changes something in the person's own service, by its name's words (anything that
-/// sends, shares, deletes, pays, or reaches people, money, mail or a calendar is not).
+/// sends, shares, deletes, pays, or reaches people, money, mail or a calendar is not). Audit 1.6 (17/11): nor what
+/// opens the person's data to others or to code (a webhook, a public link, a guest, a collaborator, a key, an export,
+/// an access or a role), by its word or by its stem (`share` / `shared` / `sharing`, `invite` / `invitation`…).
 fn writes_only(tool: &str) -> bool {
     let lower = tool.to_lowercase();
     let words: Vec<&str> = WORDS.split(&lower).filter(|w| !w.is_empty()).collect();
     let has = |list: &[&str]| words.iter().any(|w| list.contains(w));
-    const RISKY: [&str; 42] = [
+    const RISKY: &[&str] = &[
         "delete", "remove", "trash", "unlink", "rm", "destroy", "purge", "drop", "clear", "wipe", "send", "post",
         "reply", "publish", "comment", "forward", "share", "invite", "notify", "message", "dm", "chat", "pay",
         "payment", "charge", "transfer", "order", "buy", "purchase", "refund", "mail", "email", "sms", "call",
         "calendar", "event", "contact", "contacts", "member", "permission", "permissions", "tweet",
+        // what opens data to others or to code
+        "hook", "hooks", "link", "links", "url", "urls", "guest", "guests", "user", "users", "people", "team", "key",
+        "keys", "apikey", "token", "tokens", "secret", "secrets", "credential", "credentials", "password", "access",
+        "role", "roles", "grant", "owner", "ownership", "embed",
     ];
+    // stems: every form of the word (`sharing`, `shared`, `invitation`, `webhooks`, `publicly`, `exporter`…)
+    const RISKY_STEMS: &[&str] = &[
+        "shar", "unshar", "invit", "publi", "webhook", "export", "collab", "permi", "visib", "extern", "integrat",
+        "oauth", "author", "subscri",
+    ];
+    let risky_stem = words.iter().any(|w| RISKY_STEMS.iter().any(|s| w.starts_with(s)));
     const WRITES: [&str; 20] = [
         "create", "add", "new", "insert", "append", "write", "save", "update", "edit", "patch", "set", "rename",
         "modify", "change", "move", "duplicate", "copy", "tag", "label", "upsert",
     ];
-    !has(&RISKY) && has(&WRITES)
+    !has(RISKY) && !risky_stem && has(&WRITES)
 }
 
 /// The kind of a Hermes approval (`approval.request`'s data: command, description, pattern_key).
@@ -1490,5 +1507,28 @@ mod tests {
         assert!(writes_only("notion_create_page") && writes_only("append_block_children") && writes_only("update_task"));
         assert!(!writes_only("send_email") && !writes_only("delete_page") && !writes_only("invite_member"));
         assert!(!writes_only("get_page") && !writes_only("create_payment"));
+    }
+
+    /// Audit 1.6 (17/11): tools that open the person's data to others or to code are never a harmless write in their
+    /// own service (that one is approved at once under « Seulement le critique », or after a « Toujours »).
+    #[test]
+    fn names_that_open_data_are_not_a_plain_write() {
+        let gate = |tool: &str| {
+            let mut m = Map::new();
+            m.insert("command".into(), json!(format!("MCP tool '{tool}' on UNTRUSTED server 'notion' wants to run")));
+            classify_hermes(&m)
+        };
+        let shown: Vec<(&str, &str)> = ["add_webhook", "create_public_link", "update_sharing_settings",
+            "add_collaborator", "create_api_key", "set_page_public", "add_guest", "update_page_visibility",
+            "create_invitation", "set_user_role", "add_access_token", "create_export", "update_shared_folder",
+            "add_integration", "set_permission_level", "create_oauth_client", "publish_site"]
+            .iter()
+            .map(|t| (*t, gate(t)))
+            .collect();
+        assert!(shown.iter().all(|(_, k)| *k == "service_send"), "{shown:?}");
+        // a plain write stays one
+        for plain in ["create_page", "update_block", "append_block_children", "rename_database", "move_page"] {
+            assert_eq!(gate(plain), "service_write", "{plain}");
+        }
     }
 }

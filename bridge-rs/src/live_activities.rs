@@ -16,8 +16,9 @@
 //!
 //! **What is sent** (`content-state`, decoded by the app's `LiveTaskAttributes.ContentState`): the phase (`working`,
 //! `approval`, `question`, `done`, `failed`, `stopped`), the running tool's name (the app words it, as its working line:
-//! « Je compare les prix… »), the sub-tasks (`delegate_task`'s sub-agents) started and done, and in a group discussion
-//! the agent speaking. Never what the agent says; the site a browser is on only with `[push] previews` (the title the
+//! « Je compare les prix… »), the sub-tasks (`delegate_task`'s sub-agents) started and done (in a group discussion the
+//! agent speaking only in the app's own view, never in a push: audit 6.3, `pushed_state`). Never what the agent says,
+//! nor an agent's name; the site a browser is on only with `[push] previews` (the title the
 //! person sees comes from the app, set when it started the activity: it never goes through Apple).
 //!
 //! **How often**: a step at most every `MIN_GAP_SECONDS` per activity (the latest one sent at the end of the gap, never
@@ -362,12 +363,23 @@ struct Outgoing {
     timestamp: i64,
 }
 
+/// What a push carries of the state: never the speaking agent's name (security audit 6.3, 17/11; privacy.fr.md §4.1:
+/// an agent's name only sealed for the phone, and a Live Activity's push can't be: no extension opens it). The phone
+/// shows the activity's own agent then, set by the app (the name of whoever speaks comes back with its own updates).
+fn pushed_state(state: &LiveState, previews: bool) -> Value {
+    let mut content = state.content_state(previews);
+    if let Some(map) = content.as_object_mut() {
+        map.remove("speaker");
+    }
+    content
+}
+
 /// The APNs `liveactivity` payload.
 pub fn apns_payload(state: &LiveState, previews: bool, timestamp: i64, end: bool, now: f64) -> Value {
     let mut aps = Map::new();
     aps.insert("timestamp".into(), json!(timestamp));
     aps.insert("event".into(), json!(if end { "end" } else { "update" }));
-    aps.insert("content-state".into(), state.content_state(previews));
+    aps.insert("content-state".into(), pushed_state(state, previews));
     if end {
         aps.insert("dismissal-date".into(), json!((now + DISMISS_AFTER_SECONDS) as i64));
     } else {
@@ -395,9 +407,7 @@ pub fn android_payload(agent: &str, key: &str, state: &LiveState, previews: bool
     if let (true, Some(detail)) = (previews, &state.detail) {
         payload["detail"] = json!(detail);
     }
-    if let Some(speaker) = &state.speaker {
-        payload["speaker"] = json!(speaker);
-    }
+    // never the speaking agent's name (`pushed_state`, audit 6.3)
     if state.steps > 0 {
         payload["steps"] = json!(state.steps.to_string());
         payload["steps_done"] = json!(state.steps_done.to_string());
@@ -858,6 +868,13 @@ mod tests {
             (Some("live"), Some("job:j1"), Some("2"), Some("0"))
         );
         assert!(a.get("detail").is_none());
+        // a group discussion's speaker: the app's own view only, never in a push (audit 6.3)
+        let room = LiveState { speaker: Some("Santé".into()), ..s.clone() };
+        assert_eq!(room.content_state(true)["speaker"], "Santé");
+        for previews in [false, true] {
+            assert!(apns_payload(&room, previews, 1000, false, 2000.0)["aps"]["content-state"].get("speaker").is_none());
+            assert!(android_payload("vie", "room:r1", &room, previews, false).get("speaker").is_none());
+        }
     }
 
     #[test]

@@ -151,6 +151,10 @@ pub mod turn_status;
 /// A message sent mid-turn before the agent acted: the turn started again with it.
 pub mod turn_restart;
 pub mod terms_consent;
+/// A card « Oui / Non » while an agent's call waits: a form to a new site, an event deleted (audit 17/11).
+pub mod person_ok;
+/// The first form an agent's browser sends to a site: « Envoyer sur ce site ? » (audit 1.2).
+pub mod form_send;
 pub mod tool_kinds;
 /// The providers EUrouter tries first, for its prompt cache.
 pub mod model_route;

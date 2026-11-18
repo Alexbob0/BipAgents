@@ -11,6 +11,10 @@
 //!   for the person (`HELD_NOTE`), Hermes is answered « deny » at once: the turn ends with its report in seconds.
 //!   The same command asked again while its card waits joins that card; similar ones fold into one (card_place.rs
 //!   `fold_key`: same agent and kind).
+//!   « The same command » means the same call too (audit 1.5, 17/11): the MCP gate's `command` names only the tool
+//!   (« MCP tool 'delete_page' on UNTRUSTED server 'notion'… »), so each card keeps `args_sha`, the hash of what it
+//!   shows (`args_sha`: the sentence and the detail, where the call's arguments are), and a card joins or a grant
+//!   answers only the same hash.
 //! - **« Oui » later**: a one-use grant for exactly that command (`GRANT_SECONDS`), then the agent goes on in that
 //!   conversation (card_place.rs `settle`, the note says to do exactly that again); the identical approval in that turn
 //!   is answered « once » by the bridge (`take_grant`, runs.rs). A routine's turn: its report lands in the Boîte as the
@@ -73,6 +77,9 @@ pub struct Held {
     #[serde(default)]
     pub session: Option<String>,
     pub command: String,
+    /// `args_sha` of what the card shows: the call the person reads, its arguments included.
+    #[serde(default)]
+    pub args_sha: String,
     #[serde(default)]
     pub description: String,
     #[serde(default)]
@@ -96,6 +103,9 @@ pub struct Held {
 pub struct Grant {
     pub agent: String,
     pub command: String,
+    /// The card's `args_sha`: the « Oui » covers that call only.
+    #[serde(default)]
+    pub args_sha: String,
     pub card: String,
     pub until: f64,
 }
@@ -148,8 +158,33 @@ fn text(data: &Map<String, Value>, key: &str) -> String {
     data.get(key).and_then(Value::as_str).unwrap_or("").to_string()
 }
 
+/// The hash of the call approval `data` shows the person: its command, its sentence (`bip_summary`, else
+/// `description`) and its detail (`bip_detail`: for the MCP gate the server, the tool and the arguments the run's
+/// `tool.started` gave, approval_text.rs). The same tool with other arguments: another hash, another card.
+///
+/// For the MCP gate, the arguments hashed are those Hermes previews in `tool.started` (one argument, cut): two calls
+/// that differ only by another argument share a grant, used once (it is what the card showed). The bridge's own
+/// cards (`ask_to_send`, `calendar_delete`, `accept_terms`) name the whole call in their command (the site, the event,
+/// the box): only it is hashed, never the agent's own words in the detail, so a retry in other words finds its grant
+/// (review R5, 18/11).
+pub fn args_sha(data: &Map<String, Value>) -> String {
+    use sha2::{Digest, Sha256};
+    let command = text(data, "command");
+    let own = [crate::form_send::TOOL, "calendar_delete", crate::terms_consent::TOOL]
+        .iter()
+        .any(|tool| command.starts_with(&format!("{tool} ")));
+    let shown = if own {
+        command
+    } else {
+        let summary =
+            Some(text(data, "bip_summary")).filter(|s| !s.is_empty()).unwrap_or_else(|| text(data, "description"));
+        [command, summary, text(data, "bip_detail")].join("\u{0}")
+    };
+    hex::encode(Sha256::digest(shown.as_bytes()))
+}
+
 /// Approval `data` (the hub's pending item: command, bip_summary…) of `agent`'s run `run` kept as a card, until
-/// `until`. The same command already waiting: that card, renewed (`true`: joined).
+/// `until`. The same call (command and `args_sha`) already waiting: that card, renewed (`true`: joined).
 pub fn hold(
     config: &Config,
     agent: &str,
@@ -161,14 +196,22 @@ pub fn hold(
 ) -> (Held, bool) {
     let now = py::time_time();
     let command = text(data, "command");
+    let sha = args_sha(data);
     let summary = Some(text(data, "bip_summary")).filter(|s| !s.is_empty()).unwrap_or_else(|| text(data, "description"));
     let fresh = Held {
         id: py::token_hex(6),
         agent: agent.to_string(),
-        kind: crate::approval_level::classify_hermes(data).to_string(),
+        // the bridge's own cards say their kind (`bip_kind`: person_ok.rs, terms_consent.rs; review R3, 18/11)
+        kind: data
+            .get("bip_kind")
+            .and_then(Value::as_str)
+            .filter(|k| !k.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| crate::approval_level::classify_hermes(data).to_string()),
         run: run.to_string(),
         session: session.map(str::to_string),
         command: command.clone(),
+        args_sha: sha.clone(),
         description: text(data, "description"),
         pattern_key: text(data, "pattern_key"),
         summary,
@@ -179,7 +222,7 @@ pub fn hold(
         answered: None,
     };
     let (held, joined) = change(config, |b| {
-        match b.held.iter_mut().find(|h| h.answered.is_none() && h.agent == agent && h.command == command) {
+        match b.held.iter_mut().find(|h| h.answered.is_none() && h.agent == agent && h.command == command && h.args_sha == sha) {
             Some(waiting) => {
                 // the same thing asked again (a later run): one card, where it was asked last
                 waiting.run = fresh.run.clone();
@@ -209,6 +252,7 @@ pub fn answer(config: &Config, agent: &str, id: &str, allow: bool) -> Option<Hel
             b.grants.push(Grant {
                 agent: agent.to_string(),
                 command: held.command.clone(),
+                args_sha: held.args_sha.clone(),
                 card: held.id.clone(),
                 until: now + GRANT_SECONDS,
             });
@@ -218,14 +262,18 @@ pub fn answer(config: &Config, agent: &str, id: &str, allow: bool) -> Option<Hel
     })
 }
 
-/// A grant for exactly `command` of `agent`, taken (used once). None: nothing approved for it.
-pub fn take_grant(config: &Config, agent: &str, command: &str) -> Option<Grant> {
-    if command.is_empty() || !path(config).exists() {
+/// A grant for exactly `command` of `agent` with those arguments (`args_sha` of the approval asked now), taken (used
+/// once). None: nothing approved for that call.
+pub fn take_grant(config: &Config, agent: &str, command: &str, args_sha: &str) -> Option<Grant> {
+    if command.is_empty() || args_sha.is_empty() || !path(config).exists() {
         return None;
     }
     let now = py::time_time();
     change(config, |b| {
-        let at = b.grants.iter().position(|g| g.agent == agent && g.command == command && now < g.until)?;
+        let at = b
+            .grants
+            .iter()
+            .position(|g| g.agent == agent && g.command == command && g.args_sha == args_sha && now < g.until)?;
         Some(b.grants.remove(at))
     })
 }
@@ -404,17 +452,20 @@ mod tests {
         assert_eq!(items[0]["choices"], json!(["once", "deny"]));
         assert!(pending_items(&config, Some("coach")).is_empty());
         // nothing granted before the « Oui »
-        assert!(take_grant(&config, "vie", &card.command).is_none());
+        let sha = args_sha(&ask);
+        assert_eq!(card.args_sha, sha);
+        assert!(take_grant(&config, "vie", &card.command, &sha).is_none());
         assert!(answer(&config, "coach", &card.id, true).is_none(), "another agent's card");
         let done = answer(&config, "vie", &card.id, true).unwrap();
         assert_eq!(done.answered.as_ref().map(|a| a.0.as_str()), Some("once"));
         assert!(pending_items(&config, None).is_empty());
         assert!(answer(&config, "vie", &card.id, true).is_none(), "answered once");
         // the exact command, once, for that agent only
-        assert!(take_grant(&config, "coach", &card.command).is_none());
-        assert!(take_grant(&config, "vie", "MCP tool 'delete_page' on UNTRUSTED server 'notion'").is_none());
-        assert!(take_grant(&config, "vie", &card.command).is_some());
-        assert!(take_grant(&config, "vie", &card.command).is_none(), "used once");
+        assert!(take_grant(&config, "coach", &card.command, &sha).is_none());
+        assert!(take_grant(&config, "vie", "MCP tool 'delete_page' on UNTRUSTED server 'notion'", &sha).is_none());
+        assert!(take_grant(&config, "vie", &card.command, "").is_none());
+        assert!(take_grant(&config, "vie", &card.command, &sha).is_some());
+        assert!(take_grant(&config, "vie", &card.command, &sha).is_none(), "used once");
         let words = resume_words(&config, &format!("{RUN_PREFIX}{}", card.id), "", true).unwrap();
         assert!(words.contains("Vie veut ranger") && words.contains("move_page"), "{words}");
         assert!(resume_words(&config, "bip-mail-x", "", true).is_none());
@@ -428,11 +479,39 @@ mod tests {
         let now = py::time_time();
         let (card, _) = hold(&config, "vie", "run_1", None, &ask, None, now + 3600.0);
         answer(&config, "vie", &card.id, false).unwrap();
-        assert!(take_grant(&config, "vie", "rm -rf /tmp/x").is_none());
+        assert!(take_grant(&config, "vie", "rm -rf /tmp/x", &args_sha(&ask)).is_none());
         // past its time (its routine ran again): gone, not answerable
         let (late, _) = hold(&config, "vie", "run_2", None, &data(json!({"command": "ls"})), None, now + 3600.0);
         change(&config, |b| b.held.iter_mut().for_each(|h| h.until = now - 1.0));
         assert!(pending_items(&config, None).is_empty());
         assert!(answer(&config, "vie", &late.id, true).is_none());
+    }
+
+    /// Audit 1.5 (17/11): the MCP gate's command has no arguments; a second call with other arguments gets its own
+    /// card, and the « Oui » given for page A never serves page B (nor the same tool on other arguments in the detail).
+    #[test]
+    fn a_grant_is_bound_to_the_arguments_shown() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(&dir);
+        let gate = "MCP tool 'delete_page' on UNTRUSTED server 'notion' wants to run.";
+        let a = data(json!({"command": gate, "bip_summary": "Vie veut supprimer la page « Courses »",
+                            "bip_detail": "notion · delete_page\n{\"page\": \"Courses\"}"}));
+        let b = data(json!({"command": gate, "bip_summary": "Vie veut supprimer la page « Budget 2026 »",
+                            "bip_detail": "notion · delete_page\n{\"page\": \"Budget 2026\"}"}));
+        // the sentence cut alike, the arguments different in the detail
+        let mut c = a.clone();
+        c.insert("bip_detail".into(), json!("notion · delete_page\n{\"page\": \"Courses\", \"all\": true}"));
+        let now = py::time_time();
+        let (card, _) = hold(&config, "vie", "run_1", None, &a, None, now + 3600.0);
+        let (other, joined) = hold(&config, "vie", "run_2", None, &b, None, now + 3600.0);
+        assert!(!joined && other.id != card.id && other.summary.contains("Budget 2026"), "{other:?}");
+        assert_eq!(pending_items(&config, Some("vie")).len(), 2);
+        answer(&config, "vie", &card.id, true).unwrap();
+        // the person read « Courses »: neither « Budget 2026 » nor another call on « Courses » finds a grant
+        assert!(take_grant(&config, "vie", gate, &args_sha(&b)).is_none());
+        assert!(take_grant(&config, "vie", gate, &args_sha(&c)).is_none());
+        // the call she read, once
+        assert!(take_grant(&config, "vie", gate, &args_sha(&a)).is_some());
+        assert!(take_grant(&config, "vie", gate, &args_sha(&a)).is_none());
     }
 }

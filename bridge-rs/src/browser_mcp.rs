@@ -839,7 +839,12 @@ pub fn own_refusal(response: &Dict) -> bool {
      // vault-no-readback (16/11)
      SELECTOR_VALUE_REFUSED, TEXT_MATCH_REFUSED, SHOT_UNMASKED_REFUSED]
         .contains(&text)
+        // the first form to a site (audit 1.2): the person's OK to ask, no failure of the page
+        || text.starts_with(SEND_ASK_START)
 }
+
+/// How `send_ask_text` starts.
+const SEND_ASK_START: &str = "Not done: this sends a form to ";
 
 /// A new isolated world of `frame` in an attached tab (`read_only`): its execution context, None when it can't be had.
 async fn isolated_world(cdp: &mut crate::card_fill::Cdp, session: &str, frame: &str, name: &str) -> Option<i64> {
@@ -1106,6 +1111,41 @@ pub const PASSWORD_SHOWN: &str = "Not shown: that answer held what a password fi
 read a password. Read the other fields by their selectors, never all of a form's values. The vault fills and keeps \
 passwords (vault_create_login, vault_login).";
 
+/// `press_key` pressing Enter (alone or with a modifier: Ctrl+Enter sends in many apps).
+pub fn presses_enter(args: &Dict) -> bool {
+    let key = args.get("key").and_then(Value::as_str).unwrap_or("").trim().to_lowercase();
+    matches!(key.as_str(), "enter" | "return" | "numpadenter" | "\r" | "\n")
+}
+
+/// `press_key` pressing Space (on a button it clicks it).
+pub fn presses_space(args: &Dict) -> bool {
+    let key = args.get("key").and_then(Value::as_str).unwrap_or("");
+    key == " " || matches!(key.trim().to_lowercase().as_str(), "space" | "spacebar")
+}
+
+/// The script that tells which hosts a click by `text` (click_element's `text_match`) may send a form to: every send
+/// button of a form (a `button` or `input[type=submit|image]`, or what is inside one) whose own text or any
+/// attribute's value holds that text (an icon button named by its `aria-label`: re-check R1b, 18/11, as nodriver's
+/// `tab.find` / DOM.performSearch matches), in the page and its same-origin frames (R1c), as `target_script` reads a
+/// send button (`SEND_JS`). Read only; the text passed as a JSON string.
+pub fn text_target_script(text: &str) -> String {
+    let text = serde_json::to_string(&text.to_lowercase()).unwrap_or_else(|_| "\"\"".into());
+    format!(
+        "(() => {{ const t = {text}; {SEND_JS}const hosts = []; const docs = []; \
+const walk = (d, n) => {{ docs.push(d); if (n > 4) return; for (const f of d.querySelectorAll('iframe, frame')) {{ \
+let c = null; try {{ c = f.contentDocument; }} catch (x) {{}} if (c && c.documentElement) walk(c, n + 1); }} }}; walk(document, 0); \
+for (const doc of docs) for (const e of doc.querySelectorAll('*')) {{ \
+const own = [...e.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(' ').toLowerCase(); \
+const named = [...(e.attributes || [])].some((a) => String(a.value).toLowerCase().includes(t)); \
+if (!own.includes(t) && !named) continue; \
+const ctl = e.closest ? e.closest('button, input') : null; if (!ctl || !ctl.form) continue; \
+const tp = (ctl.getAttribute('type') || (ctl.tagName === 'BUTTON' ? 'submit' : 'text')).toLowerCase(); \
+if (tp !== 'submit' && tp !== 'image') continue; \
+const h = sendHost(ctl.form, ctl); if (h && !hosts.includes(h)) hosts.push(h); }} \
+return JSON.stringify({{hosts: hosts}}); }})()"
+    )
+}
+
 /// `press_key` typing a character (« a », « P » with Shift), not a key (« Enter », « Tab ») nor a shortcut.
 pub fn presses_a_character(args: &Dict) -> bool {
     let key = args.get("key").and_then(Value::as_str).unwrap_or("");
@@ -1127,7 +1167,7 @@ pub fn target_script(selector: &str) -> String {
     let selector = serde_json::to_string(selector).unwrap_or_else(|_| "\"\"".into());
     let cards = card_js();
     format!(
-        "(() => {{ const sel = {selector}; let el = null; {LABEL_JS}{cards}\
+        "(() => {{ const sel = {selector}; let el = null; {LABEL_JS}{cards}{SEND_JS}\
 if (sel) {{ try {{ el = /^\\(*\\//.test(sel) ? document.evaluate(sel, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue \
 : document.querySelector(sel); }} catch (e) {{ return JSON.stringify({{found: false, invalid: true}}); }} }} \
 else {{ el = document.activeElement; while (el && el.shadowRoot && el.shadowRoot.activeElement) el = el.shadowRoot.activeElement; }} \
@@ -1135,6 +1175,10 @@ for (let n = 0; el && (el.tagName === 'IFRAME' || el.tagName === 'FRAME') && n <
 if (!d) break; let a = d.activeElement; while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement; \
 if (!a || a === d.body || a === d.documentElement) break; el = a; }} \
 if (!el) return JSON.stringify({{found: false}}); \
+const ctl = el.closest ? el.closest('button, input') : null; let send = '', enter = ''; \
+if (ctl && ctl.form) {{ const tp = (ctl.getAttribute('type') || (ctl.tagName === 'BUTTON' ? 'submit' : 'text')).toLowerCase(); \
+if (tp === 'submit' || tp === 'image') send = sendHost(ctl.form, ctl); \
+else if (ctl.tagName === 'INPUT' && !['button', 'reset', 'checkbox', 'radio', 'file', 'hidden', 'range', 'color'].includes(tp)) enter = sendHost(ctl.form, null); }} \
 const holder = el.tagName === 'LABEL' ? el : (el.closest && el.closest('label')); \
 const link = el.closest && el.closest('a, button'); \
 if (el.tagName !== 'INPUT' && !link && holder && holder.control) el = holder.control; \
@@ -1148,7 +1192,7 @@ let card = frame ? (payFrame(el) ? 'frame' : '') : cardOf(el); \
 const other = !frame && !card && !!el.attributes && otherOf(el); \
 if (!card && !takesKeys(el)) {{ const f = deepFocus(document); if (f && f !== el) {{ \
 card = (f.tagName === 'IFRAME' || f.tagName === 'FRAME') ? (payFrame(f) ? 'frame' : '') : (f.attributes ? cardOf(f) : ''); }} }} \
-return JSON.stringify({{found: true, password: password, terms: terms.slice(0, 300), card: card, other: other}}); }})()"
+return JSON.stringify({{found: true, password: password, terms: terms.slice(0, 300), card: card, other: other, send: send, enter: enter}}); }})()"
     )
 }
 
@@ -1198,6 +1242,82 @@ pub const GUARD_BEFORE: &str = "/* bipagents guard: before */ (() => { ";
 pub const VAULT_TYPED_FILE: &str = "vault-typed.json";
 /// How long such an identifier is left alone by the card checks (a login form is sent within minutes).
 pub const VAULT_TYPED_SECONDS: f64 = 1800.0;
+
+// --- the first form sent to a site (security audit 1.2, 17/11) -----------------------------------------------------
+//
+// Hermes' `stealth` server has no `trust: untrusted` (every click would be a card), and the egress proxy lets the
+// browser send a few MB an hour to any site: a message, a contact form or a setting changed on a site the person is
+// logged into went through with no card, on the model's word alone (a page that asks it to). Alex, 17/11: « Oui, 1re
+// fois par site ». Reading stays free everywhere; the first time the agent's browser would SEND a form to a site
+// (`target_script`'s `send`: a click on a form's send button; its `enter`: Enter in one of its fields) to a host not
+// allowed for this agent (the form's `action`, its button's `formaction`), the call is refused with `send_ask_text`; a
+// script sends nothing (it only runs once V8 proves it only reads, `read_only`). The agent calls `ask_to_send`
+// (form_send.rs), a card asks the person « Envoyer sur
+// ce site ? » (« Oui »: this one sending; « Toujours pour ce site »: kept in « Sites autorisés »), then it does the
+// same step again. A search form (role=search, a search field, or a `get` form with one text field) is reading. The
+// bridge writes what is allowed beside `busy` (`SEND_SITES_FILE`: the sites validated for sending, and each « Oui »'s
+// one-use grant, `ONCE`); a grant is used once by this proxy (`Proxy::may_send`). The vault's fills (vault_login,
+// vault_create_login) grant their site's next sending, and a card payment never passes here (the bridge presses the
+// pay button itself, card_pay.rs).
+
+/// What the bridge allows this agent's browser to send forms to, beside `busy` (form_send.rs writes it):
+/// `{"always": [host or *.domain…], "once": [{"id", "host", "until"}]}`.
+pub const SEND_SITES_FILE: &str = "send-sites.json";
+
+/// What the agent reads instead of a form sent to `host`, not allowed yet (`guard`).
+pub fn send_ask_text(host: &str) -> String {
+    format!(
+        "Not done: this sends a form to {host}, and your browser never sends anything to a site for the first time \
+         without your person's OK (reading stays free). Call ask_to_send with site \"{host}\" and, in a few plain \
+         words, what you send: a card asks your person « Envoyer sur ce site ? ». Once they say yes, do the same step \
+         again. If you have no ask_to_send, tell them they can allow {host} in your « Sites autorisés ». Nothing was \
+         sent."
+    )
+}
+
+/// `host` covered by `sites` (a host, or `*.domain`: that domain and its subdomains).
+pub fn send_covered(sites: &[String], host: &str) -> bool {
+    let host = host.trim().trim_end_matches('.').to_lowercase();
+    !host.is_empty()
+        && sites.iter().any(|s| {
+            let s = s.trim().to_lowercase();
+            match s.strip_prefix("*.") {
+                Some(base) => host == base || host.ends_with(&format!(".{base}")),
+                None => s == host,
+            }
+        })
+}
+
+/// What `SEND_SITES_FILE` allows for `host` now: `Some(None)` always, `Some(Some(id))` a one-use grant not used yet
+/// (`used`), None nothing.
+pub fn send_allowed(path: &Path, host: &str, used: &std::collections::HashSet<String>, now: f64) -> Option<Option<String>> {
+    let file = std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok())?;
+    let list = |v: Option<&Value>| -> Vec<String> {
+        v.and_then(Value::as_array).map(|a| a.iter().filter_map(|h| h.as_str().map(str::to_string)).collect()).unwrap_or_default()
+    };
+    if send_covered(&list(file.get("always")), host) {
+        return Some(None);
+    }
+    file.get("once").and_then(Value::as_array)?.iter().find_map(|grant| {
+        let id = grant.get("id").and_then(Value::as_str)?;
+        let until = grant.get("until").and_then(Value::as_f64).unwrap_or(0.0);
+        let site = grant.get("host").and_then(Value::as_str)?.to_string();
+        (until > now && !used.contains(id) && send_covered(&[site], host)).then(|| Some(id.to_string()))
+    })
+}
+
+/// The page's side, in `target_script`: whether a form is a search (`searchForm`), and the host a form sends to
+/// (`sendHost`: its button's `formaction`, else its `action`, else the page; '' for a search). A search is a `get` form
+/// only (review R4, 18/11: a POST message form whose recipient picker is a search field sends).
+const SEND_JS: &str = "const searchForm = (f) => { const get = ['', 'get'].includes((f.getAttribute('method') || '').toLowerCase()); \
+if (get && ((f.getAttribute('role') || '').toLowerCase() === 'search' || f.querySelector('input[type=search]'))) return true; \
+const texts = [...f.querySelectorAll('input, textarea')].filter((i) => i.tagName === 'TEXTAREA' || !['hidden', 'submit', 'button', 'image', 'reset', 'checkbox', 'radio'].includes((i.getAttribute('type') || 'text').toLowerCase())); \
+return get && texts.length <= 1 \
+&& !f.querySelector('textarea, input[type=password], input[type=email], input[type=tel], input[type=file]'); }; \
+const sendHost = (f, b) => { if (!f || searchForm(f)) return ''; const d = f.ownerDocument; \
+const a = (b && b.getAttribute && b.getAttribute('formaction')) || f.getAttribute('action') || ''; \
+try { const u = new URL(a || d.location.href, d.baseURI); return (u.protocol === 'http:' || u.protocol === 'https:') ? u.hostname : (d.location.hostname || ''); } \
+catch (x) { return d.location.hostname || ''; } }; ";
 
 /// The guard's hash of a value (`GUARD_JS` `h`: FNV-1a over its UTF-16 code units), as the page computes it.
 pub fn guard_hash(value: &str) -> String {
@@ -2221,6 +2341,10 @@ pub struct Proxy {
     blind: AtomicBool,
     /// What the guard saw of the pages' password fields (vault-no-readback, 16/11).
     secrets: Mutex<Secrets>,
+    /// Where the bridge says which sites this browser may send forms to (`SEND_SITES_FILE`, beside `busy`).
+    pub send_sites_path: PathBuf,
+    /// The one-use grants of that file this proxy used already.
+    sent_once: Mutex<std::collections::HashSet<String>>,
 }
 
 impl Proxy {
@@ -2237,6 +2361,7 @@ impl Proxy {
             Some(path) => PathBuf::from(path),
             None => busy.parent().map(|p| p.join("rescue")).unwrap_or_else(|| PathBuf::from("rescue")),
         };
+        let send_sites_path = busy.parent().map(|p| p.join(SEND_SITES_FILE)).unwrap_or_else(|| PathBuf::from(SEND_SITES_FILE));
         let cache_path = PathBuf::from(config.get("cache").map(crate::py::py_str).unwrap_or_default());
         let mut cache = read_cache(&cache_path);
         if !cache.contains_key("initialize") {
@@ -2266,7 +2391,31 @@ impl Proxy {
             failures: AtomicU32::new(0),
             blind: AtomicBool::new(false),
             secrets: Mutex::new(Secrets::default()),
+            send_sites_path,
+            sent_once: Mutex::new(std::collections::HashSet::new()),
         })
+    }
+
+    /// Whether this browser may send a form to `host` now (`SEND_SITES_FILE`): a site allowed for good, or a one-use
+    /// grant of the person's « Oui », used up here.
+    /// The first host of `hosts` this browser may not send a form to yet (`SEND_SITES_FILE`: a site allowed for good,
+    /// or a one-use grant of the person's « Oui »). None: all of them allowed, their grants used up here.
+    fn first_refused(&self, hosts: &[String]) -> Option<String> {
+        let mut used = self.sent_once.lock().unwrap_or_else(|e| e.into_inner());
+        let now = crate::py::time_time();
+        let mut grants = Vec::new();
+        for host in hosts {
+            match send_allowed(&self.send_sites_path, host, &used, now) {
+                Some(None) => {}
+                Some(Some(id)) => grants.push((host.clone(), id)),
+                None => return Some(host.clone()),
+            }
+        }
+        for (host, id) in grants {
+            log(&format!("a form sent to {host} with the person's « Oui »"));
+            used.insert(id);
+        }
+        None
     }
 
     /// What the guard remembers of the pages' password fields, for its scripts (`Secrets::all`).
@@ -2639,6 +2788,7 @@ impl Proxy {
             if page_holds(before).0 && (script_touches_password(&with_args) || script_reads_password(&with_args, before)) {
                 return Some(refused(SCRIPT_PASSWORD_REFUSED));
             }
+            // a script never sends a form (audit 1.2): it only runs once V8 proves it only reads (`read_only`)
             return script_fills_and_sends(script, before).then(|| refused(SCRIPT_SENDS_REFUSED));
         }
         // select_option's `text` is typed into what it is aimed at by the real server (`send_keys`), and a `value` may
@@ -2650,12 +2800,35 @@ impl Proxy {
         let choosing = tool == "select_option";
         let selector = args.get("selector").and_then(Value::as_str).unwrap_or("");
         let ticking = tool == "click_element" && !selector.is_empty();
+        // Enter in a form's field sends it (audit 1.2): the first time to a site, the person's OK
+        let entering = tool == "press_key" && presses_enter(args);
+        // and Space on its send button (review R2, 18/11)
+        let spacing = tool == "press_key" && presses_space(args);
         // a card's number is never typed, wherever (unless the field says it's something else: a SIRET…)
         let card_number = typing && crate::card_details::holds_card_number(&typed_text(tool, args));
         if card_number && instance.is_empty() {
             return Some(refused(CARD_REFUSED));
         }
-        if !(typing || ticking || choosing) || instance.is_empty() {
+        // a click by its text (review R1, 18/11): the real server clicks what has that text, whatever the selector;
+        // any send button of a form with that text, to a host not allowed yet, asks first
+        let text_match = args.get("text_match").and_then(Value::as_str).unwrap_or("").trim();
+        if tool == "click_element" && !text_match.is_empty() && !instance.is_empty() {
+            let read = match self.look(instance, &text_target_script(text_match)).await {
+                Some(Value::String(text)) => serde_json::from_str::<Value>(&text).ok(),
+                other => other,
+            };
+            let hosts: Vec<String> = read
+                .as_ref()
+                .and_then(|r| r.get("hosts"))
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(|h| h.as_str().map(str::to_lowercase)).collect())
+                .unwrap_or_default();
+            if let Some(host) = self.first_refused(&hosts) {
+                log(&format!("click_element: a click by text would send a form to {host}, not allowed yet: the person's OK asked"));
+                return Some(refused(&send_ask_text(&host)));
+            }
+        }
+        if !(typing || ticking || choosing || entering || spacing) || instance.is_empty() {
             return None;
         }
         let script = target_script(selector);
@@ -2686,7 +2859,24 @@ impl Proxy {
             return Some(refused(PASSWORD_REFUSED));
         }
         let label = target.get("terms").and_then(Value::as_str).unwrap_or("");
-        (ticking && terms_box(label)).then(|| refused(TERMS_REFUSED))
+        if ticking && terms_box(label) {
+            return Some(refused(TERMS_REFUSED));
+        }
+        // a form's send button clicked, or Enter in it: the host it sends to, allowed for this agent or not (1.2)
+        let host = |k: &str| target.get(k).and_then(Value::as_str).unwrap_or("").trim().to_lowercase();
+        let sends = match (ticking, entering) {
+            (true, _) => host("send"),
+            (_, true) => Some(host("send")).filter(|h| !h.is_empty()).unwrap_or_else(|| host("enter")),
+            _ if spacing => host("send"),
+            _ => String::new(),
+        };
+        if sends.is_empty() {
+            return None;
+        }
+        self.first_refused(&[sends]).map(|host| {
+            log(&format!("{tool}: would send a form to {host}, not allowed yet: the person's OK asked"));
+            refused(&send_ask_text(&host))
+        })
     }
 
     /// After a guarded call: what it wrote into a password field erased, a terms box it ticked unticked

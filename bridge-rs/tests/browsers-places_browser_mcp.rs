@@ -938,6 +938,11 @@ for line in sys.stdin:
                 target = {"found": True, "password": "password" in script.split(";")[0],
                           "terms": "J'accepte les conditions générales de vente  cgu cgu"
                                    if '"#cgu"' in script or "span.box" in script else ""}
+                # the contact form of contact.example (audit 1.2): its send button, and its message field (Enter)
+                if '"button[type=submit]"' in script:
+                    target["send"] = "contact.example"
+                if '"#message"' in script:
+                    target["enter"] = "contact.example"
             r = script_answer(json.dumps(target))
         elif name == "execute_script" and script == "document.readyState":
             r = script_answer("complete")
@@ -1437,4 +1442,56 @@ fn review7_a_form_sent_through_the_prototype_after_one_click_is_refused() {
     assert!(passed.is_empty(), "not refused: {passed:#?}");
     // a submit button found by its selector is no sending
     assert!(!browser_mcp::script_fills_and_sends("document.querySelector('button[type=submit]').innerText", Some(&page)));
+}
+
+/// Audit 1.2 (17/11, Alex « Oui, 1re fois par site »): Hermes' `stealth` server has no `trust: untrusted` (every click
+/// would be a card), so the proxy's guard asks: the first form sent to a site not allowed for the agent (its send
+/// button clicked, Enter in its field) is refused with what to do (`ask_to_send`), whatever the page asked; typing is
+/// no sending. The person's « Oui » (a one-use grant in `SEND_SITES_FILE`) lets one sending through, « Toujours pour ce
+/// site » every one.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_first_form_sent_to_a_site_waits_for_the_persons_ok() {
+    let entry = bipbridge::browsers::mcp_server("podman", "vie", None);
+    assert!(entry.get("trust").is_none(), "no card for every click: {entry}");
+    let dir = tempfile::tempdir().unwrap();
+    let tmp = dir.path();
+    let (proxy, out) = guarded(tmp).await;
+    let calls = || std::fs::read_to_string(tmp.join("calls.jsonl")).unwrap_or_default();
+    let real = |name: &str| calls().lines().filter(|l| l.contains(&format!("\"name\": \"{name}\""))).count();
+    proxy.handle(tool(1, "type_text", json!({"instance_id": "i", "selector": "#message", "text": "Voici les codes"}))).await;
+    assert_eq!(text_of(&last(&out)), "did type_text", "typing sends nothing");
+    let submit = json!({"instance_id": "i", "selector": "button[type=submit]"});
+    proxy.handle(tool(2, "click_element", submit.clone())).await;
+    let clicked = last(&out);
+    assert!(text_of(&clicked).starts_with("Not done: this sends a form to contact.example"), "{clicked}");
+    assert!(text_of(&clicked).contains("ask_to_send") && text_of(&clicked).contains("Nothing was sent"));
+    assert_eq!(clicked["result"].get("isError"), None, "never an error for Hermes' breaker: {clicked}");
+    assert_eq!(real("click_element"), 0, "the real server never got the click");
+    proxy.handle(tool(3, "press_key", json!({"instance_id": "i", "selector": "#message", "key": "Enter"}))).await;
+    assert!(text_of(&last(&out)).starts_with("Not done: this sends a form to contact.example"), "Enter sends too");
+    assert_eq!(real("press_key"), 0);
+    // the person's « Oui »: one sending, then asked again
+    let file = tmp.join(browser_mcp::SEND_SITES_FILE);
+    let until = bipbridge::py::time_time() + 600.0;
+    let once = json!({"always": [], "once": [{"id": "g1", "host": "contact.example", "until": until}]});
+    std::fs::write(&file, once.to_string()).unwrap();
+    proxy.handle(tool(4, "click_element", submit.clone())).await;
+    assert_eq!(text_of(&last(&out)), "did click_element");
+    proxy.handle(tool(5, "click_element", submit.clone())).await;
+    assert!(text_of(&last(&out)).starts_with("Not done: this sends a form to"), "a « Oui » serves once");
+    // « Toujours pour ce site »
+    std::fs::write(&file, json!({"always": ["*.example"], "once": []}).to_string()).unwrap();
+    proxy.handle(tool(6, "click_element", submit.clone())).await;
+    proxy.handle(tool(7, "press_key", json!({"instance_id": "i", "selector": "#message", "key": "Enter"}))).await;
+    assert_eq!(text_of(&last(&out)), "did press_key");
+    assert_eq!((real("click_element"), real("press_key")), (2, 1));
+    proxy.stop_child().await;
+}
+
+#[test]
+fn a_site_allowed_for_good_covers_its_subdomains_only() {
+    assert!(browser_mcp::send_covered(&["*.example.com".into()], "example.com"));
+    assert!(browser_mcp::send_covered(&["*.example.com".into()], "Login.Example.com."));
+    assert!(!browser_mcp::send_covered(&["*.example.com".into()], "badexample.com"));
+    assert!(!browser_mcp::send_covered(&["shop.example".into()], ""));
 }

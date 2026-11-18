@@ -40,7 +40,7 @@ TERMS_UNDONE = "Not done: that ticked the site's terms"
 class Session:
     """A Chromium, the pages served, and the proxy over the stand-in server, as Hermes talks to it."""
 
-    def __init__(self):
+    def __init__(self, send_sites=("127.0.0.1", "localhost")):
         self.dir = Path(tempfile.mkdtemp(prefix="bip-guard-"))
         site = self.dir / "site"
         shutil.copytree(FIXTURES, site)
@@ -73,6 +73,9 @@ class Session:
                   # side-effect-free evaluation (hotfix v2 of 15/11)
                   "cdp_port": port}
         (self.dir / "config.json").write_text(json.dumps(config))
+        # the sites the browser may send forms to (form_send.rs, audit 1.2): these pages' own, unless the test says
+        if send_sites is not None:
+            (self.dir / "send-sites.json").write_text(json.dumps({"always": list(send_sites), "once": []}))
         self.proxy = subprocess.Popen([PROXY, str(self.dir / "config.json")], stdin=subprocess.PIPE,
                                       stdout=subprocess.PIPE, stderr=open(self.dir / "proxy.log", "wb"))
         self.answers = queue.Queue()
