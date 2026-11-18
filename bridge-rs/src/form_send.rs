@@ -433,4 +433,32 @@ mod tests {
         // a shared platform's bare domain: that host and its www. only
         assert_eq!(purchase_sites(&config, "vie"), ["myshopify.com", "www.myshopify.com"]);
     }
+
+    /// Review 18/11, pass 2: a bare public suffix the Public Suffix List knows but SHARED_HOSTING doesn't (cards.rs
+    /// `is_public_suffix`, used for the card's sites already) still opens every site under it.
+    #[test]
+    fn review_pass2_a_bare_public_suffix_opens_that_host_only() {
+        use crate::connectors::{self, Connector, Watch};
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.path().join("bridge.db").to_string_lossy().into_owned();
+        config.browser.root = dir.path().join("browsers").to_string_lossy().into_owned();
+        config.agents.insert("vie".into(), AgentConfig { name: "vie".into(), ..Default::default() });
+        std::fs::create_dir_all(crate::browsers::folder(&config, "vie")).unwrap();
+        let site = "readthedocs.io";
+        assert!(crate::cards::is_public_suffix(site));
+        let given = serde_json::json!({"site": site, "what": "Billet", "price": "4,50"});
+        let purchase = crate::watchers::parse_purchase(given.as_object().unwrap()).unwrap();
+        let conn = Connector {
+            id: "a".into(),
+            name: "Billets".into(),
+            sites: vec!["api.tickets.example".into()],
+            status: connectors::APPROVED.into(),
+            enabled: true,
+            watch: Some(Watch { every: "15m".into(), notify: "on_change".into(), purchase: Some(purchase) }),
+            ..Default::default()
+        };
+        connectors::change(&config, |store| store.agents.insert("vie".into(), vec![conn])).unwrap();
+        assert!(!sends_without_card(&config, "vie", "attacker.readthedocs.io"), "{:?}", purchase_sites(&config, "vie"));
+    }
 }
