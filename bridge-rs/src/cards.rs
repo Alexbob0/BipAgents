@@ -38,16 +38,18 @@ pub const PAYMENTS_KEPT: usize = 50;
 /// The largest amount an agent may ask for at once (the card's own limit, set at the bank, is the real one).
 pub const MAX_AMOUNT_CENTS: i64 = 10_000_000;
 
-/// Whether this install may offer card payments at all: not when `[vault] cards = "off"`, nor on a « no computer »
-/// server (`cloud`); on a place of the all-included offer (its guichet token, `place_backup::SETTINGS`) only when
-/// Kerfy Studio switched it on (`[payments] offer_cards`), with the numbers on the phone (`phone_rules`).
+/// Whether this install may offer card payments at all: not when `[vault] cards = "off"`; on a place of the
+/// all-included offer (its guichet token, `place_backup::SETTINGS`) only when Kerfy Studio switched it on
+/// (`[payments] offer_cards`), with the numbers on the phone (`phone_rules`); never on another server on the Internet
+/// (`cloud` without the guichet's token: no phone rules there, the numbers would sit in its vault). Every offer place
+/// is also `cloud = true` (stack.py): before 18/11 `!cloud` came first and kept cards off there even when switched on.
 pub fn allowed(config: &Config) -> bool {
     allowed_on(config, on_offer())
 }
 
 /// `allowed`, with whether this is a place of the offer given.
 pub fn allowed_on(config: &Config, offer: bool) -> bool {
-    config.hermes.isolated && config.cards != "off" && !config.cloud && (!offer || config.payments.offer_cards)
+    config.hermes.isolated && config.cards != "off" && if offer { config.payments.offer_cards } else { !config.cloud }
 }
 
 /// A place of the all-included offer (Kerfy Studio's servers).
@@ -995,6 +997,16 @@ mod tests {
         assert_eq!(phone_rules_on(&config, true), Some(PhoneRules { cap_max_cents: 15_000 }));
         config.cards = "off".into();
         assert!(!allowed_on(&config, true) && !allowed_on(&config, false));
+    }
+
+    #[test]
+    fn a_real_offer_place_is_cloud_too_and_follows_the_switch() {
+        let mut config = isolated();
+        config.cloud = true; // what stack.py writes on every offer place
+        assert!(!allowed_on(&config, true)); // switched off
+        config.payments.offer_cards = true;
+        assert!(allowed_on(&config, true)); // switched on: cards offered, numbers on the phone
+        assert!(!allowed_on(&config, false)); // a cloud server without the guichet's token: never
     }
 
     const RULES: PhoneRules = PhoneRules { cap_max_cents: 15_000 };
